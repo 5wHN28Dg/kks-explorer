@@ -79,7 +79,7 @@ def check_tools(d, staff):
 
 def check_hand(m, x, w):
     keys(x, ('kks', 'action', 'component'), ('tools', 'wrong', 'needs', 'set', 'input', 'range', 'minutes', 'work',
-                                              'samples'), w)
+                                              'samples', 'part'), w)
     m.kks_ref(x['kks'], w)
     ident(x['action'], f'{w}.action')
     short_id(x['component'], f'{w}.component')
@@ -117,6 +117,10 @@ def check_hand(m, x, w):
         num(x['minutes'], f'{w}.minutes', 0, LIMITS['minutes'])
         need(x['minutes'] > 0, 'bad_number', f'{w}.minutes: above 0')
     need(isinstance(x.get('work', True), bool), 'bad_type', f'{w}.work: true or false')
+    if 'part' in x:         # REALISM.md §2.23: the part it fits, a part of stores.json, under the work's permit
+        from ref import plant3d_stores as SR
+        SR.check_hand_part(m, x, w)
+        need(x.get('work', True), 'bad_value', f'{w}.part: a fitting is made under a work (not "work": false)')
     m.hand_keys[key] = x
     m.hands.append(x)
 
@@ -419,12 +423,21 @@ def hand(e, item, npc, prev):
         why.append('lab')           # a sample node's queue is full (REALISM.md §2.19)
     if 'input' in x and not (is_num(value) and x['range'][0] <= value <= x['range'][1]):
         why.append('value')
+    if 'part' in x:
+        from ref import plant3d_stores as SR        # the fitting check (REALISM.md §2.23): part or wrong_part
+        why += SR.fit_reasons(e, x)
     if why:
         e.ev('hand', kks, action, tl, person, 'refused', why)
         return 'refused'
+    if 'part' in x:
+        from ref import plant3d_stores as SR        # the part taken from the work's issued parts as it starts
+        fw = SR.fit_work(e, x['kks'])
+        SR.fit_take(e, x)
     if 'minutes' in x:
         end = e.clock() + math.ceil(x['minutes'] * MINUTE)
         e.busy[person] = [kks, action, tl, float(value) if 'input' in x else None, end, place(p)]
+        if 'part' in x:
+            e.busy[person].append(fw)   # (a fitting's busy record: the work its part came from, REALISM.md §2.23)
         e.ev('hand', kks, action, tl, person, 'start', [])
         return 'start'
     write(e, x, value, prev)
@@ -453,9 +466,10 @@ def end_hands(e, jumped):
         b = e.busy.get(p.id)
         if b is None:
             continue
-        kks, action, tl, value, end, at = b
+        kks, action, tl, value, end, at = b[:6]
         if jumped or place(p) != at:
             del e.busy[p.id]
+            give_back(e, b)
             e.ev('hand', kks, action, tl, p.id, 'abandoned', [])
             result(e, p, 'abandoned')
         elif c >= end:
@@ -481,7 +495,15 @@ def abandon(e, p):
     """An NPC pre-empted (§17.3's pause) leaves their hand action, in step 9."""
     b = e.busy.pop(p.id, None)
     if b is not None:
+        give_back(e, b)
         e.ev('hand', b[0], b[1], b[2], p.id, 'abandoned', [])
+
+
+def give_back(e, b):
+    """An abandoned fitting gives its part back to the work it came from (REALISM.md §2.23)."""
+    if len(b) > 6:
+        from ref import plant3d_stores as SR
+        SR.fit_back(e, b[6], e.hands[(b[0], b[1])]['part'])
 
 
 def slip(e, item):

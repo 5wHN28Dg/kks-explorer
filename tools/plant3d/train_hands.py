@@ -133,7 +133,7 @@ def parts(m, code):
     a, loop = e['alias'], e['loop']
     for x in s['actions']:
         h = {'kks': code, 'action': x['action'], 'component': x['component']}
-        for k in ('tools', 'wrong', 'needs', 'set', 'minutes'):
+        for k in ('tools', 'wrong', 'needs', 'set', 'minutes', 'part'):     # (part: the stores', REALISM.md §2.23)
             if k in x:
                 h[k] = _sub(x[k], a, loop)
         m.hands.append(h)

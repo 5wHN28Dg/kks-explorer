@@ -28,9 +28,9 @@ WALK_MODES = ('walk', 'stair', 'ladder')
 ROLE_DISCIPLINES = ('ops', 'inst', 'mech', 'elec', 'chem', 'civil', 'hse', 'mgmt', 'security', 'transport', 'camp')
 AUTHORITIES = ('operate_screen', 'operate_local', 'request', 'approve', 'issue', 'accept', 'lock_electrical',
                'lock_mechanical', 'lock_process', 'lock_instrument', 'remove_lock', 'stop_work', 'sample', 'drive',
-               'operate_hart', 'jsa', 'plan_work', 'close_work')
+               'operate_hart', 'jsa', 'plan_work', 'close_work', 'issue_parts', 'order_parts')
 # (operate_hart: an op through a HART communicator, REALISM.md §2.13; jsa: JSAs and toolbox talks, §8.6; plan_work,
-# close_work: work orders, §2.20)
+# close_work: work orders, §2.20; issue_parts, order_parts: the stores, §2.23)
 PPE = ('helmet', 'boots', 'glasses', 'gloves', 'ear', 'harness', 'face_shield', 'apron', 'vest')
 WEEK = ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
 # who may make each permit action (§15.3): done and return are the acceptor's (or another with accept and the
@@ -44,7 +44,8 @@ STEP_KINDS = ('go', 'work', 'read', 'op', 'permit', 'lock', 'unlock', 'say', 'wa
               'handover', 'remove_locks', 'ppe', 'stop', 'ride', 'sleep', 'tool', 'hand',   # (tool, hand: §2.13)
               'jsa', 'talk',    # (REALISM.md §8.6)
               'wo',     # (a work order's action, REALISM.md §2.20)
-              'discuss')    # (a discussion, REALISM.md §6.3.1)
+              'discuss',    # (a discussion, REALISM.md §6.3.1)
+              'issue', 'order')     # (the stores, REALISM.md §2.23)
 LATER = {}
 VEHICLE_KINDS = ('bus', 'pickup', 'suv')
 DRIVE_KINDS = ('stop', 'depot')     # the places drive ways join (§21.4)
@@ -996,6 +997,17 @@ class Staff:
                 need(x['action'] in WO.ACTIONS, 'bad_value', f'{ws}.wo.action: one of {list(WO.ACTIONS)}')
                 if 'data' in x:
                     lst(x['data'], f'{ws}.wo.data', 0, 4)
+            elif k in ('issue', 'order'):
+                # REALISM.md §2.23: {"issue": part, "qty": n, "for": "$" | work} (settled in the code: its work under
+                # "for", since "work" is a step kind of its own), {"order": part, "qty"?: n}
+                st_ = self.b.stores
+                need(st_ is not None, 'bad_ref', f'{ws}.{k}: the plant has no stores.json')
+                keys(s, (k, 'qty', 'for') if k == 'issue' else (k,), ('else',) if k == 'issue' else ('qty', 'else'), ws)
+                need(isinstance(x, str) and x in st_['ix'], 'bad_ref', f'{ws}.{k}: no part {x!r} in stores.json')
+                if 'qty' in s:
+                    need(type(s['qty']) is int and 1 <= s['qty'] <= 9999, 'bad_number', f'{ws}.qty: 1 to 9,999')
+                if k == 'issue':
+                    self.work_ref(s['for'], f'{ws}.for')
             elif k in ('lock', 'unlock'):
                 keys(s, (k,), ('else',), ws)
                 keys(x, ('work', 'point'), (), f'{ws}.{k}')
@@ -1361,6 +1373,10 @@ class Staff:
                                  'authority', f'{ws}: role {rid} is not of work {wid}\'s discipline')
                             need(s['wo']['action'] != 'complete' or 'data' in s['wo'] or 'codes' in wmap[wid],
                                  'bad_ref', f'{ws}: a complete without data on work {wid}, which has no codes')
+                    for k in ('issue', 'order'):      # REALISM.md §2.23
+                        if k in s:
+                            a = k + '_parts'
+                            need(a in auth, 'authority', f'{ws}: role {rid} lacks {a}')
                     for k in ('lock', 'unlock'):
                         if k in s:
                             for wid in self.step_works(s[k]['work'], works[tid]):
@@ -1393,6 +1409,8 @@ class Staff:
                 for k in ('jsa', 'talk'):
                     if k in s and s[k] == '$':
                         need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
+                if 'issue' in s and s['for'] == '$':
+                    need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
                 if 'wait' in s and 'permit' in s['wait'] and s['wait']['permit'][0] == '$':
                     need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
         # a hot or confined work's task tests the air first: a read with "test": "gas" before its first work step
@@ -1654,8 +1672,10 @@ class StaffRun:
         return {'at': v['home'], 'leg': None, 'run': None, 'dep': 0, 'k': 0, 'to': v['home'], 'until': 0,
                 'until_c': 0, 'driver': None, 'riders': [], 'floor': 0, 'done': None}
 
-    def place_all(self, c, old=None):
-        """Placement (§17.2): at step 0 and after a jump, at clock c."""
+    def place_all(self, c, old=None, keep_held=False):
+        """Placement (§17.2): at step 0 and after a jump, at clock c. keep_held (a jump in a scenario with `world`,
+        REALISM.md §2.23): each person's held jobs stay held, and come back into their queue (event `resumed` each, in
+        the order held) when the placement puts them on duty."""
         st = self.st
         day = c // DAY
         e = self.e
@@ -1676,7 +1696,8 @@ class StaffRun:
             if p.home is not None:      # planned from a day earlier: their off slots of days C − 1 and C (§21.2)
                 p.planned, p.offday = day - 4, day - 2
             p.cur, p.queue, p.leg, p.res, p.occ, p.pending, p.result = None, [], None, None, None, None, None
-            p.held = []
+            if not keep_held:
+                p.held = []
             p.pos = None
             p.on, p.duty = False, None
             p.worn, p.acts, p.zin = set(), {}, set()
@@ -1733,6 +1754,12 @@ class StaffRun:
                 self.give(p, task, st.tasks[task].get('priority', 3), None, None, None, None, count=False,
                           off=(1 if pick[5] is None else 2) if p.home is not None else 0,
                           dend=pick[5][1] if pick[5] is not None else None)
+            if p.on and p.held:         # (a jump into their duty: the duty has begun, §17.10)
+                held, p.held = p.held, []
+                for h in held:
+                    p.queue.append(h)
+                    p.queue.sort(key=lambda q: (q['prio'], q['made'], q['order']))
+                    self.e.ev('task', p.id, h['task'], 'resumed')
         self.t_from = {}
 
     def first_place(self, tid, p):
@@ -1905,7 +1932,7 @@ class StaffRun:
             e.ev('task_ack', *tail)
             return
         if kind == 'jump':
-            self.jump(item[1])
+            self.jump(item[1], item[2] if len(item) > 2 else 0)
             return
         self.t_in.append((slot, item))
 
@@ -2078,18 +2105,29 @@ class StaffRun:
         if ('alight', lid, pid) not in self.e.npc_queue:
             self.e.npc_queue.append(('alight', lid, pid))
 
-    def jump(self, to):
+    def jump(self, to, days=0):
+        """[n, "jump", "HH:MM", days] (§17.6; REALISM.md §2.23): to the next occurrence of HH:MM strictly after the
+        clock, then `days` (a whole number 0 to 30; absent 0) clock days on; other days are refused as a bad time."""
         e = self.e
         old = e.clock()
         m = HHMM.fullmatch(to) if isinstance(to, str) else None
-        if m is None:
+        if m is None or not (is_num(days) and float(days).is_integer() and 0 <= days <= 30):
             e.ev('jump', old, None, 'refused')
             return
         t = (old // DAY) * DAY + (int(m.group(1)) * 60 + int(m.group(2))) * MINUTE
         while t <= old:
             t += DAY
+        t += int(days) * DAY
         ok = self.unacked == 0
-        ok = ok and e.ff_model() and not any(1 <= s <= 7 for s in e.pstate.values()) and self.jumped is None \
+        if e.world is None:     # §17.6: no permit between requested and returned
+            open_ = any(1 <= s <= 7 for s in e.pstate.values())
+        else:
+            # in a scenario with `world`, §7.4's amendment of §17.6 (REALISM.md §2.23, its first use): a permit issued
+            # or accepted blocks unless its job is held for the next duty (§17.10); anyone in a hand action blocks;
+            # permits requested, approved, isolated, done or returned, and held jobs, don't
+            held = {q['work'] for x in self.people for q in x.held}
+            open_ = any(s in (4, 5) and w not in held for w, s in e.pstate.items()) or bool(e.busy)
+        ok = ok and e.ff_model() and not open_ and self.jumped is None \
             and not e.npc_pending
         if ok:
             e.J += t - old
@@ -2106,10 +2144,13 @@ class StaffRun:
         if self.jumped is not None:
             old, new = self.jumped
             self.jumped = None
+            # in a scenario with `world` (REALISM.md §2.23, §7.4) held jobs stay held through the gap, their locks on
+            # (§17.10); otherwise a jump skips them as every other instance (§17.10)
+            keep = e.world is not None
             for p in self.people:
-                for inst in ([p.cur] if p.cur is not None else []) + p.queue + p.held:
+                for inst in ([p.cur] if p.cur is not None else []) + p.queue + ([] if keep else p.held):
                     e.ev('task', p.id, inst['task'], 'skipped')
-            self.place_all(new, old)
+            self.place_all(new, old, keep)
             jump_step = True
         else:
             jump_step = False
@@ -3147,6 +3188,29 @@ class StaffRun:
             r, p.result = p.result, None
             x['busy'] = False
             return 'next' if r == 'done' else 'fail'
+        if 'issue' in s or 'order' in s:
+            # REALISM.md §2.23: an issue made at the counter (a walk to the part's store's place first), an order where
+            # they stand; an order without qty orders up to the part's max (worked out in step 1)
+            if not x.get('busy'):
+                if 'issue' in s:
+                    stv = e.stores
+                    store = stv['stores'][stv['store_ix'][stv['parts'][stv['ix'][s['issue']]]['store']]]
+                    r = self.go(p, cur, st.pix[store['place']])
+                    if r != 'next':
+                        return r
+                    x.pop('dest', None)
+                    w = cur['work'] if s['for'] == '$' else s['for']
+                    e.npc_queue.append(('issue', s['issue'], s['qty'], w, p.id))
+                else:
+                    e.npc_queue.append(('order', s['order'], s.get('qty'), p.id))
+                x['busy'] = True
+                p.result = None
+                return 'wait'
+            if p.result is None:
+                return 'wait'
+            r, p.result = p.result, None
+            x['busy'] = False
+            return 'next' if r == 'done' else 'fail'
         if 'lock' in s or 'unlock' in s:
             k = 'lock' if 'lock' in s else 'unlock'
             w = cur['work'] if s[k]['work'] == '$' else s[k]['work']
@@ -3923,6 +3987,23 @@ class StaffRun:
                 elif self.early_done(p, cur, x, slot, lambda q: q[0] == 'wo' and q[2] == w and q[3] == a
                                      and self.wo_holds(w, a, q[4])):
                     r = 'next'
+            elif 'issue' in s or 'order' in s:
+                # REALISM.md §2.23: their own issue of that part against that work (any qty), or order of that part,
+                # done in this step or kept from before (an issue or order made stays made)
+                if 'issue' in s:
+                    w = cur['work'] if s['for'] == '$' else s['for']
+                    hit = lambda y: y[1] == 'issue' and y[2] == s['issue'] and y[4] == w and y[5] == p.id \
+                        and y[6] == 'done'      # noqa: E731
+                    kept = lambda q: q[0] == 'issue' and q[2] == s['issue'] and q[3] == w    # noqa: E731
+                else:
+                    hit = lambda y: y[1] == 'order' and y[2] == s['order'] and y[4] == p.id and y[5] == 'done'  # noqa
+                    kept = lambda q: q[0] == 'order' and q[2] == s['order']     # noqa: E731
+                j = next((j for j, y in enumerate(mine) if j not in took and hit(y)), None)
+                if j is not None:
+                    took.add(j)
+                    r = 'next'
+                elif self.early_done(p, cur, x, slot, kept):
+                    r = 'next'
             elif 'handover' in s and s['handover'] == 'take':
                 if self.lock_target(p, cur, s, None) is None:
                     r = 'next'
@@ -4000,11 +4081,17 @@ class StaffRun:
         e = self.e
         early = self.early_of(slot)
         for j, y in enumerate(mine):
-            if j in took or y[1] not in ('op', 'permit', 'lock', 'unlock', 'hand', 'wo'):
+            if j in took or y[1] not in ('op', 'permit', 'lock', 'unlock', 'hand', 'wo', 'issue', 'order'):
                 continue
             if y[1] == 'hand':          # (REALISM.md §2.13)
                 if y[6] == 'done' and y[5] == p.id:
                     early.append(['hand', y[0], y[2], y[3]])
+            elif y[1] == 'issue':       # (REALISM.md §2.23: the part and the work)
+                if y[6] == 'done' and y[5] == p.id:
+                    early.append(['issue', y[0], y[2], y[4]])
+            elif y[1] == 'order':       # (the part)
+                if y[5] == 'done' and y[4] == p.id:
+                    early.append(['order', y[0], y[2]])
             elif y[1] == 'op':
                 if len(y) > 7 and y[4] == 'done' and y[7] == p.id:
                     o = e.m.op_keys.get((y[2], y[3], None))

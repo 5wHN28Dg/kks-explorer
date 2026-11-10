@@ -571,6 +571,10 @@ def apply(e, item, slot=None):
         e.permit(item[2], item[3], item[4], slot=slot)
     elif kind == 'wo':
         e.work_order(item[2], item[3], item[4], item[5], slot=slot)      # (a work order's action, REALISM.md §2.20)
+    elif kind == 'issue':
+        e.issue(item[2], item[3], item[4], item[5], slot=slot)          # (the stores, REALISM.md §2.23)
+    elif kind == 'order':
+        e.order(item[2], item[3], item[4], slot=slot)
     elif kind in ('lock', 'unlock'):
         getattr(e, kind)(item[2], item[3], item[4], slot=slot)
     elif kind == 'remove_lock':
@@ -2166,7 +2170,8 @@ def build_rejects_staff():
 
 INPUTS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
           'remove_lock', 'role', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'call', 'jump', 'ppe', 'zone',
-          'stop', 'board', 'alight', 'get_on', 'drive', 'weather', 'audio', 'phone', 'jsa', 'talk', 'discuss')
+          'stop', 'board', 'alight', 'get_on', 'drive', 'weather', 'audio', 'phone', 'jsa', 'talk', 'discuss', 'issue',
+          'order')
 
 
 class Slotted:
@@ -2478,6 +2483,8 @@ def apply_staff(e, item):
     kind = item[1]
     if kind == 'op' and len(item) == 8:
         e.op(*item[2:8], slot=slot)
+    elif kind == 'jump' and len(item) > 3:
+        e.jump(item[2], item[3], slot=slot)             # (a jump to a date, REALISM.md §2.23)
     elif kind in ('role', 'arrive', 'leave', 'pick', 'jump', 'stop', 'get_on', 'audio', 'phone'):
         getattr(e, kind)(item[2], slot=slot)
     elif kind == 'drive':

@@ -313,6 +313,7 @@ class Bundle:
                                                    # tasks (ref/plant3d_discuss.py: staff.discuss)
         self.wo_ids = None                         # workorders.json's code lists (REALISM.md §2.20), or None
         self.wo_doc = None                         # workorders.json, checked (ref/plant3d_wo.py), or None
+        self.stores = None                         # stores.json, checked (ref/plant3d_stores.py, REALISM.md §2.23)
         self.screen_of = {}                        # code shown on the screens -> (screen id, group id) (§7.11)
         self.areas, self.models = [], []          # in plant.json order
         self.scenarios, self.procedures = {}, {}
@@ -355,7 +356,8 @@ def check_files(files):
     b = Bundle()
     for rel in files:
         need(rel in ('plant.json', 'kit.json', 'sounds.json', 'screens.json', 'staff.json', 'weather.json',
-                     'tools.json', 'monitoring.json', 'hse.json', 'workorders.json', 'discussions.json') or re.fullmatch(
+                     'tools.json', 'monitoring.json', 'hse.json', 'workorders.json', 'discussions.json',
+                     'stores.json') or re.fullmatch(
             r'(areas|model|procedures|scenarios|workshop|workshop/bench|service)/[a-z_][a-z0-9_]{0,31}\.json|'
             r'sounds/[a-z0-9][a-z0-9._-]{0,63}\.ogg',
             rel), 'unknown_key', f'{rel}: not a file of the format')
@@ -480,6 +482,8 @@ class Plant:
             from ref.plant3d_staff import Staff
             need(b.version == 2, 'unknown_key', 'staff.json: only in a version 2 plant (§14)')
             b.staff = Staff(parse(files, 'staff.json'), b, m)
+            from ref import plant3d_stores as SR      # the stores' places are staff places (REALISM.md §2.23)
+            SR.check_places(b)
         elif b.version == 2:
             for x in m.works:
                 for k in ('task',) + WORK_TASKS:
@@ -1050,13 +1054,22 @@ class Model:
         self.hand_keys, self.meter_ix = {}, {}   # (code, action) -> hand action; meter id -> meter
         self.version = 1                         # of the model file being added
         self.has_wo = 'workorders.json' in getattr(plant, 'files', ())     # work orders (REALISM.md §2.20)
+        if 'stores.json' in getattr(plant, 'files', ()):
+            # the stores (REALISM.md §2.23): checked first, so that their parts' values are known to every node
+            from ref import plant3d_stores as SR
+            b.stores = SR.check(parse(plant.files, 'stores.json'), b)
 
     def kept(self):
         """The values the engine keeps for permits and isolations (§15.1, §15.3) and each lift's load (§20.1), in slot
         order."""
         return [x['id'] + s for x in self.isolations for s in ('_locked', '_complete')] + \
             [w['id'] + '_permit' for w in self.works] + [x['id'] + '_load' for x in self.lifts] + \
-            ([w['id'] + '_wo' for w in self.works] if self.has_wo else [])     # (work orders, REALISM.md §2.20)
+            ([w['id'] + '_wo' for w in self.works] if self.has_wo else []) + \
+            self.stores_kept()      # (work orders, REALISM.md §2.20; then the stores' values, §2.23)
+
+    def stores_kept(self):
+        from ref import plant3d_stores as SR
+        return SR.kept(getattr(self.b, 'stores', None))
 
     def known(self):
         """Names any condition may read: values, ext, machine states, trip latches, and the permits' and isolations'
@@ -1741,9 +1754,10 @@ def check_screens(s, m, b):
 
 
 def check_scenario(s, m, rel):
-    keys(s, ('format', 'version', 'id', 'title', 'init'), ('latched', 'faults', 'staff', 'start', 'world'), rel)
+    keys(s, ('format', 'version', 'id', 'title', 'init'), ('latched', 'faults', 'staff', 'start', 'world', 'stock'),
+         rel)
     v = fmt(s, 'scenario', rel, m.b.version)
-    for k in ('staff', 'start', 'world'):
+    for k in ('staff', 'start', 'world', 'stock'):
         need(v == 2 or k not in s, 'unknown_key', f'{rel}.{k}: only in a version 2 scenario (§14)')
     if v == 2:
         from ref.plant3d_staff import check_scenario_staff
@@ -1752,6 +1766,8 @@ def check_scenario(s, m, rel):
         if 'world' in s:
             from ref.plant3d_world import check_world
             check_world(s, m.b, rel)
+        from ref import plant3d_stores as SR        # the scenario's stock (REALISM.md §2.23)
+        SR.check_scenario(s, m.b, rel)
     ident(s['id'], rel)
     name_text(s['title'], rel)
     need(isinstance(s['init'], dict), 'bad_type', f'{rel}.init')
@@ -1950,6 +1966,8 @@ class Engine:
         self.acceptor = {}                              # work -> who accepted its permit (None in free mode)
         from ref import plant3d_wo as WO                # work orders (REALISM.md §2.20)
         WO.init(self, b, m)
+        from ref import plant3d_stores as SR            # the stores (REALISM.md §2.23)
+        SR.init(self, b, sc)
         self.holder = {x['id']: None for x in m.isolations}     # the work holding each isolation (§15.1)
         self.locks = {}                                 # (isolation id, point index) -> who locked it, in order
         self.code_locks = {}                            # code -> its locked points, of every isolation
@@ -2077,6 +2095,8 @@ class Engine:
         HS.copy_state(c, self)
         from ref import plant3d_wo as WO
         WO.copy_state(c, self)
+        from ref import plant3d_stores as SR
+        SR.copy_state(c, self)
         return c
 
     # --- compile nodes to closures over (cur, prev)
@@ -2295,6 +2315,9 @@ class Engine:
                 cur[self.ix[k]] = float(v)
         for k, v in sc['init'].items():
             cur[self.ix[k]] = float(v)
+        if self.stores is not None:
+            from ref import plant3d_stores as SR    # the shelf and on order (REALISM.md §2.23)
+            SR.step0(self)
         for t in sc.get('latched', []):
             self.latched[t] = True
             cur[self.ix[t + '_latched']] = 1.0
@@ -2373,6 +2396,14 @@ class Engine:
     def repair_under(self, fid, work, person=None, slot=None):
         self._q(('repair', fid, work, person), slot)
 
+    def issue(self, part, qty, work, person=None, slot=None):
+        """Parts drawn from the stores against a work (REALISM.md §2.23)."""
+        self._q(('issue', part, qty, work, person), slot)
+
+    def order(self, part, qty, person=None, slot=None):
+        """A purchase order for a part (REALISM.md §2.23)."""
+        self._q(('order', part, qty, person), slot)
+
     def work_order(self, work, action, person, data, slot=None):
         self._q(('wo', work, action, person, data), slot)     # (data as given: null or not a list is unknown)
 
@@ -2426,8 +2457,9 @@ class Engine:
     def call(self, role, task, work=None, slot=None):
         self._q(('call', role, task, work), slot)
 
-    def jump(self, hhmm, slot=None):
-        self._q(('jump', hhmm), slot)
+    def jump(self, hhmm, days=None, slot=None):
+        """A jump to the next HH:MM, then `days` days on (REALISM.md §2.23; without days, §17.6's input)."""
+        self._q(('jump', hhmm) if days is None else ('jump', hhmm, days), slot)
 
     def ppe(self, item, on, slot=None):
         self._q(('ppe', item, on), slot)
@@ -2828,6 +2860,12 @@ class Engine:
                 r = WO.wo_input(self, item, npc)
                 if npc:
                     self._npc_result(item[3], r, k0)
+            elif kind in ('issue', 'order'):
+                from ref import plant3d_stores as SR    # the stores (REALISM.md §2.23)
+                k0 = len(self.events)
+                r = (SR.issue if kind == 'issue' else SR.order)(self, item, npc)
+                if npc:
+                    self._npc_result(item[-1], r, k0)
             elif kind in ('board', 'alight') and npc and self.session and isinstance(item[2], str) \
                     and sr.st.person_ix[item[2]] in sr.players.values():
                 continue        # an NPC's board or alight made before a slot took the person: dropped (§20.10)
@@ -3029,6 +3067,10 @@ class Engine:
         if self.busy:
             from ref import plant3d_hands as H
             H.end_hands(self, self.gap > 0)
+        # then the deliveries whose clock time is reached (REALISM.md §2.7, §2.23)
+        if self.stores is not None:
+            from ref import plant3d_stores as SR
+            SR.deliveries(self)
         # then the lab's results whose clock time is reached (REALISM.md §2.19)
         if self.lab_nodes:
             from ref import plant3d_hands as H
@@ -3248,6 +3290,7 @@ class Engine:
         from ref import plant3d_hands as H
         from ref import plant3d_hse as HS
         from ref import plant3d_wo as WO
+        from ref import plant3d_stores as SR
         m = self.m
         work_ix = {w['id']: k for k, w in enumerate(m.works)}
         locks = [[k, p, list(self.locks[(x['id'], p)])] for k, x in enumerate(m.isolations)
@@ -3277,7 +3320,8 @@ class Engine:
             ([H.digest_part(self)] if self.hw else []) + \
             ([H.lab_digest(self)] if self.lab_nodes else []) + \
             ([HS.digest_part(self)] if self.hse is not None else []) + \
-            ([WO.digest_part(self)] if self.wo_ids is not None else [])
+            ([WO.digest_part(self)] if self.wo_ids is not None else []) + \
+            ([SR.digest_part(self)] if self.stores is not None else [])
 
     def snapshot(self, values=True):
         s = {'step': self.step_no,
@@ -3322,6 +3366,9 @@ class Engine:
         if self.wo_ids is not None:
             from ref import plant3d_wo as WO        # REALISM.md §2.20
             WO.snapshot_part(self, s)
+        if self.stores is not None:
+            from ref import plant3d_stores as SR    # REALISM.md §2.23
+            SR.snapshot_part(self, s)
         if values:
             s['values'] = {n: self.cur[i] for i, n in enumerate(self.names)}
         return s
