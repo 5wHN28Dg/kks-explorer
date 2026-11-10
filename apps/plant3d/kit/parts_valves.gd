@@ -54,7 +54,7 @@ static func _body(g, part: String, od: float, F: float, bulge: float, cv := {}) 
 	var rating: String = g.p.get("rating", "pn16")
 	if not cv.is_empty():
 		g.comp("body")
-		g.only("plant", VC_STAND)
+		g.only("plant", cv.stand)
 	m.use("paint_valve", "identify")
 	var prof := [[r * 1.02, -F * 0.5], [r * 1.05, -F * 0.38], [r * bulge, -F * 0.18], [r * bulge, F * 0.18],
 		[r * 1.05, F * 0.38], [r * 1.02, F * 0.5]]
@@ -79,8 +79,18 @@ static func _rising(g, part: String) -> void:
 	var act: String = g.p.get("actuator", "manual" if part != "valve_control" else "pneumatic")
 	var side: String = g.p.get("handwheel", "top")
 	var bulge := 1.25 if part == "valve_gate" else 1.55
-	# (the Workshop's tree: the pneumatic control valve, kit/README.md "Workshop: the control valve")
-	var tree: bool = g.workshop and part == "valve_control" and act == "pneumatic"
+	# (the Workshop's trees, kit/README.md "The Workshop mode": the pneumatic control valve, the manual gate valve
+	# with its handwheel on top, the globe valve with a multi-turn electric actuator)
+	var kind := ""
+	if g.workshop:
+		if part == "valve_control" and act == "pneumatic":
+			kind = "control"
+		elif part == "valve_gate" and act == "manual" and side == "top":
+			kind = "gate"
+		elif part == "valve_globe" and act == "electric":
+			kind = "globe"
+	var tree := kind != ""
+	var stand: Array = VC_STAND if kind == "control" else ["body", "bonnet"]
 	var zb := r * (1.15 if part == "valve_gate" else 1.35)
 	var bf := od * 0.42 + 0.02
 	var zt := zb + 0.02 + od * 0.06
@@ -90,13 +100,17 @@ static func _rising(g, part: String) -> void:
 	var stem_r := clampf(0.006 + od * 0.04, 0.007, 0.06)
 	var cv := {}
 	if tree:
-		cv = _cv_dims(r, zb, bf, zt, zg, stem_r, s)
-		_cv_comps(g, cv, od)
+		cv = _cv_dims(r, zb, bf, zt, zg, stem_r, s, kind)
+		cv["stand"] = stand
+		match kind:
+			"control": _cv_comps(g, cv, od)
+			"gate": _gv_comps(g, cv, od)
+			"globe": _gl_comps(g, cv, od)
 	_body(g, part, od, F, bulge, cv)
 	# the neck and bonnet flange
 	if tree:
 		g.comp("body")
-		g.only("plant", VC_STAND)
+		g.only("plant", stand)
 	m.use("paint_valve", "identify")
 	m.cyl(Vector3(0, 0, r * 0.4), Vector3(0, 0, zb), r * 0.62 if part == "valve_gate" else r * 0.7, -1.0)
 	if tree:
@@ -110,7 +124,7 @@ static func _rising(g, part: String) -> void:
 		if g.workshop:   # the bonnet's studs and nuts, where the plant draws its ring: they back out upwards
 			_ring_bolts_z(g, "bonnet_bolts", Vector3(0, 0, zb + 0.01 + od * 0.03), bf * 0.85, 8 if od < 0.3 else 12,
 				clampf(0.006 + od * 0.01, 0.006, 0.02), od * 0.1 + 0.04)
-		g.only("plant", VC_STAND)
+		g.only("plant", stand)
 	# bonnet: a gate valve's is tall (it houses the wedge's travel)
 	m.use("paint_valve", "identify")
 	m.cyl(Vector3(0, 0, zt), Vector3(0, 0, zt + hb), r * 0.36 + 0.015, r * 0.28 + 0.012)
@@ -133,15 +147,22 @@ static func _rising(g, part: String) -> void:
 	var ztop := zy + 0.03 + od * 0.04
 	# the stem (moves): from inside the bonnet up through the yoke; its top shows the position
 	var top_extra := 0.04 + od * 0.05
-	if tree:
+	if kind == "control":
 		g.comp("plug_stem")
 		g.only("plant", ["plug_stem", "actuator_stem"])
+	elif tree:   # the gate's and the globe's stem is the plant's, whole
+		g.comp("stem")
 	var sm = g.move("stem", Vector3(0, 0, zg), Vector3(0, 0, 1), "translate", s)
 	sm.use("chrome", "identify")
 	sm.cyl(Vector3(0, 0, zg - s), Vector3(0, 0, ztop + top_extra), stem_r, -1.0, 10)
-	if tree:
+	if kind == "control":
 		_cv_stems(g, sm, cv, ztop + top_extra)
 		g.comp("stem_connector")
+		sm.use("chrome", "identify")
+	elif tree:
+		_gv_stem(g, sm, cv)
+		if kind == "globe":
+			g.comp("stem_clamp")
 		sm.use("chrome", "identify")
 	if act != "manual" or part == "valve_control":
 		# a coupling block in the yoke window and the travel pointer against a scale on the yoke (control valves)
@@ -156,11 +177,17 @@ static func _rising(g, part: String) -> void:
 	var wr := wheel_r(od)
 	match act:
 		"manual":
+			if tree:
+				_gv_yoke_nut(g, cv, zy, ztop)
+				g.comp("handwheel")
 			_wheel(g, Vector3(0, 0, ztop + 0.02), side, wr)
 		"gear":
 			_gearbox(g, ztop, od, side, wr)
 		"electric":
-			_motor_actuator(g, ztop, od, side)
+			if tree:
+				_gl_stem_nut(g, cv, zy, ztop, od)
+				g.comp("actuator")
+			_motor_actuator(g, ztop, od, side, tree)
 		"pneumatic":
 			if part == "valve_control":
 				_diaphragm(g, ztop, od, side, cv)
@@ -187,6 +214,23 @@ static func _wheel(g, c: Vector3, side: String, R: float) -> void:
 	var hw = g.move("handwheel", c, nrm, "rotate", 0.0)
 	hw.use("paint_red", "identify")
 	hw.handwheel(c, nrm, R)
+	if g.workshop and g.cur_comp == "handwheel":   # (a Workshop tree's) the spokes' open ends closed, inside the hub and the rim
+		var ax: Array = hw.across(nrm)
+		var t := clampf(R * 0.09, 0.008, 0.035)
+		var spokes := 3 if R < 0.2 else (4 if R < 0.35 else 5)
+		for i in spokes:
+			var a := TAU * i / spokes
+			var dir: Vector3 = ax[0] * cos(a) + ax[1] * sin(a)
+			var p0: Vector3 = c + dir * t * 2.0
+			var p1: Vector3 = c + dir * (R - t * 0.5) - nrm * t * 0.6
+			var d := (p1 - p0).normalized()
+			g.only("workshop")
+			hw.use("paint_red", "identify")
+			C._face(hw, p0, d, 0.0, t * 0.55, 6, false)
+			g.only("workshop", "outside")   # (its end at the rim shows a little beside the rim's tube)
+			hw.use("paint_red", "identify")
+			C._face(hw, p1, d, 0.0, t * 0.55, 6, true)
+		g.only()
 
 ## A bevel gearbox on the yoke with its handwheel on the side.
 static func _gearbox(g, z: float, od: float, side: String, wr: float) -> void:
@@ -199,7 +243,7 @@ static func _gearbox(g, z: float, od: float, side: String, wr: float) -> void:
 	_wheel(g, Vector3((s * 0.5 + 0.12) * sx, 0, z + s * 0.5), "left" if sx < 0 else "right", clampf(wr * 0.8, 0.1, 0.35))
 
 ## A multi-turn electric actuator: motor, gearbox, local controls, a handwheel on the side.
-static func _motor_actuator(g, z: float, od: float, side: String) -> void:
+static func _motor_actuator(g, z: float, od: float, side: String, tree := false) -> void:
 	var m = g.m
 	var s := clampf(0.22 + od * 0.35, 0.22, 0.6)
 	m.use("paint_actuator", "identify")
@@ -210,10 +254,18 @@ static func _motor_actuator(g, z: float, od: float, side: String) -> void:
 	m.cyl(Vector3(-s * 0.08, s * 0.62, z + s * 0.6), Vector3(-s * 0.08, s * 0.67, z + s * 0.6), s * 0.05, -1.0, 10)   # selector knob
 	m.use("paint_black", "identify")
 	m.cyl(Vector3(s * 0.1, s * 0.62, z + s * 0.6), Vector3(s * 0.1, s * 0.67, z + s * 0.6), s * 0.05, -1.0, 10)
+	if tree:
+		g.comp("display")
 	m.use("glass", "identify")
 	m.disk(Vector3(0, s * 0.621, z + s * 0.72), Vector3(0, 1, 0), s * 0.09, 16)               # the display
+	if tree:
+		g.comp("actuator")
 	var sx := -1.0 if side == "left" else 1.0
+	if tree:
+		g.comp("handwheel")
 	_wheel(g, Vector3((s * 0.5 + 0.06) * sx, 0, z + s * 0.45), "left" if sx < 0 else "right", s * 0.6)
+	if tree:
+		g.comp("actuator")
 	m.use("steel_dark", "detail", 0.03)
 	m.cyl(Vector3(-s * 0.3, -s * 0.45, z + s * 0.2), Vector3(-s * 0.3, -s * 0.6, z + s * 0.2), 0.02, -1.0, 6)   # cable glands
 	m.cyl(Vector3(s * 0.1, -s * 0.45, z + s * 0.2), Vector3(s * 0.1, -s * 0.6, z + s * 0.2), 0.02, -1.0, 6)
@@ -481,11 +533,25 @@ static func damper(_part: String, g) -> void:
 
 ## The trim's and the gallery's sizes (m): the plug seats at z 0 (the flow's centre line) on the seat ring, guided in
 ## the cage, which the bonnet holds down; the gallery (the body's well) runs from under the seat up to the bonnet.
-static func _cv_dims(r: float, zb: float, bf: float, zt: float, zg: float, stem_r: float, s: float) -> Dictionary:
+static func _cv_dims(r: float, zb: float, bf: float, zt: float, zg: float, stem_r: float, s: float, kind := "control") -> Dictionary:
 	var rp := r * 0.5
-	return {"r": r, "zb": zb, "bf": bf, "zt": zt, "zg": zg, "stem_r": stem_r, "s": s,
+	var d := {"kind": kind, "r": r, "zb": zb, "bf": bf, "zt": zt, "zg": zg, "stem_r": stem_r, "s": s,
 		"plug": rp, "plug_h": rp * 0.95, "port": rp * 0.8, "cage_in": rp + 0.002, "cage_out": rp + 0.012,
 		"well": rp + 0.014, "bot": -rp * 0.7, "seat_h": rp * 0.3, "bore": stem_r * 1.8}
+	var od := r * 2.0
+	d["zy"] = zg + s + 0.08 + od * 0.15   # the yoke's head, as _rising draws it
+	d["ztop"] = d.zy + 0.03 + od * 0.04
+	if kind == "gate":
+		# the wedge between its two seat rings, in a well as wide as the plant's bonnet flange allows (the gallery's
+		# opening lies under it): a wedge of radius `wedge`, half as thick as `wt` at its middle, its faces leaning
+		# `lean` (the tangent) from the stem's axis, thicker at the top
+		var rw := bf * 0.85
+		var rg := rw - 0.01
+		d.merge({"well": rw, "wedge": rg, "wt": rg * 0.2, "lean": tan(deg_to_rad(5.0)), "seat_t": rg * 0.1,
+			"seat_bore": rg * 0.7, "bot": -(rg + 0.008)}, true)
+		var ys: float = d.wt + d.seat_t + d.lean * rg   # the seat rings' outer faces at the top
+		d["seat_out"] = minf(rg, sqrt(rw * rw - ys * ys) - 0.002)
+	return d
 
 ## The tree. The body stays on its pipes; the actuator (the yoke and everything on it) lifts off first, then the
 ## bonnet, the plug with its stem, the cage and the seat ring come up out of the gallery, the faster ones above the
@@ -568,7 +634,11 @@ static func _cv_body(g, m, prof: Array, F: float, od: float, rating: String, cv:
 		var d := Y * sg
 		var c := Y * F * 0.5 * sg
 		m.use("paint_valve", "form")
-		m.cyl(c - d * f.tf, c, f.df * 0.5, -1.0, m.segs(f.df * 0.5, 10, 40))
+		var nf: int = m.segs(f.df * 0.5, 10, 40)
+		if nf % 2 == 0:
+			m.cyl(c - d * f.tf, c, f.df * 0.5, -1.0, nf)
+		else:   # (cyl's caps list an odd circle's points mirrored: closed only as the side lists them)
+			_closed_cyl(m, c - d * f.tf, c, f.df * 0.5, f.df * 0.5, nf)
 		var nn: int = m.segs(od * 0.5, 8, 32)
 		var a: Vector3 = c - d * (f.tf * 2.2)
 		var b: Vector3 = c - d * f.tf
@@ -586,6 +656,17 @@ static func _cv_body(g, m, prof: Array, F: float, od: float, rating: String, cv:
 	C._face(m, Vector3(0, e, 0), Y, 0.0, pr[5][0], n, true)
 	m._inner(Vector3(0, 0, cv.bot), Vector3(0, 0, zb), rw, K)
 	m.disk(Vector3(0, 0, cv.bot), Vector3(0, 0, 1), rw, K)
+	match cv.kind:
+		"gate":
+			_gv_seats(g, m, cv)
+			g.comp("body")
+			return
+		"globe":
+			g.comp("seat_ring")
+			m.use("steel", "identify")
+			_ring_solid(m, [[cv.port, -cv.seat_h], [rw - 0.001, -cv.seat_h], [rw - 0.001, 0.0], [cv.port, 0.0], [cv.port, -cv.seat_h]], K)
+			g.comp("body")
+			return
 	# the seat ring and the cage, standing in the gallery
 	g.comp("seat_ring")
 	m.use("steel", "identify")
@@ -785,6 +866,162 @@ static func _cv_actuator_insides(g, cv: Dictionary, z: float, zc: float, R: floa
 		var zz := lerpf(z0, z1, float(k) / (turns - 1))
 		m.torus(Vector3(0, 0, zz), Vector3(1, 0, 0), Vector3(0, 1, 0), R * 0.3, 0.005, TAU, 16, 6)
 	g.only()
+
+## The gate valve's tree (kit/README.md "The Workshop mode"). The body stays on its pipes; the handwheel comes off
+## the yoke nut, the yoke off the bonnet, the bonnet up off the body over the stem, the stem and the wedge up out of
+## the gallery (the wedge slower: it stays below the stem's end); the seat rings stay in the body; the yoke nut stays
+## in the yoke's head (the plant draws the head as one closed block).
+static func _gv_comps(g, cv: Dictionary, od: float) -> void:
+	var up := Vector3(0, 0, 1)
+	g.comp("body", {"explode": [up, 0.0]})
+	g.comp("seat_rings", {"parent": "body", "explode": [up, 0.0], "sym": [Vector3(0, 1, 0), 0]})
+	g.comp("wedge", {"parent": "body", "explode": [up, 0.3 + od * 0.5], "anim": "stem"})
+	g.comp("stem", {"parent": "body", "explode": [up, 0.55 + od], "sym": [up, 0], "anim": "stem"})
+	g.comp("bonnet", {"parent": "body", "explode": [up, 0.8 + od * 1.5], "sym": [up, 8]})
+	g.comp("packing", {"parent": "bonnet", "explode": [up, 0.15], "sym": [up, 0]})
+	g.comp("yoke", {"parent": "bonnet", "explode": [up, 0.5 + od]})
+	g.comp("yoke_nut", {"parent": "yoke", "explode": [up, 0.0], "sym": [up, 0]})
+	g.comp("handwheel", {"parent": "yoke", "explode": [up, 0.3], "sym": [up, 0], "anim": "handwheel",
+		"pivot": Vector3(0, 0, cv.ztop)})
+
+## The globe valve's tree with its multi-turn electric actuator. The body stays; the actuator (with the stem nut in
+## its output drive) lifts off the yoke's top, its handwheel aside; the stem clamp out of the yoke's window; the yoke,
+## the bonnet with the packing, the stem and the disc, the seat ring come up as the gate valve's do.
+static func _gl_comps(g, cv: Dictionary, od: float) -> void:
+	var up := Vector3(0, 0, 1)
+	g.comp("body", {"explode": [up, 0.0]})
+	g.comp("seat_ring", {"parent": "body", "explode": [up, 0.06], "sym": [up, 0]})
+	g.comp("disc", {"parent": "body", "explode": [up, 0.14], "sym": [up, 0], "anim": "stem"})
+	g.comp("stem", {"parent": "body", "explode": [up, 0.24], "sym": [up, 0], "anim": "stem"})
+	g.comp("bonnet", {"parent": "body", "explode": [up, 0.4], "sym": [up, 8]})
+	g.comp("packing", {"parent": "bonnet", "explode": [up, 0.1], "sym": [up, 0]})
+	g.comp("yoke", {"parent": "bonnet", "explode": [up, 0.35]})
+	g.comp("stem_clamp", {"parent": "yoke", "explode": [Vector3(0, -1, 0), 0.2], "anim": "stem"})
+	g.comp("actuator", {"parent": "yoke", "explode": [up, 0.5]})
+	g.comp("stem_nut", {"parent": "actuator", "explode": [up, 0.0], "sym": [up, 0]})
+	g.comp("display", {"parent": "actuator", "explode": [up, 0.0], "thin": true})
+	var sa := clampf(0.22 + od * 0.35, 0.22, 0.6)   # the actuator's size, as _motor_actuator draws it
+	g.comp("handwheel", {"parent": "actuator", "explode": [Vector3(1, 0, 0), 0.25], "anim": "handwheel",
+		"pivot": Vector3(sa * 0.5, 0, cv.ztop + sa * 0.45)})
+
+## The gate's two seat rings (hidden, in the gallery), their faces against the wedge's: each an annulus across the
+## flow between two planes leaning as the wedge's faces do.
+static func _gv_seats(g, m, cv: Dictionary) -> void:
+	g.comp("seat_rings")
+	m.use("steel", "identify")
+	var a: float = cv.wt
+	var t: float = cv.seat_t
+	var k: float = cv.lean
+	for sg: float in [-1.0, 1.0]:
+		var near := func(z: float) -> float: return sg * (a + k * z)
+		var far := func(z: float) -> float: return sg * (a + t + k * z)
+		if sg > 0.0:
+			_slab(m, cv.seat_bore, cv.seat_out, near, far, 16)
+		else:
+			_slab(m, cv.seat_bore, cv.seat_out, far, near, 16)
+
+## The hidden end of the gate's and the globe's stem (from the closure member up into the plant's stem) and the
+## closure member on it, in the `stem` node at the closed position: the gate's wedge between its seat rings, the
+## globe's disc on its seat ring.
+static func _gv_stem(g, sm, cv: Dictionary) -> void:
+	var sr: float = cv.stem_r
+	var top: float = cv.zg - cv.s + 0.004
+	g.only("workshop")
+	g.comp("stem")
+	sm.use("chrome", "identify")
+	if cv.kind == "gate":
+		_closed_cyl(sm, Vector3(0, 0, cv.wedge * 0.8), Vector3(0, 0, top), sr, sr, 10)
+		g.comp("wedge")
+		sm.use("steel", "identify")
+		var a: float = cv.wt
+		var k: float = cv.lean
+		_slab(sm, 0.0, cv.wedge, func(z: float) -> float: return -(a + k * z), func(z: float) -> float: return a + k * z, 16)
+	else:
+		_closed_cyl(sm, Vector3(0, 0, cv.plug_h * 0.6), Vector3(0, 0, top), sr, sr, 10)
+		g.comp("disc")
+		sm.use("steel", "identify")
+		sm.lathe(Vector3.ZERO, Vector3(0, 0, 1), [[0.0, 0.0], [cv.plug, 0.0], [cv.plug, cv.plug_h], [0.0, cv.plug_h]], 16, false)
+	g.only()
+
+## The gate's yoke nut (hidden, in the yoke's head round the stem's thread): the handwheel turns it, and it drives the
+## stem up or down.
+static func _gv_yoke_nut(g, cv: Dictionary, zy: float, ztop: float) -> void:
+	var m = g.m
+	g.only("workshop")
+	g.comp("yoke_nut")
+	m.use("brass", "identify")
+	var ri: float = cv.stem_r * 1.08
+	var ro: float = cv.stem_r * 2.2
+	_ring_solid(m, [[ri, zy + 0.003], [ro, zy + 0.003], [ro, ztop - 0.003], [ri, ztop - 0.003], [ri, zy + 0.003]], 12)
+	g.only()
+
+## The globe's actuator's output drive (a type A thrust base: hidden in the actuator's foot) with the stem nut on
+## the stem's thread, and the four bolts that hold the actuator on the yoke's top flange (small outside pieces under
+## the flange, backing out downwards).
+static func _gl_stem_nut(g, cv: Dictionary, zy: float, ztop: float, od: float) -> void:
+	var m = g.m
+	var s := clampf(0.22 + od * 0.35, 0.22, 0.6)   # the actuator's size, as _motor_actuator draws it
+	g.only("workshop")
+	g.comp("stem_nut")
+	m.use("brass", "identify")
+	var ri: float = cv.stem_r * 1.08
+	var ro: float = maxf(cv.stem_r * 2.2, s * 0.12)
+	_ring_solid(m, [[ri, ztop + 0.004], [ro, ztop + 0.004], [ro, ztop + s * 0.3], [ri, ztop + s * 0.3], [ri, ztop + 0.004]], 12)
+	g.only()
+	g.comp("actuator")
+	var yw: float = cv.r * 0.45 + 0.03
+	var items: Array = []
+	for k in 4:
+		var x: float = (yw + 0.02 + (s * 0.5 - yw - 0.02) * 0.5) * (-1.0 if k % 2 == 0 else 1.0)
+		var y: float = s * 0.3 * (-1.0 if k < 2 else 1.0)
+		# its head under the actuator's flange beside the yoke's head, z the way it backs out (down)
+		items.append(Transform3D(Basis(Vector3(1, 0, 0), Vector3(0, -1, 0), Vector3(0, 0, -1)), Vector3(x, y, ztop)))
+	var br := 0.004
+	var bolt := func(b) -> void:
+		b.use("steel_bolt", "detail", br * 3.4)
+		b.cyl(Vector3(0, 0, 0), Vector3(0, 0, 0.006), br * 1.7, -1.0, 6)
+		b.cyl(Vector3(0, 0, -0.024), Vector3(0, 0, 0.0), br, -1.0, 6)
+	g.fasteners("actuator_bolts", "bolt", items, bolt)
+
+## A solid across the y axis between two planes y = lo(z) and y = hi(z) (lo below hi everywhere), over an annulus
+## of radii ri to ro in the xz plane round the origin (ri 0: a disc), n segments.
+static func _slab(m, ri: float, ro: float, lo: Callable, hi: Callable, n: int) -> void:
+	var P := func(r: float, t: float, f: Callable) -> Vector3:
+		var z := r * sin(t)
+		return Vector3(r * cos(t), f.call(z), z)
+	for i in n:
+		var t0 := TAU * i / n
+		var t1 := TAU * (i + 1) / n
+		var o0: Vector3 = P.call(ro, t0, lo)
+		var o1: Vector3 = P.call(ro, t1, lo)
+		var O0: Vector3 = P.call(ro, t0, hi)
+		var O1: Vector3 = P.call(ro, t1, hi)
+		var rad := Vector3(cos((t0 + t1) * 0.5), 0, sin((t0 + t1) * 0.5))
+		_quad_out(m, o0, o1, O1, O0, rad)   # the rim
+		if ri > 0.0:
+			var i0: Vector3 = P.call(ri, t0, lo)
+			var i1: Vector3 = P.call(ri, t1, lo)
+			var I0: Vector3 = P.call(ri, t0, hi)
+			var I1: Vector3 = P.call(ri, t1, hi)
+			_quad_out(m, i0, i1, I1, I0, -rad)   # the bore
+			_quad_out(m, i0, i1, o1, o0, Vector3(0, -1, 0))
+			_quad_out(m, I0, I1, O1, O0, Vector3(0, 1, 0))
+		else:
+			var c0: Vector3 = Vector3(0, lo.call(0.0), 0)
+			var c1: Vector3 = Vector3(0, hi.call(0.0), 0)
+			_tri_out(m, c0, o0, o1, Vector3(0, -1, 0))
+			_tri_out(m, c1, O0, O1, Vector3(0, 1, 0))
+
+## A flat triangle or quad facing the side `out` points to.
+static func _tri_out(m, a: Vector3, b: Vector3, c: Vector3, out: Vector3) -> void:
+	if (b - a).cross(c - a).dot(out) < 0.0:
+		_tri3(m, a, c, b)
+	else:
+		_tri3(m, a, b, c)
+
+static func _quad_out(m, a: Vector3, b: Vector3, c: Vector3, d: Vector3, out: Vector3) -> void:
+	_tri_out(m, a, b, c, out)
+	_tri_out(m, a, c, d, out)
 
 ## A ring of studs as a fastener group, each where C.bolt_ring draws one (the same hexagon), backing out up the z axis.
 static func _ring_bolts_z(g, id: String, c: Vector3, R: float, n: int, r: float, len: float) -> void:

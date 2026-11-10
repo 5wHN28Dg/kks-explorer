@@ -74,6 +74,10 @@ func run(_tree: SceneTree) -> Array:
 			continue
 		var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(data_dir.path_join(f)))
 		var part: String = data.part
+		# WS_ONLY=kind,kind… checks those kinds alone (a quicker run while a kind's tree is being written; CI sets none)
+		var only := OS.get_environment("WS_ONLY")
+		if only != "" and not part in only.split(","):
+			continue
 		kinds += 1
 		# the parameters the build made its scene with (the plant's first instance of the kind), else the defaults
 		var params := WB.params_for(part, data, {})
