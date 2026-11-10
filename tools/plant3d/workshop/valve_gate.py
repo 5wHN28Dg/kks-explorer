@@ -89,8 +89,9 @@ ASSEMBLY = [
             'Take the stem nut out before the bonnet comes off.'),
            ('stem', 'The stem\'s thread runs in the stem nut: put the stem in first.',
             'Take the stem nut off before the stem comes out.')],
-          why='Crane takes the stem nut out last, and only when it needs renewing: its retainer\'s set screws or '
-              'tack welds come off first.'),
+          why='Crane takes the handwheel and the stem nut off the bonnet last, on the bench, and the stem nut only '
+              'when it needs renewing (its retainer\'s set screws or tack welds off first); here they come off the '
+              'bonnet before it is lifted, a part\'s own parts first.'),
     _step('handwheel', 'Put the handwheel on the stem nut and screw the handwheel nut down on it.',
           [('stem_nut', 'The handwheel sits on the stem nut: fit it first.',
             'Take the handwheel off before the stem nut.')]),

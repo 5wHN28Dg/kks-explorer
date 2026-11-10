@@ -43,15 +43,13 @@ def components():
         'disc': _c('Disc', 'The closure member: lowered onto the seat ring it shuts the flow; lifted, it opens it a '
                    'little at a time. It hangs on the stem\'s end, held by a lock nut or a pin.',
                    'Steel, hard-faced at the seat'),
-        'stem': _c('Stem', 'Lifts and lowers the disc. Its thread runs in the actuator\'s stem nut; how far it stands '
-                   'out of the yoke shows the travel.', 'Stainless steel'),
+        'stem': _c('Stem', 'Lifts and lowers the disc. Its thread runs in the actuator\'s stem nut; a block on it in '
+                   'the yoke\'s window points to the travel on the yoke\'s scale.', 'Stainless steel'),
         'bonnet': _c('Bonnet and yoke', 'Closes the body over the disc on its gasket, carries the packing box round '
                      'the stem, and the actuator on its yoke\'s top flange.', 'Forged or cast steel'),
         'packing': _c('Packing, gland and gland flange', 'Rings of graphite packing squeezed round the stem by the '
                       'gland under the gland flange, so the process cannot leak along the stem.',
                       'Graphite rings, steel gland and flange'),
-        'stem_clamp': _c('Stem clamp and travel pointer', 'A clamp on the stem in the yoke\'s window: its pointer '
-                         'shows the travel on the yoke\'s scale.', 'Steel'),
         'actuator': _c('Electric actuator', 'A motor and a worm gear that turn the stem nut, with its limit and torque '
                        'switches and local controls. It is one part here: its maker\'s service opens it.',
                        'Aluminium housing, motor, gearing, switches', (AUMA, CRANE)),
@@ -102,13 +100,10 @@ ASSEMBLY = [
             'Take the gland off and the packing out before the bonnet nuts.')],
           why='Taking apart, Crane loosens the gland bolts first, then the bonnet nuts, and takes the packing out '
               'once the bonnet is off.'),
-    _step('stem_clamp', 'Clamp the travel pointer on the stem in the yoke\'s window, against the scale\'s closed '
-          'mark with the disc on its seat.',
-          [('packing', 'Fit the pointer once the stem is packed.', 'Take the pointer off before the packing.')]),
     _step('actuator', 'Sling the actuator over the stem onto the yoke\'s top flange and turn its handwheel until the '
           'flanges meet.',
-          [('stem_clamp', 'Set the travel pointer before the actuator goes on.',
-            'Take the actuator off before the pointer.')],
+          [('packing', 'Pack the stem before the actuator goes on.',
+            'Take the actuator off before the packing.')],
           why='Crane takes a motor operated valve\'s operator off first: its mounting bolts out, then it is unscrewed '
               'off the stem by turning the handwheel towards closed, and lifted off. AUMA screws the output drive '
               'onto the stem first and sets the actuator on it, its dogs engaging.', sources=(CRANE, AUMA)),
@@ -148,5 +143,5 @@ def data():
         # across the flow through the stem, so the seat and the disc show in section; the actuator stays whole
         'views': {'xray_all': ['body', 'bonnet', 'packing', 'actuator'],
                   'cutaway': {'planes': [{'normal': [0, -1, 0], 'offset': 0}],
-                              'keep': ['stem', 'stem_clamp', 'actuator', 'stem_nut', 'display', 'handwheel']}},
+                              'keep': ['stem', 'actuator', 'stem_nut', 'display', 'handwheel']}},
     }

@@ -482,7 +482,8 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   drawn out, the packing; the handwheel and the stem nut last; the seat rings never). The yoke is the bonnet's own, as
   Crane's is. **Simplified:** the body's flow passages are not drawn (as the control valve's): the wedge and the two
   seat rings stand in a round well under the bonnet, as wide as the plant's bonnet flange lets its opening be, so the
-  seat rings' bore is about half the pipe's (a real gate valve's is the pipe's); the wedge is a round slab whose
+  seat rings' bore is a little under half the pipe's (the well stands inside the bonnet studs' circle, and its
+  opening is cut from the skin's bulge and cones) (a real gate valve's is the pipe's); the wedge is a round slab whose
   faces lean 5° (thicker at the top), the rings' faces lean with them (`tests/test_workshop.gd _wedge` checks that the
   wedge lies on both rings at 0 travel, covers their bore, and clears it at full travel); the stem's T-head and the
   wedge's slot are not drawn; the gasket and the backseat bushing are not drawn; the stem nut stays in the yoke's
@@ -496,8 +497,8 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   thrust bearing, and Crane takes the actuator off by unscrewing it off the stem with its handwheel, so the stem nut
   rides with it). **Simplified:** the actuator is one part (its motor, worm gear, switches and controls not drawn: its
   maker's service opens it), its display a thin part of its own; the body's passages are the control valve's well
-  (`_cv_body`), the disc a plain plug on the seat ring (`_seats` checks it as the control valve's); the stem clamp and
-  travel pointer are the plant's block in the yoke's window (Crane names none: the plant draws it); the four actuator
+  (`_cv_body`), the disc a plain plug on the seat ring (`_seats` checks it as the control valve's); the block and
+  travel pointer in the yoke's window are the stem's (Crane names none: the plant draws it); the four actuator
   bolts stand under the actuator's flange beside the yoke's head, which the plant draws smaller than the flange.
 - **valve_butterfly** (a part-turn electric actuator, K6: `_quarter`, `_bf_*`): a resilient-seated butterfly valve
   with a one-piece shaft, as Bray's Series 35/36 (its disc on taper pins; the actuator off, the gland, the pins, the

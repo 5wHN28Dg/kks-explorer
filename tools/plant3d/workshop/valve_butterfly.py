@@ -93,7 +93,8 @@ ASSEMBLY = [
     _step('coupling', 'The coupling joins the actuator\'s output to the shaft\'s top.',
           [('actuator', 'The coupling is the actuator\'s output: set the actuator on first.',
             'It comes off with the actuator.')],
-          why='AUMA fits the coupling on the shaft first and lowers the actuator over it.', sources=(AUMA,)),
+          why='AUMA fits the coupling on the shaft first and lowers the actuator over it; here it comes with the '
+              'actuator, in its foot.', sources=(AUMA,)),
     _step('indicator', 'The position indicator turns with the actuator\'s output, on its top.',
           [('actuator', 'The indicator is the actuator\'s: set the actuator on first.',
             'It comes off with the actuator.')], sources=(AUMA,)),

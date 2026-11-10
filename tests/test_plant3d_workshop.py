@@ -171,7 +171,7 @@ class WorkshopData(unittest.TestCase):
         # K6: the gate valve (Crane), the globe valve under a multi-turn electric actuator (Crane, AUMA SA) and the
         # butterfly valve under a part-turn one (Bray Series 35/36, AUMA SQ)
         cases = {'valve_gate': (8, {'dn': 300, 'actuator': 'manual'}, {'bonnet_bolts'}),
-                 'valve_globe': (11, {'dn': 50, 'rating': 'pn160', 'actuator': 'electric'},
+                 'valve_globe': (10, {'dn': 50, 'rating': 'pn160', 'actuator': 'electric'},
                                  {'bonnet_bolts', 'actuator_bolts'}),
                  'valve_butterfly': (9, {'dn': 250, 'actuator': 'electric'}, {'actuator_bolts'})}
         for part, (n, params, fast) in cases.items():
