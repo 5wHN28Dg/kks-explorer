@@ -3274,6 +3274,29 @@ def day_forks():
          {'permits': {'wo_ccw_a_brg': 9}, 'repaired': ['ccw_a_brg'], 'end': {'ccw_a_brg_wear': 0, 'ccw_a_fault': 0},
           'events': [['fault', 'ccw_a_brg'], ['alarm', 'ccw_a_vib_high', 'active_unack'],
                      ['task', 'mech2', 'job_ccw_a_brg', 'done']]}, 'shift_aged'),
+        # milestone HW3 (REALISM.md §2.22): transmitter 2's three further causes, each found and put right by the
+        # I&C technician's job from what its tests show. The blocked impulse line drawn by shift_tx's own seed (the
+        # condenser evacuated: the line holds 60 kPa(a) while the condenser goes on down; the vent test leaves it at
+        # the air's, so the line is blown through); the passing manifold valve (the PV 2 kPa high: the vent test
+        # gives it back, the valve shut firmly) and the water in the terminal side (seen with the cover off: dried,
+        # the gland resealed), named by the instructor on the cold plant. Each ends with the loop check (0, 30, 60,
+        # 90 and 120 kPa(a) read back from the screen) and the fault cured
+        ('npc_hands_blocked', Trainee(), 30000,
+         {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
+          'events': [['cause', 'cond_p2_low', 'blocked'], ['hand', '30MAG10CP002', 'blow_line', 'spanner_17', 'ic1',
+                                                          'done', []]],
+          'end': {'cond_p2_low': 0, 'cpt2_manifold_block': 0, 'cpt2_drain_vents_open': 0, 'cpt2_lt_on': 0,
+                  'cond_p2_trim': 0, 'cpt2_cover_back_off': 0}}, 'shift_tx'),
+        ('npc_hands_passing', Trainee(extra=[[13000, 'fault', 'cond_p2_low', 'passing']]), 43000,
+         {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
+          'events': [['hand', '30MAG10CP002', 'shut_test', None, 'ic1', 'done', []]],
+          'end': {'cond_p2_low': 0, 'cpt2_manifold_pass': 0, 'cond_p2_trim': 0, 'cpt2_terminal_block_loose': 0,
+                  'cpt2_cover_back_off': 0}}),
+        ('npc_hands_wet', Trainee(extra=[[13000, 'fault', 'cond_p2_low', 'wet']]), 43000,
+         {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
+          'events': [['hand', '30MAG10CP002', 'reseal_gland', 'spanner_24', 'ic1', 'done', []]],
+          'end': {'cond_p2_low': 0, 'cpt2_terminal_block_wet': 0, 'cpt2_cable_gland_worn': 0, 'cond_p2_trim': 0,
+                  'cpt2_terminal_block_lift': 0, 'cpt2_cover_back_off': 0}}),
     ]
 
 

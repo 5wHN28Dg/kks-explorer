@@ -1288,9 +1288,14 @@ def st():
             # a passing manifold valve lets air in, 2 kPa high. Each passes the tapping's value itself while it is
             # sound, so every run before HW3 keeps its values
             m.sum(f'{a}_p_tap', ['cond_p', off])
-            m.sel(f'{a}_p_in', f'{a}_drain_vents_open', [f'{a}_p_tap', ATM])
-            m.AND(f'{a}_blk_h', [f'{a}_manifold_block', f'{a}_shut'])
-            m.hold(f'{a}_p_line', f'{a}_p_in', f'{a}_blk_h', 'kPa(a)')
+            m.hold(f'{a}_p_blk', f'{a}_p_tap', f'{a}_manifold_block', 'kPa(a)')
+            # vented while blocked, the trapped line takes the air's pressure and keeps it once the vent is shut
+            # again (a clear line goes back to the process's): until the line is blown through
+            m.AND(f'{a}_blk_v', [f'{a}_manifold_block', f'{a}_drain_vents_open'])
+            m.NOT(f'{a}_clear_l', f'{a}_manifold_block')
+            m.latch(f'{a}_blk_air', f'{a}_blk_v', f'{a}_clear_l')
+            m.sel(f'{a}_p_trap', f'{a}_blk_air', [f'{a}_p_blk', ATM])
+            m.sel(f'{a}_p_line', f'{a}_drain_vents_open', [f'{a}_p_trap', ATM], 'kPa(a)')
             m.prod(f'{a}_air', [f'{a}_manifold_pass', AIR_IN], 'kPa')
             tx = m.sum(f'cond_p{k}_tx', [f'{a}_p_line', f'cond_p{k}_drift', f'cond_p{k}_trim'] +
                        ([age3] if k == 3 else []) + [f'{a}_air'], 'kPa(a)')

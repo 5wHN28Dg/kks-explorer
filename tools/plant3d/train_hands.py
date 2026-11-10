@@ -301,17 +301,26 @@ def job_steps():
     return steps
 
 
+TX_SEED = 3
+
+
 def scenario(base):
-    """`shift_tx` (milestone HW3): the day shift of `base` (shift_cold) in which condenser pressure transmitter 2
-    reads apart from its partners once the condenser is under vacuum (below 30 kPa(a), so a blocked line holds a
-    reading the process has left), its cause drawn from all five (the HW3 weights set to 1)."""
+    """`shift_tx` (milestone HW3): the day shift of `base` (shift_cold) with the condenser being evacuated (both
+    vacuum pumps on from the start, closed cooling water pump A cooling their seal water), in which condenser
+    pressure transmitter 2 reads apart from its partners from the moment the condenser passes 60 kPa(a) on its way
+    down (so a blocked line holds a reading the process then leaves), its cause drawn from all five (the HW3
+    weights set to 1)."""
     s = json.loads(json.dumps(base))
     s['id'] = 'shift_tx'
     s['title'] = 'Day shift: a condenser pressure transmitter reads apart (choose a role)'
-    s['init'] = dict(s['init'], **{w: 1 for w in W_NEW})
+    # its world's seed draws the blocked line (the cause that needs the process to move to show itself; a fault made
+    # by its `when` takes no instructor's cause). In the other scenarios the trainer makes the fault and may name any
+    # of the five; drawn there, it is drift or the loose terminal as before HW3
+    s['world'] = dict(s['world'], seed=TX_SEED)
+    s['init'] = dict(s['init'], vac_a_cmd=1, vac_b_cmd=1, ccw_a_cmd=1, **{w: 1 for w in W_NEW})
     for f in s['faults']:
         if f['id'] == FAULT['id']:
-            f['when'] = {'cmp': ['cond_p', '<', 30]}
+            f['when'] = {'cmp': ['cond_p', '<', 60]}
     return s
 
 
