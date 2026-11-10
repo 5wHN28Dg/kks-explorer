@@ -272,7 +272,6 @@ DATA = {'format': 'walkdown-plant-service',
               'component': 'electronics',
               'tools': ['hart'],
               'minutes': 0.25,
-              'anchors': ['sig_plus', 'sig_minus'],
               'needs': [['$_hart_ok', 'No device found: the communicator is not on the signal terminals, or a lifted '
                                       'wire leaves the transmitter without loop power']],
               'input': '$_electronics_lt',
@@ -283,7 +282,6 @@ DATA = {'format': 'walkdown-plant-service',
               'component': 'electronics',
               'tools': ['hart'],
               'minutes': 0.25,
-              'anchors': ['sig_plus', 'sig_minus'],
               'set': {'$_electronics_lt': 0},
               'sources': ['r3051']}],
  'meters': [{'id': '$_dmm',
@@ -348,4 +346,38 @@ DATA = {'format': 'walkdown-plant-service',
            # a dead loop gives no HART reply (the communicator's "No device found")
            'needs': [['$_wired', 'No device found: a lifted wire leaves the transmitter without loop power']],
            'unit': 'kPa',
-           'sources': ['r3051']}]}
+           'sources': ['r3051']}],
+ # milestone HW3 (REALISM.md §2.22): the debrief's diagnosis tab and the failed part in the Workshop. `causes`: the
+ # kind's hidden causes (the ids its faults' causes use), each with the component it lies in, what is found there
+ # and the bench fault that runs it (the Workshop's bench model, if it has one). `tests`: what a hand action or a
+ # meter's reading shows, the causes it points to when one of them is the cause (else it rules them out). `fixes`:
+ # the causes a hand action (or the HART op, `hart:<do>`) puts right; `parts`: the part a fix uses up
+ 'causes': [{'id': 'drift', 'title': 'The sensor drifted', 'component': 'sensor_module',
+             'found': 'The sensing cell has drifted: the module reads 1.5 kPa low at every pressure (a two-point check '
+                      'against a reference shows the same offset at both ends)', 'sources': ['r3051']},
+            {'id': 'loose', 'title': 'A loose signal terminal', 'component': 'terminal_block',
+             'found': "A signal terminal's screw was short of tight: the wire's poor contact took the loop current down",
+             'sources': ['r3051']},
+            {'id': 'blocked', 'title': 'A blocked impulse line', 'component': 'manifold',
+             'found': "Sludge had built up in the impulse line at the manifold's process connection: the transmitter "
+                      'saw only what was trapped behind it', 'bench': 'impulse_blocked', 'sources': ['liptak']},
+            {'id': 'passing', 'title': "The manifold's test/vent valve passing", 'component': 'manifold',
+             'found': "The test/vent valve was not shut tight: air leaked past its seat into the transmitter's side of "
+                      'the line', 'sources': ['r3051', 'liptak']},
+            {'id': 'wet', 'title': 'Water in the terminal side', 'component': 'cable_gland',
+             'found': "The gland's seal insert had hardened and cracked: water ran down the cable into the terminal side "
+                      'and bridged the return terminal to the housing', 'sources': ['iec60079_14']}],
+ 'tests': [{'meter': '$_pv', 'title': 'The PV read with the communicator, against the partners',
+            'shows': ['drift', 'blocked', 'passing']},
+           {'meter': '$_dmm', 'title': 'The loop current at the test terminals, against the output it reports',
+            'shows': ['loose']},
+           {'meter': '$_clamp1', 'title': 'The loop current with the clamp, against the output it reports',
+            'shows': ['loose']},
+           {'meter': '$_ohm', 'title': "The ohms from the terminals to the housing's earth", 'shows': ['wet']},
+           {'action': 'open_cover', 'title': 'The terminal side looked into with the cover off', 'shows': ['wet']},
+           {'action': 'close_vent', 'title': 'The vent test: the PV after the flange was vented and shut again',
+            'shows': ['blocked']},
+           {'action': 'shut_test', 'title': "The manifold's test/vent valve shut firmly", 'shows': ['passing']}],
+ 'fixes': [['tighten_terms', ['loose']], ['land_wires', ['loose']], ['dry_terms', ['wet']], ['reseal_gland', ['wet']],
+           ['blow_line', ['blocked']], ['shut_test', ['passing']], ['hart:set', ['drift']]],
+ 'parts': [['reseal_gland', 'gland_seal', 'A cable gland seal insert']]}

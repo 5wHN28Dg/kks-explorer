@@ -39,7 +39,10 @@ const WHY := {
 }
 ## Marks for the states that put something on a component (`<component>_<state>`): colour and size.
 const MARK := {"hart": [Color(1.0, 0.85, 0.1), 0.006], "dmm": [Color(0.85, 0.1, 0.1), 0.005],
-	"clamp": [Color(1.0, 0.45, 0.05), 0.012], "lift": [Color(0.8, 0.45, 0.2), 0.004]}
+	"clamp": [Color(1.0, 0.45, 0.05), 0.012], "lift": [Color(0.8, 0.45, 0.2), 0.004],
+	# (HW3) the multimeter's ohms leads; water standing in the terminal side, seen once the cover is off
+	"ohm": [Color(0.85, 0.1, 0.1), 0.005], "wet": [Color(0.25, 0.55, 1.0), 0.010]}
+const OL_KOHM := 1e6            # an ohms reading at or above this shows OL (open circuit)
 
 signal opened(code: String)
 signal closed
@@ -448,6 +451,21 @@ func _build_actions(e) -> void:
 		if a["component"] != comp:
 			continue
 		var act: String = a["action"]
+		if a.has("input"):          # (HW3) a value the person gives: the loop test's current
+			var row := HBoxContainer.new()
+			row.name = "act_" + act
+			var le := LineEdit.new()
+			le.name = "value"
+			le.placeholder_text = "%s to %s" % [str(a["range"][0]), str(a["range"][1])]
+			le.custom_minimum_size.x = 120 * W.scale
+			row.add_child(le)
+			var vb := W.button(String(a["title"]), func(): do_action(act, le.text))
+			vb.name = "send"
+			vb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(vb)
+			actions.add_child(row)
+			continue
 		var b := W.button(String(a["title"]), func(): do_action(act))
 		b.name = "act_" + act
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -496,6 +514,9 @@ func _build_meters(e, pid) -> void:
 		meters.add_child(box)
 	# the communicator's configuration: the sensor trim (REALISM.md §2.16), its op where "hart"
 	if Hands.carries_kind(e, pid, "communicator", "hart"):
+		var cr := W.label("", 18, Color(0.7, 0.85, 1.0))     # (HW3) the loop check: the control room's reading
+		cr.name = "control_room"
+		meters.add_child(cr)
 		for o in e.m.ops:
 			if o["kks"] == code and o.get("where", []).has("hart") and o.has("input"):
 				var row := HBoxContainer.new()
@@ -514,6 +535,10 @@ func _build_meters(e, pid) -> void:
 
 
 func _write_meters(e, pid) -> void:
+	var cr: Label = meters.get_node_or_null("control_room")
+	if cr != null:
+		cr.text = control_room_text(e)
+		cr.visible = cr.text != ""
 	for x in _my_meters(e, pid):
 		var box := meters.get_node_or_null("meter_" + String(x[0]))
 		if box == null:
@@ -532,7 +557,26 @@ func meter_text(e, id: String, mt: Dictionary) -> String:
 	if not ok and mt["tool_kind"] == "communicator":
 		return "No device found"
 	var v: float = Hands.shown(e, id, e.cur)
+	if mt.get("mode", "") == "ohm" and v >= OL_KOHM:
+		return "OL"
 	return "%.2f %s" % [v, String(mt.get("unit", ""))]
+
+
+## (HW3) What the control room reads for the code while a loop test holds its output, as the operator says it on
+## the radio (the loop check, IEC 62382); "" while no loop test runs.
+func control_room_text(e) -> String:
+	if not jobs.has(code):
+		return ""
+	var a: String = jobs[code]["alias"]
+	var lt := "%s_lt_on" % a
+	var loop: String = jobs[code]["loop"]
+	if not e.ix.has(lt) or e.cur[e.ix[lt]] < 0.5 or not e.ix.has(loop):
+		return ""
+	var unit := ""
+	for mt in _service()["meters"]:         # the PV's unit: the process value's (the meter reading `@_tx`)
+		if String(mt["value"]) == "@_tx":
+			unit = String(mt.get("unit", ""))
+	return "Control room (radio): %.2f %s" % [e.cur[e.ix[loop]], unit]
 
 
 # ------------------------------------------------------------------ what the trainee does
@@ -560,11 +604,18 @@ static func _items_multimesh(src: MultiMesh, items: Array) -> MultiMesh:
 	return mm
 
 
-## A hand action sent with the tray's tool (bare hands: none).
-func do_action(action: String) -> int:
+## A hand action sent with the tray's tool (bare hands: none); `value`, the number typed for an action with an input
+## (the loop test's current, HW3), refused here when it isn't one.
+func do_action(action: String, value := "") -> int:
 	var t = tool_sel if tool_sel != "" else null
 	note.text = ""
-	return ui.inputs.hand(code, action, t, null, ui.me())
+	var v = null
+	if value != "":
+		if not value.strip_edges().is_valid_float():
+			_show("Type a number")
+			return -1
+		v = snappedf(value.strip_edges().to_float(), 0.01)
+	return ui.inputs.hand(code, action, t, v, ui.me())
 
 
 ## The reading reported for the task step that waits on it (S1's read with the meter, REALISM.md §2.5).
@@ -710,7 +761,7 @@ func _make_marks() -> void:
 		var anchors: Dictionary = host.get_meta("anchors", {})
 		var at: Array = []
 		for act in _service()["actions"]:
-			if act["component"] == c and act["set"].get("$_%s_%s" % [c, st], 0) == 1:
+			if act["component"] == c and act.get("set", {}).get("$_%s_%s" % [c, st], 0) == 1:
 				for an in act.get("anchors", []):
 					if anchors.has(an):
 						at.append(anchors[an])

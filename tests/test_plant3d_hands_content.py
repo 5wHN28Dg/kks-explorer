@@ -119,7 +119,7 @@ class Generated(unittest.TestCase):
             self.assertEqual(len(hart), 1)
             self.assertEqual(hart[0]['hart'], f'{alias}_terminal_block_hart')
             for h in hands:
-                for name in h['set']:
+                for name in list(h.get('set', {})) + ([h['input']] if 'input' in h else []):
                     self.assertTrue(name.startswith(alias + '_') and len(name) <= 32, name)
 
     def test_every_state_is_a_state_and_fits(self):
@@ -267,17 +267,25 @@ class Loop(unittest.TestCase):
         self.assertEqual(at(cond_p2_drift=-1.5, cond_p2_trim=1.5, cpt2_terminal_block_lift=1)['cpt2_sound'], 0)
 
     def test_the_jobs_choices_skip_to_after_their_fix(self):
-        """Each `wait` that decides on a fix skips, on its `else`, to the step right after that fix."""
+        """Each `wait` that decides on a test or a fix skips, on its `else`, to the step right after its block (HW3:
+        the water, the loose terminal, the vent test, the line blown through, the manifold's valve, the trim)."""
         steps = train_hands.job_steps()
         waits = [(i, s['wait']) for i, s in enumerate(steps) if 'wait' in s and 'else' in s['wait']]
-        self.assertEqual([w['until'] for _, w in waits], ['cpt2_loop_low', 'cpt2_pv_low'])
-        for (i, w), fix in zip(waits, ('hand', 'op')):
-            self.assertIn(fix, steps[i + 1])
-            self.assertEqual(w['else'], i + 2)
-        self.assertEqual(steps[waits[0][0] + 1]['hand'], 'tighten_terms')
-        self.assertEqual(steps[waits[1][0] + 1]['op']['value'], 1.5)
+        self.assertEqual([w['until'] for _, w in waits],
+                         ['cpt2_terminal_block_wet', 'cpt2_loop_low', 'cpt2_pv_apart', 'cpt2_vent_held',
+                          'cpt2_pv_high', 'cpt2_pv_low'])
+        first = {'cpt2_terminal_block_wet': 'dry_terms', 'cpt2_loop_low': 'tighten_terms',
+                 'cpt2_pv_apart': 'crack_vent', 'cpt2_vent_held': 'blow_line', 'cpt2_pv_high': 'shut_test'}
+        for i, w in waits:
+            if w['until'] in first:
+                self.assertEqual(steps[i + 1]['hand'], first[w['until']])
+            else:
+                self.assertEqual(steps[i + 1]['op']['value'], 1.5)
+            self.assertGreater(w['else'], i + 1)
+            nxt = steps[w['else']]
+            self.assertTrue('wait' in nxt or nxt.get('hand') == 'loop_test', (w, nxt))
         self.assertEqual({c['id']: c['fixed'] for c in train_hands.FAULT['causes']},
-                         {'drift': 'cpt2_sound', 'loose': 'cpt2_sound'})
+                         {c: 'cpt2_sound' for c in ('drift', 'loose', 'blocked', 'passing', 'wet')})
         reads = [x for x in steps if 'read' in x]
         self.assertTrue(reads and all(x.get('tol') == train_hands.TOL for x in reads), reads)
 
@@ -316,7 +324,12 @@ class HiddenCauseJob(unittest.TestCase):
                 faults = {f['id']: f for f in jload(F, rel).get('faults', [])}
                 if 'cond_p2_drift' in faults:
                     f = faults['cond_p2_low']
-                    self.assertEqual([c['id'] for c in f['causes']], ['drift', 'loose'])
+                    self.assertEqual([c['id'] for c in f['causes']], ['drift', 'loose', 'blocked', 'passing', 'wet'])
+                    # (HW3) the three new causes weigh by a value, 0 unless the scenario sets it (shift_tx alone)
+                    self.assertEqual([c['weight'] for c in f['causes']], [1, 1] + list(train_hands.W_NEW))
+                    init = jload(F, rel)['init']
+                    want = 1 if rel == 'scenarios/shift_tx.json' else None
+                    self.assertEqual({init.get(w) for w in train_hands.W_NEW}, {want}, rel)
                     self.assertEqual(f['kks'], CP2)
 
     def test_instructors_cause_and_the_works_repair(self):

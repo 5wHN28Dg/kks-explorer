@@ -92,6 +92,9 @@ def check(kind, s):
             need(n in made, f'HART op {h["do"]}: needs {n}, which nothing makes')
     loops = [e['loop'] for e in s['equipment']]
     need(len(set(loops)) == len(loops), 'a loop twice (two pieces would share its @_ names)')
+    if kind == 'pressure_transmitter':      # the job's causes are the kind's (the diagnosis tab's words, HW3)
+        known = {c['id'] for c in s.get('causes', [])}
+        need({c['id'] for c in FAULT['causes']} <= known, f'the fault {FAULT["id"]}\'s causes not all in causes')
 
 
 def _sub(x, alias, loop):

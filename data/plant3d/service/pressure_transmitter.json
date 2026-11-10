@@ -63,8 +63,8 @@
   {"action": "close_vent", "title": "Close the process flange's drain/vent valve", "component": "drain_vents", "tools": ["spanner_17"], "minutes": 0.5, "set": {"$_drain_vents_open": 0}, "sources": ["r3051", "liptak"]},
   {"action": "blow_line", "title": "Undo the impulse line at the manifold and blow it through with instrument air", "component": "manifold", "tools": ["spanner_17"], "minutes": 15, "needs": [["$_shut", "Close the flange's drain/vent valve first: the line is blown through from the manifold towards the process"]], "set": {"$_manifold_block": 0}, "sources": ["liptak"]},
   {"action": "shut_test", "title": "Shut the manifold's test/vent valve firmly by its handle", "component": "manifold", "minutes": 0.5, "wrong": {"spanner_17": "A manifold valve is shut by its handle: a spanner on it crushes the seat"}, "set": {"$_manifold_pass": 0}, "sources": ["r3051", "liptak"]},
-  {"action": "loop_test", "title": "Loop test: hold the output at a current (the communicator's loop test)", "component": "electronics", "tools": ["hart"], "minutes": 0.25, "anchors": ["sig_plus", "sig_minus"], "needs": [["$_hart_ok", "No device found: the communicator is not on the signal terminals, or a lifted wire leaves the transmitter without loop power"]], "input": "$_electronics_lt", "range": [3.6, 23], "sources": ["r3051", "iec62382"]},
-  {"action": "end_loop_test", "title": "End the loop test: the output follows the pressure again", "component": "electronics", "tools": ["hart"], "minutes": 0.25, "anchors": ["sig_plus", "sig_minus"], "set": {"$_electronics_lt": 0}, "sources": ["r3051"]}
+  {"action": "loop_test", "title": "Loop test: hold the output at a current (the communicator's loop test)", "component": "electronics", "tools": ["hart"], "minutes": 0.25, "needs": [["$_hart_ok", "No device found: the communicator is not on the signal terminals, or a lifted wire leaves the transmitter without loop power"]], "input": "$_electronics_lt", "range": [3.6, 23], "sources": ["r3051", "iec62382"]},
+  {"action": "end_loop_test", "title": "End the loop test: the output follows the pressure again", "component": "electronics", "tools": ["hart"], "minutes": 0.25, "set": {"$_electronics_lt": 0}, "sources": ["r3051"]}
  ],
  "meters": [
   {"id": "$_dmm", "title": "Multimeter, mA DC, at the test terminals", "point": "test_terminals", "tool_kind": "meter", "mode": "ma_dc", "value": "$_ma", "needs": ["$_terminal_block_dmm"], "else": 0, "unit": "mA"},
@@ -76,5 +76,33 @@
  ],
  "hart": [
   {"do": "set", "title": "Sensor trim: the offset that brings the PV to the reference", "input": "@_trim", "range": [-5, 5], "hart": "$_terminal_block_hart", "needs": [["$_wired", "No device found: a lifted wire leaves the transmitter without loop power"]], "unit": "kPa", "sources": ["r3051"]}
+ ],
+ "causes": [
+  {"id": "drift", "title": "The sensor drifted", "component": "sensor_module", "found": "The sensing cell has drifted: the module reads 1.5 kPa low at every pressure (a two-point check against a reference shows the same offset at both ends)", "sources": ["r3051"]},
+  {"id": "loose", "title": "A loose signal terminal", "component": "terminal_block", "found": "A signal terminal's screw was short of tight: the wire's poor contact took the loop current down", "sources": ["r3051"]},
+  {"id": "blocked", "title": "A blocked impulse line", "component": "manifold", "found": "Sludge had built up in the impulse line at the manifold's process connection: the transmitter saw only what was trapped behind it", "bench": "impulse_blocked", "sources": ["liptak"]},
+  {"id": "passing", "title": "The manifold's test/vent valve passing", "component": "manifold", "found": "The test/vent valve was not shut tight: air leaked past its seat into the transmitter's side of the line", "sources": ["r3051", "liptak"]},
+  {"id": "wet", "title": "Water in the terminal side", "component": "cable_gland", "found": "The gland's seal insert had hardened and cracked: water ran down the cable into the terminal side and bridged the return terminal to the housing", "sources": ["iec60079_14"]}
+ ],
+ "tests": [
+  {"meter": "$_pv", "title": "The PV read with the communicator, against the partners", "shows": ["drift", "blocked", "passing"]},
+  {"meter": "$_dmm", "title": "The loop current at the test terminals, against the output it reports", "shows": ["loose"]},
+  {"meter": "$_clamp1", "title": "The loop current with the clamp, against the output it reports", "shows": ["loose"]},
+  {"meter": "$_ohm", "title": "The ohms from the terminals to the housing's earth", "shows": ["wet"]},
+  {"action": "open_cover", "title": "The terminal side looked into with the cover off", "shows": ["wet"]},
+  {"action": "close_vent", "title": "The vent test: the PV after the flange was vented and shut again", "shows": ["blocked"]},
+  {"action": "shut_test", "title": "The manifold's test/vent valve shut firmly", "shows": ["passing"]}
+ ],
+ "fixes": [
+  ["tighten_terms", ["loose"]],
+  ["land_wires", ["loose"]],
+  ["dry_terms", ["wet"]],
+  ["reseal_gland", ["wet"]],
+  ["blow_line", ["blocked"]],
+  ["shut_test", ["passing"]],
+  ["hart:set", ["drift"]]
+ ],
+ "parts": [
+  ["reseal_gland", "gland_seal", "A cable gland seal insert"]
  ]
 }
