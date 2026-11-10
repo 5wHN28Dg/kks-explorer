@@ -5,6 +5,7 @@ anchors from it. Checked here so that both read only a checked file."""
 import re
 
 from ref.plant3d import FormatError, need, keys, ident  # noqa: F401
+from ref.courses import is_num
 
 IDENT = re.compile(r'[a-z_][a-z0-9_]*\Z')
 ALIAS_MAX, STATE_MAX = 8, 6
@@ -67,11 +68,12 @@ def check(s, workshop, tools, rel):
         need(name not in made, 'dup_id', f'{rel}: value {name}')
         need(isinstance(node, dict) and len(node) == 1, 'bad_type', f'{rel}: value {name}: one node')
         made.add(name)
-    loop = {'$_ma', '$_ma_tx', '@_tx', '@_trim'}    # the loop's values, the model's own content
+    # the loop's values, the model's own content (the ohms a wet terminal side reads: HW3)
+    loop = {'$_ma', '$_ma_tx', '@_tx', '@_trim', '$_ohm_v'}
     acts = set()
     for a in s['actions']:
-        keys(a, ('action', 'title', 'component', 'set'), ('tools', 'wrong', 'needs', 'minutes', 'anchors', 'sources'),
-             f'{rel}: action')
+        keys(a, ('action', 'title', 'component'), ('set', 'input', 'range', 'tools', 'wrong', 'needs', 'minutes',
+                                                   'anchors', 'sources'), f'{rel}: action')
         w = f'{rel}: action {a["action"]}'
         ident(a['action'], w)
         need((a['action'], a['component']) not in acts and a['action'] not in {x for x, _ in acts}, 'dup_id', w)
@@ -85,9 +87,15 @@ def check(s, workshop, tools, rel):
         for n, sentence in a.get('needs', []):
             need(n in made, 'bad_ref', f'{w}: needs {n}, which the file doesn\'t make')
             _text(sentence, f'{w}: needs {n}', 200)
-        for n in a['set']:
-            need(n.startswith('$_') and n in made and n not in dict(s['values']), 'bad_ref',
+        # a value the person gives (HW3: the loop test's current) is written into a component state, in its range
+        need('set' in a or 'input' in a, 'missing_key', f'{w}: set or input')
+        need(('input' in a) == ('range' in a), 'missing_key', f'{w}: an input comes with its range')
+        for n in list(a.get('set', {})) + ([a['input']] if 'input' in a else []):
+            need(isinstance(n, str) and n.startswith('$_') and n in made and n not in dict(s['values']), 'bad_ref',
                  f'{w}: sets {n}, not a component state')
+        if 'range' in a:
+            need(isinstance(a['range'], list) and len(a['range']) == 2 and all(is_num(x) for x in a['range'])
+                 and a['range'][0] <= a['range'][1], 'bad_number', f'{w}: range')
         for x in a.get('sources', []):
             need(x in srcs, 'bad_ref', f'{w}: source {x}')
     ids = set()

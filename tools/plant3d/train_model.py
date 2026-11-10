@@ -1219,6 +1219,11 @@ def hrsg1():
 
 # ================================================================ st (steam turbine, condenser, condensate)
 
+# the condenser pressure transmitters' hidden causes (milestone HW3, REALISM.md §2.22): the air at the flange's vent,
+# kPa(a); a passing manifold valve's air, kPa high; a wet terminal's leak to earth, mA (a base and a 7 s wobble on
+# it); the ohms a wet terminal side reads to earth, kΩ, and an open circuit's (OL)
+ATM, AIR_IN, LEAK, WET_KOHM, OL = 101.3, 2.0, 0.6, 40, 1e8
+WOBBLE = [[0, 0], [1.5, 0.4], [2.5, 0.05], [4, 0.3], [5, 0.1], [6, 0.35], [7, 0]]
 ST_TRIPS = ['st_trip_lube', 'st_trip_cond_p', 'st_trip_os', 'st_trip_axial', 'st_trip_vib', 'st_trip_steam_t',
             'st_trip_oil_temp']
 VIB_F = [0.8, 0.9, 1.0, 1.1, 0.95, 0.85, 0.7, 0.75]
@@ -1265,8 +1270,10 @@ def st():
     # 3.8-20.5 mA as NAMUR NE 43 says) and what the control system receives: the transmitter's own value while the
     # loop is sound (that very value, so every run before HW2 keeps its values), else the value the current stands for
     # (a lifted wire: no current, far below range; a loose terminal: 0.3 mA lower, the reading low)
-    m.state('cond_p2_low', 0, '30MAG10CP002')         # the fault "reads low" made (its causes: train_hands.FAULT)
+    m.state('cond_p2_low', 0, '30MAG10CP002')         # the fault "reads apart" made (its causes: train_hands.FAULT)
     age3 = train_ageing.drift_values(m)                 # AG2: transmitter 3's sensor drifts with the years
+    m.wrap('cpt_wobble', 'cpt_one', WOBBLE[-1][0])      # (HW3) a 7 s cycle that makes a wet terminal's leak jump
+    m.const('cpt_one', 1)
     for k, off in zip((1, 2, 3), (0, 0.1, -0.1)):
         tx = f'cond_p{k}'
         if k == 1:
@@ -1276,20 +1283,44 @@ def st():
             a = train_hands.of(code)[2]['alias']
             train_hands.values(m, code)
             m.state(f'cond_p{k}_trim', 0, unit='kPa')
-            tx = m.sum(f'cond_p{k}_tx', ['cond_p', off, f'cond_p{k}_drift', f'cond_p{k}_trim'] + ([age3] if k == 3 else []),
-                       'kPa(a)')
+            # (milestone HW3, REALISM.md §2.22) the pressure at the transmitter's port: the tapping's, or the air's
+            # with the flange's vent cracked open; a blocked impulse line holds what was in it (with the vent shut);
+            # a passing manifold valve lets air in, 2 kPa high. Each passes the tapping's value itself while it is
+            # sound, so every run before HW3 keeps its values
+            m.sum(f'{a}_p_tap', ['cond_p', off])
+            m.sel(f'{a}_p_in', f'{a}_drain_vents_open', [f'{a}_p_tap', ATM])
+            m.AND(f'{a}_blk_h', [f'{a}_manifold_block', f'{a}_shut'])
+            m.hold(f'{a}_p_line', f'{a}_p_in', f'{a}_blk_h', 'kPa(a)')
+            m.prod(f'{a}_air', [f'{a}_manifold_pass', AIR_IN], 'kPa')
+            tx = m.sum(f'cond_p{k}_tx', [f'{a}_p_line', f'cond_p{k}_drift', f'cond_p{k}_trim'] +
+                       ([age3] if k == 3 else []) + [f'{a}_air'], 'kPa(a)')
             m.prod(f'{a}_ma_s', [tx, round(16 / 120, 12)])
             m.sum(f'{a}_ma_r', [f'{a}_ma_s', 4])
             m.min(f'{a}_ma_h', [f'{a}_ma_r', 20.5])
-            m.max(f'{a}_ma_tx', [f'{a}_ma_h', 3.8], 'mA')
+            m.max(f'{a}_ma_n', [f'{a}_ma_h', 3.8], 'mA')
+            # the communicator's loop test holds the output at the current typed in (HW3)
+            m.cmp(f'{a}_lt_on', f'{a}_electronics_lt', '>', 0)
+            m.sel(f'{a}_ma_tx', f'{a}_lt_on', [f'{a}_ma_n', f'{a}_electronics_lt'], 'mA')
             m.prod(f'{a}_drop', [f'{a}_terminal_block_loose', 0.3])
             m.diff(f'{a}_ma_l', f'{a}_ma_tx', f'{a}_drop')
             m.prod(f'{a}_ma', [f'{a}_ma_l', f'{a}_wired'], 'mA')
-            m.OR(f'{a}_bad', [f'{a}_terminal_block_lift', f'{a}_terminal_block_loose'])
-            m.diff(f'{a}_rx_m', f'{a}_ma', 4)
+            # water in the terminal side (HW3) bridges the return terminal to the housing's earth: 0.6-1.0 mA,
+            # jumping as the film of water moves, goes to earth past the control system's input. At the transmitter
+            # the current is right; only the control system receives less
+            m.tab(f'{a}_wob', 'cpt_wobble', WOBBLE)
+            m.sum(f'{a}_leak_b', [f'{a}_wob', LEAK])
+            m.prod(f'{a}_leak', [f'{a}_leak_b', f'{a}_terminal_block_wet'], 'mA')
+            m.diff(f'{a}_ma_rx', f'{a}_ma', f'{a}_leak', 'mA')
+            m.sel(f'{a}_ohm_v', f'{a}_terminal_block_wet', [OL, WET_KOHM], 'kΩ')
+            m.OR(f'{a}_bad', [f'{a}_terminal_block_lift', f'{a}_terminal_block_loose', f'{a}_terminal_block_wet',
+                              f'{a}_lt_on'])
+            m.diff(f'{a}_rx_m', f'{a}_ma_rx', 4)
             m.prod(f'{a}_rx_k', [f'{a}_rx_m', 7.5])
             tx = m.sel(f'cond_p{k}_rx', f'{a}_bad', [tx, f'{a}_rx_k'], 'kPa(a)')
-            m.hold(f'cond_p{k}', tx, f'iso_cond_p{k}_complete', 'kPa(a)', code)
+            # isolated for work, the control system shows the last reading, except while a loop test runs (HW3:
+            # the loop check reads the screen)
+            m.hold(f'{a}_shown', tx, f'iso_cond_p{k}_complete', 'kPa(a)')
+            m.sel(f'cond_p{k}', f'{a}_lt_on', [f'{a}_shown', tx], 'kPa(a)', code)
             train_hands.parts(m, code)
         m.cmp(f'cond_p{k}_h', tx, '>', 15)
         m.cmp(f'cond_p{k}_hc', tx, '<', 13)
