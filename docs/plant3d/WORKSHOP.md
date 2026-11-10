@@ -985,6 +985,22 @@ addition (both engines, vectors) made in K6.
   their bore, clears it at full travel), `_discs` (the butterfly's disc's edge on the liner's bore, within its width,
   edge-on when turned by its travel); the globe's disc is held by `_seats`. Each made to fail once by a changed wedge or
   liner. `WS_ONLY=kind,…` runs `test_workshop` on those kinds alone (a quicker run while a tree is written).
+- **The Note 9** (`lean+vis`, a test-signed release build, a fresh install for each kind, `probe=1`, SAMPLE=1, battery
+  24.8–28.6 °C at the start, the kernel reclaiming in 0.98 / 0.16 / 0.16 % of the samples):
+
+  | | gate valve | globe valve | butterfly valve |
+  |---|---|---|---|
+  | first entry (after the plant's warm-up) | 128 ms (load 43 ms) | 122 ms (load 45 ms) | 113 ms (load 44 ms) |
+  | second entry | 27 ms | 29 ms | 26 ms |
+  | back to the plant | 14–15 ms | 16–21 ms | 16–20 ms |
+  | guided steps | all walked, 0 loose | all walked, 0 loose | all walked, 0 loose |
+  | longest frame / over 100 ms | 41.6 ms / 0 | 41.4 ms / 0 | 56.5 ms / 0 |
+  | frames at ≥ 30 fps | **99.94 %** | **99.91 %** | **99.94 %** |
+  | median / p95 frame | 16.8 / 35.2 ms | 16.9 / 35.2 ms | 16.9 / 35.7 ms |
+  | peak PSS | 1,158 MB | 1,159 MB | 1,166 MB |
+  | pipelines after the first 5 s | 0 | 0 | 0 |
+
+  The APK is 148.5 MB (the second pull request's was 148.3 MB).
 
 ## 7. Shaders and cut faces
 

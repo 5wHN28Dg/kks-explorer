@@ -334,6 +334,8 @@ APK 147.8 MB.
 
 **K6, second pull request (2026-11-10):** the vertical pump (with its vertical motor's tree) and the control valve with its actuator in the Workshop (WORKSHOP.md §6.9), the plant byte for byte unchanged. The explode's pass-through test now keeps every triangle, and two new checks cover every kind: what turns and the valve's seat. The Note 9: first entry 131 / 208 ms, 99.93 / 99.92 % of frames at ≥ 30 fps, no frame over 100 ms, peak PSS 1,144 / 1,162 MB; the motor kind's own walk 99.78 %, 1,159 MB; APK 148.3 MB. Left in K6: the butterfly, gate and globe valves, the generator, the fan, the heat exchangers, then the mirror.
 
+**K6, third pull request (2026-11-10):** the gate valve (manual), the globe valve (multi-turn electric actuator) and the butterfly valve (part-turn electric actuator) in the Workshop (WORKSHOP.md §6.10): Crane's, Bray's and AUMA's orders, the plant byte for byte unchanged, new checks of the gate's wedge on its seats and the butterfly's disc in its liner. The Note 9: first entry 128 / 122 / 113 ms, 99.94 / 99.91 / 99.94 % of frames at ≥ 30 fps, no frame over 100 ms, peak PSS 1,158 / 1,159 / 1,166 MB; APK 148.5 MB. Left in K6: the fan and the generator, the heat exchangers, then the mirror.
+
 **K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
 groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 86 guided
 steps in a major inspection's order, 27,868 triangles, a public source per subassembly; the plant byte for byte
