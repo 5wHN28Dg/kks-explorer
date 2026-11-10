@@ -232,9 +232,8 @@ func _parts_against_trees(ui) -> Array:
 				var pn := "WDP-%s-%s" % [m["short"], String(id).to_upper().replace("_", "-")]
 				var has := listed.contains("\"" + pn + "\"")
 				if m["kinds"].size() > 1:   # a manual of several kinds numbers each kind's tree with its tag (WDP-CP-H-…)
-					pn = "WDP-%s-…-%s" % [m["short"], String(id).to_upper().replace("_", "-")]
-					has = RegEx.create_from_string("\"WDP-%s-[A-Z]+-%s\"" % [m["short"],
-						String(id).to_upper().replace("_", "-")]).search(listed) != null
+					pn = "WDP-%s-%s-%s" % [m["short"], m["kind_tags"][k], String(id).to_upper().replace("_", "-")]
+					has = listed.contains("\"" + pn + "\"")
 				if has == inside:
 					p.append("%s: %s %s" % [k, pn, "listed, though it comes with a sealed part" if inside else "not listed"])
 	return p
