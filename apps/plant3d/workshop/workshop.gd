@@ -515,6 +515,7 @@ func _start_mirror() -> void:
 	mirror_info = r
 	mirror_code = from_code
 	mirror_live = _session
+	bench.paused = false            # (a pause left from an earlier bench: a mirror shows the plant as it runs)
 	var now := Mirror.read(r, pe)
 	bench.set_mirror(now[0], now[1])
 	if mirror_live:

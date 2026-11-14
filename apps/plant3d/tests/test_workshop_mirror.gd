@@ -70,6 +70,18 @@ func run(tree: SceneTree) -> Array:
 	check(ui.clock.speed == SimClock.Speed.NORMAL, "the speed before comes back on leaving")
 	check(not b.mirrored(), "leaving ends the mirror")
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	# --- a manual's step link on an open mirror: the trainee's own bench (§6.5), and a pause left on the bench from
+	# before doesn't freeze a mirror
+	ws.bench.paused = true
+	if await _from_card(tree, ui, ws, PT_BAR):
+		check(not ws.bench.paused, "a mirror runs whatever pause the bench was left in")
+		ui.open_manual("pressure_transmitter", "replacing", PT_BAR)
+		ui.manual_view.follow({"workshop": "pressure_transmitter", "place": "housing"})
+		await tree.process_frame
+		check(ws.mirror_code == "" and not ws.bench.mirrored() and ws.selected == "housing",
+				"a manual's link leaves the mirror for the free bench (%s, %s)" % [ws.mirror_code, ws.selected])
+		ws.close()
+		await ws.left
 	# --- units: a condenser's absolute kPa as gauge bar
 	_poke(e, "cond_p1", 9.2)
 	if await _from_card(tree, ui, ws, PT_KPA):
