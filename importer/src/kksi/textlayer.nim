@@ -109,6 +109,11 @@ type Kind = enum other, sysCode, sysNoUnit, comp, fullCode, fullNoUnit, letters
 
 proc kindOf(t: string): Kind =
   var kks, suffix: string
+  if ' ' in t:      # a whole code printed with spaces between its parts ("10 LAB70 AA101"); never a sentence
+    let c = t.replace(" ", "")
+    return (if matchFull(c, kks, suffix): fullCode
+            elif c.fits("LLLDDLLDDD") and matchFull("00" & c, kks, suffix): fullNoUnit
+            else: other)
   if t.full("DDLLLDD"): sysCode
   elif t.full("LLLDD"): sysNoUnit
   elif t.fits("LLDDD") and matchFull("00AAA00" & t, kks, suffix): comp
@@ -142,13 +147,15 @@ proc overlap(a, b: Run): float = min(a.a1, b.a1) - max(a.a0, b.a0)
 
 proc similarSize(a, b: Run): bool = a.size > 0 and b.size > 0 and b.size / a.size in 0.7 .. 1.43
 
-proc textTags*(doc: Doc, unit = ""): seq[Tag] =
-  ## every tag in page 0's text layer, as extract.extract gives the glyph reader's (bbox in page points)
-  let rs = runs(doc)
+proc textTags*(doc: Doc, unit: string, unpaired: var int): seq[Tag] =
+  ## every tag in page 0's text layer, as extract.extract gives the glyph reader's (bbox in page points);
+  ## unpaired: how many system or component codes found no partner (for the log)
+  var rs = runs(doc)
   var kinds = newSeq[Kind](rs.len)
   var nCode = 0
   for i, r in rs:
     kinds[i] = kindOf(r.text)
+    if kinds[i] in {fullCode, fullNoUnit}: rs[i].text = r.text.replace(" ", "")
     if kinds[i] != other: inc nCode
   if nCode > MaxCodeRuns:
     raise newException(TextLimitError, "The drawing's text layer has more than " & $MaxCodeRuns &
@@ -187,6 +194,9 @@ proc textTags*(doc: Doc, unit = ""): seq[Tag] =
     if kinds[i] in {fullCode, fullNoUnit} and not used[i]:
       used[i] = true
       found.add (i, i, -1)
+  unpaired = 0
+  for i in 0 ..< rs.len:
+    if kinds[i] in {sysCode, sysNoUnit, comp} and not used[i]: inc unpaired
   # instrument letters just above a measurement's code, nearest first
   var letterOf = newSeq[int](found.len)
   var lc: seq[Cand]
@@ -245,11 +255,17 @@ proc textTags*(doc: Doc, unit = ""): seq[Tag] =
   for t in result.mitems:
     if t.status == "auto" and counts[t.interp.kks & t.interp.suffix] > 1: t.flag = "duplicate KKS on this sheet"
 
-proc uprightScore*(doc: Doc): int =
+proc textTags*(doc: Doc, unit = ""): seq[Tag] =
+  var unpaired: int
+  textTags(doc, unit, unpaired)
+
+proc uprightScore*(doc: Doc): (int, int) =
   ## the text reader's orientation score: characters reading left to right or up the page (a drawing's two upright
-  ## directions) minus those reading right to left or down it. All the text counts, title block and notes included:
-  ## a sparse sheet can have more labels written up the page than across it.
+  ## directions) minus those reading right to left or down it; then, between turns that score the same (a page whose
+  ## text all runs one way), the characters reading left to right. All the text counts, title block and notes
+  ## included: a sparse sheet can have more labels written up the page than across it.
   for r in runs(doc):
     let n = r.text.runeLen
-    if r.dir == (1, 0) or r.dir == (0, -1): result += n
-    else: result -= n
+    if r.dir == (1, 0) or r.dir == (0, -1): result[0] += n
+    else: result[0] -= n
+    if r.dir == (1, 0): result[1] += n

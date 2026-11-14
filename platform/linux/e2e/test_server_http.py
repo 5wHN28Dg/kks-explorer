@@ -94,12 +94,13 @@ def many_circles_pdf(n):
     return out
 
 
-def text_pdf(strokes=False):
+def text_pdf(strokes=False, unit=True):
     """a page whose tags are real text (Helvetica), turned by /Rotate like a CAD export: an equipment code over its
     component, an instrument with its letters above, and a sentence that names a code (not a tag)"""
     def t(s, x, y):
         return f'BT /F1 6 Tf 0 1 -1 0 {x} {y} Tm ({s}) Tj ET'
-    content = '\n'.join([t('10LAB70', 300, 50), t('AA101', 307, 50), t('PI', 250, 105), t('10LAB70', 257, 100),
+    u = '10' if unit else ''
+    content = '\n'.join([t(u + 'LAB70', 300, 50), t('AA101', 307, 50), t('PI', 250, 105), t(u + 'LAB70', 257, 100),
                          t('CP501', 264, 101), t('see 10LAB71AA102 on sheet 2', 200, 50)]).encode() + b'\n'
     if strokes:   # and 30 lines of text drawn in strokes (like an AutoCAD plot's): the strokes carry the tags
         content += ''.join(f'{20 + 4 * c} {150 + 12 * r} m {20 + 4 * c} {155 + 12 * r} l S\n'
@@ -217,9 +218,16 @@ class Drawings(Base):
         self.assertEqual((tags['10LAB70AA101']['kind'], tags['10LAB70AA101']['orient']), ('equipment', 'h'))
         sheet = [x for x in boss.req('GET', '/data/sheets.json')[1] if x['id'] == 'txt'][0]
         self.assertGreater(sheet['w'], sheet['h'])        # turned upright: the text reads across
-        for t in tags.values():                           # the boxes lie on the sheet
+        for t in tags.values():                           # the boxes lie on the sheet, across it like their text
             x0, y0, x1, y1 = t['bbox']
             self.assertTrue(0 <= x0 < x1 <= sheet['w'] and 0 <= y0 < y1 <= sheet['h'], t)
+            self.assertGreater(x1 - x0, y1 - y0, t)
+        # a drawing that leaves out its unit numbers: its tags go to the review queue (not to the glyph reader)
+        boss.req('POST', '/api/sheets/import?id=nounit&name=No%20unit', raw=text_pdf(unit=False),
+                 headers={'Content-Type': 'application/pdf'})
+        job = self.wait(boss)
+        self.assertEqual((job['state'], job['result']['reader'], job['result']['auto'], job['result']['review']),
+                         ('done', 'text', 0, 2), job['log'])
         # the same text on a drawing whose strokes draw far more lines of text: the glyph reader's, as before
         boss.req('POST', '/api/sheets/import?id=mixed&name=Mixed', raw=text_pdf(strokes=True),
                  headers={'Content-Type': 'application/pdf'})

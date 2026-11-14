@@ -403,6 +403,7 @@ typedef struct {
 	size_t logidx;           /* index in PyMuPDF's get_bboxlog(): one per path, text, shade or image call */
 	int want_images;
 	int want_text;           /* the path store of a text-layer drawing: glyph outlines as paths (glyph_paths) */
+	int t3_depth;            /* Type 3 glyphs being run (a glyph that draws text in a Type 3 font) */
 	struct kks_image *images; int n_images, cap_images;
 } kks_lineart;
 
@@ -780,8 +781,8 @@ static void lineart_stroke_path(fz_context *ctx, fz_device *dev_, const fz_path 
    stays as it was, without its few words of real text): each glyph's outline as a filled (or stroked) path, so a drawing whose
    text is real text keeps it in the .kkp, which holds only paths and images. All of one text call's glyphs share its
    seqno, which then moves on by one as before: the paths' order against the images (by the bbox log) is unchanged.
-   The reader's get_drawings (want_images off) still only counts text, as PyMuPDF does. A glyph without an outline
-   (a Type 3 or bitmap font) is an import error: the path store never drops what it can't hold. */
+   The reader's get_drawings (want_images off) still only counts text, as PyMuPDF does. A Type 3 glyph is run through
+   the device (its own paths); a font with neither outlines nor Type 3 procedures is an import error. */
 static void glyph_paths(fz_context *c, kks_lineart *d, const fz_text *t, const fz_stroke_state *st, fz_matrix m,
                         fz_colorspace *cs, const float *col, float a)
 {
@@ -792,14 +793,30 @@ static void glyph_paths(fz_context *c, kks_lineart *d, const fz_text *t, const f
 			if (gid < 0) continue;
 			tm.e = span->items[i].x;
 			tm.f = span->items[i].y;
+			if (fz_font_t3_procs(c, span->font)) {
+				/* a Type 3 glyph is a little drawing: run it through this device, its paths taking the text's
+				   seqno, and the counters put back (one text call = one step, as for any other font) */
+				size_t seq0 = d->seqno, log0 = d->logidx;
+				int n0 = d->n_out;
+				if (d->t3_depth >= 2) fz_throw(c, FZ_ERROR_GENERIC, "Type 3 glyphs nested too deep for the path store");
+				d->t3_depth++;
+				fz_try(c) fz_run_t3_glyph(c, span->font, gid, fz_concat(tm, m), (fz_device *)d);
+				fz_always(c) d->t3_depth--;
+				fz_catch(c) fz_rethrow(c);
+				for (int k = n0; k < d->n_out; k++) d->out[k].seqno = seq0;
+				d->seqno = seq0;
+				d->logidx = log0;
+				continue;
+			}
 			fz_path *path = fz_outline_glyph(c, span->font, gid, tm);
 			if (!path) {
-				if (fz_font_t3_procs(c, span->font) || !fz_font_ft_face(c, span->font))
-					fz_throw(c, FZ_ERROR_GENERIC, "text in a Type 3 or bitmap font is not supported in the path store");
-				continue;   /* an outline font's empty glyph (a space) */
+				if (!fz_font_ft_face(c, span->font))
+					fz_throw(c, FZ_ERROR_GENERIC, "text in a font without outlines is not supported in the path store");
+				continue;   /* an outline font's empty glyph (a space; also one FreeType fails to load) */
 			}
 			fz_try(c) {
 				d->ctm = m;
+				d->path_type = st ? 2 : 1;
 				if (lineart_path(d, path)) {
 					if (st) {
 						float pathfactor = sqrtf(fabsf(m.a * m.d - m.b * m.c));

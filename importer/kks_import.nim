@@ -152,39 +152,39 @@ proc main() =
   # (a limit, a font MuPDF can't read for text) leaves the drawing to the glyph reader as before.
   var textMode = false
   if keepTags and tagReader == "text": die "--keep-tags reads no tags: --reader text does not go with it."
-  if not keepTags and tagReader != "glyphs":
+  if tagReader != "glyphs":
+    # with --keep-tags only to know how to write the path store (a text drawing's keeps its text as outlines)
     let d0 = rotatedCopy(src, if rotate == "auto": 0 else: parseInt(rotate))
-    var n = 0
+    var n, unpaired = 0
     var why = ""
-    try:
-      for t in textTags(d0, unit):
-        if t.status == "auto": inc n
-    except TextLimitError, MupdfError:
-      why = getCurrentExceptionMsg()
+    try: n = textTags(d0, unit, unpaired).len      # review tags too: a drawing that leaves out its unit numbers
+    except TextLimitError, MupdfError: why = getCurrentExceptionMsg()
     if why.len > 0:
       if tagReader == "text": die why
       log "The drawing's text layer was not read (" & why & "): reading the strokes."
     elif n == 0:
       if tagReader == "text": die "--reader text: the drawing's text layer holds no tags."
-    elif tagReader == "text":
-      textMode = true
     else:
       let (h, v) = score(loadPaths(d0))
-      textMode = n * TextOverStrokes >= h + v
+      textMode = tagReader == "text" or n * TextOverStrokes >= h + v
       if not textMode:
         log "The text layer holds " & $n & " tags, but the strokes draw " & $(h + v) &
             " lines of text: reading the strokes (--reader text reads the text layer)."
+      elif not keepTags:
+        log "Reading the tags from the drawing's text layer (" & $n & " found; the strokes draw " & $(h + v) &
+            " lines of text; --reader glyphs reads them instead)."
+        if unpaired > 0: log "  " & $unpaired & " system or component codes in the text found no partner (not tags)."
     d0.close()
-    if textMode: log "Reading the tags from the drawing's text layer (" & $n & " found; --reader glyphs reads the strokes instead)."
   var rot: int
-  if textMode and rotate == "auto":
+  if textMode and not keepTags and rotate == "auto":
     log "Finding orientation from the text..."
-    var best = low(int)
+    var best = (low(int), 0)
     for extra in [0, 90, 180, 270]:
       let d = rotatedCopy(src, extra)
       let n = uprightScore(d)
       d.close()
-      log "  " & align($extra, 3) & "°: " & $n & " (characters reading across or up, minus those reading back or down)"
+      log "  " & align($extra, 3) & "°: " & $n[0] & " characters reading across or up, minus those reading back or down (" &
+          $n[1] & " across)"
       if n > best:
         best = n
         rot = extra
@@ -204,7 +204,7 @@ proc main() =
     log "Rotation forced to " & $rot & "°."
   var doc = rotatedCopy(src, rot)
   var found: seq[Tag]
-  if textMode:
+  if textMode and not keepTags:
     found = textTags(doc, unit)
   elif not keepTags:
     log "Extracting tags (this is the slow part)..."

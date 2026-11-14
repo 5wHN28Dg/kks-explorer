@@ -45,6 +45,7 @@ proc page(): string =
   result.add txt("10LAB75", 450, 250, m = "0.7071 0.7071 -0.7071 0.7071") &        # slanted: not read
              txt("AA501", 455, 245, m = "0.7071 0.7071 -0.7071 0.7071")
   result.add txt("10LAB76", 50, 100) & txt("AA601", 50, 80)                         # too far apart to pair
+  result.add txt("10 LAB77 AA701", 150, 100)                                        # a code printed with spaces
   result.add "[3 2] 0 d 0.5 w 50 50 m 200 50 l S\n"                                 # a dashed line
 
 proc tagsOf(path: string, unit = ""): seq[Tag] =
@@ -79,6 +80,11 @@ suite "tags from the text layer":
     check ts.find("10LAB73AA401").len == 0  # inside a sentence
     check ts.find("10LAB75AA501").len == 0  # slanted
     check ts.find("10LAB76AA601").len == 0  # 20 pt apart: not one tag
+    let spaced = ts.find("10LAB77AA701")
+    check spaced.len == 1 and spaced[0].top == "10LAB77" and spaced[0].bottom == "AA701"
+    var unpaired = 0
+    discard textTags(rotatedCopy(dir / "text.pdf", 0), "", unpaired)
+    check unpaired == 2                     # 10LAB76 and AA601
     # the box covers the letters and both codes, in page points (y down), 1 pt around the text
     let b = pi[0].bbox
     check b[0] < 151 and b[2] > 170 and b[1] < 400 - 300 - 4 and b[3] > 400 - 286
@@ -109,7 +115,7 @@ suite "tags from the text layer":
     check g.isa == "PGI" and g.kks == "10LAB70GP101"
 
   test "orientation: the most text reading left to right":
-    var best = low(int)
+    var best = (low(int), 0)
     var bestAt = -1
     for extra in [0, 90, 180, 270]:
       let d = rotatedCopy(dir / "text.pdf", extra)
@@ -122,7 +128,7 @@ suite "tags from the text layer":
     var c = txt("TITLE OF THE SHEET", 400, 30, 8)                  # 18 characters across
     for i in 0 .. 5: c.add txt("10LAB7" & $i & " AA10" & $i, 100 + float(i) * 30, 100, m = Up)   # 72 up the page
     writePdf(dir / "sparse.pdf", c)
-    var best = low(int)
+    var best = (low(int), 0)
     var bestAt = -1
     for extra in [0, 90, 180, 270]:
       let d = rotatedCopy(dir / "sparse.pdf", extra)
@@ -135,7 +141,7 @@ suite "tags from the text layer":
   test "a page turned by /Rotate: the same tags once turned back":
     writePdf(dir / "turned.pdf", page(), rotate = 90)
     var at = -1
-    var best = low(int)
+    var best = (low(int), 0)
     for extra in [0, 90, 180, 270]:
       let d = rotatedCopy(dir / "turned.pdf", extra)
       let n = uprightScore(d)
@@ -207,7 +213,7 @@ suite "tags from the text layer":
     check dashes("[3 -2] 0 d") >= 1        # a negative gap counts as 0: no piece runs backwards
     removeFile(dir / "dash.pdf")
 
-  test "a Type 3 font in a text-layer drawing's path store is refused":
+  test "a Type 3 font in a text-layer drawing's path store: its glyph's own drawing":
     var objs = @["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
                  "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 400] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"]
     let content = "BT /F1 6 Tf 50 350 Td (A) Tj ET\n"
@@ -227,10 +233,13 @@ suite "tags from the text layer":
     s.add "trailer\n<< /Size " & $(objs.len + 1) & " /Root 1 0 R >>\nstartxref\n" & $xref & "\n%%EOF\n"
     writeFile(dir / "t3.pdf", s)
     let doc = mupdf.open(dir / "t3.pdf")
-    discard fromPdfPage(doc, 0, images = true)      # a glyph-read drawing: text left out as before
-    expect MupdfError:
-      discard fromPdfPage(doc, 0, images = true, text = true)
+    let before = fromPdfPage(doc, 0, images = true)      # a glyph-read drawing: text left out as before
+    let after = fromPdfPage(doc, 0, images = true, text = true)
     doc.close()
+    check before.paths.len == 0
+    check after.paths.len == 1                           # the glyph's square, 6 × 0.75 = 4.5 pt at (50, 50) from the top
+    let b = after.paths[0].bbox
+    check abs(float(b[0]) / 64 - 50) < 0.1 and abs(float(b[2] - b[0]) / 64 - 4.5) < 0.1
     removeFile(dir / "t3.pdf")
 
   removeFile(dir / "text.pdf")
