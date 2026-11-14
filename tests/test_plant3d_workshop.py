@@ -199,6 +199,46 @@ class WorkshopData(unittest.TestCase):
         for a, b in (('actuator', 'packing'), ('packing', 'shaft'), ('shaft', 'disc'), ('disc', 'liner')):
             self.assertLess(u.index(a), u.index(b), (a, b))
 
+    def test_the_fan_and_the_generator_pass(self):
+        # K6: the cooling tower fan (Hudson's hub installed in reverse, Amarillo's gear drive, its drive shaft) and the
+        # air-cooled generator (BHEL's overhaul scope, WEG's S line manual)
+        f = json.loads(self.files['workshop/fan_axial.json'])
+        self.assertEqual(self.b.workshop['fan_axial']['components'], 36)
+        self.assertEqual(f['params'], {'d': 9.5, 'blades': 8, 'motor_kw': 200, 'stack_height': 3})
+        self.assertEqual(set(f['fasteners']), {'clamp_bolts', 'disc_bolts', 'de_bolts', 'cowl_screws'})
+        undo = [s['place'] for s in f['assembly']][::-1]
+        # the fan off in the reverse of Hudson's installation: the seal disc, the blades' clamp bolts, the blades,
+        # the hub; then the gear drive as Amarillo's §1: the oil seal plate, the seal carrier and the intermediate
+        # bearing cover, the vertical cover, the vertical shafts together, the input shaft's carrier, the lower covers
+        for a, b in (('disc_bolts', 'seal_disc'), ('seal_disc', 'clamp_bolts'), ('clamp_bolts', 'blades'),
+                     ('blades', 'hub'), ('hub', 'gb_seal_carrier'), ('gb_oil_seal', 'gb_cover'),
+                     ('gb_seal_carrier', 'gb_cover'), ('gb_int_cover', 'gb_cover'), ('gb_cover', 'gb_out_shaft'),
+                     ('gb_cover', 'gb_int_shaft'), ('gb_out_shaft', 'gb_in_carrier'), ('gb_int_shaft', 'gb_in_carrier'),
+                     ('gb_in_carrier', 'gb_low_covers'), ('guard', 'drive_shaft'), ('drive_shaft', 'gb_oil_seal')):
+            self.assertLess(undo.index(a), undo.index(b), (a, b))
+        # the reversed and derived orders say so in their steps
+        why = {s['place']: ' '.join(s.get('why', [])) for s in f['assembly']}
+        for p in ('hub', 'blades', 'clamp_bolts', 'seal_disc', 'disc_bolts'):
+            self.assertIn('installation order only', why[p], p)
+        self.assertIn('reverse', why['drive_shaft'])
+        for p in ('rotor', 'fan', 'fan_cowl', 'end_shield_de'):
+            self.assertIn('derived from how the motor is built', why[p], p)
+        g = json.loads(self.files['workshop/generator.json'])
+        self.assertEqual(self.b.workshop['generator']['components'], 20)
+        self.assertNotIn('params', g)
+        self.assertEqual(g['context'], ['axis_z', 'shaft_lo', 'shaft_hi'])
+        self.assertIn('not a maker\'s manual', next(s['cite'] for s in g['sources'] if s['id'] == 'bhel_thri'))
+        undo = [s['place'] for s in g['assembly']][::-1]
+        # BHEL B.a: the bushings, the bearings' top halves, the exciter's hood and the exciter, the coolers and their
+        # pipes, the end shields and fan shields, the bearings, the bottom end shields, the rotor last
+        for a, b in (('terminal_box', 'brg_cap_te'), ('brg_cap_te', 'exc_cover'), ('exc_cover', 'exciter'),
+                     ('cw_pipes', 'cooler'), ('es_te_up', 'fan_shield_te'), ('es_te_up', 'es_te_lo'),
+                     ('ped_te', 'rotor'), ('es_te_lo', 'rotor'), ('fan_shield_te', 'rotor'), ('fan_shield_ee', 'rotor')):
+            self.assertLess(undo.index(a), undo.index(b), (a, b))
+        self.assertEqual(undo[-3:], ['rotor', 'stator', 'plinth'])
+        for st in g['assembly']:
+            self.assertIn('not a maker\'s manual', ' '.join(st['why']), st['place'])
+
     def test_context(self):
         w = copy.deepcopy(self.fixture)
         w.pop('params', None)

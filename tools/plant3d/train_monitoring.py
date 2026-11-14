@@ -129,8 +129,8 @@ def oil(m, pt):
                          units[k]))
     # a vertical pump's oil-bath bearing is in its motor (the thrust bearing at the top): the component every vertical
     # pump's tree has, whether its motor has a tree of its own (up to 500 kW) or is one part (the CW pumps' 1,250 kW);
-    # a fan's gear reducer has no tree yet
-    m.hands.append({'kks': code, 'action': 'take_oil', 'component': 'motor' if kind == 'bearing' else 'body',
+    # a fan's gear reducer oil is drawn from its gear case (the fan's Workshop tree, K6)
+    m.hands.append({'kks': code, 'action': 'take_oil', 'component': 'motor' if kind == 'bearing' else 'gb_case',
                     'tools': ['oil_kit'], 'minutes': MINUTES, 'work': False, 'samples': nodes})
 
 

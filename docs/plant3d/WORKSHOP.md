@@ -1002,6 +1002,36 @@ addition (both engines, vectors) made in K6.
 
   The APK is 148.5 MB (the second pull request's was 148.3 MB).
 
+### 6.11 The cooling tower fan and the generator (K6, fourth pull request)
+
+**As built (K6, 2026-11-14).**
+- **The cooling tower fan** (`kit/parts_rotating.gd fan_axial`, `_fan_*`; the data file names the plant's fan, 9.5 m,
+  eight blades, 200 kW, a 3 m stack): the stack, the support beams, the hub with its blades, their 32 clamp bolts and
+  the seal disc on six bolts (Hudson's Tuf-Lite 6000 series hub), a double reduction right-angle gear drive inside the
+  plant's gear case (its vertical cover, seal carrier and intermediate bearing cover, the input shaft in its horizontal
+  carrier with its pinion, bearing cones and oil seal plate, the intermediate shaft with its spiral bevel gear and
+  cones, the output shaft with its helical gear and cones turning with the fan, the lower bearing covers: Amarillo's
+  repair instructions), the drive shaft and its guard, and the motor kind's tree. 36 components, 4 fastener groups,
+  40 guided steps, 7,245 triangles (the plant's 1,282). **The fan and the drive shaft come apart in the reverse of
+  their makers' installation steps, the motor in the order derived from its build** (the user, 2026-11-14): each step
+  says which; the gear drive follows Amarillo's own disassembly order.
+- **The generator** (`kit/parts_machines.gd generator`, `_gen_*`; the plant's first generator, the gas turbine's, an
+  air-cooled machine built with its shaft line): the plinth, the stator (frame, core, end windings), the terminal box,
+  the coolers and their pipes, the end shields in halves and the fan shields at both ends, the bearing pedestals and
+  their top halves, the rotor (body, retaining rings, two fans), the coupling's 12 bolts (the plant's bolt ring), the
+  exciter's hood with its grille and the brushless exciter with its rotor. 20 components, 1 fastener group, 21 guided
+  steps, 4,832 triangles (the plant's 1,364). **The order is BHEL's overhaul tender's, a contract scope and not a
+  maker's manual** (the user, 2026-11-14; the data file and every step say so), with WEG's S line manual (§8) as the
+  second source; the hydrogen seals of BHEL's machine have no counterpart in this air-cooled one.
+- **The plant unchanged** (`test_kit_frozen`); what is simplified is in the kit README. The fan's gear reducer oil
+  sample (REALISM.md §2.19) now names the gear case, a component of the new tree.
+- **New checks** (`tests/test_workshop.gd`): `ROTOR_ONLY`: an axial kind with no stationary row (the fan) has its
+  blades checked as a moving row pushing the air up as the shaft turns, the same blades turning the other way must
+  fail it, and what turns is held to `_turning`. Two plant drawings need a listed exception each, with its reason:
+  the plant draws the fan's gear case reaching up inside the hub (`RUBS`), and the exciter hood's end grille across
+  the shaft's end (`RUBS`); the gear case and the exciter's hood are closed solids that their insides leave through
+  (`PASSES`).
+
 ## 7. Shaders and cut faces
 
 Decision 0060: one lit shader and one vertex format; each lit ubershader is 0.6–0.9 s of serial compile on the Note
@@ -1161,6 +1191,14 @@ Starting sources (to be checked page by page in each milestone):
   (50033244) and Innomotics' SIMOTICS 1LE1 operating instructions (A5E38483075A: IC 411, IM B3, the fan and the end
   shields). None of them gives a numbered dismantling order: the motor's order is **derived from how it is built, not
   from a manual** (the user, 2026-11-09), and its data says so in every step's reason.
+- **Cooling tower fan (K6):** Hudson's Tuf-Lite 6000 series hub installation manual (R8, 2018), Amarillo's double
+  reduction fan drive repair instructions (DRR 6/09) and its composite drive shaft installation instructions (OMDS
+  03/14). Hudson and the drive shaft give installation steps only: the fan and the drive shaft come apart in **the
+  reverse of their installation** (the user, 2026-11-14), the gear drive in Amarillo's own disassembly order, the motor
+  as the motor kind's; every step says which.
+- **Generator (K6):** BHEL's overhaul tender for a hydrogen-cooled 250 MW turbo-generator (PSER:PUR:MJA-S670:26,
+  2026: section B's order), **a contract scope, not a maker's manual** (the user, 2026-11-14: the data file and every
+  step say so), with WEG's turbogenerator manual (S line, horizontal, 10174576 §8) as the second source.
 
 ## 12. Milestones
 
