@@ -636,7 +636,9 @@ addition (both engines, vectors) made in K6.
   machine moves with the plant only** (its sequence's moves, commands, trips' and interlocks' actions on it are not
   taken), and **while a machine is mirrored the bench's trips are held** (not counted, not latched): the plant's
   protection trips the plant's machine and the mirror brings its state; a bench trip from a value the mirror can't
-  reach (the gas turbine's flame, below) would otherwise trip a running mirror. `plant3d-v1.json`, `plant3d-v2.json`
+  reach (the gas turbine's flame, below) would otherwise trip a running mirror. A stateless node that reads a mirrored
+  value (a turbine's rpm from its speed, the speed checks) is made in step 2, before the overwrite: from a mirrored
+  stateful node it reads what the bench made of the mirror's last value, so it lags the plant by a step's change. `plant3d-v1.json`, `plant3d-v2.json`
   and `plant3d-realism.json` are byte for byte what they were; `plant3d-bench-v1.json` gains four mirrored runs (the
   transmitter, both turbines, the synthetic kind: followed live, a trip and a command that can't move the mirrored
   machine, the mirror ended) and eight rejects; both engines run them bit for bit.
@@ -659,7 +661,9 @@ addition (both engines, vectors) made in K6.
   state the bench's, the overwrite's rules), the bench vectors in both engines (`GdscriptBench`),
   `apps/plant3d/tests/test_workshop_mirror.gd` (from the card: the plant's values on the bench, read only, frozen in
   single play with the plant paused and not stepping, followed in a session with the plant running, the units, the
-  turbines, the free bench from elsewhere; the app's resolution the reference's).
+  turbines, the free bench from elsewhere), `tests/test_plant3d_sim.py MirrorSources` (the app's resolution at all 37 codes
+  of the three kinds exactly the reference's, `sim/tests/mirror_sources.gd`). The app's loader checks the entries'
+  shape only; their rules are the reference's, which the content build runs.
 
 ### 6.6 The steam turbine's bench (K4b)
 

@@ -518,7 +518,9 @@ func _start_mirror() -> void:
 	var now := Mirror.read(r, pe)
 	bench.set_mirror(now[0], now[1])
 	if mirror_live:
-		bench.mirror_live = func(): return Mirror.read(mirror_info, _plant_engine())
+		bench.mirror_live = func():
+			var pe2 = _plant_engine()
+			return Mirror.read(mirror_info, pe2) if pe2 != null else bench._mir   # (no plant: the mirror stands)
 	bench.prime()
 
 ## The mirror left for the free bench (the Run panel's "Leave the mirror"): the bench from its start state, the

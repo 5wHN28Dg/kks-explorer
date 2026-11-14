@@ -19,8 +19,8 @@
 ## for a trainee who walks a little first; `cold=1` enters at once instead (K3's measurement: the machine's first frame
 ## then compiles them). It logs `WORKSHOP waited … ms`.
 ## `mirror=CODE` (K6, §6.5): both entries open as the card does, the plant's equipment CODE mirrored on the bench
-## (its kind, unless `kind=` names it); the bench's commands, sliders and faults are then refused as read only, and the
-## taking apart while it runs, as for a trainee.
+## (its kind, unless `kind=` names it); the walk then sweeps no slider and switches nothing on, its commands and faults
+## are refused as read only, and the taking apart while it runs, as for a trainee.
 extends Node
 
 const SECONDS := 180.0
@@ -194,9 +194,10 @@ func _process(delta: float) -> void:
 	if not running or done:
 		return
 	t += delta
-	if ws.bench.loaded() and fmod(t, 0.5) < delta:
+	var own: bool = ws.bench.loaded() and ws.mirror_code == ""   # (a mirror's inputs are the plant's: read only)
+	if own and fmod(t, 0.5) < delta:
 		_bench_sweep()
-	if ws.bench.loaded():   # (every frame: at 30× a frame is 1.5 s of bench time, the synchronising window a few)
+	if own:   # (every frame: at 30× a frame is 1.5 s of bench time, the synchronising window a few)
 		_switch_on()
 	ws.cam.yaw += ORBIT_RATE * delta
 	ws.cam.place()
