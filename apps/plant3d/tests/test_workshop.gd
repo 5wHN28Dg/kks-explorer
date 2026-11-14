@@ -47,6 +47,9 @@ const PASSES := {
 	"steam_turbine|valve_r|ctrl_r": "the same chest on the other side",
 	"motor|end_shield_de|rotor": "the plant draws the drive-end shield's face closed and the shaft's stub standing on it: "
 		+ "the shield comes off forwards over the stub, as a real one does through its bore",
+	"shell_tube_hx|saddles|tubesheet_f": "the plant draws the saddles as boxes reaching 0.3 m up into the shell (a "
+		+ "real saddle is a cradle under it): the bundle's floating tubesheet passes the front one's top as the bundle "
+		+ "is drawn out (its lowest tubes, baffles and tie rods stand in their tops already, assembled)",
 	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
 		+ "comes out through its wall",
 }
@@ -58,6 +61,13 @@ const WEDGES := {"valve_gate": ["wedge", "seat_rings", "stem"]}
 ## A butterfly valve's disc, its seat (the liner) and the moving piece that turns it ("kind": [disc, seat, moving])
 ## (_discs).
 const DISCS := {"valve_butterfly": ["disc", "liner", "disc"]}
+## A plate heat exchanger's frame plate, pressure plate, plates (in order from the pressure plate's side) and bolt
+## groups ("kind": {...}): the plates lie square between the two plates and the bolts span them (_packs).
+const PACKS := {"plate_hx": {"frame": "frame_plate", "pressure": "pressure_plate",
+	"plates": ["end_plate_1", "plates", "end_plate_2"], "bolts": ["tightening_bolts", "locking_bolts"]}}
+## A shell-and-tube exchanger's tubes, its tubesheets (stationary, floating) and its shell ("kind": {...}): the tubes
+## run straight from one tubesheet to the other inside the shell's bore (_bundles).
+const BUNDLES := {"shell_tube_hx": {"tubes": "tubes", "sheets": ["bundle", "tubesheet_f"], "shell": "shell"}}
 const CELL := 0.25   # the cells' width (m) in which the explode's paths are compared
 const SMALL := 0.1   # the longest edge of a small triangle there (m)
 const FIXTURE := "res://tests/fixtures/workshop_gadget.gd"
@@ -141,6 +151,8 @@ func _kind(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> voi
 	_seats(part, ws)
 	_wedge(part, ws)
 	_discs(part, ws)
+	_packs(part, ws)
+	_bundles(part, ws)
 	if r.scene != null:
 		_explode_paths(part, r.scene)
 	print("workshop: %s %d components, %d fastener groups, %d triangles (plant %d)" % [part, ws.components.size(),
@@ -902,6 +914,245 @@ func _discs(part: String, ws: Dictionary) -> void:
 		turned = maxf(turned, absf((rot * (p - o) + o - cs).dot(across)))
 	check(mv.travel > 0.0 and turned <= thick + 0.001, "%s: turning %s by its travel lays %s edge-on in the bore (%.1f mm across it, %.1f mm thick)" % [
 		part, who[2], who[0], turned * 1000.0, thick * 1000.0])
+
+## A component's triangles in the part's frame (Godot's axes), every layer: [[a, b, c], ...]; `tags` limits the layers.
+func _tris_of(ws: Dictionary, comp: String, tags := []) -> Array:
+	var out: Array = []
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		if L.comp != comp or (not tags.is_empty() and not L.tag in tags):
+			continue
+		var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		for t in range(0, idx.size(), 3):
+			out.append([v[idx[t]] + pr[1], v[idx[t + 1]] + pr[1], v[idx[t + 2]] + pr[1]])
+	return out
+
+## The span [lo, hi] of triangles along the axis a.
+func _span(tris: Array, a: Vector3) -> Vector2:
+	var lo := INF
+	var hi := -INF
+	for t in tris:
+		for p: Vector3 in t:
+			lo = minf(lo, p.dot(a))
+			hi = maxf(hi, p.dot(a))
+	return Vector2(lo, hi)
+
+## The plane across the axis a in which a component's faces looking along `side` (+1 or -1 times a) have the most
+## area: a plate's face that way.
+func _face_at(tris: Array, a: Vector3, side: float) -> float:
+	var area := {}
+	for t in tris:
+		var n: Vector3 = (t[2] - t[0]).cross(t[1] - t[0])   # outwards (Godot's front faces are clockwise)
+		if n.length() < 1e-12 or n.normalized().dot(a) * side < 0.9999:
+			continue
+		var k := snappedf((t[0] as Vector3).dot(a), 0.0001)
+		area[k] = area.get(k, 0.0) + n.length() * 0.5
+	var best := 0.0
+	var at := NAN
+	for k in area:
+		if area[k] > best:
+			best = area[k]
+			at = k
+	return at
+
+## Triangles split into their connected pieces (joined by their corners, to 0.01 mm): [[triangles], ...].
+func _pieces_of(tris: Array) -> Array:
+	var parent := {}
+	var find := func(k: String) -> String:
+		while parent[k] != k:
+			k = parent[k]
+		return k
+	for t in tris:
+		var ks: Array = []
+		for p: Vector3 in t:
+			var k := _q(p)
+			if not parent.has(k):
+				parent[k] = k
+			ks.append(k)
+		for j in range(1, 3):
+			var x: String = find.call(ks[0])
+			var y: String = find.call(ks[j])
+			if x != y:
+				parent[y] = x
+	var groups := {}
+	for t in tris:
+		var k: String = find.call(_q(t[0]))
+		if not groups.has(k):
+			groups[k] = []
+		groups[k].append(t)
+	return groups.values()
+
+## A plate heat exchanger's pack (PACKS): every plate's faces lie square to the line from the pressure plate to the
+## frame plate (or along it); the plates follow each other along it without a gap or an overlap (1 mm), from the
+## pressure plate's inner face to the frame plate's; every bolt of the groups runs along that line, from beyond the
+## pressure plate's outer face to beyond the frame plate's, beside the plates (never through them).
+func _packs(part: String, ws: Dictionary) -> void:
+	if not PACKS.has(part):
+		return
+	var w: Dictionary = PACKS[part]
+	var frame := _tris_of(ws, w.frame)
+	var press := _tris_of(ws, w.pressure)
+	var plates: Array = []
+	for c in w.plates:
+		plates.append(_tris_of(ws, c))
+	for x in [frame, press] + plates:
+		check(not (x as Array).is_empty(), "%s: a part of the plate pack is drawn" % part)
+		if (x as Array).is_empty():
+			return
+	var box := func(tris: Array) -> AABB:
+		var b := AABB(tris[0][0], Vector3.ZERO)
+		for t in tris:
+			for p: Vector3 in t:
+				b = b.expand(p)
+		return b
+	var pack: AABB = box.call(plates[0])
+	for x in plates:
+		pack = pack.merge(box.call(x))
+	# the pack's line: the normal of the pressure plate's largest face towards the pack
+	var a := Vector3.ZERO
+	var towards: Vector3 = pack.get_center() - (box.call(press) as AABB).get_center()
+	var most := 0.0
+	for t in press:
+		var n: Vector3 = (t[2] - t[0]).cross(t[1] - t[0])   # outwards
+		if n.length() * 0.5 > most and n.dot(towards) > 0.0:
+			most = n.length() * 0.5
+			a = n.normalized()
+	var f_in: float = _face_at(frame, a, -1.0)
+	var f_out: float = _face_at(frame, a, 1.0)
+	var p_in: float = _face_at(press, a, 1.0)
+	var p_out: float = _face_at(press, a, -1.0)
+	var at := p_in
+	for i in plates.size():
+		var bad := 0
+		for t in plates[i]:
+			var n: Vector3 = (t[1] - t[0]).cross(t[2] - t[0])
+			if n.length() > 1e-12 and absf(n.normalized().dot(a)) > 0.0001 and absf(n.normalized().dot(a)) < 0.9999:
+				bad += 1
+		check(bad == 0, "%s: %s: %d faces lie neither square to the pack's line nor along it" % [part, w.plates[i], bad])
+		var sp := _span(plates[i], a)
+		check(absf(sp.x - at) <= 0.001, "%s: %s starts %.1f mm from where the one before it ends (%s)" % [part,
+			w.plates[i], (sp.x - at) * 1000.0, "the pressure plate" if i == 0 else w.plates[i - 1]])
+		at = sp.y
+		# plate by plate: its faces across the line lie in planes; between two plates two faces share a plane (twice
+		# a plate's face area there), at the component's ends one; no two planes closer than half a millimetre (a
+		# plate of no thickness, or one drawn over another, shows here)
+		var planes := {}
+		for t in plates[i]:
+			var n: Vector3 = (t[1] - t[0]).cross(t[2] - t[0])
+			if n.length() > 1e-12 and absf(n.normalized().dot(a)) >= 0.9999:
+				var k := snappedf((t[0] as Vector3).dot(a), 0.0001)
+				planes[k] = planes.get(k, 0.0) + n.length() * 0.5
+		var ks: Array = planes.keys()
+		ks.sort()
+		var one: float = planes[ks[0]] if not ks.is_empty() else 0.0
+		for j in ks.size():
+			var want := one if j == 0 or j == ks.size() - 1 else one * 2.0
+			check(absf(planes[ks[j]] - want) <= one * 0.01, "%s: %s: the faces at %.4f have %.3f m² where %.3f are a plate's (each plate once, between its neighbours)" % [
+				part, w.plates[i], ks[j], planes[ks[j]], want])
+			check(j == 0 or ks[j] - ks[j - 1] >= 0.0005, "%s: %s: two faces %.2f mm apart (a plate of no thickness or drawn twice)" % [
+				part, w.plates[i], (ks[j] - ks[j - 1]) * 1000.0 if j > 0 else 0.0])
+	check(absf(at - f_in) <= 0.001, "%s: the pack ends %.1f mm from the frame plate's face" % [part, (at - f_in) * 1000.0])
+	for gid in w.bolts:
+		var found := false
+		for f in ws.fasteners:
+			if f.id != gid:
+				continue
+			found = true
+			for t in f.items:
+				var bb := AABB()
+				var first := true
+				for k in f.layers:
+					var b: AABB = (t as Transform3D) * ((f.layers[k].mesh as ArrayMesh).get_aabb())
+					bb = b if first else bb.merge(b)
+					first = false
+				var lo := INF
+				var hi := -INF
+				var wide := 0.0
+				for j in 8:
+					var c: Vector3 = bb.get_endpoint(j)
+					lo = minf(lo, c.dot(a))
+					hi = maxf(hi, c.dot(a))
+				var along := bb.size.dot(a.abs())
+				wide = (bb.size - a.abs() * along).length()
+				check(along > 10.0 * wide, "%s: a bolt of %s runs along the pack's line" % [part, gid])
+				check(lo < p_out and hi > f_out, "%s: a bolt of %s spans the pack from the pressure plate's outer face to the frame plate's (%.3f to %.3f against %.3f to %.3f)" % [
+					part, gid, lo, hi, p_out, f_out])
+				check(not bb.grow(-0.0005).intersects(pack), "%s: a bolt of %s passes beside the plates, not through them" % [part, gid])
+		check(found, "%s: the bolt group %s" % [part, gid])
+
+## A shell-and-tube exchanger's bundle (BUNDLES): each tube (a connected piece of the tubes' mesh) runs straight along
+## the line from the stationary tubesheet to the floating one, from the one's outer face to the other's (expanded
+## into both, their ends flush, within 1 mm), and lies inside the floating tubesheet's rim and the shell's bore.
+func _bundles(part: String, ws: Dictionary) -> void:
+	if not BUNDLES.has(part):
+		return
+	var w: Dictionary = BUNDLES[part]
+	var tubes := _tris_of(ws, w.tubes)
+	var s0 := _tris_of(ws, w.sheets[0])
+	var s1 := _tris_of(ws, w.sheets[1])
+	var shell := _tris_of(ws, w.shell, ["hidden"])   # its bore
+	for x in [tubes, s0, s1, shell]:
+		check(not (x as Array).is_empty(), "%s: a part of the bundle is drawn" % part)
+		if (x as Array).is_empty():
+			return
+	var centre := func(tris: Array) -> Vector3:
+		var b := AABB(tris[0][0], Vector3.ZERO)
+		for t in tris:
+			for p: Vector3 in t:
+				b = b.expand(p)
+		return b.get_center()
+	var c0: Vector3 = centre.call(s0)
+	var a: Vector3 = ((centre.call(s1) as Vector3) - c0).normalized()
+	var off := func(p: Vector3) -> float: return ((p - c0) - a * (p - c0).dot(a)).length()
+	var sp0 := _span(s0, a)
+	var sp1 := _span(s1, a)
+	var rim := 0.0
+	for t in s1:
+		for p: Vector3 in t:
+			rim = maxf(rim, off.call(p))
+	var bore := INF
+	for t in shell:
+		for p: Vector3 in t:
+			bore = minf(bore, off.call(p))
+	# the tubes one by one
+	var groups := {}
+	var gi := 0
+	for pc in _pieces_of(tubes):
+		groups[gi] = pc
+		gi += 1
+	check(groups.size() >= 2, "%s: the tubes are drawn (%d)" % [part, groups.size()])
+	var bad := {}
+	for k in groups:
+		var tr: Array = groups[k]
+		var sp := _span(tr, a)
+		# its centre line at each end: the middle of its points there, across the line
+		var ends := [Vector3.ZERO, Vector3.ZERO]
+		var cnt := [0, 0]
+		var reach := 0.0
+		for t in tr:
+			for p: Vector3 in t:
+				var q: float = p.dot(a)
+				for e in 2:
+					if absf(q - (sp.x if e == 0 else sp.y)) <= 0.0001:
+						ends[e] += (p - c0) - a * (p - c0).dot(a)
+						cnt[e] += 1
+				reach = maxf(reach, off.call(p))
+		var e0: Vector3 = ends[0] / maxi(cnt[0], 1)
+		var e1: Vector3 = ends[1] / maxi(cnt[1], 1)
+		if e0.distance_to(e1) > 0.001:
+			bad["a tube leans off the bundle's line (%.1f mm over its length)" % (e0.distance_to(e1) * 1000.0)] = true
+		if absf(sp.x - sp0.x) > 0.001:
+			bad["a tube's end is not at the stationary tubesheet's outer face (%.1f mm from it)" % ((sp.x - sp0.x) * 1000.0)] = true
+		if absf(sp.y - sp1.y) > 0.001:
+			bad["a tube's end is not at the floating tubesheet's outer face (%.1f mm from it)" % ((sp.y - sp1.y) * 1000.0)] = true
+		if reach > rim + 0.0005 or reach > bore + 0.0005:
+			bad["a tube reaches %.1f mm from the axis, past the floating tubesheet's rim (%.1f) or the shell's bore (%.1f)" % [
+				reach * 1000.0, rim * 1000.0, bore * 1000.0]] = true
+	for b in bad:
+		check(false, "%s: %s" % [part, b])
+	print("workshop: %s %d tubes from %s to %s" % [part, groups.size(), w.sheets[0], w.sheets[1]])
 
 ## Two unit vectors across d.
 func _perp(d: Vector3) -> Array:

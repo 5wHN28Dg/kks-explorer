@@ -199,6 +199,34 @@ class WorkshopData(unittest.TestCase):
         for a, b in (('actuator', 'packing'), ('packing', 'shaft'), ('shaft', 'disc'), ('disc', 'liner')):
             self.assertLess(u.index(a), u.index(b), (a, b))
 
+    def test_the_heat_exchangers_pass(self):
+        # K6: the plate heat exchanger (Alfa Laval's maintenance manual) and the shell-and-tube exchanger with a packed
+        # floating tubesheet (Xylem's CPK manual, API Heat Transfer's Basco guide)
+        cases = {'plate_hx': (8, {'plates': 300, 'height': 2.5}, {'tightening_bolts', 'locking_bolts'}),
+                 'shell_tube_hx': (12, {'d': 1.2, 'length': 5, 'orientation': 'horizontal'}, {'bonnet_bolts'})}
+        for part, (n, params, fast) in cases.items():
+            v = json.loads(self.files['workshop/%s.json' % part])
+            self.assertEqual(self.b.workshop[part]['components'], n, part)
+            self.assertEqual(v['params'], params, part)
+            self.assertEqual(set(v['fasteners']), fast, part)
+        undo = lambda part: [s['place'] for s in json.loads(self.files['workshop/%s.json' % part])['assembly']][::-1]
+        # opening the plate package (pp. 45-48): the locking bolts, then the tightening bolts, the pressure plate pushed
+        # back, then the plates one by one from the pressure plate's side
+        u = undo('plate_hx')
+        self.assertEqual(u[0], 'locking_bolts')
+        for a, b in (('locking_bolts', 'tightening_bolts'), ('tightening_bolts', 'pressure_plate'),
+                     ('pressure_plate', 'end_plate_1'), ('end_plate_1', 'plates'), ('plates', 'end_plate_2')):
+            self.assertLess(u.index(a), u.index(b), (a, b))
+        # the shell-and-tube taken apart (CPK items 3-6, 16): the bonnets off (the front one's studs first), the outer
+        # packing, the lantern ring, the inner packing, then the bundle drawn
+        u = undo('shell_tube_hx')
+        self.assertEqual(u[0], 'bonnet_bolts')
+        for a, b in (('bonnet_bolts', 'front_bonnet'), ('front_bonnet', 'bundle'), ('rear_bonnet', 'packing_out'),
+                     ('packing_out', 'lantern_ring'), ('lantern_ring', 'packing_in'), ('packing_in', 'bundle')):
+            self.assertLess(u.index(a), u.index(b), (a, b))
+        v = json.loads(self.files['workshop/shell_tube_hx.json'])
+        self.assertTrue(v['components']['bundle'].get('sealed'))
+
     def test_context(self):
         w = copy.deepcopy(self.fixture)
         w.pop('params', None)
