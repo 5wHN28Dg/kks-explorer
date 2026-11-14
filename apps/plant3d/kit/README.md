@@ -553,7 +553,7 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
 - **generator** (the air-cooled turbo-generator, K6: kit/parts_machines.gd `_gen_*`; the plant's first generator, the
   gas turbine's, built with its shaft line: the coupling at the drive end): the stator in its frame (core, end
   windings), the end shields in halves at both ends, a fan shield round each of the rotor's fans, the bearing pedestals
-  with their top halves, the rotor (body, retaining rings, two fans of straight blades, journals), the coolers on top
+  with their top halves, the rotor (body, retaining rings, two fans of straight blades), the coolers on top
   and their pipes, the terminal box, the brushless exciter (its stator and rotor) under its hood; the coupling's bolts.
   **The order** is BHEL's overhaul tender's (the user's decision, 2026-11-14: a contract scope for a hydrogen-cooled
   250 MW machine, **not a maker's manual**, which the data file and every step say), with WEG's S line manual (§8.1,
@@ -563,15 +563,16 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   air-cooled: the steps say so). **Simplified:** the plant's frame, bearing pedestals and exciter hood are one stand-in
   (all its identify-class paint), split into the frame's walls (closed by a wall inside and a ring at each end), the end
   shields' halves (slabs whose outer faces are the plant's ends), the pedestals and their caps (cut at the shaft line)
-  and the hood; the plant draws the end shields' faces closed, so the rotor's shaft stops at their inner faces and is
-  drawn again as its journals in the pedestals; the bearings' shells and oil catchers are their pedestals' and caps'
+  and the hood; the plant draws the end shields' faces closed, so the rotor's shaft stops at their inner faces, and the
+  pedestals are its boxes cut at the shaft line, so the journals are not drawn in them; the bearings' shells and oil catchers are their pedestals' and caps'
   (not drawn apart); the rotor's slots, wedges and winding are its body, its fans twelve straight blades (they lean
   neither way: `tests/test_workshop.gd` counts no leaning row) whose tips, like the retaining rings, pass through the
   stator's bore and the fan shields when it is threaded out; the bushings are inside the terminal box (one part), which
   the plant draws sunk in the plinth and which stays; the exciter's bed is not drawn (the plant's hood overhangs the
   plinth) and its coupling to the rotor is not drawn; the exciter's hood is the plant's closed drum, lifted over the
-  exciter (listed in `PASSES`); the coolers are two bundles in the plant's housing (its lifting lug on it), the pipes
-  thin. **The explode:** the coolers and the hood lift, the pipes and the exciter move off, the end shields' upper
+  exciter (listed in `PASSES`), and its end grille is the plant's disc 10 mm off the hood across the shaft's end (in
+  `RUBS`); the coolers are two bundles in the plant's housing (its lifting lug on it), the pipes
+  thin. **The explode:** the coolers, the hood and the exciter under it lift, the pipes move off, the end shields' upper
   halves lift and their lower halves and the pedestals move aside (the bearings' top halves then lift off them), then
   the fan shields slide out along the shaft and the rotor is threaded out through the drive end. **Known limits:** a
   hydrogen-cooled generator has no tree; built and tested for the plant's first generator only.

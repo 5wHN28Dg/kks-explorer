@@ -37,6 +37,8 @@ const RUBS := {
 	"fan_axial|hub|gb_case": "the plant draws the gear case's top 0.1 m up inside the hub (a real hub sits on the gear "
 		+ "drive's output shaft above the case): the Workshop keeps the plant's outline, and the output shaft and "
 		+ "every part inside the case stay clear of the hub",
+	"generator|exc_rotor|exc_grille": "the plant draws the exciter hood's end grille as a disc 10 mm off the hood, "
+		+ "across the shaft's end where it leaves the hood",
 }
 const RUB := 0.002   # how far (m) a turning surface may reach into a standing one's band (a polygon's flats, a fit)
 const TURN_SMALL := 0.05   # the longest edge (m) of the pieces a triangle is halved into for it

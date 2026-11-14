@@ -80,7 +80,9 @@ def components():
                     'rings; a fan at each end drives the cooling air. Turned by the turbine through the coupling.',
                     'Alloy steel forging, copper field winding, non-magnetic steel retaining rings', [WEG, BHEL]),
         'exc_cover': _c('Exciter hood', 'Encloses the exciter at the end of the shaft line.', 'Sheet steel',
-                        [BHEL]),
+                        [BHEL], sealed_why='The end grille is part of the hood: they come off as one.'),
+        'exc_grille': _c('Exciter hood\'s end grille', 'Lets the exciter\'s cooling air out at the hood\'s end.',
+                         'Sheet steel', [BHEL]),
         'exciter': _c('Exciter', 'A brushless exciter: its stator on its bed, its rotor (the armature, the diode wheel) '
                       'on the shaft\'s end, feeding the rotor\'s field without brushes.', 'Steel, copper windings, '
                       'diodes', [BHEL, WEG],
@@ -168,6 +170,7 @@ def assembly(coupled):
         _step('exc_cover', 'Fit the exciter\'s hood.',
               [('exciter', 'The hood closes over the exciter: set it on its bed first.',
                 'Take the hood off first.')], why='The enclosures come off first of all (a.1, a.3).'),
+        _step('exc_grille', 'The end grille comes with the hood.'),
         _step('cooler', 'Lower the coolers into their housing on top of the frame.',
               [('stator', 'The coolers sit on the stator\'s frame: it is there first.',
                 'Lift the coolers off before the stator is touched.')],
@@ -186,7 +189,7 @@ def assembly(coupled):
     # exciter's hood and the exciter, a.5 the pipes, the coolers, the end shields and fan shields, a.7 the bearings and
     # the bottom end shields, a.8 the rotor)
     order = ['plinth', 'stator', 'rotor', 'es_te_lo', 'es_ee_lo', 'ped_te', 'ped_ee', 'fan_shield_te', 'fan_shield_ee',
-             'es_te_up', 'es_ee_up', 'cooler', 'cw_pipes', 'exciter', 'exc_rotor', 'exc_cover', 'coupling_bolts',
+             'es_te_up', 'es_ee_up', 'cooler', 'cw_pipes', 'exciter', 'exc_rotor', 'exc_cover', 'exc_grille', 'coupling_bolts',
              'brg_cap_te', 'brg_cap_ee', 'terminal_box']
     by = {s['place']: s for s in steps}
     return [by[p] for p in order if p in by]

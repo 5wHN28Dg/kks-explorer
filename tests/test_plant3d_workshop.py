@@ -224,7 +224,7 @@ class WorkshopData(unittest.TestCase):
         for p in ('rotor', 'fan', 'fan_cowl', 'end_shield_de'):
             self.assertIn('derived from how the motor is built', why[p], p)
         g = json.loads(self.files['workshop/generator.json'])
-        self.assertEqual(self.b.workshop['generator']['components'], 19)
+        self.assertEqual(self.b.workshop['generator']['components'], 20)
         self.assertNotIn('params', g)
         self.assertEqual(g['context'], ['axis_z', 'shaft_lo', 'shaft_hi'])
         self.assertIn('not a maker\'s manual', next(s['cite'] for s in g['sources'] if s['id'] == 'bhel_thri'))

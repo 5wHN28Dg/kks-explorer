@@ -293,6 +293,7 @@ static func generator(_part: String, g) -> void:
 		m.cyl(Vector3(0, -L * 0.5 - 0.4, za), Vector3(0, -L * 0.5 - 0.4 - d * 0.4, za), d * 0.24)
 	if tree:
 		g.only()
+		g.comp("exc_grille")
 	m.use("dark", "detail", 0.1)
 	m.disk(Vector3(0, -L * 0.5 - 0.41 - d * 0.4, za), Vector3(0, -1, 0), d * 0.18, 24)
 	if tree:
@@ -333,7 +334,7 @@ static func _gen_r(L: float, d: float) -> Dictionary:
 		"yc": yc, "yr": yc + d * 0.12, "yf": yf, "fw": 0.05, "fsw": 0.085}
 
 ## The tree. The plinth, the stator and the terminal box stay; the coolers lift, their pipes come off sideways, the
-## exciter's hood lifts and the exciter leaves its bed away from the generator, the end shields' upper halves lift and
+## exciter's hood lifts and the exciter is lifted off its bed under it, the end shields' upper halves lift and
 ## their lower halves and the bearing pedestals move aside (the bearings' top halves then lift off the pedestals); last
 ## the fan shields slide out along the shaft and the rotor is threaded out of the bore through the drive end.
 static func _gen_comps(g, L: float, d: float, za: float, hw: float, zb: float, top: float) -> void:
@@ -354,8 +355,9 @@ static func _gen_comps(g, L: float, d: float, za: float, hw: float, zb: float, t
 	g.comp("ped_ee", {"explode": [X, ped_x]})
 	g.comp("brg_cap_te", {"parent": "ped_te", "explode": [Z, 1.0]})
 	g.comp("brg_cap_ee", {"parent": "ped_ee", "explode": [Z, 1.0]})
-	g.comp("exc_cover", {"explode": [Z, 2.0], "sym": [Y, 0]})
-	g.comp("exciter", {"explode": [-Y, 2.0], "sym": [Y, 0]})
+	g.comp("exc_cover", {"explode": [Z, 3.5], "sym": [Y, 0]})
+	g.comp("exc_grille", {"parent": "exc_cover", "explode": [Z, 0.0], "thin": true})
+	g.comp("exciter", {"explode": [Z, 2.0], "sym": [Y, 0]})
 	g.comp("exc_rotor", {"parent": "exciter", "sym": [Y, 0], "pivot": Vector3(0, -L * 0.5 - 0.4 - d * 0.2, za)})
 	g.comp("rotor", {"parent": "stator", "explode": [Y, L + 1.5], "anim": "shaft", "sym": [Y, 0],
 		"pivot": Vector3(0, 0, za)})
@@ -449,7 +451,7 @@ static func _gen_frame(g, m, L: float, d: float, za: float, hw: float, zb: float
 	g.only()
 
 ## What turns, in the `shaft` node: the rotor (its shaft stopping at the end shields' inner faces, which the plant
-## draws closed, and drawn again as its journals in the bearing pedestals; the body in the stator's bore, the retaining
+## draws closed; its journals are not drawn in the pedestals, which are the plant's boxes cut at the shaft line; the body in the stator's bore, the retaining
 ## rings over its end windings, a fan of straight blades at each end), and the exciter's rotor in its hood.
 static func _gen_insides(g, L: float, d: float, za: float, top: float) -> void:
 	var k := _gen_r(L, d)
@@ -461,8 +463,6 @@ static func _gen_insides(g, L: float, d: float, za: float, top: float) -> void:
 	sh.use("steel", "identify")
 	var ye := L * 0.5 - GEN_SHIELD - 0.01
 	sh.cyl(at.call(-ye), at.call(ye), k.shaft, -1.0, 16)
-	for s: float in [-1.0, 1.0]:   # the journals, in the pedestals
-		sh.cyl(at.call(s * (L * 0.5 + 0.002)), at.call(s * (L * 0.5 + 0.398)), k.shaft, -1.0, 16)
 	sh.use("steel_dark", "identify")
 	sh.cyl(at.call(-k.yc), at.call(k.yc), k.body, -1.0, 32)   # the body (its slots and wedges not drawn)
 	sh.use("chrome", "identify")
