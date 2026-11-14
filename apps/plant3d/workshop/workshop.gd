@@ -18,6 +18,7 @@ const XRAY := preload("res://workshop/ws_xray.gdshader")
 const Views = preload("res://workshop/views.gd")
 const BenchClock = preload("res://workshop/bench_clock.gd")
 const BenchView = preload("res://workshop/bench_view.gd")
+const Mirror = preload("res://workshop/mirror.gd")
 const WARM_UP_S := 4.0          # after the plant's first walkable frame: the ghost's pipelines queued (§7.1)
 const SimClock = preload("res://ui/sim_clock.gd")
 const AlarmPanel = preload("res://ui/alarm_panel.gd")
@@ -99,6 +100,11 @@ var views := Views.new()        # X-ray, cutaway, section, flow; the Workshop's 
 var bench := BenchClock.new()   # the kind's bench model and its clock (§6)
 var bench_view := BenchView.new()   # the bench's values drawn on the machine
 var run_note := ""              # the bench's last refusal, as a sentence
+var mirror_code := ""           # the plant's equipment mirrored on the bench, read only ("" none: §6.5)
+var mirror_info := {}           # where its values come from (workshop/mirror.gd resolve)
+var mirror_live := false        # it follows the plant (a session) rather than standing as the trainee left it
+var _want_mirror := false
+const READ_ONLY := "A mirror of the plant is read only."
 var _cur_m := {}                # id -> Transform3D: each part where it stands now, in the machine's frame (apply)
 
 func setup(m) -> void:
@@ -135,10 +141,15 @@ var force_session := false      # (tests: the plant behaves as in a session, wit
 func session_on() -> bool:
 	return force_session or (ui != null and ui.session != null and ui.session.active())
 
-## Opens the Workshop on a part kind (from the card: `code` the equipment it was opened from).
-func open(p: String, code := "") -> bool:
+## Opens the Workshop on a part kind (from the card: `code` the equipment it was opened from; `mirror`: its state in
+## the plant on the bench, read only, where the kind's bench mirrors it at that code, §6.5).
+func open(p: String, code := "", mirror := false) -> bool:
 	if is_open or not has_kind(p) or not can_open():
 		return false
+	_want_mirror = mirror and code != ""
+	mirror_code = ""
+	mirror_info = {}
+	mirror_live = false
 	_t0 = Time.get_ticks_usec()
 	_gen += 1
 	is_open = true
@@ -170,6 +181,10 @@ func close() -> void:
 		return
 	failed = {}
 	_closed_frame = Engine.get_process_frames()
+	mirror_code = ""
+	mirror_info = {}
+	mirror_live = false
+	bench.clear_mirror()
 	var t0 := Time.get_ticks_usec()
 	_gen += 1
 	var gen := _gen
@@ -442,6 +457,8 @@ func _show_machine(ps: PackedScene) -> void:
 	if String(words.get("bench_text", "")) != "":
 		if not bench.load_text(words.bench_text, comps.keys()):
 			push_warning("Workshop: the bench model of %s can't run: %s" % [part, bench.error])
+		elif _want_mirror and failed.is_empty():
+			_start_mirror()
 	else:
 		bench.e = null
 	bench_view.setup(machine)
@@ -467,6 +484,8 @@ func _show_machine(ps: PackedScene) -> void:
 	cam.frame(box, false, true)
 	cam.set_home()
 	panels.machine_shown()
+	if mirror_code != "":
+		panels.show_run(true)   # (the mirror's words and readings first)
 	apply()
 	if not failed.is_empty():
 		show_failed()
@@ -480,6 +499,47 @@ func _show_machine(ps: PackedScene) -> void:
 		return   # left (and maybe entered again) meanwhile
 	entry_ms = (Time.get_ticks_usec() - _t0) / 1000.0
 	shown.emit(part)
+
+## The live mirror (§6.5): the bench's mirror entries resolved at the equipment it was opened from, by that code's
+## bindings in the plant's model; the plant's values and machine states now written over the bench's after each step's
+## step 2. In single play the plant is paused while the Workshop shows, and the mirror stands as the trainee left it
+## (read once); in a session the plant runs on, and the mirror follows it (read before every bench step). Nothing of
+## it at this code (or no plant running): the free bench.
+func _start_mirror() -> void:
+	var pe = _plant_engine()
+	if pe == null or bench.m.mirror.is_empty():
+		return
+	var r := Mirror.resolve(bench.m, pe.m, from_code)
+	if r.values.is_empty() and r.machines.is_empty():
+		return
+	mirror_info = r
+	mirror_code = from_code
+	mirror_live = _session
+	bench.paused = false            # (a pause left from an earlier bench: a mirror shows the plant as it runs)
+	var now := Mirror.read(r, pe)
+	bench.set_mirror(now[0], now[1])
+	if mirror_live:
+		bench.mirror_live = func():
+			var pe2 = _plant_engine()
+			return Mirror.read(mirror_info, pe2) if pe2 != null else bench._mir   # (no plant: the mirror stands)
+	bench.prime()
+
+## The mirror left for the free bench (the Run panel's "Leave the mirror"): the bench from its start state, the
+## trainee's to run and take apart; the plant stays as it was behind it (paused in single play).
+func leave_mirror() -> void:
+	if mirror_code == "":
+		return
+	mirror_code = ""
+	mirror_info = {}
+	mirror_live = false
+	bench.clear_mirror()
+	bench.restart()
+	run_note = ""
+	if panels != null:
+		panels.run_panel.machine_shown()
+
+func _plant_engine():
+	return ui.clock.engine if ui != null and ui.clock != null else null
 
 ## Components and fastener groups by id; home transforms; fastener items to their MultiMeshes (the headless build
 ## keeps no MultiMesh data: the items are in a meta).
@@ -1179,6 +1239,9 @@ func why_no_run() -> String:
 ## A machine command from the Run panel (Start, Stop): Start is refused while the machine stands apart beyond what its
 ## data allows.
 func run_command(at: String, do: String) -> void:
+	if mirror_code != "":
+		run_note = READ_ONLY
+		return
 	if _starts(at, do) and why_no_run() != "":
 		run_note = why_no_run()
 		return
@@ -1195,14 +1258,23 @@ func _starts(at: String, do: String) -> bool:
 
 ## Any other op of the bench (an open, a close, a trip's reset) from the Run panel.
 func run_op(at: String, do: String, trip = null) -> void:
+	if mirror_code != "":
+		run_note = READ_ONLY
+		return
 	run_note = ""
 	bench.e.op(at, do, null, trip)
 
 func restart_bench() -> void:
+	if mirror_code != "":
+		run_note = READ_ONLY
+		return
 	bench.restart()
 	run_note = ""
 
 func toggle_fault(id: String) -> void:
+	if mirror_code != "":
+		run_note = READ_ONLY
+		return
 	if bench.faulted.has(id):
 		for f in bench.m.faults:
 			if f.id == id and not f.repair:

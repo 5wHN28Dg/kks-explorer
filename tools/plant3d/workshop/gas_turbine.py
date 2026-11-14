@@ -662,6 +662,10 @@ def bench_source():
         },
         'readouts': ['rpm', 'exh_flow', 'cpd', 'fuel_flow', 'tit', 'exh_t', 'spread', 'lube_p', 'vib2', 'ph',
                      'slip', 'mw'],
+        # the live plant's gas turbine on the bench (WORKSHOP.md §6.5): its start-up sequence's state and the shaft's
+        # speed (its fuel is a product of the sequence's own values: the state brings it)
+        'mirror': [{'value': 'turbine_state', 'from': {'machine': True}},
+                   {'value': 'speed', 'from': {'bind': 'anim', 'channel': 'shaft'}}],
     }
     oil = '10MBV10'
     return {

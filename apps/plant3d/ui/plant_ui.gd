@@ -460,12 +460,13 @@ func workshop_has(kind: String) -> bool:
 	return main != null and main.workshop != null and main.workshop.has_kind(kind)
 
 
-## Opens the Workshop on a part kind (from the card: `code`, the equipment; from the settings: none).
-func open_workshop(kind: String, code := "") -> bool:
+## Opens the Workshop on a part kind (from the card: `code`, the equipment, and `mirror` its state now on the bench,
+## WORKSHOP.md §6.5; from the settings: none).
+func open_workshop(kind: String, code := "", mirror := false) -> bool:
 	if main == null or main.workshop == null:
 		return false
 	var from_settings: bool = main.hud != null and main.hud.panel.visible
-	if not main.workshop.open(kind, code):
+	if not main.workshop.open(kind, code, mirror):
 		return false
 	if from_settings:
 		main.hud.show_settings(false)

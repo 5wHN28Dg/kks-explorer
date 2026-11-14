@@ -2000,6 +2000,9 @@ class Engine:
         self.events = []
         self.step_no = 0
         self.watch = {}
+        # the Workshop's mirror (WORKSHOP.md §6.5): values and machine states written over step 2's, set by set_mirror
+        self.mirror_vals = []           # [(slot, value)] in slot order
+        self.mirror_mc = {}             # machine id -> the state index it mirrors
         self.state_kks = {self.ix[name]: n['kks'] for name, n, kind in m.values if kind == 'state' and 'kks' in n}
         # steps 4-7's reads of the model as value indexes and step counts, worked out once (the model doesn't change)
         ix = self.ix
@@ -2335,6 +2338,27 @@ class Engine:
 
     def ack(self, alarm, slot=None):
         self._q(('ack', alarm), slot)
+
+    def set_mirror(self, values, states):
+        """The Workshop's mirror (WORKSHOP.md §6.5): from the next step on, after step 2, each machine of `states`
+        ({machine id: state id}) is entered into that state when it stands in another (its `set` applied, the event's
+        cause `mirror`), then each value of `values` ({name: number}) is written over what step 2 gave it; a mirrored
+        machine moves by nothing else (its sequence's moves, commands, trips' and interlocks' actions on it are not
+        taken: the plant moves it), and while any machine is mirrored the trips are held (not counted, not latched: the
+        plant's protection trips the plant's machine, and the mirror brings its state). Not an input (no log, no event,
+        not in the digest); kept until set again ({} and {}: no mirror). A name, machine or state the model doesn't have, or a value that isn't a finite number, is left
+        out."""
+        vals = []
+        for name, v in values.items():
+            if name in self.ix and is_num(v) and math.isfinite(v):
+                vals.append((self.ix[name], float(v)))
+        self.mirror_vals = sorted(vals)
+        mc = {}
+        for x in self.machines:
+            to = states.get(x['id'])
+            if isinstance(to, str) and to in x['_ids']:
+                mc[x['id']] = x['_ids'].index(to)
+        self.mirror_mc = mc
 
     def shelve(self, alarm, seconds, slot=None):
         self._q(('shelve', alarm, seconds), slot)
@@ -2750,6 +2774,8 @@ class Engine:
                 'alarms': [x['id'] for x in self.alarms if x['priority'] == 1 and x['id'] in ra and x['id'] not in rb]}
 
     def _enter(self, mc, to, cause):
+        if cause != 'mirror' and mc['id'] in self.mirror_mc:
+            return      # a mirrored machine moves with the plant's only (set_mirror)
         old = self.mstate[mc['id']]
         new = mc['_ids'].index(to)
         self.mstate[mc['id']] = new
@@ -2931,6 +2957,14 @@ class Engine:
         # 2. values, in order
         for i, fn in self.prog2:
             cur[i] = fn(cur, prev)
+        # 2m. the Workshop's mirror (WORKSHOP.md §6.5, set_mirror): the plant's machine states, then its values
+        if self.mirror_mc:
+            for mc in self.machines:
+                to = self.mirror_mc.get(mc['id'])
+                if to is not None and self.mstate[mc['id']] != to:
+                    self._enter(mc, mc['_ids'][to], 'mirror')
+        for i, v in self.mirror_vals:
+            cur[i] = v
         vals = list(cur)          # conditions in steps 3–7 read the values as step 2 left them
         # 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
         for (kind, work, point, person, reason, owner), npc, slot in noted:
@@ -3049,8 +3083,8 @@ class Engine:
                     self._enter(mc, to, 'next')
                     moved.add(mc['id'])
                     break
-        # 6. trips
-        for t, wi, nd in self.trip_prog:
+        # 6. trips (none while the Workshop's mirror holds a machine: the plant's protection moves it, set_mirror)
+        for t, wi, nd in (() if self.mirror_mc else self.trip_prog):
             tid = t['id']
             if self.latched[tid]:
                 continue
