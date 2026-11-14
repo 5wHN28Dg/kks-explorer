@@ -71,7 +71,8 @@ def components():
                      'bottom half.',
                      'Cast steel, white-metal lined bearing shell', [BHEL, WEG]),
         'ped_ee': _c('Exciter-end bearing pedestal', 'Carries the rotor\'s journal at the exciter end in the bearing\'s '
-                     'bottom half; insulated from its foundation against shaft currents.', 'Cast steel, white-metal lined bearing shell', [BHEL, WEG]),
+                     'bottom half; insulated from its foundation against shaft currents.',
+                     'Cast steel, white-metal lined bearing shell', [BHEL, WEG]),
         'brg_cap_te': _c('Drive-end bearing top half', 'The bearing\'s top half and its cap with the outer oil catcher; '
                          'its temperature sensor comes out first.', 'Cast steel, white-metal lined shell', [BHEL, WEG]),
         'brg_cap_ee': _c('Exciter-end bearing top half', 'The bearing\'s top half and its cap with the outer oil '
