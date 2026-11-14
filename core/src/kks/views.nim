@@ -141,6 +141,12 @@ proc tagView*(m: Model, id: string): JNode =
                      ("direction", S(r.str("direction"))))
   result["location_list"] = rows
   result["list_elev"] = S(rl.elev)
+  # instrument points (a maker's list: the instrument's own elevation and grid), next to the rows, never a conflict
+  var points = newArr()
+  for r in rl.points:
+    points.elems.add O(("desc", S(r.str("desc"))), ("elev", S(r.pointElev)), ("grid", S(r.str("grid"))),
+                       ("text", S(r.pointText)), ("source", S(r.pointSource)))
+  result["instrument_points"] = points
   let eq = if k.len > 0: m.equipment(k) else: newObj()
   result["equipment"] = eq
   # who set each field and when ({field: {by, by_name, at}}; custom fields as "custom:<k>"), from /api/state

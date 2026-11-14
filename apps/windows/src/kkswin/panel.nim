@@ -288,6 +288,12 @@ proc buildPanel*(w: Win, t: Tag) =
       for key in ["level", "cabinet", "direction"]:
         if s(r, key).len > 0: parts.add s(r, key)
       p.field((if s(r, "desc").len > 0: s(r, "desc") else: "Location list"), parts.join(" · "), readonly = true)
+  if rl.points.len > 0:     # where the instrument itself sits (a maker's list): beside the rows, never a conflict
+    p.title("Instrument point")
+    for r in rl.points:
+      p.field((if s(r, "desc").len > 0: s(r, "desc") else: "Instrument point"),
+              (if r.pointText.len > 0: r.pointText else: "—"), readonly = true)
+      if r.pointSource.len > 0: p.dim("Source: " & r.pointSource)
   if t.added.len > 0:
     p.title("Added by hand")
     p.dim("The reader missed this tag; someone marked it on the drawing." & (if t.note.len > 0: " Note: " & t.note else: ""))

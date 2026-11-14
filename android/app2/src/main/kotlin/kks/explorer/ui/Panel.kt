@@ -123,6 +123,15 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                     Field(r.optString("desc").ifEmpty { "Location list" }, listOf("level", "cabinet", "direction").map { r.optString(it) }.filter { it.isNotEmpty() }.joinToString(" · "))
                 } })
             }
+            // where the instrument itself sits (a maker's list; core tagView's instrument_points): never a conflict
+            val points = t.optJSONArray("instrument_points") ?: JSONArray()
+            if (points.length() > 0) {
+                Heading("Instrument point")
+                Fields((0 until points.length()).map { i -> points.getJSONObject(i).let { r ->
+                    Field(r.optString("desc").ifEmpty { "Instrument point" }, r.optString("text").ifEmpty { "—" },
+                        by = r.optString("source").let { if (it.isNotEmpty()) "Source: $it" else "" })
+                } })
+            }
             val code = t.optString("code")
             t.optJSONObject("description")?.let { DescriptionSection(code, it, t.optJSONObject("equipment") ?: JSONObject(), snack) }
             if (link != null && code.isNotEmpty()) Button(onClick = {

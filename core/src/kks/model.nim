@@ -119,7 +119,8 @@ proc buildLocations*(j: JNode): Table[string, seq[JNode]] =
                 elif j.kind == jArr: j.elems
                 else: @[]
   for row in entries:
-    result.mgetOrPut(row.s("kks"), @[]).add row
+    if row.kind == jObj and row.s("kind") in ["", "point"]:   # rows and instrument points; other kinds left out (§19)
+      result.mgetOrPut(row.s("kks"), @[]).add row
 
 const DescriptionMax* = 2000
 
@@ -236,12 +237,39 @@ proc lvlName(l: string): string =
   x
 
 type RefLoc* = object
-  rows*: seq[JNode]
+  rows*: seq[JNode]       ## location rows (the platform or floor, a cabinet …)
+  points*: seq[JNode]     ## instrument points ("kind": "point": the instrument's own elevation and grid)
   elev*, cabinet*: string
 
+proc pointElev*(r: JNode): string =
+  ## an instrument point's elevation as text ("33 m", "12.5 m"), "" without a number
+  let v = r.get("elev_m")
+  if v == nil or v.kind notin {jInt, jFloat}: return ""
+  let x = v.num
+  if x != x or x > 1e6 or x < -1e6: return ""
+  (if x == float(int64(x)): $int64(x) else: $x) & " m"
+
+proc pointText*(r: JNode): string =
+  ## "33 m · grid K16 F08" (the parts there are)
+  var parts: seq[string]
+  if r.pointElev.len > 0: parts.add r.pointElev
+  if r.s("grid").len > 0: parts.add "grid " & r.s("grid")
+  parts.join(" · ")
+
+proc pointSource*(r: JNode): string =
+  ## "<document>, page N" (the parts there are)
+  result = r.s("source")
+  let p = r.get("page")
+  if p != nil and p.kind == jInt: result.add (if result.len > 0: ", page " else: "page ") & $p.i
+
 proc refLoc*(m: Model, body: string): RefLoc =
-  ## the location list's value per field, or "" when the list contradicts itself
-  result.rows = m.locations.getOrDefault(body)
+  ## the location list's value per field, or "" when the list contradicts itself; instrument points apart (PROTOCOL-v2
+  ## §19 locations.json): they never count toward the rows' agreement. Entries of other kinds are left out.
+  for r in m.locations.getOrDefault(body):
+    case r.s("kind")
+    of "": result.rows.add r
+    of "point": result.points.add r
+    else: discard
   var elevs, cabs: HashSet[string]
   for r in result.rows:
     let e = lvlName(r.s("level"))
@@ -340,7 +368,8 @@ proc search*(m: Model, q: string, limit = 60): seq[Tag] =
     if score == 0 and words.len > 0:
       var hay = (m.kindName(t) & " " & m.systemName(if t.kks.len >= 5: t.kks[2 .. 4] else: "") & " " &
                  t.isa & " " & m.equipment(f).s("notes")).toLowerAscii
-      for r in m.refLoc(t.bodyOf).rows: hay.add " " & r.s("desc").toLowerAscii
+      let rl = m.refLoc(t.bodyOf)
+      for r in rl.rows & rl.points: hay.add " " & r.s("desc").toLowerAscii
       var all = true
       for w in words:
         if w notin hay: all = false
