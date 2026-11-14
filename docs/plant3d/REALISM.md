@@ -882,8 +882,11 @@ does is in both engines bit for bit, with vectors.
     tree inside it, loaded on a worker thread) in a SubViewport of its own, every component in ws_lit with its heat ramp
     at full strength (`ws_ramp`: no new shader), an iron palette over the picture's range (the coolest to the hottest
     drawn, at least 10 K, whole degrees), a three-quarter view from above, the spot's cross on the monitored housing,
-    the hottest component named; drawn again only when a temperature moves by 0.1 K. What lies below the plant's floor
-    (a vertical pump's column, bowls and bell in their pit) is not drawn: a camera on the floor doesn't see it. The
+    the hottest component named; drawn again only when a temperature moves by 0.1 K, lit by ambient light alone (so a surface
+    shows the scale's colour). What lies below the plant's floor (a vertical pump's column, bowls and bell in their
+    pit, and its shaft below the floor, cut by ws_lit's section plane) is not drawn, and the view is framed on what
+    stands above: a camera on the floor doesn't see it. Fastener groups are not drawn. A vertical pump's collector
+    point is now titled at its top thrust bearing (it was "drive end"), the same bearing as its oil and its hot spot. The
     scene is the kind's (one per kind), not the instance's size.
   - **The temperatures are model values** (§9.3), named per component in the monitoring file's `picture` (kind, spot,
     parts; `ref/plant3d_monitoring.py` checks the kind is the code's, every component of its tree once, every value in

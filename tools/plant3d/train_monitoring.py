@@ -236,7 +236,9 @@ def monitoring():
     for item in PUMPS:
         p, code, cy, _, _, _, _, _, title, group, _ = item
         rpm = RPM[p.split('_')[0]]
-        points.append({'code': cy, 'kind': 'vib', 'title': f'{title} motor, drive end bearing', 'meter': f'{p}_vel',
+        # (a vertical motor's monitored bearing is its top thrust bearing, the oil bath's: the camera's hot spot too)
+        brg = 'top thrust bearing' if PICTURE_KIND[p.split('_')[0]] == 'pump_vertical' else 'drive end bearing'
+        points.append({'code': cy, 'kind': 'vib', 'title': f'{title} motor, {brg}', 'meter': f'{p}_vel',
                        'rpm': rpm, 'group': group, 'zones': ZONE_LIMITS[group], 'floor': FLOOR,
                        'tones': o,
                        'lines': [{'name': '2×', 'order': 2, 'share': SHARE_2X},

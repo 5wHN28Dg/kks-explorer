@@ -3,8 +3,12 @@
 ## heat view (ws_lit's `ws_ramp`: no new shader), each component at the temperature of the model value the monitoring
 ## file names for it (the monitored bearing's housing, the frame and the sound bearings, what the water wets, the air),
 ## on an iron palette over the range the picture holds, with the spot's cross, the hottest component and the scale.
-## What a camera sees from the floor: the components below the plant's floor (a vertical pump's string in its pit) are
-## not drawn. Drawn once each time a temperature changes by more than STEP_K (a SubViewport rendered on demand).
+## What a camera sees from the floor: nothing below the plant's floor is drawn (a vertical pump's string in its pit:
+## the components wholly below are hidden, and ws_lit's section plane cuts the shaft at the floor), and the view is
+## framed on what is above it. The surfaces are unshaded in effect (ambient light only, so the heat ramp's colour is
+## what the scale shows); fastener groups are not drawn. Drawn once each time a temperature changes by more than STEP_K
+## (a SubViewport rendered on demand). Each kind's scene is loaded once on a worker thread and kept (a rebuilt panel
+## takes it at once; a load under way is waited for, never on the main thread).
 extends VBoxContainer
 
 const W = preload("res://ui/widgets.gd")
@@ -31,6 +35,8 @@ var hi := 1.0
 var renders := 0                # pictures drawn (tests)
 var _loading := ""
 var _mat: ShaderMaterial
+var frame_box := AABB()          # what the view is framed on (tests)
+static var _scenes := {}        # path -> PackedScene, loaded once
 
 
 func setup(p: Dictionary) -> void:
@@ -52,15 +58,10 @@ func setup(p: Dictionary) -> void:
 	en.background_color = Color("#000004")
 	en.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	en.ambient_light_color = Color.WHITE
-	en.ambient_light_energy = 0.9
+	en.ambient_light_energy = 0.75   # (with ws_lit's emission of a quarter of the ramp: the ramp's own colour)
 	en.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	env.environment = en
 	vp.add_child(env)
-	var sun := DirectionalLight3D.new()
-	sun.light_energy = 0.35
-	sun.shadow_enabled = false
-	sun.rotation_degrees = Vector3(-50, 30, 0)
-	vp.add_child(sun)
 	cam = Camera3D.new()
 	cam.fov = 40.0
 	vp.add_child(cam)
@@ -88,28 +89,33 @@ func setup(p: Dictionary) -> void:
 	max_label.name = "hottest"
 	add_child(max_label)
 	_loading = DIR.path_join(String(p["kind"]) + ".scn")
-	if ResourceLoader.exists(_loading):
-		ResourceLoader.load_threaded_request(_loading, "PackedScene", true)
-	else:
+	if _scenes.has(_loading):
+		pass                        # (taken in the first update)
+	elif not ResourceLoader.exists(_loading):
 		_loading = ""
 		max_label.text = "No picture: the %s has no Workshop scene." % String(p["kind"]).replace("_", " ")
-
-
-func _exit_tree() -> void:
-	if _loading != "":
-		ResourceLoader.load_threaded_get(_loading)   # (a request left behind keeps its scene)
-		_loading = ""
+	elif ResourceLoader.load_threaded_get_status(_loading) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+		ResourceLoader.load_threaded_request(_loading, "PackedScene", true)
+	# (else a request is under way or done, from a panel rebuilt meanwhile: polled below)
 
 
 ## Each look (the monitoring view's, 4 a second): the scene once loaded, then the components' temperatures.
 func update(e) -> void:
 	if _loading != "":
-		if ResourceLoader.load_threaded_get_status(_loading) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
-			return
-		var ps := ResourceLoader.load_threaded_get(_loading) as PackedScene
+		var ps: PackedScene = _scenes.get(_loading)
+		if ps == null:
+			var st := ResourceLoader.load_threaded_get_status(_loading)
+			if st == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+				return
+			if st == ResourceLoader.THREAD_LOAD_LOADED:
+				ps = ResourceLoader.load_threaded_get(_loading) as PackedScene
+			if ps == null:
+				max_label.text = "No picture: the camera's view of the %s did not load." % String(pic["kind"]).replace("_", " ")
+				_loading = ""
+				return
+			_scenes[_loading] = ps
 		_loading = ""
-		if ps != null:
-			_show(ps.instantiate())
+		_show(ps.instantiate())
 	if machine == null or e == null:
 		return
 	var t := temps(e, pic)
@@ -145,6 +151,8 @@ func _show(n: Node3D) -> void:
 		gw.visible = false
 	_mat = ShaderMaterial.new()
 	_mat.shader = LIT
+	_mat.set_shader_parameter("ws_plane2", Vector4(0.0, -1.0, 0.0, 0.0))   # the section: below the floor cut away
+	_mat.set_shader_parameter("ws_sec_on", 1.0)
 	comps.clear()
 	var box := AABB()
 	var first := true
@@ -163,6 +171,10 @@ func _show(n: Node3D) -> void:
 		comps[id] = own
 		box = b if first else box.merge(b)
 		first = false
+	if box.position.y < 0.0:            # (framed on what stands above the floor)
+		box.size.y = maxf(box.end.y, 0.01)
+		box.position.y = 0.0
+	frame_box = box
 	_frame(box)
 
 
