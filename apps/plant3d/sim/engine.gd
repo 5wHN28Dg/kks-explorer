@@ -131,6 +131,9 @@ var _lift_ops := {}          # "code|do" of every lift's ops of §20.1: they nee
 var queue: Array = []
 var events: Array = []
 var inputs: Array = []
+var mirror_slots := PackedInt32Array()  # the Workshop's mirror (WORKSHOP.md §6.5, set_mirror): slots in order, their
+var mirror_vals := PackedFloat64Array() # values, and per machine the state it mirrors (-1: not mirrored)
+var mirror_mc := PackedInt32Array()
 var step_no := 0
 var timing := false                 # when set, every step's time in microseconds goes to step_us (tests/bench_step.gd)
 var step_us := PackedInt64Array()
@@ -661,6 +664,38 @@ func ack(alarm, slot = null) -> void:
 	_q(["ack", alarm], slot)
 
 
+## The Workshop's mirror (WORKSHOP.md §6.5): from the next step on, after step 2, each machine of `states` ({machine
+## id: state id}) is entered into that state when it stands in another (its `set` applied, the event's cause
+## "mirror"), then each value of `values` ({name: number}) is written over what step 2 gave it; a mirrored machine
+## moves by nothing else (its sequence's moves, commands, trips' and interlocks' actions on it are not taken: the plant
+## moves it), and while any machine is mirrored the trips are held (not counted, not latched: the plant's protection
+## trips the plant's machine, and the mirror brings its state). Not an input (no log, no event, not in the digest); kept
+## until set again ({} and {}: no mirror). A name, machine or state the model doesn't have, or a value that isn't a
+## finite number, is left out (ref/plant3d.py set_mirror, the same rules).
+func set_mirror(values: Dictionary, states: Dictionary) -> void:
+	var pairs: Array = []
+	for name in values:
+		var v = values[name]
+		if ix.has(name) and (typeof(v) == TYPE_FLOAT or typeof(v) == TYPE_INT) and is_finite(float(v)) \
+				and absf(float(v)) < 1e9:
+			pairs.append([int(ix[name]), float(v)])
+	pairs.sort_custom(func(a, b): return a[0] < b[0])
+	mirror_slots = PackedInt32Array()
+	mirror_vals = PackedFloat64Array()
+	for x in pairs:
+		mirror_slots.append(x[0])
+		mirror_vals.append(x[1])
+	mirror_mc = PackedInt32Array()
+	var any := false
+	for mi in _mc.size():
+		var to = states.get(_mc[mi][0])
+		var k: int = _mc[mi][2].find(to) if typeof(to) == TYPE_STRING else -1
+		mirror_mc.append(k)
+		any = any or k >= 0
+	if not any:
+		mirror_mc = PackedInt32Array()
+
+
 func shelve(alarm, seconds, slot = null) -> void:
 	_q(["shelve", alarm, seconds], slot)
 
@@ -981,6 +1016,8 @@ func apply_input(item: Array) -> void:
 			hand(item[2], item[3], item[4], item[5], item[6], slot)
 		"weather":
 			weather(item[2], slot)
+		"mirror":
+			set_mirror(item[2], item[3])     # (the Workshop's mirror in the bench vectors' form: not an input)
 		"repair":
 			if item.size() > 3:
 				repair_under(item[2], item[3], item[4], slot)
@@ -1419,6 +1456,8 @@ func _lock(kind: String, work, point, person, vals: PackedFloat64Array, npc := f
 
 
 func _enter(mi: int, to: int, cause: String) -> void:
+	if cause != "mirror" and not mirror_mc.is_empty() and mirror_mc[mi] >= 0:
+		return      # a mirrored machine moves with the plant's only (set_mirror)
 	var mc = _mc[mi]
 	var old := mstate[mi]
 	mstate[mi] = to
@@ -2057,6 +2096,14 @@ func _step() -> void:
 		_run(0, _nprog, cur, prev, false)
 	if _gap != -1:
 		cur[_gap] = 0.0
+	# 2m. the Workshop's mirror (WORKSHOP.md §6.5, set_mirror): the plant's machine states, then its values
+	if not mirror_mc.is_empty():
+		for mi in _mc.size():
+			var to := mirror_mc[mi]
+			if to >= 0 and mstate[mi] != to:
+				_enter(mi, to, "mirror")
+	for k in mirror_slots.size():
+		cur[mirror_slots[k]] = mirror_vals[k]
 	var vals := cur.duplicate()     # conditions in steps 3–7 read the values as step 2 left them
 	# 3. the locks and unlocks noted in step 1, in the order made; the permits' automatic moves (§15.3)
 	for nd in noted:
@@ -2180,8 +2227,8 @@ func _step() -> void:
 				_enter(mi, nx[1], "next")
 				moved[mi] = true
 				break
-	# 6. trips
-	for k in _tr.size():
+	# 6. trips (none while the Workshop's mirror holds a machine: the plant's protection moves it, set_mirror)
+	for k in (0 if not mirror_mc.is_empty() else _tr.size()):
 		if latched[k]:
 			continue
 		if vals[_tr_when[k]] >= 0.5:
@@ -2694,7 +2741,8 @@ func clone():
 		c.set(k, get(k))
 	for k in ["cur", "prev", "mem", "mstate", "latched", "trip_count", "acount", "shelved", "il_prev", "pstate", "holder",
 			"lockbits", "st_players", "st_acks", "st_t_from", "sp_on", "sp_planned", "sp_pos", "sp_res", "sp_occ", "sp_rng", "sp_wake", "sp_wait_on", "sp_worn",
-			"sp_zin", "sp_music", "sp_phone", "sp_told", "sp_aud", "sp_held_to", "sp_locker", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday"]:
+			"sp_zin", "sp_music", "sp_phone", "sp_told", "sp_aud", "sp_held_to", "sp_locker", "lift_quiet", "sp_lin", "lift_calls", "lift_dir", "lift_dwell", "sp_aboard", "sp_offday",
+			"mirror_slots", "mirror_vals", "mirror_mc"]:
 		c.set(k, get(k).duplicate())        # packed arrays: a copy of their own
 	for k in ["first_out", "astate", "faults_done", "faults_fixed", "queue", "events", "inputs", "ptw", "acceptor",
 			"lockers", "code_locks", "npc_queue", "st_t_in", "st_jumped", "st_holder", "st_given", "st_vprev", "st_kept",

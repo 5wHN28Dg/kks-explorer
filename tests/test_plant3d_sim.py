@@ -63,6 +63,8 @@ def apply(e, item):
         e.jsa(item[2], item[3], item[4], item[5])       # a JSA (REALISM.md §8.6: the free-mode forks' and the day's)
     elif kind == 'talk':
         e.talk(item[2], item[3], item[4])
+    elif kind == 'mirror':
+        e.set_mirror(item[2], item[3])                  # the Workshop's mirror (WORKSHOP.md §6.5: the bench's runs)
     else:
         raise ValueError(f'an input this harness does not replay: {item}')
 

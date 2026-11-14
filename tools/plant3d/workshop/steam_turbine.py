@@ -528,6 +528,11 @@ def bench_source():
         },
         # (the steam's pressure and temperature are on their sliders; the phase and the slip are what synchronising reads)
         'readouts': ['rpm', 'flow', 'p_first', 'p8', 't8', 'casing_t', 'superheat', 'vib1', 'axial', 'ph', 'slip', 'mw'],
+        # the live plant's turbine on the bench (WORKSHOP.md §6.5): its start-up sequence's state, the shaft's speed and
+        # the steam's flow (the inlet's sound follows it in the plant)
+        'mirror': [{'value': 'turbine_state', 'from': {'machine': True}},
+                   {'value': 'speed', 'from': {'bind': 'anim', 'channel': 'shaft'}},
+                   {'value': 'flow', 'from': {'bind': 'sound', 'id': 'steam_rush'}}],
     }
     return {
         'area': 'st', 'prefix': 'st_',

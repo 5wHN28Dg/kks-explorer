@@ -134,7 +134,7 @@ def gadget():
                     'pressure': {'unit': 'bar', 'table': [[0, '#2c7bb6'], [1, '#d7191c']]}},
         'readouts': ['speed', 'flow', 'temp', 'vol'],
         'mirror': [{'value': 'valve_cmd', 'from': {'bind': 'anim', 'channel': 'stem'}},
-                   {'value': 'run', 'from': {'machine': True}},
+                   {'value': 'drive_m_state', 'from': {'machine': True, 'else': 'stopped'}},
                    {'value': 'temp', 'from': {'bind': 'show'}},
                    {'value': 'lube', 'from': {'bind': 'lamp', 'kind': 'running'}},
                    {'value': 'speed', 'from': {'bind': 'sound', 'id': 'pump_hum'}}],
@@ -171,6 +171,44 @@ def gadget_inputs():
         [140, 'fault', 'leak'],
         [150, 'op', 'rotor', 'stop', None, None],
         [151, 'ack', 'hot_a'],
+    ]
+
+
+def gadget_mirror_inputs():
+    """The mirror (WORKSHOP.md §6.5) on the synthetic kind: the machine entered into the plant's state with its
+    `set`, values written over step 2's (a lag, a ramp, a state), what the model doesn't have left out; the plant's
+    values followed (a session) up to an overspeed whose trip can't stop the mirrored machine, a command refused by
+    it, the machine's own sequence not taken while mirrored; the mirror ended, the machine its own again."""
+    return [
+        [3, 'mirror', {'valve_cmd': 0.6, 'speed': 0.5, 'temp': 40, 'nothing': 1, 'lube': 'x'},
+         {'drive_m': 'starting', 'pump_m': 'running'}],
+        [20, 'mirror', {'valve_cmd': 0.6, 'speed': 0.95, 'temp': 52}, {'drive_m': 'starting'}],
+        [30, 'mirror', {'valve_cmd': 0.6, 'speed': 1.2, 'temp': 58}, {'drive_m': 'running'}],
+        [35, 'op', 'rotor', 'stop', None, None],          # a command on the mirrored machine: not taken
+        [50, 'mirror', {'speed': 1.0, 'temp': 30.5}, {'drive_m': 'stopped'}],
+        [70, 'mirror', {}, {}],                           # the mirror ended: the bench its own again
+        [72, 'op', 'casing', 'reset', None, 'overspeed'],
+        [74, 'op', 'rotor', 'start', None, None],
+    ]
+
+
+def transmitter_mirror_inputs():
+    """The transmitter mirrored from the plant (§6.5): a show's pressure and the loop supply's `else` state (no plant
+    machine runs a transmitter), then a condenser's vacuum in kPa(a) made gauge bar."""
+    return [
+        [1, 'mirror', {'p_applied': 6.5}, {'supply': 'on'}],
+        [60, 'mirror', {'p_applied': -0.92125}, {'supply': 'on'}],       # (9.2 kPa(a): 0.092 − 1.01325 bar)
+    ]
+
+
+def turbine_mirror_inputs(part):
+    """A turbine mirrored mid-run (§6.5): the plant's sequence state and the shaft's speed, then its trip and coast."""
+    state = {'steam_turbine': 'accel', 'gas_turbine': 'accel'}[part]
+    vals = {'speed': 0.6, 'flow': 30.0} if part == 'steam_turbine' else {'speed': 0.6}
+    return [
+        [1, 'mirror', vals, {'turbine': state}],
+        [80, 'mirror', dict(vals, speed=0.55), {'turbine': 'coastdown'}],
+        [81, 'op', 'rotor', 'roll' if part == 'steam_turbine' else 'start', None, None],    # not taken: mirrored
     ]
 
 
@@ -431,6 +469,14 @@ REJECTS = [
     ('a mirror of no value', 'bad_ref', _set(['mirror', 0, 'value'], 'nothing')),
     ('a mirror from no binding kind', 'bad_value', _set(['mirror', 0, 'from'], {'bind': 'shake'})),
     ('a mirror from an anim without its channel', 'missing_key', _set(['mirror', 0, 'from'], {'bind': 'anim'})),
+    ('a machine mirrored into a plain value', 'bad_ref', _set(['mirror', 1, 'value'], 'run')),
+    ('a machine mirror\'s else no state of it', 'bad_ref', _set(['mirror', 1, 'from', 'else'], 'flying')),
+    ('a machine mirror with another key', 'unknown_key', _set(['mirror', 1, 'from', 'channel'], 'shaft')),
+    ('a mirror of a stateless node', 'bad_kind', _set(['mirror', 2, 'value'], 'flow')),
+    ('a mirror of a timer', 'bad_kind', _set(['mirror', 2, 'value'], 't_run')),
+    ('a mirror of a constant', 'bad_kind', _set(['mirror', 2, 'value'], 'ambient')),
+    ('a value mirrored twice', 'dup_id', lambda g: g['mirror'].append({'value': 'temp', 'from': {'bind': 'show'}})),
+    ('a machine mirrored twice', 'dup_id', lambda g: g['mirror'].append(dict(g['mirror'][1]))),
 ]
 COMPONENT_REJECTS = [
     ('a component called bench', 'bad_id', GADGET_COMPS + ['bench']),
@@ -467,7 +513,16 @@ def build():
             steps.append({'why': 'the pressure transmitter: the supply, the range and past it, each fault and its '
                                  'repair', 'components': comps, 'bench': t, 'inputs': transmitter_inputs(),
                           'states': states, 'events': events})
+            states, events = run(t, comps, sounds, transmitter_mirror_inputs(), 100)
+            steps.append({'why': 'the pressure transmitter mirrored: a pressure and the supply\'s else state, then a '
+                                 'vacuum', 'components': comps, 'bench': t, 'inputs': transmitter_mirror_inputs(),
+                          'states': states, 'events': events})
         if part == 'steam_turbine':
+            ins = turbine_mirror_inputs(part)
+            states, events = run(t, comps, sounds, ins, 120)
+            steps.append({'why': f'the {part.replace("_", " ")} mirrored: its sequence\'s state and its speed, '
+                                 'then its coast, a command not taken', 'components': comps, 'bench': t,
+                          'inputs': ins, 'states': states, 'events': events})
             states, events = run(t, comps, sounds, turbine_inputs(), 900)
             steps.append({'why': 'the steam turbine: rolled to its soak, refusals, a rub\'s vibration trip, its reset, '
                                  'the lube oil lost', 'components': comps, 'bench': t, 'inputs': turbine_inputs(),
@@ -479,6 +534,11 @@ def build():
                                  'synchronised, loaded, tripped on load by a rub (the breaker opened by protection)',
                           'components': comps, 'bench': t2, 'inputs': ins, 'states': states, 'events': events})
         if part == 'gas_turbine':
+            ins = turbine_mirror_inputs(part)
+            states, events = run(t, comps, sounds, ins, 120)
+            steps.append({'why': f'the {part.replace("_", " ")} mirrored: its sequence\'s state and its speed, '
+                                 'then its coast, a command not taken', 'components': comps, 'bench': t,
+                          'inputs': ins, 'states': states, 'events': events})
             states, events = run(t, comps, sounds, gas_turbine_inputs(), 680)
             steps.append({'why': 'the gas turbine: cranked to its purge, refusals, the AC oil pump lost and the DC pump '
                                  'started, a rub\'s vibration trip, its reset, the fuel gas low',
@@ -495,6 +555,11 @@ def build():
     states, events = run(g, GADGET_COMPS, GADGET_SOUNDS, gadget_inputs(), 170)
     steps.append({'why': 'the synthetic kind: every node kind, a machine, its trip and interlock, alarms, faults',
                   'components': GADGET_COMPS, 'bench': g, 'inputs': gadget_inputs(), 'states': states,
+                  'events': events})
+    states, events = run(g, GADGET_COMPS, GADGET_SOUNDS, gadget_mirror_inputs(), 110)
+    steps.append({'why': 'the synthetic kind mirrored: a machine and values written after step 2, followed live, a trip '
+                         'and a command that can\'t move the mirrored machine, the mirror ended',
+                  'components': GADGET_COMPS, 'bench': g, 'inputs': gadget_mirror_inputs(), 'states': states,
                   'events': events})
     return {'about': 'Walkdown Plant Workshop bench format vectors (docs/plant3d/WORKSHOP.md §6.2), made by '
                      'ref/make_plant3d_bench_vectors.py from ref/plant3d_bench.py and ref/plant3d.py. Numbers '

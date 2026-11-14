@@ -29,6 +29,13 @@ LAMPS = ('running', 'stopped', 'open', 'closed', 'fault', 'beacon')
 NOT_ON_THE_BENCH = ('draw', 'wear', 'count', 'sample')     # the realism programme's nodes: a version 2 of this format (§6.1)
 WORLD = ('world_hour', 'world_day', 'world_wx')      # the clock values' names: reserved as in a version 2 plant
 SID = re.compile(r'[a-z_][a-z0-9_]{0,31}')
+MIRRORED_KINDS = ('state', 'lag', 'ramp', 'integrate', 'wrap', 'hold', 'latch')   # what a mirror may write (§6.5)
+# a plant value's unit onto a bench value's (WORKSHOP.md §6.5): {(bench unit, plant unit): (factor, offset)}, the bench's
+# value = the plant's × factor + offset; the same unit (or none on both) is the plant's value as it is. Gauge from
+# absolute: less the standard atmosphere (101.325 kPa); a water column's metres: ρg = 9.80665 kPa/m (water at 4 °C, the
+# conventional metre of water). A pair not here is not mirrored (the panel says so).
+UNITS = {('bar', 'kPa'): (0.01, 0.0), ('bar', 'MPa'): (10.0, 0.0), ('bar', 'mbar'): (0.001, 0.0),
+         ('bar', 'kPa(a)'): (0.01, -1.01325), ('bar', 'bar(a)'): (1.0, -1.01325), ('bar', 'm'): (0.0980665, 0.0)}
 HEX = re.compile(r'#[0-9a-f]{6}')
 
 
@@ -81,6 +88,7 @@ class BenchModel(P.Model):
 class Bench:
     def __init__(self, part, b, scenario, units, readouts, bind, legends, faults):
         self.part, self.b, self.scenario = part, b, scenario
+        self.mirror = []
         self.units, self.readouts, self.bind, self.legends, self.faults = units, readouts, bind, legends, faults
 
     def engine(self):
@@ -267,16 +275,30 @@ def check(d, comps, where='bench', sounds=None, part=None):
         need(r not in readouts, 'dup_id', f'{where}.readouts[{i}]: {r} twice')
         m.cond(r, f'{where}.readouts[{i}]')
         readouts.append(r)
+    mirrored = set()
     for i, x in enumerate(d.get('mirror', [])):
         mw = f'{where}.mirror[{i}]'
         keys(x, ('value', 'from'), (), mw)
-        need(isinstance(x['value'], str) and x['value'] in m.index, 'bad_ref', f'{mw}.value: no value {x["value"]!r}')
         f = x['from']
         need(isinstance(f, dict), 'bad_type', f'{mw}.from')
+        need(isinstance(x['value'], str), 'bad_ref', f'{mw}.value')
+        need(x['value'] not in mirrored, 'dup_id', f'{mw}.value: {x["value"]} mirrored twice')
+        mirrored.add(x['value'])
         if 'machine' in f:
-            keys(f, ('machine',), (), f'{mw}.from')
+            # the plant machine's state onto the bench machine's, by name: the value is the machine's `<id>_state`
+            keys(f, ('machine',), ('else',), f'{mw}.from')
             need(f['machine'] is True, 'bad_value', f'{mw}.from.machine: true')
+            mc = next((y for y in m.machines if y['id'] + '_state' == x['value']), None)
+            need(mc is not None, 'bad_ref', f'{mw}.value: a machine is mirrored into its <id>_state')
+            need('else' not in f or f['else'] in [st['id'] for st in mc['states']], 'bad_ref',
+                 f'{mw}.from.else: a state of {mc["id"]}')
         else:
+            need(x['value'] in m.index, 'bad_ref', f'{mw}.value: no value {x["value"]!r}')
+            kind = m.values[m.index[x['value']]][2]
+            # (written over after step 2: a stateless node would be made again from what it reads before anything
+            # read it, and a timer's or a delay's count is kept outside its value)
+            need(kind in MIRRORED_KINDS, 'bad_kind', f'{mw}.value: {x["value"]} is a {kind} node; a mirror writes a '
+                                                     f'state or a {", ".join(MIRRORED_KINDS[1:])} node')
             keys(f, ('bind',), ('channel', 'kind', 'id'), f'{mw}.from')
             want = {'show': (), 'anim': ('channel',), 'lamp': ('kind',), 'sound': ('id',)}
             need(f['bind'] in want, 'bad_value', f'{mw}.from.bind: one of {", ".join(want)}')
@@ -286,8 +308,92 @@ def check(d, comps, where='bench', sounds=None, part=None):
     m.finish()
     m.bind = shows
     sc = {'id': 'bench', 'title': 'The bench', 'init': dict(d['start']), 'faults': faults}
-    return Bench(d['part'], b, sc, units, readouts, binds, legends, faults)
+    bench = Bench(d['part'], b, sc, units, readouts, binds, legends, faults)
+    bench.mirror = list(d.get('mirror', []))
+    return bench
 
 
 def check_bytes(data, comps, where='bench', sounds=None, part=None):
     return check(loads(data, where), comps, where, sounds, part)
+
+
+# ---------------------------------------------------------------- the mirror's sources in the plant (WORKSHOP.md §6.5)
+
+def _reads(x):
+    """The value names a plant binding reads, in its keys' order (anim's and lamp's `of`, show, a sound's gain and
+    pitch)."""
+    out = []
+    for k in ('of', 'show'):
+        if isinstance(x.get(k), str):
+            out.append(x[k])
+    for k in ('gain', 'pitch'):
+        if isinstance(x.get(k), dict) and isinstance(x[k].get('of'), str):
+            out.append(x[k]['of'])
+    return out
+
+
+def plant_machine(model, code):
+    """The plant machine a code's equipment runs by: the one at the code, else the one at the code of the first value
+    the code's bindings read that has a code with a machine (a casing on another's shaft: its speed is the other's);
+    None without."""
+    at = {mc['kks']: mc for mc in model.machines if 'kks' in mc}
+    if code in at:
+        return at[code]
+    vals = {name: n for name, n, _ in model.values}
+    for x in model.bind:
+        if x.get('kks') != code:
+            continue
+        for r in _reads(x):
+            k = vals.get(r, {}).get('kks')
+            if k in at:
+                return at[k]
+    return None
+
+
+def mirror_sources(bench, model, code):
+    """Where each of the bench's mirror entries comes from at the plant's equipment `code` (WORKSHOP.md §6.5), by the
+    code's own bindings in `model` (ref.plant3d.Model): (values, machines, missing):
+      values    [(bench value, plant value, factor, offset)]: the bench's = the plant's × factor + offset
+      machines  [(bench machine, plant machine or None, else state or None)]: the plant machine's state by name, or the
+                entry's `else` state when the code runs by no machine
+      missing   [(bench value, why)]: not mirrored at this code
+    The app does the same (apps/plant3d/workshop/mirror.gd)."""
+    units = {name: n.get('unit', '') for name, n, _ in model.values}
+    binds = [x for x in model.bind if x.get('kks') == code]
+    values, machines, missing = [], [], []
+    for x in bench.mirror:
+        f, v = x['from'], x['value']
+        if 'machine' in f:
+            mid = v[:-len('_state')]
+            pm = plant_machine(model, code)
+            if pm is not None or 'else' in f:
+                machines.append((mid, pm['id'] if pm is not None else None, f.get('else')))
+            else:
+                missing.append((v, f'no machine runs {code}'))
+            continue
+        k = f['bind']
+        src = None
+        for b in binds:
+            if k == 'show' and 'show' in b:
+                src = b['show']
+            elif k == 'anim' and b.get('anim') == f['channel']:
+                src = b['of']
+            elif k == 'lamp' and b.get('lamp') == f['kind']:
+                src = b['of']
+            elif k == 'sound' and b.get('sound') == f['id'] and isinstance(b.get('gain'), dict):
+                src = b['gain']['of']
+            if src is not None:
+                break
+        if src is None:
+            what = {'show': 'no display', 'anim': f'no {f.get("channel")} motion', 'lamp': f'no {f.get("kind")} lamp',
+                    'sound': f'no {f.get("id")} sound'}[k]
+            missing.append((v, f'{what} at {code}'))
+            continue
+        bu, pu = bench.units.get(v, ''), units.get(src, '')
+        if bu == pu:
+            values.append((v, src, 1.0, 0.0))
+        elif (bu, pu) in UNITS:
+            values.append((v, src) + UNITS[(bu, pu)])
+        else:
+            missing.append((v, f'{src} is in {pu or "no unit"}, the bench\'s {v} in {bu or "no unit"}'))
+    return values, machines, missing

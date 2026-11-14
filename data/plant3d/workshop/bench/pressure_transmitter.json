@@ -68,5 +68,9 @@
   "pv",
   "pct",
   "loop_ma"
+ ],
+ "mirror": [
+  {"value": "p_applied", "from": {"bind": "show"}},
+  {"value": "supply_state", "from": {"machine": true, "else": "on"}}
  ]
 }
