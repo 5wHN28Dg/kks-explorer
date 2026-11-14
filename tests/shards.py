@@ -102,6 +102,8 @@ APP = {
     'test_ui_monitoring': 2,
     # work orders: a finding reported from the card, planned, scheduled, cancelled; a calibration completed (WM1; ~3 s)
     'test_ui_workorders': 2,
+    # the debrief's diagnosis review on a made-up run: the cause hidden until a repair is made (HW3; <1 s)
+    'test_diagnosis': 2,
     # the cold start through the screens and the panels (~15 s, ~14 s), the saved run (~13 s), the RO cleaning (~10 s),
     # the water plant's staff (~9 s), the mixed-bed regeneration (~9 s), the parts kit (~7 s), the water plant's start
     # (~6 s), the crew (~6 s): ~89 s

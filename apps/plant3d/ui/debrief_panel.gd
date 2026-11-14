@@ -10,12 +10,15 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 
 const W = preload("res://ui/widgets.gd")
 const Debrief = preload("res://ui/debrief.gd")
+const Diagnosis = preload("res://ui/diagnosis.gd")
 const DEV_COLOUR := Color(1.0, 0.8, 0.4)
 
 var ui
 var body: VBoxContainer
 var title: Label
-var tab := "all"                # all, deviations, alarms, permits
+var tab := "all"                # all, deviations, alarms, permits, safety, role, diagnosis
+var diagnosis: Array = []       # the diagnosis tab's reviews (ui/diagnosis.gd, REALISM.md §3.2, milestone HW3)
+var _diag_sig := ""             # what the tab last showed (rebuilt only when it changes)
 var data := {}                  # the last Debrief.collect
 var _summary: Label
 var _list: VBoxContainer
@@ -41,7 +44,7 @@ func setup(u) -> void:
 	v.add_child(bar)
 	v.move_child(bar, 1)
 	for t in [["all", "Everything"], ["deviations", "Deviations"], ["alarms", "Alarms and trips"],
-			["permits", "Permits"], ["safety", "Safety"], ["role", "Your tasks"]]:
+			["permits", "Permits"], ["safety", "Safety"], ["role", "Your tasks"], ["diagnosis", "Diagnosis"]]:
 		var b := W.button(t[1], _tab.bind(t[0]))
 		b.toggle_mode = true
 		bar.add_child(b)
@@ -65,6 +68,7 @@ func open() -> void:
 
 func _tab(t: String) -> void:
 	tab = t
+	_diag_sig = ""
 	refresh(true)
 
 
@@ -116,6 +120,9 @@ func refresh(full := false) -> void:
 	data = Debrief.collect(e, ui.info, tr, ui.inputs.slot, ui.task_given, ui.bus_drive.log if ui.bus_drive != null else [])
 	title.text = data.title
 	_summary.text = "\n".join(Debrief.summary_lines(data))
+	if tab == "diagnosis":
+		_show_diagnosis(e)
+		return
 	var list := entries()
 	# the run only grows at its end (a step's end and a deviation come with the events of their model step), so
 	# the rows shown stay as they are when the last one shown is unchanged: no comparison of every row
@@ -133,6 +140,49 @@ func refresh(full := false) -> void:
 			(_list.get_child(mini(focus_i, _list.get_child_count() - 1)) as Control).grab_focus()
 	else:
 		_add_rows(list)
+
+
+## The diagnosis tab (REALISM.md §3.2, §2.22): each fault with hidden causes made in the run, as lines, with a
+## button that opens its failed part in the Workshop (the cause's component and what was found there).
+func _show_diagnosis(e) -> void:
+	var jobs: Dictionary = ui.work.jobs if ui.work != null else {}
+	var tr = ui.debrief_tracker()
+	var to: int = e.events.size()
+	var over := false
+	if tr != null and not tr.proc.is_empty() and tr.ev_to != -1:
+		to = mini(to, tr.ev_to)
+		over = true             # an ended procedure's debrief: its run is over
+	diagnosis = Diagnosis.review(e, jobs, to)
+	var tpm: float = float(e._sm.tpm) if e._sm != null else 100.0
+	var texts: Array = []
+	for r in diagnosis:
+		texts.append(Diagnosis.lines(r, func(n): return W.model_time(n), tpm, over))
+	# rebuilt only when what it says changed (a rebuild drops the focus and a press under way)
+	var sig := str(texts)
+	if sig == _diag_sig and _list.get_child_count() > 0:
+		return
+	_diag_sig = sig
+	W.clear(_list)
+	_shown = 0
+	if diagnosis.is_empty():
+		_list.add_child(_row({"step": -1, "kind": "", "text": "No fault with a hidden cause in this run.", "code": "",
+				"dev": "", "prio": 0}))
+		return
+	for k in diagnosis.size():
+		var r: Dictionary = diagnosis[k]
+		var box := VBoxContainer.new()
+		box.name = "diag_" + String(r.fault)
+		var ls: PackedStringArray = texts[k]
+		for i in ls.size():
+			var l := W.label(ls[i], 17, W.OK_COLOUR if i == 1 and Diagnosis.shown(r, over) else Color.WHITE)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			box.add_child(l)
+		if Diagnosis.shown(r, over) and r.component != "" and ui.workshop_has(String(r.kind)):
+			var rr: Dictionary = r
+			var b := W.button("Open the failed part in the Workshop", func(): ui.open_failed_part(rr))
+			b.name = "failed_part"
+			box.add_child(b)
+		_list.add_child(box)
 
 
 func _focused_row() -> int:

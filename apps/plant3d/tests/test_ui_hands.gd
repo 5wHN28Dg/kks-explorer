@@ -154,7 +154,7 @@ func _job(tree: SceneTree) -> Array:
 				", ".join(log.slice(0, 3))] + "; the last hand events: %s" % str(e.events.filter(
 				func(x): return x[1] == "hand" and x[5] == "ic1").slice(-3)))
 	ui.work.close()
-	for k in ["order", "tool", "short", "dmm_screen", "found", "trim"]:
+	for k in ["order", "tool", "short", "dmm_screen", "found", "trim", "loop", "hidden"]:
 		if not seen.has(k):
 			p.append("the job never checked %s" % k)
 		elif seen[k] != "":
@@ -185,7 +185,52 @@ func _job(tree: SceneTree) -> Array:
 		if low > -1.0 or absf(now - 0.1) > 0.05:
 			p.append("transmitter 2 against 1: %.2f with the loose terminal, %.2f after the job (expected under -1, 0.1)" % [
 					low, now])
+		# (HW3) the loop check made: the five points read back
+		var points: Array = e.events.filter(func(x): return x[1] == "hand" and x[3] == "loop_test" and x[6] == "done")
+		if points.size() != 5:
+			p.append("the loop check made %d loop tests, not 5" % points.size())
+		p += await _diagnosis(tree, ui)
 	main.free()
+	return p
+
+
+## (HW3, REALISM.md §3.2, §3.5) the debrief's diagnosis tab after the job: the cause shown, the multimeter's reading
+## pointing to it alone, the tightening as its fix, the time to find it, put right; its button opens the Workshop on
+## the failed part (the terminal block picked, what was found in the note).
+func _diagnosis(tree: SceneTree, ui) -> Array:
+	var p: Array = []
+	ui.open_debrief()
+	ui.debrief._tab("diagnosis")
+	await tree.process_frame
+	var box = ui.debrief._list.get_node_or_null("diag_" + FAULT)
+	if box == null:
+		return ["the diagnosis tab shows no review of %s: %s" % [FAULT, App.texts(ui.debrief._list).left(300)]]
+	var t: String = App.texts(box)
+	for want in ["The cause: A loose signal terminal",
+			"The loop current at the test terminals, against the output it reports (ic1): pointed to the cause: " +
+			"a loose signal terminal",
+			"Tighten the signal terminals' screws (ic1): the cause's fix", "Found ", "Put right."]:
+		if not t.contains(want):
+			p.append("the diagnosis tab lacks \"%s\": %s" % [want, t.left(600)])
+	if t.contains("not needed"):
+		p.append("the diagnosis tab counts a part not needed: %s" % t.left(400))
+	var b = box.get_node_or_null("failed_part")
+	if b == null or ui.main.workshop == null:
+		p.append("no button opens the failed part in the Workshop")
+		return p
+	b.pressed.emit()
+	var ws = ui.main.workshop
+	var end := Time.get_ticks_msec() + 60000
+	while (not ws.is_open or ws.machine == null or ws.selected == "") and Time.get_ticks_msec() < end:
+		await tree.process_frame
+	if ws.selected != "terminal_block" or not ws.note.begins_with("Failed: A loose signal terminal"):
+		p.append("the Workshop opened on %s with the note %s, not the terminal block and what was found" % [
+				ws.selected, ws.note.left(120)])
+	ws.close()
+	for i in 5:
+		await tree.process_frame
+	if not ws.failed.is_empty():
+		p.append("the Workshop kept the failed part after it closed")
 	return p
 
 
@@ -245,11 +290,27 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		# a reading of the screens' value at the transmitter, written down from the Crew panel (S1's read)
 		if not _once(e, cur, "read"):
 			return true
+		if e.v("cpt2_lt_on") >= 0.5 and not seen.has("loop") and ui.work.is_open:
+			# (HW3) the loop check: the communicator's screen says what the control room reads on the radio
+			ui.work._sig = ""
+			ui.work.refresh()
+			var want := "Control room (radio): %.2f kPa(a)" % e.v("cond_p2")
+			var cr = ui.work.meters.get_node_or_null("control_room")
+			seen["loop"] = "" if cr != null and cr.visible and cr.text == want else \
+					"the loop test's control room line is %s, not %s" % [cr.text if cr != null else "missing", want]
+			# (HW3) and the debrief's diagnosis tab, while the fault is not yet put right, keeps the cause hidden
+			ui.open_debrief()
+			ui.debrief._tab("diagnosis")
+			var box = ui.debrief._list.get_node_or_null("diag_" + FAULT)
+			var t: String = App.texts(box) if box != null else "no review"
+			seen["hidden"] = "" if t.contains("Under investigation") and not t.contains("The cause:") \
+					and box.get_node_or_null("failed_part") == null else "the diagnosis tab before the repair: %s" % t.left(300)
+			ui.close_debrief()
 		ui.write_reading(s["read"], "%.3f" % e.shown(s["read"], e.cur))
 		return true
 	# the step that decides on the trim (REALISM.md §2.16: the PV against the partners; under the loose terminal it
 	# skips the trim to its else): the communicator's trim checked there, and taken back
-	var trim_wait: bool = s.has("wait") and String(s["wait"].get("until", "")) == "cpt2_pv_low" and not seen.has("trim")
+	var trim_wait: bool = s.has("wait") and String(s["wait"].get("until", "")) == "cpt2_pv_lo1" and not seen.has("trim")
 	var code = s.get("kks") if s.has("hand") else (s["read"] if s.has("read") and s.has("via") else
 			(s["op"]["kks"] if s.has("op") and s["op"].get("where") == "hart" else (PT2 if trim_wait else null)))
 	if code == null:
@@ -283,6 +344,10 @@ func _play(tree: SceneTree, ui, log: Array) -> bool:
 		if b == null:
 			log.append("no button for %s: %s" % [s["hand"], App.texts(w.actions).left(200)])
 			return false
+		if s.has("value"):          # (HW3) an action with a value: the loop test's current typed in, then sent
+			(b.get_node("value") as LineEdit).text = str(s["value"])
+			(b.get_node("send") as Button).pressed.emit()
+			return true
 		b.pressed.emit()
 		return true
 	if s.has("read"):
