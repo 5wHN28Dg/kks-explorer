@@ -88,6 +88,10 @@
   ["gt_flame_scanners_have", {"sum": ["gt_flame_scanners_stock", "gt_flame_scanners_due"]}],
   ["gt_flame_scanners_low", {"cmp": ["gt_flame_scanners_have", "<=", 1]}],
   ["gt_wash_detergent_have", {"sum": ["gt_wash_detergent_stock", "gt_wash_detergent_due"]}],
-  ["gt_wash_detergent_low", {"cmp": ["gt_wash_detergent_have", "<=", 2]}]
+  ["gt_wash_detergent_low", {"cmp": ["gt_wash_detergent_have", "<=", 2]}],
+  ["cpt2_spare_shelf", {"cmp": ["pt_unit_a3_stock", ">=", 1]}],
+  ["cpt2_wo_planned", {"cmp": ["wo_cond_p2_fix_wo", ">=", 2]}],
+  ["cpt2_wo_live", {"cmp": ["wo_cond_p2_fix_wo", "<=", 4]}],
+  ["cpt2_wo_open", {"and": ["cpt2_wo_planned", "cpt2_wo_live"]}]
  ]
 }

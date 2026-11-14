@@ -567,7 +567,7 @@ func _lookalike(tree: SceneTree, ui, x: Dictionary) -> String:
 	var w = ui.work
 	for a in [["terminal_block", "dmm", "disconnect_dmm"], ["terminal_block", "hart", "disconnect_hart"],
 			["terminal_block", "sd_term", "lift_wires"], ["manifold", "", "shut_block"],
-			["drain_vents", "spanner_17", "crack_vent"], ["flange_bolts", "spanner_17", "remove_tx"]]:
+			["drain_vents", "spanner_17", "crack_vent"], ["process_flange", "spanner_17", "remove_tx"]]:
 		ui.clock.run_steps(12)     # (a need reads the step before: the last action's writes settled)
 		w.pick_comp(a[0])
 		w.pick_tool(a[1])
@@ -580,7 +580,7 @@ func _lookalike(tree: SceneTree, ui, x: Dictionary) -> String:
 		if not Maint._has_ev(e, ["hand", PT2, a[2], a[1] if a[1] != "" else null, "ic1", "done"]):
 			return "%s was not done: %s" % [a[2], str(e.events.filter(func(v): return v[1] == "hand").slice(-2))]
 	ui.clock.run_steps(12)
-	w.pick_comp("flange_bolts")
+	w.pick_comp("process_flange")
 	w.pick_tool("spanner_17")
 	w.refresh()
 	w.last_text = ""

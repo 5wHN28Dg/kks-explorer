@@ -480,7 +480,7 @@ def nospare_scenario(base):
     reorders it (42 days' lead time), the job is held for parts, and a jump to a date brings the delivery."""
     s = fail_scenario(base)
     s['id'] = 'shift_nospare'
-    s['title'] = 'Day shift: a condenser pressure transmitter has failed, no spare on the shelf (choose a role)'
+    s['title'] = 'Day shift: a condenser transmitter failed, no spare (choose a role)'
     s['stock'] = {SPARE: 0}
     s['world'] = dict(s['world'], seed=NOSPARE_SEED)
     return s
