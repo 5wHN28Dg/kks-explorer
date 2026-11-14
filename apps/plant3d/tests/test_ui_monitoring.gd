@@ -346,7 +346,7 @@ func _picture(tree: SceneTree, ui, mv, e, i: int, spot: String, hot_value: Strin
 	var pic: Dictionary = pt["picture"]
 	if String(pic["spot"]) != spot or not tp.comps.has(spot):
 		p.append("the spot at %s is %s, drawn %s" % [pt["code"], pic["spot"], str(tp.comps.has(spot))])
-	if absf(float(tp.shown[spot]) - Hands.shown(e, String(pt["meter"]), e.cur)) > 1e-9:
+	if absf(float(tp.shown[spot]) - Hands.shown(e, String(pt["meter"]), e.cur)) > tp.STEP_K:
 		p.append("the spot's component at %.2f °C, the meter %.2f" % [tp.shown[spot], Hands.shown(e, String(pt["meter"]), e.cur)])
 	_colours(p, tp, e, pic)
 	if pic["kind"] == "pump_vertical":
