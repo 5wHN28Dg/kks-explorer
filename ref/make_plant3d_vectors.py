@@ -3305,7 +3305,47 @@ def day_forks():
           'events': [['hand', '30MAG10CP002', 'reseal_gland', 'spanner_24', 'ic1', 'done', []]],
           'end': {'cond_p2_low': 0, 'cpt2_terminal_block_wet': 0, 'cpt2_cable_gland_worn': 0, 'cond_p2_trim': 0,
                   'cpt2_terminal_block_lift': 0, 'cpt2_cover_back_off': 0}}, 'shift_vac'),
+        # milestone WM2 (REALISM.md §2.24): the sixth cause, the failed sensor module (the output at the low alarm
+        # current), drawn by shift_fail's own seed: the technician reads the status, notifies the work order, has the
+        # storekeeper issue the spare against it, takes the old transmitter off (wires lifted, block valve shut,
+        # vented, unbolted), fits the new one (the part check), sets its range from the data sheet, the loop check;
+        # cured. On shift_nospare (none of the spare on the shelf): the storekeeper's issue refused (stock) and the
+        # spare reordered (42 days); the trainer hands over the look-alike in free mode, refused at the fitting
+        # (wrong_part); the job held for parts overnight; two jumps (30 days, then 10) bring the delivery; the job
+        # resumes, the storekeeper issues the spare, fitted, cured
+        ('npc_hands_failed', Trainee(), FAIL_STEPS,
+         {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
+          'events': [['cause', 'cond_p2_low', 'failed'],
+                     ['issue', 'pt_unit_a3', 1, 'wo_cond_p2_fix', 'store1', 'done', []],
+                     ['hand', '30MAG10CP002', 'remove_tx', 'spanner_17', 'ic1', 'done', []],
+                     ['hand', '30MAG10CP002', 'fit_tx', 'spanner_17', 'ic1', 'done', []],
+                     ['hand', '30MAG10CP002', 'set_range', 'hart', 'ic1', 'done', []]],
+          'end': {'cond_p2_low': 0, 'cpt2_sensor_module_fail': 0, 'cpt2_flange_bolts_off': 0,
+                  'cpt2_electronics_urv': 120, 'cpt2_sound': 1, 'cpt2_cover_back_off': 0}}, 'shift_fail'),
+        ('npc_hands_nospare', Trainee(extra=NOSPARE_EXTRA), NOSPARE_STEPS,
+         {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
+          'events': [['cause', 'cond_p2_low', 'failed'],
+                     ['issue', 'pt_unit_a3', 1, 'wo_cond_p2_fix', 'store1', 'refused', ['stock']],
+                     ['order', 'pt_unit_a3'],
+                     ['issue', 'pt_unit_a4', 1, 'wo_cond_p2_fix', None, 'done', []],
+                     ['hand', '30MAG10CP002', 'fit_tx', 'spanner_17', 'ic1', 'refused', ['wrong_part']],
+                     ['task', 'ic1', 'job_cond_p2_fix_tx', 'held'],
+                     ['jump', None, None, 'done'], ['delivery'],
+                     ['issue', 'pt_unit_a3', 1, 'wo_cond_p2_fix', 'store1', 'done', []],
+                     ['hand', '30MAG10CP002', 'fit_tx', 'spanner_17', 'ic1', 'done', []]],
+          'end': {'cond_p2_low': 0, 'cpt2_sensor_module_fail': 0, 'cpt2_electronics_urv': 120,
+                  'cpt2_sound': 1}}, 'shift_nospare'),
     ]
+
+
+# (WM2) the forks' lengths and the trainer's inputs on shift_nospare: the look-alike handed over in free mode while the
+# technician waits at the counter, then the jumps once the job is held for parts (found by running the reference)
+FAIL_STEPS = 40000
+NOSPARE_LOOK = 20000
+NOSPARE_J1 = 70000
+NOSPARE_STEPS = 120000
+NOSPARE_EXTRA = [[NOSPARE_LOOK, 'issue', 'pt_unit_a4', 1, 'wo_cond_p2_fix', None],
+                 [NOSPARE_J1, 'jump', '06:00', 30], [NOSPARE_J1 + 2, 'jump', '08:00', 10]]
 
 
 def day_bundle():

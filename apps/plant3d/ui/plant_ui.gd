@@ -482,11 +482,13 @@ func open_workshop(kind: String, code := "") -> bool:
 
 
 ## A job's failed part opened in the Workshop from the debrief's diagnosis tab (REALISM.md §3.5, milestone HW3):
-## the kind's machine with the cause's component picked, what was found there, and the cause's bench fault.
+## the kind's machine with the cause's component picked, what was found there, and the cause's bench fault. Writable
+## only when the job removed the part (milestone WM2: a fitting replaced it); read only otherwise.
 func open_failed_part(r: Dictionary) -> bool:
 	if main == null or main.workshop == null:
 		return false
-	main.workshop.failed = {"component": r.component, "title": r.cause_title, "found": r.found, "bench_fault": r.bench}
+	main.workshop.failed = {"component": r.component, "title": r.cause_title, "found": r.found, "bench_fault": r.bench,
+			"writable": bool(r.get("removed", false))}   # (WM2: writable for a part the job removed, §3.5)
 	if not open_workshop(String(r.kind), String(r.kks)):
 		main.workshop.failed = {}
 		return false

@@ -126,7 +126,9 @@ def low_nodes():
 
 def model():
     """model/admin.json: the stores' content nodes, in the store's area."""
-    return {'format': 'walkdown-plant-model', 'version': 2, 'area': 'admin', 'values': low_nodes()}
+    import train_hands      # (the transmitter's replacement reads the shelf and its work order, REALISM.md §2.24)
+    return {'format': 'walkdown-plant-model', 'version': 2, 'area': 'admin',
+            'values': low_nodes() + train_hands.store_nodes()}
 
 
 def tasks():

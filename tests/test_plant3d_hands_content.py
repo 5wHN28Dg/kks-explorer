@@ -324,12 +324,17 @@ class HiddenCauseJob(unittest.TestCase):
                 faults = {f['id']: f for f in jload(F, rel).get('faults', [])}
                 if 'cond_p2_drift' in faults:
                     f = faults['cond_p2_low']
-                    self.assertEqual([c['id'] for c in f['causes']], ['drift', 'loose', 'blocked', 'passing', 'wet'])
-                    # (HW3) the three new causes weigh by a value, 0 unless the scenario sets it (shift_tx alone)
-                    self.assertEqual([c['weight'] for c in f['causes']], [1, 1] + list(train_hands.W_NEW))
+                    self.assertEqual([c['id'] for c in f['causes']],
+                                     ['drift', 'loose', 'blocked', 'passing', 'wet', 'failed'])
+                    # (HW3) the three new causes weigh by a value, 0 unless the scenario sets it (shift_tx, shift_vac
+                    # and WM2's two); (WM2) the failed sensor too, set only in shift_fail and shift_nospare
+                    self.assertEqual([c['weight'] for c in f['causes']],
+                                     [1, 1] + list(train_hands.W_NEW) + [train_hands.W_FAIL])
                     init = jload(F, rel)['init']
-                    want = 1 if rel in ('scenarios/shift_tx.json', 'scenarios/shift_vac.json') else None
+                    fail = rel in ('scenarios/shift_fail.json', 'scenarios/shift_nospare.json')
+                    want = 1 if rel in ('scenarios/shift_tx.json', 'scenarios/shift_vac.json') or fail else None
                     self.assertEqual({init.get(w) for w in train_hands.W_NEW}, {want}, rel)
+                    self.assertEqual(init.get(train_hands.W_FAIL), 1 if fail else None, rel)
                     self.assertEqual(f['kks'], CP2)
 
     def test_instructors_cause_and_the_works_repair(self):

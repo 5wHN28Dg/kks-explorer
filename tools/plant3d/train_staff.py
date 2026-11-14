@@ -237,6 +237,8 @@ MESSAGES = {
     'phone_out': 'Phone out of the Ex zone: left with the supervisor',
     **wtp_staff.MESSAGES,
     **train_discussions.MESSAGES,      # milestone DC3 (REALISM.md §6.3.1)
+    # milestone WM2 (REALISM.md §2.24): the transmitter's replacement waiting for its spare
+    'held_for_parts': 'Job held for parts: no right spare transmitter issued, the job waits until one is on the shelf',
 }
 
 
@@ -771,7 +773,8 @@ def staff(models, layout):
             'people': everyone, 'routines': rts,
             # (DC3's, then WM2's stores: the storekeeper's reorders, REALISM.md §2.23, appended last so that no earlier
             # task's or reaction's index moves)
-            'tasks': T + camp_staff.tasks() + AUDIO_TASKS + WO_TASKS + train_discussions.tasks() + train_stores.tasks(),
+            'tasks': T + camp_staff.tasks() + AUDIO_TASKS + WO_TASKS + train_discussions.tasks() + train_stores.tasks()
+            + train_hands.tasks(),      # (WM2: the transmitter's replacement, REALISM.md §2.24)
             'reactions': reactions(model_reacts) + AUDIO_REACTIONS + WO_REACTIONS + train_discussions.reactions()
             + train_stores.reactions(),
             'vehicles': camp_staff.vehicles(),

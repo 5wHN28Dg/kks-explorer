@@ -156,6 +156,8 @@ def build():
     files['scenarios/shift_aged.json'] = train_ageing.aged_scenario(files['scenarios/shift_cold.json'])
     files['scenarios/shift_vac.json'] = train_hands.vac_scenario(files['scenarios/shift_cold.json'])    # (HW3)
     files['scenarios/shift_tx.json'] = train_hands.scenario(files['scenarios/shift_cold.json'])
+    files['scenarios/shift_fail.json'] = train_hands.fail_scenario(files['scenarios/shift_cold.json'])    # (WM2)
+    files['scenarios/shift_nospare.json'] = train_hands.nospare_scenario(files['scenarios/shift_cold.json'])
     for k in [k for k in files if k.startswith('scenarios/')]:
         files[k] = train_ageing.apply(files[k])
     files['staff.json'] = train_staff.staff(models, train_staff.load_layout())

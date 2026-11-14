@@ -179,7 +179,8 @@ func _show_diagnosis(e) -> void:
 			box.add_child(l)
 		if Diagnosis.shown(r, over) and r.component != "" and ui.workshop_has(String(r.kind)):
 			var rr: Dictionary = r
-			var b := W.button("Open the failed part in the Workshop", func(): ui.open_failed_part(rr))
+			var b := W.button("Open the removed part in the Workshop" if bool(r.get("removed", false)) else
+					"Open the failed part in the Workshop", func(): ui.open_failed_part(rr))
 			b.name = "failed_part"
 			box.add_child(b)
 		_list.add_child(box)
