@@ -960,6 +960,33 @@ func _face_at(tris: Array, a: Vector3, side: float) -> float:
 			at = k
 	return at
 
+## Triangles split into their connected pieces (joined by their corners, to 0.01 mm): [[triangles], ...].
+func _pieces_of(tris: Array) -> Array:
+	var parent := {}
+	var find := func(k: String) -> String:
+		while parent[k] != k:
+			k = parent[k]
+		return k
+	for t in tris:
+		var ks: Array = []
+		for p: Vector3 in t:
+			var k := _q(p)
+			if not parent.has(k):
+				parent[k] = k
+			ks.append(k)
+		for j in range(1, 3):
+			var x: String = find.call(ks[0])
+			var y: String = find.call(ks[j])
+			if x != y:
+				parent[y] = x
+	var groups := {}
+	for t in tris:
+		var k: String = find.call(_q(t[0]))
+		if not groups.has(k):
+			groups[k] = []
+		groups[k].append(t)
+	return groups.values()
+
 ## A plate heat exchanger's pack (PACKS): every plate's faces lie square to the line from the pressure plate to the
 ## frame plate (or along it); the plates follow each other along it without a gap or an overlap (1 mm), from the
 ## pressure plate's inner face to the frame plate's; every bolt of the groups runs along that line, from beyond the
@@ -1007,10 +1034,16 @@ func _packs(part: String, ws: Dictionary) -> void:
 			if n.length() > 1e-12 and absf(n.normalized().dot(a)) > 0.0001 and absf(n.normalized().dot(a)) < 0.9999:
 				bad += 1
 		check(bad == 0, "%s: %s: %d faces lie neither square to the pack's line nor along it" % [part, w.plates[i], bad])
-		var sp := _span(plates[i], a)
-		check(absf(sp.x - at) <= 0.001, "%s: %s starts %.1f mm from where the one before it ends (%s)" % [part,
-			w.plates[i], (sp.x - at) * 1000.0, "the pressure plate" if i == 0 else w.plates[i - 1]])
-		at = sp.y
+		# each plate of the component (a connected piece) in turn along the line
+		var spans: Array = []
+		for pc in _pieces_of(plates[i]):
+			spans.append(_span(pc, a))
+		spans.sort_custom(func(x: Vector2, y: Vector2) -> bool: return x.x < y.x)
+		for k in spans.size():
+			var sp: Vector2 = spans[k]
+			check(absf(sp.x - at) <= 0.001, "%s: %s's plate %d starts %.1f mm from where the one before it ends (%s)" % [
+				part, w.plates[i], k + 1, (sp.x - at) * 1000.0, "the pressure plate" if i == 0 and k == 0 else "the plate before"])
+			at = sp.y
 	check(absf(at - f_in) <= 0.001, "%s: the pack ends %.1f mm from the frame plate's face" % [part, (at - f_in) * 1000.0])
 	for gid in w.bolts:
 		var found := false
@@ -1041,9 +1074,8 @@ func _packs(part: String, ws: Dictionary) -> void:
 		check(found, "%s: the bolt group %s" % [part, gid])
 
 ## A shell-and-tube exchanger's bundle (BUNDLES): each tube (a connected piece of the tubes' mesh) runs straight along
-## the line from the stationary tubesheet to the floating one, starts within the stationary tubesheet's thickness
-## (or at its outer face) and ends within the floating one's, and lies inside the floating tubesheet's rim and the
-## shell's bore.
+## the line from the stationary tubesheet to the floating one, from the one's outer face to the other's (expanded
+## into both, their ends flush, within 1 mm), and lies inside the floating tubesheet's rim and the shell's bore.
 func _bundles(part: String, ws: Dictionary) -> void:
 	if not BUNDLES.has(part):
 		return
@@ -1075,30 +1107,12 @@ func _bundles(part: String, ws: Dictionary) -> void:
 	for t in shell:
 		for p: Vector3 in t:
 			bore = minf(bore, off.call(p))
-	# the tubes one by one: the triangles joined by their corners (to 0.01 mm)
-	var parent := {}
-	var find := func(k: String) -> String:
-		while parent[k] != k:
-			k = parent[k]
-		return k
-	for t in tubes:
-		var ks: Array = []
-		for p: Vector3 in t:
-			var k := _q(p)
-			if not parent.has(k):
-				parent[k] = k
-			ks.append(k)
-		for j in range(1, 3):
-			var x: String = find.call(ks[0])
-			var y: String = find.call(ks[j])
-			if x != y:
-				parent[y] = x
+	# the tubes one by one
 	var groups := {}
-	for t in tubes:
-		var k: String = find.call(_q(t[0]))
-		if not groups.has(k):
-			groups[k] = []
-		groups[k].append(t)
+	var gi := 0
+	for pc in _pieces_of(tubes):
+		groups[gi] = pc
+		gi += 1
 	check(groups.size() >= 2, "%s: the tubes are drawn (%d)" % [part, groups.size()])
 	var bad := {}
 	for k in groups:
@@ -1120,10 +1134,10 @@ func _bundles(part: String, ws: Dictionary) -> void:
 		var e1: Vector3 = ends[1] / maxi(cnt[1], 1)
 		if e0.distance_to(e1) > 0.001:
 			bad["a tube leans off the bundle's line (%.1f mm over its length)" % (e0.distance_to(e1) * 1000.0)] = true
-		if sp.x < sp0.x - 0.001 or sp.x > sp0.y:
-			bad["a tube starts outside the stationary tubesheet (%.1f mm from its outer face)" % ((sp.x - sp0.x) * 1000.0)] = true
-		if sp.y > sp1.y + 0.001 or sp.y < sp1.x:
-			bad["a tube ends outside the floating tubesheet (%.1f mm from its outer face)" % ((sp.y - sp1.y) * 1000.0)] = true
+		if absf(sp.x - sp0.x) > 0.001:
+			bad["a tube's end is not at the stationary tubesheet's outer face (%.1f mm from it)" % ((sp.x - sp0.x) * 1000.0)] = true
+		if absf(sp.y - sp1.y) > 0.001:
+			bad["a tube's end is not at the floating tubesheet's outer face (%.1f mm from it)" % ((sp.y - sp1.y) * 1000.0)] = true
 		if reach > rim + 0.0005 or reach > bore + 0.0005:
 			bad["a tube reaches %.1f mm from the axis, past the floating tubesheet's rim (%.1f) or the shell's bore (%.1f)" % [
 				reach * 1000.0, rim * 1000.0, bore * 1000.0]] = true

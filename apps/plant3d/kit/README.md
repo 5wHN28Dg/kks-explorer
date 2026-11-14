@@ -533,7 +533,7 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   are the frame plate's); the plant's carrying bar leaves the pressure plate 0.25 m to the column, so the explode
   pushes it back that far and takes the plates out to the side (End plate I, the first off, farthest).
   `tests/test_workshop.gd _packs` checks that the plates lie square to the line from the pressure plate to the frame
-  plate, follow each other without a gap from one plate's inner face to the other's, and that every bolt runs along
+  plate, follow each other plate by plate without a gap from one plate's inner face to the other's, and that every bolt runs along
   that line beside the plates, from beyond the pressure plate's outer face to beyond the frame plate's. **The
   stand-ins:** the plant's pack with the plates' edges it draws on it, its bolts (the two fastener groups) and its
   nozzles (drawn again with each piece closed: `_ws_nozzle`).
@@ -555,8 +555,8 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   under its top) and are left out; the plant's tube inlet stands a few centimetres off the rear bonnet and stays so,
   the rear bonnet's; the plant's saddles are boxes reaching 0.3 m up into the shell, and the bundle passes their
   tops as it is drawn out (listed in `tests/test_workshop.gd`). `tests/test_workshop.gd _bundles` checks that every
-  tube runs straight along the bundle's line from within the stationary tubesheet to within the floating one, inside
-  the floating tubesheet's rim and the shell's bore. **The stand-ins:** the joint's stud ring (a fastener group) and
+  tube runs straight along the bundle's line from the stationary tubesheet's outer face to the floating one's,
+  inside the floating tubesheet's rim and the shell's bore. **The stand-ins:** the joint's stud ring (a fastener group) and
   the two tube nozzles. **Known limits:** built and tested for the data file's 1.2 m shell only; a shell whose
   circle has an odd number of segments leaves the plant's front bonnet open (the plant's own cylinder and caps).
 
