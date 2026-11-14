@@ -100,8 +100,14 @@
   ["ccw_b_brg_t_h", {"cmp": ["ccw_b_brg_t", ">", 90]}],
   ["ccw_a_bt_k", {"of": "ccw_a_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.4], [-1800.0, 0.8], [-900.0, 1.68], [0, 2.64]], "unit": "mm/s"}],
   ["ccw_a_bt", {"product": ["ccw_a_run", "ccw_a_bt_k"], "unit": "mm/s"}],
+  ["ccw_a_warm_rise", {"product": ["ccw_a_run", 25], "unit": "K"}],
+  ["ccw_a_warm_rl", {"lag": "ccw_a_warm_rise", "tau": 600, "unit": "K"}],
+  ["ccw_a_warm_t", {"sum": ["ambient_t", "ccw_a_warm_rl"], "unit": "°C"}],
   ["ccw_b_bt_k", {"of": "ccw_b_brg_mgn", "table": [[-3000, 0.0], [-2700.0, 0.4], [-1800.0, 0.8], [-900.0, 1.68], [0, 2.64]], "unit": "mm/s"}],
-  ["ccw_b_bt", {"product": ["ccw_b_run", "ccw_b_bt_k"], "unit": "mm/s"}]
+  ["ccw_b_bt", {"product": ["ccw_b_run", "ccw_b_bt_k"], "unit": "mm/s"}],
+  ["ccw_b_warm_rise", {"product": ["ccw_b_run", 25], "unit": "K"}],
+  ["ccw_b_warm_rl", {"lag": "ccw_b_warm_rise", "tau": 600, "unit": "K"}],
+  ["ccw_b_warm_t", {"sum": ["ambient_t", "ccw_b_warm_rl"], "unit": "°C"}]
  ],
  "ops": [
   {"kks": "00QFA10AN001", "do": "start", "set": {"ia_a_cmd": 1}, "needs": [["ia_a_ok", "The motor has a fault: it needs repair before a start"]], "where": ["local", "screen"]},

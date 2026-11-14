@@ -31,12 +31,16 @@ var _comps: Array = []
 var _ev_seen := 0
 var _ev_mark := 0
 var faulted := {}               # fault id -> true while made and not repaired (from the engine's events)
+var mirror_live := Callable()   # (the live mirror in a session, WORKSHOP.md §6.5) the plant's values now, as
+								# [values, states] for set_mirror, read before every step; unset, the mirror stands
+var _mir: Array = []            # the mirror set ([values, states]; [] none): set again after a restart
 
 
 ## Loads the bench file's text against the kind's component ids; false (and `error`) when it can't run.
 func load_text(text: String, comps: Array) -> bool:
 	_text = text
 	_comps = comps
+	clear_mirror()
 	m = BenchModel.from_text(text, comps)
 	error = m.error
 	if error != "":
@@ -52,6 +56,8 @@ func restart() -> void:
 	max_steps = MAX_STEPS_FRAME
 	speed = clampf(speed, SPEED_MIN, SPEED_MAX)
 	e = PlantEngine.new(m, BenchModel.SCENARIO)
+	if not _mir.is_empty():
+		e.set_mirror(_mir[0], _mir[1])
 	prev = e.cur.duplicate()
 	acc = 0.0
 	steps = 0
@@ -66,6 +72,45 @@ func loaded() -> bool:
 	return e != null
 
 
+## The live mirror (WORKSHOP.md §6.5): the plant's `values` ({bench value: number}) and machine `states` ({bench
+## machine: state id}) written over the engine's after step 2 from the next step on (sim/engine.gd set_mirror), until
+## set again or cleared.
+func set_mirror(values: Dictionary, states: Dictionary) -> void:
+	_mir = [values, states]
+	if e != null:
+		e.set_mirror(values, states)
+
+
+func mirrored() -> bool:
+	return not _mir.is_empty()
+
+
+func clear_mirror() -> void:
+	_mir = []
+	mirror_live = Callable()
+	if e != null:
+		e.set_mirror({}, {})
+
+
+## One step at once, drawn without a blend from the start (a mirror's first frame shows the plant's state).
+func prime() -> void:
+	if e == null:
+		return
+	_mirror_now()
+	e.step()
+	steps += 1
+	prev = e.cur.duplicate()
+	acc = 0.0
+	_read_events()
+	_drop_read()
+
+
+func _mirror_now() -> void:
+	if mirror_live.is_valid():
+		var r: Array = mirror_live.call()
+		set_mirror(r[0], r[1])
+
+
 func set_speed(x: float) -> void:
 	speed = clampf(x, SPEED_MIN, SPEED_MAX)
 
@@ -78,6 +123,7 @@ func tick(delta: float) -> int:
 	var n := 0
 	while acc >= STEP and n < max_steps:
 		prev = e.cur.duplicate()
+		_mirror_now()
 		var t0 := Time.get_ticks_usec()
 		e.step()
 		var us := Time.get_ticks_usec() - t0

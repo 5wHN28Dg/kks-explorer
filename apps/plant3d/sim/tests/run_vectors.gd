@@ -386,7 +386,10 @@ static func by_step(items: Array) -> Array:
 
 func _apply_due(e, inputs: Array, i: int) -> int:
 	while i < inputs.size() and inputs[i][0] == e.step_no + 1:
-		e.apply_input(inputs[i])
+		if inputs[i][1] == "mirror":
+			e.set_mirror(inputs[i][2], inputs[i][3])   # (the Workshop's mirror in the bench runs: not an input)
+		else:
+			e.apply_input(inputs[i])
 		i += 1
 	return i
 
