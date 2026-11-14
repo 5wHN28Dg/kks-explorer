@@ -35,8 +35,8 @@ const ROTOR_ONLY := ["fan_axial"]
 ## end in "*"), each with its reason (_turning).
 const RUBS := {
 	"fan_axial|hub|gb_case": "the plant draws the gear case's top 0.1 m up inside the hub (a real hub sits on the gear "
-		+ "drive's output shaft above the case): the Workshop keeps the plant's outline, and the output shaft and "
-		+ "every part inside the case stay clear of the hub",
+		+ "drive's output shaft above the case): the Workshop keeps the plant's outline: every standing part inside "
+		+ "the case stays clear of the hub, and the output shaft that reaches up into it turns with it",
 	"generator|exc_rotor|exc_grille": "the plant draws the exciter hood's end grille as a disc 10 mm off the hood, "
 		+ "across the shaft's end where it leaves the hood",
 }

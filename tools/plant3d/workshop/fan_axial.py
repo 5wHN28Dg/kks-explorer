@@ -245,7 +245,9 @@ ASSEMBLY = [
          [('gb_out_shaft', 'The hub sits on the output shaft: the gear drive is there first.',
            'Take the hub off before the gear drive comes apart.'),
           ('gb_seal_carrier', 'The hub stands over the seal carrier: fit it first.',
-           'Lift the hub off before the seal carrier comes off.')],
+           'Lift the hub off before the seal carrier comes off.'),
+          ('gb_int_cover', 'The hub stands over the intermediate bearing cover: fit it first.',
+           'Lift the hub off before the intermediate bearing cover comes off.')],
          why='Its mating faces clean and dry; a thrust retainer (optional) holds it down where the shaft has no '
              'shoulder.'),
     _fan('blades', 'Clamp each blade\'s neck in its clamp halves between the hub plates, its thick leading edge to '

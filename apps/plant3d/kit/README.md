@@ -539,7 +539,8 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   fan's size) with everything inside it hidden: the vertical cover is a plate inside its top and the input shaft's
   carrier sits inside its side, so they and the shafts come out through the box's faces in the explode (listed in
   `PASSES`); the plant draws the box's top 0.1 m up inside the hub, so the hub turns round it (listed in `RUBS`, the
-  only such pair: everything inside the box stays clear of the hub); gears are plain discs with a gap where they mesh
+  only such pair: every standing part inside the box stays clear of the hub; the output shaft reaches up into it and
+  turns with it); gears are plain discs with a gap where they mesh
   (no teeth); the bearing cups are part of the case and the cover; the inspection plates, the oil pump and the oil
   lines, the shim packs, spacers and keys are not drawn; the intermediate shaft and the input shaft are drawn standing
   (only the output shaft turns with the fan in the `shaft` node); the drive shaft is the plant's one tube (its two
@@ -561,8 +562,9 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   **The order** is BHEL's overhaul tender's (the user's decision, 2026-11-14: a contract scope for a hydrogen-cooled
   250 MW machine, **not a maker's manual**, which the data file and every step say), with WEG's S line manual (§8.1,
   §8.2) as the second source: the bushings, the bearings' top halves and the coupling, the exciter's hood and the
-  exciter off its bed, the pipes and the coolers, the end shields' upper halves and the fan shields, the bottom end
-  shields and the bearings, the rotor threaded out. The hydrogen seals and their seal oil are left out (this machine is
+  exciter off its bed, the pipes and the coolers, the end shields' upper halves, the bottom end shields and the
+  bearings moved aside, the fan shields slid out along the shaft (BHEL takes them out with the end shields: drawn
+  sliding out, they wait for the bottom halves), the rotor threaded out. The hydrogen seals and their seal oil are left out (this machine is
   air-cooled: the steps say so). **Simplified:** the plant's frame, bearing pedestals and exciter hood are one stand-in
   (all its identify-class paint), split into the frame's walls (closed by a wall inside and a ring at each end), the end
   shields' halves (slabs whose outer faces are the plant's ends), the pedestals and their caps (cut at the shaft line)
