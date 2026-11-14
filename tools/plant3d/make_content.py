@@ -24,10 +24,13 @@ from workshop import valve_control as ws_valve_control  # noqa: E402
 from workshop import valve_gate as ws_valve_gate  # noqa: E402
 from workshop import valve_globe as ws_valve_globe  # noqa: E402
 from workshop import valve_butterfly as ws_valve_butterfly  # noqa: E402
+from workshop import fan_axial as ws_fan_axial  # noqa: E402
+from workshop import generator as ws_generator  # noqa: E402
 
 # the part kinds with Workshop data (docs/plant3d/WORKSHOP.md §4): each a module of tools/plant3d/workshop/
 WORKSHOP = [ws_pressure_transmitter, ws_steam_turbine, ws_gas_turbine, ws_motor, ws_pump_horizontal, ws_pump_vertical,
-            ws_valve_control, ws_valve_gate, ws_valve_globe, ws_valve_butterfly]
+            ws_valve_control, ws_valve_gate, ws_valve_globe, ws_valve_butterfly, ws_fan_axial,
+            ws_generator]
 
 OUT = os.path.join(ROOT, 'data', 'plant3d')
 

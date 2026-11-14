@@ -22,12 +22,21 @@ const Explode = preload("res://workshop/explode.gd")
 ## A kind whose flow leaves the shaft radially (a centrifugal pump's impeller, a motor's fan) says "radial", with the
 ## number of its moving rows whose vanes lean (RADIAL_ROWS): an impeller's vanes curve back against its turn, a
 ## motor's fan has straight radial blades (it cools whichever way the motor turns), so it has none.
+## A cooling tower's fan pushes its air up out of the stack (Godot's +y).
 const FLOW := {"steam_turbine": Vector3(0, 0, 1), "gas_turbine": Vector3(0, 0, -1), "pump_horizontal": "radial",
-	"motor": "radial", "pump_vertical": "radial"}
+	"motor": "radial", "pump_vertical": "radial", "fan_axial": Vector3(0, 1, 0)}
 const RADIAL_ROWS := {"pump_horizontal": 1, "motor": 0, "pump_vertical": 2}
+## Axial kinds with one moving row and no stationary one (a fan in its stack: no guide vanes). Their blades must lean as
+## a moving row's, pushing the flow its way as the shaft turns; the same blades with the shaft turning the other way
+## must fail it; and what turns is checked as the radial kinds' are (_turning).
+const ROTOR_ONLY := ["fan_axial"]
 ## Pairs of a turning component and a standing one that may meet as it turns ("kind|turning|standing", standing may
 ## end in "*"), each with its reason (_turning).
-const RUBS := {}
+const RUBS := {
+	"fan_axial|hub|gb_case": "the plant draws the gear case's top 0.1 m up inside the hub (a real hub sits on the gear "
+		+ "drive's output shaft above the case): the Workshop keeps the plant's outline, and the output shaft and "
+		+ "every part inside the case stay clear of the hub",
+}
 const RUB := 0.002   # how far (m) a turning surface may reach into a standing one's band (a polygon's flats, a fit)
 const TURN_SMALL := 0.05   # the longest edge (m) of the pieces a triangle is halved into for it
 ## Pairs of components whose explode may pass through each other ("kind|a|b", either order; b may end in "*" for
@@ -47,6 +56,8 @@ const PASSES := {
 	"steam_turbine|valve_r|ctrl_r": "the same chest on the other side",
 	"motor|end_shield_de|rotor": "the plant draws the drive-end shield's face closed and the shaft's stub standing on it: "
 		+ "the shield comes off forwards over the stub, as a real one does through its bore",
+	"fan_axial|gb_case|gb_*": "the plant draws the gear case as one closed box: a real one's top is its vertical "
+		+ "cover and the input shaft's carrier sits in its side, so what is inside comes out through them",
 	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
 		+ "comes out through its wall",
 }
@@ -408,6 +419,18 @@ func _blade_lean(part: String, ws: Dictionary) -> void:
 			problems = kept
 			check(caught, "%s: the vane check misses an impeller turning the wrong way" % part)
 		return
+	_axial_lean(part, ws, shaft)
+	if part in ROTOR_ONLY:   # the check itself: the same blades with the shaft turning the other way fail
+		var kept := problems.duplicate()
+		var back: Dictionary = shaft.duplicate()
+		back.axis = -(shaft.axis as Vector3)
+		_axial_lean(part, ws, back)
+		var caught := problems.size() > kept.size()
+		problems = kept
+		check(caught, "%s: the blade check misses a fan turning the wrong way" % part)
+
+## The axial rows' lean (_blade_lean), with the shaft turning about `shaft.axis`.
+func _axial_lean(part: String, ws: Dictionary, shaft: Dictionary) -> void:
 	var f: Vector3 = FLOW[part]
 	var ax: Vector3 = shaft.axis
 	check(absf(ax.dot(f)) > 0.999, "%s: the shaft turns about the flow's line (%s, %s)" % [part, ax, f])
@@ -448,7 +471,11 @@ func _blade_lean(part: String, ws: Dictionary) -> void:
 		check((lean > 0.0) == bool(acc[2]), "%s: %s (%s) leans %s the rotor's turn (%.2f): a %s row leans %s it" % [part, id,
 			"moving" if acc[2] else "stationary", "with" if lean < 0.0 else "against", lean,
 			"moving" if acc[2] else "stationary", "against" if acc[2] else "with"])
-	check(rows[0] > 0 and rows[1] > 0, "%s: blade rows found, stationary and moving (%d, %d)" % [part, rows[0], rows[1]])
+	if part in ROTOR_ONLY:
+		check(rows[0] == 0 and rows[1] > 0, "%s: moving blade rows found and no stationary one (%d, %d)" % [part, rows[0],
+			rows[1]])
+	else:
+		check(rows[0] > 0 and rows[1] > 0, "%s: blade rows found, stationary and moving (%d, %d)" % [part, rows[0], rows[1]])
 
 ## A radial machine's vanes, from the faces of what turns with the shaft (its `shaft` node): with the flow f the
 ## radial direction at each face, a vane curved back against the turn t (its tip trailing) has faces whose normals n
@@ -505,13 +532,13 @@ func _radial_lean(part: String, ws: Dictionary, shaft: Dictionary) -> void:
 ## triangle sweeps round the axis: a triangle of each is reduced to its span along the axis and its nearest and
 ## farthest distance from it (corners and edges' midpoints: a chord's nearest point), and a standing one whose span
 ## meets a turning one's by more than RUB along the axis and RUB across it (an impeller wider than its bowl, a rotor off
-## its line), or crosses it (_across: a shaft drawn through a closed face), is cut by it as it turns. The centrifugal kinds (FLOW "radial").
+## its line), or crosses it (_across: a shaft drawn through a closed face), is cut by it as it turns. The centrifugal kinds (FLOW "radial") and ROTOR_ONLY's.
 func _turning(part: String, ws: Dictionary) -> void:
 	var shaft = null
 	for mv in ws.moving:
 		if mv.name == "shaft":
 			shaft = mv
-	if shaft == null or not FLOW.get(part, null) is String:
+	if shaft == null or not (FLOW.get(part, null) is String or part in ROTOR_ONLY):
 		return   # (the turbines' rows turn in their carriers' grooves: their tens of thousands of triangles are left)
 	var ax: Vector3 = (shaft.axis as Vector3).normalized()
 	var piv: Vector3 = shaft.pivot

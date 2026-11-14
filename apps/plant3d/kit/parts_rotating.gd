@@ -666,6 +666,9 @@ static func _vpump_insides(g, rc: float, pit: float, zh: float, k: Dictionary) -
 
 ## A cooling tower's fan on its deck: the stack (the velocity-recovery cylinder), the blades turning in its throat,
 ## the gearbox, and the motor outside the stack driving it by a shaft.
+## The Workshop's tree (WORKSHOP.md §4, milestone K6; kit/README.md "Workshop: the cooling tower fan"): every piece
+## the Workshop adds is a "workshop" piece and every plant piece keeps its place, so plant mode draws what it drew
+## before.
 static func fan_axial(_part: String, g) -> void:
 	var m = g.m
 	var d: float = g.num("d", 9.5)
@@ -673,6 +676,9 @@ static func fan_axial(_part: String, g) -> void:
 	var kw: float = g.num("motor_kw", 200)
 	var hs: float = g.num("stack_height", 3)
 	var r := d * 0.5 + 0.15
+	if g.workshop:
+		_fan_comps(g, d, nb, hs, r)
+	g.comp("stack")
 	m.use("paint_ct", "form")
 	if hs > 0.05:
 		var prof := [[r, 0.0], [r, hs * 0.35], [r * (1.0 + 0.12 * minf(hs, 4.0) / 4.0), hs]]
@@ -681,8 +687,10 @@ static func fan_axial(_part: String, g) -> void:
 		m.use("paint_ct", "detail", 0.1)
 		m.ring(Vector3(0, 0, hs), Vector3(0, 0, 1), r * (1.0 + 0.12 * minf(hs, 4.0) / 4.0) - 0.05, r * (1.0 + 0.12 * minf(hs, 4.0) / 4.0) + 0.05, 48)
 	# the gearbox under the hub and its support beams across the stack
+	g.comp("gb_case")
 	m.use("paint_darkgrey", "form")
 	m.box(Vector3(0, 0, 0.3), Vector3(0.9, 0.7, 0.6))
+	g.comp("beams")
 	m.use("steel", "form")
 	for s: float in [-1.0, 1.0]:
 		m.box(Vector3(0, s * 0.45, 0.05), Vector3(d + 0.2, 0.2, 0.1))
@@ -690,18 +698,24 @@ static func fan_axial(_part: String, g) -> void:
 	var md := C.motor_dims(kw)
 	var zs: float = md.h + 0.1
 	var xm := r + 0.4
-	var mo := C.motor_h(m, Vector3(xm, 0, zs), Vector3(-1, 0, 0), kw, 0.0)
+	var mo := C.motor_h(m, Vector3(xm, 0, zs), Vector3(-1, 0, 0), kw, 0.0, "paint_motor", g, "motor",
+		{"explode": [Vector3(1, 0, 0), FAN_MOTOR_OUT], "rotor_node": ""})
+	g.comp("drive_shaft")
 	m.use("steel", "identify")
 	m.cyl(Vector3(0.45, 0, 0.3), Vector3(xm, 0, zs), 0.05, -1.0, 10)
+	g.comp("guard")
 	C.guard(m, Vector3(xm - 0.05, 0, zs), Vector3(xm - 0.6, 0, zs), 0.12, 0.0)
 	g.plate("deck", Vector3(xm + mo.l * 0.5, -mo.r - 0.01, zs), Vector3(0, -1, 0), "large")
 	# the blades and hub (moving)
 	var zf := 0.75
 	var sh = g.move("shaft", Vector3(0, 0, zf), Vector3(0, 0, 1), "rotate", 0.0)
+	g.comp("hub")
 	sh.use("steel", "identify")
 	sh.cyl(Vector3(0, 0, zf - 0.25), Vector3(0, 0, zf + 0.25), d * 0.08, -1.0, 16)
+	g.comp("seal_disc")
 	sh.use("paint_yellow", "identify")
 	sh.dish(Vector3(0, 0, zf + 0.25), Vector3(0, 0, 1), d * 0.08, d * 0.03, 16, 3)
+	g.comp("blades")
 	sh.use("paint_grey", "identify")
 	for i in nb:
 		var a := TAU * i / nb
@@ -713,8 +727,163 @@ static func fan_axial(_part: String, g) -> void:
 		var rr := d * 0.5 - 0.05
 		var c := dir * (d * 0.08 + rr) * 0.5 + Vector3(0, 0, zf)
 		sh.box(c, Vector3(rr - d * 0.08, 0.5 * d / 9.5 + 0.1, 0.04), Basis(dir, chord, up).orthonormalized())
+	if g.workshop:
+		_fan_insides(g, sh, d, nb, zf)
+	g.comp("stack")
 	g.solid_cyl(Vector3(0, 0, 0), Vector3(0, 0, maxf(hs, 1.0)), r)
 	g.axis_line = [Vector3(0, 0, 0), Vector3(0, 0, hs)]
+
+# ------------------------------------------------------------------ the cooling tower fan in the Workshop (K6)
+# A cooling tower's fan as Hudson's Tuf-Lite 6000 series hub manual installs one (the hub on the gearbox's shaft, the
+# blades clamped between its plates, the seal disc on top), driven through an Amarillo double reduction right-angle
+# gear drive (its gear case, vertical cover, the input shaft in its horizontal carrier, the intermediate and output
+# shafts) by a composite drive shaft from a motor outside the stack; what is simplified: kit/README.md "Workshop: the
+# cooling tower fan". Every piece here is a Workshop piece hidden inside the plant's: plant mode draws what it drew
+# before.
+const FAN_MOTOR_OUT := 2.5   # how far the motor moves out along the deck, away from the stack, in the explode (m)
+const FAN_HUB_LIFT := 2.5    # how far the hub with its blades lifts, clear of the stack's top (m)
+
+## The gearbox's insides (the plant draws the gear case as one closed box under the hub: 0.9 x 0.7 x 0.6 m whatever the
+## fan's size): the output shaft on the fan's axis, the intermediate shaft beside it towards the motor, the input shaft
+## along x at the height of the intermediate shaft's spiral bevel gear (z, the generator's frame).
+const GB_INT_X := 0.22        # the intermediate shaft's x
+const GB_IN_Z := 0.25         # the input shaft's height
+
+## The tree. The stack, the beams and the gear case stay; the guard, the drive shaft and the motor come off first and
+## the hub lifts with its blades clear of the stack (a real fan's blades come off the hub in place, one by one: the
+## steps say so); then the blades and the seal disc leave the hub, the vertical cover with its seal carrier and bearing
+## cover lifts off the gear case, the output and intermediate shafts lift out together (Amarillo lifts them on a strong
+## back), the input shaft's carrier is drawn out sideways and the lower bearing covers lift; last each shaft is
+## pressed apart: what sits low on a shaft comes off its lower end, what sits high its upper end.
+static func _fan_comps(g, d: float, nb: int, hs: float, r: float) -> void:
+	var Z := Vector3(0, 0, 1)
+	var X := Vector3(1, 0, 0)
+	g.comp("stack", {"explode": [Z, 0.0], "thin": true})
+	g.comp("beams", {"explode": [Z, 0.0]})
+	g.comp("gb_case", {"explode": [Z, 0.0]})
+	g.comp("guard", {"explode": [Z, 2.0]})
+	g.comp("drive_shaft", {"explode": [Z, 1.0]})
+	g.comp("hub", {"explode": [Z, FAN_HUB_LIFT], "anim": "shaft", "sym": [Z, 0]})
+	g.comp("blades", {"parent": "hub", "explode": [Z, 1.2], "sym": [Z, nb]})
+	g.comp("seal_disc", {"parent": "hub", "explode": [Z, 0.6], "sym": [Z, 0]})
+	g.comp("gb_cover", {"parent": "gb_case", "explode": [Z, 1.6]})
+	g.comp("gb_seal_carrier", {"parent": "gb_cover", "explode": [Z, 0.4], "sym": [Z, 0]})
+	g.comp("gb_int_cover", {"parent": "gb_cover", "explode": [Z, 0.6], "sym": [Z, 0]})
+	g.comp("gb_out_shaft", {"parent": "gb_case", "explode": [Z, 1.0], "sym": [Z, 0]})
+	g.comp("gb_helical", {"parent": "gb_out_shaft", "explode": [-Z, 0.5], "sym": [Z, 0]})
+	g.comp("gb_out_brg_lo", {"parent": "gb_out_shaft", "explode": [-Z, 0.8], "sym": [Z, 0]})
+	g.comp("gb_out_brg_up", {"parent": "gb_out_shaft", "explode": [Z, 0.4], "sym": [Z, 0]})
+	g.comp("gb_int_shaft", {"parent": "gb_case", "explode": [Z, 1.0], "sym": [Z, 0]})
+	g.comp("gb_bevel", {"parent": "gb_int_shaft", "explode": [Z, 0.5], "sym": [Z, 0]})
+	g.comp("gb_int_brg_up", {"parent": "gb_int_shaft", "explode": [Z, 0.8], "sym": [Z, 0]})
+	g.comp("gb_int_brg_lo", {"parent": "gb_int_shaft", "explode": [-Z, 0.4], "sym": [Z, 0]})
+	g.comp("gb_in_carrier", {"parent": "gb_case", "explode": [X, 1.2], "sym": [X, 0]})
+	g.comp("gb_oil_seal", {"parent": "gb_in_carrier", "explode": [X, 0.4], "sym": [X, 0]})
+	g.comp("gb_in_shaft", {"parent": "gb_in_carrier", "explode": [-X, 0.45], "sym": [X, 0]})
+	g.comp("gb_pinion", {"parent": "gb_in_shaft", "explode": [-X, 0.6], "sym": [X, 0]})
+	g.comp("gb_in_brg_in", {"parent": "gb_in_shaft", "explode": [-X, 0.35], "sym": [X, 0]})
+	g.comp("gb_in_brg_out", {"parent": "gb_in_shaft", "explode": [X, 0.3], "sym": [X, 0]})
+	g.comp("gb_low_covers", {"parent": "gb_case", "explode": [Z, 0.4]})
+
+## The Workshop's own pieces: the gear drive's insides in the plant's closed gear case (the output shaft, its helical
+## gear and bearings turning in the `shaft` node with the hub), the seal disc's closing face and bolts, the blades'
+## clamp bolts inside the hub. All hidden.
+static func _fan_insides(g, sh, d: float, nb: int, zf: float) -> void:
+	var m = g.m
+	var Z := Vector3(0, 0, 1)
+	var X := Vector3(1, 0, 0)
+	var xi := GB_INT_X
+	var zi := GB_IN_Z
+	var at := func(x: float, z: float) -> Vector3: return Vector3(x, 0, z)
+	g.only("workshop")
+	# what turns with the fan: the output shaft up into the hub, its helical gear and its two bearing cones
+	g.comp("gb_out_shaft")
+	sh.use("steel", "identify")
+	sh.cyl(at.call(0, 0.06), at.call(0, 0.598), 0.045, -1.0, 16)
+	g.comp("gb_helical")
+	sh.use("steel_dark", "identify")
+	sh.tube(at.call(0, 0.14), at.call(0, 0.20), 0.15, 0.045, 32)
+	g.comp("gb_out_brg_lo")
+	sh.use("chrome", "identify")
+	sh.tube(at.call(0, 0.06), at.call(0, 0.10), 0.08, 0.045, 16)
+	g.comp("gb_out_brg_up")
+	sh.tube(at.call(0, 0.36), at.call(0, 0.40), 0.08, 0.045, 16)
+	# the seal disc closed underneath (the plant's dish is open where it sits on the hub)
+	g.comp("seal_disc")
+	sh.use("paint_yellow", "identify")
+	C._face(sh, Vector3(0, 0, zf + 0.25), Z, 0.0, d * 0.08, 16, false)
+	# the intermediate shaft (the helical pinion is part of it), its spiral bevel gear and bearing cones
+	g.comp("gb_int_shaft")
+	m.use("steel", "identify")
+	m.cyl(at.call(xi, 0.06), at.call(xi, 0.40), 0.03, -1.0, 12)
+	m.use("steel_dark", "identify")
+	m.tube(at.call(xi, 0.14), at.call(xi, 0.20), 0.055, 0.03, 16)
+	g.comp("gb_bevel")
+	m.tube(at.call(xi, 0.30), at.call(xi, 0.34), 0.11, 0.03, 24)
+	g.comp("gb_int_brg_lo")
+	m.use("chrome", "identify")
+	m.tube(at.call(xi, 0.06), at.call(xi, 0.10), 0.05, 0.03, 16)
+	g.comp("gb_int_brg_up")
+	m.tube(at.call(xi, 0.36), at.call(xi, 0.40), 0.05, 0.03, 16)
+	# the input shaft along x under the bevel gear's rim: its pinion, the inner and outer bearing cones, the
+	# horizontal carrier round them and the oil seal plate at the case's side (the shaft's extension, which takes the
+	# drive shaft's hub outside the case, is the plant's drive shaft's end)
+	g.comp("gb_in_shaft")
+	m.use("steel", "identify")
+	m.cyl(at.call(0.29, zi), at.call(0.449, zi), 0.025, -1.0, 12)
+	g.comp("gb_pinion")
+	m.use("steel_dark", "identify")
+	m.tube(at.call(0.29, zi), at.call(0.33, zi), 0.04, 0.025, 16)
+	g.comp("gb_in_brg_in")
+	m.use("chrome", "identify")
+	m.tube(at.call(0.34, zi), at.call(0.36, zi), 0.05, 0.025, 16)
+	g.comp("gb_in_brg_out")
+	m.tube(at.call(0.40, zi), at.call(0.42, zi), 0.05, 0.025, 16)
+	g.comp("gb_in_carrier")
+	m.use("paint_darkgrey", "identify")
+	m.tube(at.call(0.335, zi), at.call(0.445, zi), 0.08, 0.052, 24)
+	g.comp("gb_oil_seal")
+	m.tube(at.call(0.445, zi), at.call(0.449, zi), 0.08, 0.03, 24)
+	# the vertical cover (the gear case's top: the upper bearing cups sit in it), its seal carrier round the output
+	# shaft and the intermediate shaft's upper bearing cover
+	g.comp("gb_cover")
+	m.tube(at.call(0, 0.41), at.call(0, 0.47), 0.32, 0.06, 32)
+	g.comp("gb_seal_carrier")
+	m.tube(at.call(0, 0.47), at.call(0, 0.495), 0.12, 0.06, 24)
+	g.comp("gb_int_cover")
+	m.cyl(at.call(xi, 0.47), at.call(xi, 0.495), 0.07, -1.0, 16)
+	g.comp("gb_low_covers")
+	m.cyl(at.call(0, 0.02), at.call(0, 0.055), 0.09, -1.0, 16)
+	m.cyl(at.call(xi, 0.02), at.call(xi, 0.055), 0.06, -1.0, 16)
+	g.only()
+	# the blades' clamp bolts: four through the hub's plates and each blade's clamp (Hudson: heads on top, nuts
+	# underneath), inside the hub; drawn backing out downwards, the way their nuts come off
+	g.comp("hub")
+	var rh := d * 0.08
+	var bolts: Array = []
+	for i in nb:
+		var a := TAU * i / nb
+		var dir := Vector3(cos(a), sin(a), 0)
+		var tang := Vector3(-sin(a), cos(a), 0)
+		for rr: float in [rh * 0.72, rh * 0.86]:
+			for t: float in [-1.0, 1.0]:
+				var p: Vector3 = dir * rr + tang * (t * rh * 0.07) + Vector3(0, 0, zf - 0.19)
+				bolts.append(Transform3D(Basis(tang, dir, -Z), p))
+	var bolt := func(b) -> void:
+		b.use("steel_bolt", "detail", 0.03)
+		b.cyl(Vector3(0, 0, -0.36), Vector3(0, 0, 0), 0.01, -1.0, 6)
+	g.fasteners("clamp_bolts", "bolt", bolts, bolt, "hidden")
+	# the seal disc's six bolts on the top hub plate, under the dish
+	g.comp("seal_disc")
+	var sb: Array = []
+	for i in 6:
+		var a := TAU * (i + 0.5) / 6.0
+		var dir := Vector3(cos(a), sin(a), 0)
+		sb.append(Transform3D(Basis(dir.cross(Z), dir, Z), dir * rh * 0.6 + Vector3(0, 0, zf + 0.25)))
+	var sbolt := func(b) -> void:
+		b.use("steel_bolt", "detail", 0.03)
+		b.cyl(Vector3(0, 0, 0), Vector3(0, 0, 0.06), 0.006, -1.0, 6)
+	g.fasteners("disc_bolts", "bolt", sb, sbolt, "hidden")
 
 ## A packaged (screw) air compressor: the enclosure with its louvres and controller, the cooler's fan on the roof
 ## (moving, under its grille), the air outlet at the front.
