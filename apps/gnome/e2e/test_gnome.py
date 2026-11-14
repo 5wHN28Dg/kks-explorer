@@ -64,7 +64,7 @@ class Plant(unittest.TestCase):
         # a location row (the platform) and an instrument point (a maker's list) for the same code: no conflict
         json.dump({'source': 'e2e list', 'entries': [
             {'kks': 'LCB20AA101', 'level': '14 m', 'desc': 'Drain platform'},
-            {'kks': 'LCB20AA101', 'kind': 'point', 'elev_m': 33, 'grid': 'K16 F08', 'desc': 'Drain tapping point',
+            {'kks': 'LCB20AA101', 'kind': 'point', 'level': '33 m', 'elev_m': 33, 'grid': 'K16 F08', 'desc': 'Drain tapping point',
              'source': 'Maker list', 'page': 5}]}, open(os.path.join(cfg['plant_dir'], 'locations.json'), 'w'))
         pdf = open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb').read()
         assert cls.boss.req('POST', '/api/sheets/import?id=sample&name=Sample%20sheet', raw=pdf, ctype='application/pdf').get('ok')

@@ -80,14 +80,17 @@ suite "model":
       {"kks":"LAB70AA501","level":"14 m","cabinet":"C1"},
       {"kks":"LAB70AA501","kind":"point","elev_m":33.0,"grid":"K16 F08","page":5.0,"source":"L"},
       {"kks":"LAB70AA501","kind":"point","page":2.5},
-      {"kks":"LAB70AA501","kind":"point","elev_m":1e300,"page":1e300}]"""))
+      {"kks":"LAB70AA501","kind":"point","elev_m":1e300,"page":1e300},
+      {"kks":"LAB70AA501","kind":"point","elev_m":1e-7},{"kks":"LAB70AA501","kind":"point","elev_m":-0.0004},
+      {"kks":"LAB70AA501","kind":"point","elev_m":12.3456}]"""))
     let rl = c.refLoc("LAB70AA501")
     check rl.rows.len == 1 and rl.cabinet == "C1"                 # the non-string kind is left out (Y8)
-    check rl.points.len == 3
+    check rl.points.len == 6
+    check rl.points[3].pointText == "0 m" and rl.points[4].pointText == "0 m" and rl.points[5].pointText == "12.346 m"
     check rl.points[0].pointText == "33 m · grid K16 F08" and rl.points[0].pointSource == "L, page 5"
     check rl.points[1].pointText == "" and rl.points[1].pointSource == ""   # 2.5 is no page
     check rl.points[2].pointText == "" and rl.points[2].pointSource == ""   # out of range
-    check c.search("k16")[0].full == "11LAB70AA501"                         # found by its grid"
+    check c.search("k16")[0].full == "11LAB70AA501"                         # found by its grid
   test "search: exact codes first, without the unit, partial, by description":
     check m.search("11LAB70AA501")[0].id == "a:2"
     check m.search("LAB70AA501")[0].id == "a:2"

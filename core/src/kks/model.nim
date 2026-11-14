@@ -254,7 +254,11 @@ proc pointElev*(r: JNode): string =
   if v == nil or v.kind notin {jInt, jFloat}: return ""
   let x = v.num
   if x != x or x > 1e6 or x < -1e6: return ""
-  (if x == float(int64(x)): $int64(x) else: $x) & " m"
+  # to the millimetre, never in exponent form, without trailing zeros (index.js ptElev the same)
+  var t = formatFloat(x, ffDecimal, 3)
+  t = t.strip(leading = false, chars = {'0'}).strip(leading = false, chars = {'.'})
+  if t == "-0": t = "0"
+  t & " m"
 
 proc pointText*(r: JNode): string =
   ## "33 m · grid K16 F08" (the parts there are)

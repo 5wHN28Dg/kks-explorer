@@ -1102,7 +1102,7 @@ class Windows(unittest.TestCase):
         with open(os.path.join(fix, 'locations.json'), 'w') as f:   # a location row and an instrument point: no conflict
             json.dump({'source': 'e2e list', 'entries': [
                 {'kks': 'LAB70AA888', 'level': '14 m', 'desc': 'Drain platform'},
-                {'kks': 'LAB70AA888', 'kind': 'point', 'elev_m': 33, 'grid': 'K16 F08', 'desc': 'Drain tapping point',
+                {'kks': 'LAB70AA888', 'kind': 'point', 'level': '33 m', 'elev_m': 33, 'grid': 'K16 F08', 'desc': 'Drain tapping point',
                  'source': 'Maker list', 'page': 5}]}, f)
         r = subprocess.run([SERVER, 'publish-data', fix, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
                            capture_output=True, text=True, timeout=60)

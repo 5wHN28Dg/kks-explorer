@@ -33,7 +33,8 @@ const floorOf=t=>(eq(full(t)).floor||'').trim();
 const floorName=f=>/^\d+$/.test(f)?'Floor '+f:f;
 const elevOf=t=>(eq(full(t)).elev||'').trim()||refLoc(bodyOf(t)).elev;
 // an instrument point (core model.pointText / pointSource): "33 m · grid K16 F08", "<document>, page 5"
-const ptElev=r=>typeof r.elev_m==='number'&&Number.isFinite(r.elev_m)&&Math.abs(r.elev_m)<=1e6?String(r.elev_m)+' m':'';
+const ptElev=r=>{ if(typeof r.elev_m!=='number'||!Number.isFinite(r.elev_m)||Math.abs(r.elev_m)>1e6) return '';
+  let t=r.elev_m.toFixed(3).replace(/0+$/,'').replace(/\.$/,''); if(t==='-0') t='0'; return t+' m' };
 const ptText=r=>[ptElev(r),typeof r.grid==='string'&&r.grid?'grid '+r.grid:''].filter(Boolean).join(' · ');
 const ptSource=r=>[typeof r.source==='string'?r.source:'',Number.isInteger(r.page)&&r.page>=1&&r.page<=100000?'page '+r.page:''].filter(Boolean).join(', ');
 function pointSec(b){
@@ -57,7 +58,7 @@ function selectLoc(b){
   selId=null; selTag=null; drawTags();
   put($('#panelBody'),h('div',{class:'phead'},h('div',{style:'flex:1'},h('div',{class:'kks',tabindex:'-1',role:'heading','aria-level':'2'},b),
       h('div',{class:'sub'},KKS.components[b.slice(5,7)]||'')),closeX()),
-    h('div',{class:'sec'},h('div',{class:'warn'},'In the location list but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.')),
+    h('div',{class:'sec'},h('div',{class:'warn'},((LOC[b]||[]).length?'In the location list':'In a list of instrument points')+' but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.')),
     locSec(b));
   $('#panel').classList.add('open'); $('#panel').scrollTop=0;
   if(focusPanel){ focusPanel=false; $('#panelBody .phead .kks')?.focus() }
@@ -91,8 +92,13 @@ async function load(){
   const lj=await fetch('data/locations.json').then(r=>r.ok?r.json():{entries:[]}).catch(()=>({entries:[]}));
   // location rows by KKS body; instrument points ("kind":"point") apart, never a conflict; other kinds left out (PROTOCOL-v2 §19)
   // (maps without a prototype: a code is never taken for an inherited member; the bare list as core reads it)
+  // Each entry is copied field by field, strings and numbers only (core reads them the same way), so no odd value in
+  // the file can reach the views or the search text.
+  const str=v=>typeof v==='string'?v:'', num=v=>typeof v==='number'?v:undefined;
   for(const e of Array.isArray(lj)?lj:Array.isArray(lj?.entries)?lj.entries:[]){ if(!e||typeof e!=='object'||Array.isArray(e))continue;
-    const kk=typeof e.kks==='string'?e.kks:''; if(e.kind==null)(LOC[kk]??=[]).push(e); else if(e.kind==='point')(PTS[kk]??=[]).push(e) }
+    const kk=str(e.kks);
+    if(e.kind==null)(LOC[kk]??=[]).push({kks:kk,level:str(e.level),cabinet:str(e.cabinet),desc:str(e.desc),direction:str(e.direction),page:num(e.page)});
+    else if(e.kind==='point')(PTS[kk]??=[]).push({kks:kk,elev_m:num(e.elev_m),grid:str(e.grid),desc:str(e.desc),source:str(e.source),page:num(e.page)}) }
   if(typeof lj?.source==='string'&&lj.source) LOCSRC=lj.source;
   K.onChange(why=>{
     if(why==='plantdata'){   // new drawings/tag lists published: load them, unless the person is typing in the panel
@@ -968,7 +974,7 @@ $('#q').addEventListener('input',()=>{
   hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
   const sn=id=>SHEETS.find(s=>s.id===id).name;
   put(R,hits.length?hits.map((x,i)=>{ const opt={class:'res'+(i===0?' on':''),role:'option',id:'res-'+i,'aria-selected':String(i===0),onclick:()=>pick(i)};
-    if(x.loc){const r=refLoc(x.loc);return h('div',opt,h('div',{class:'k'},x.loc+' ',h('span',{class:'m',style:'color:var(--review)'},'location list only')),
+    if(x.loc){const r=refLoc(x.loc);return h('div',opt,h('div',{class:'k'},x.loc+' ',h('span',{class:'m',style:'color:var(--review)'},r.rows.length?'location list only':'instrument point only')),
       h('div',{class:'m'},r.rows.length?(r.elev||'level varies')+(r.cabinet?' · '+r.cabinet:'')+(r.rows[0].desc?' · '+r.rows[0].desc:''):
         'instrument point'+((PTS[x.loc]||[])[0]?.desc?' · '+PTS[x.loc][0].desc:'')))}
     const e=eq(x.k), fl=floorOf(x.t), cab=refLoc(bodyOf(x.t)).cabinet;

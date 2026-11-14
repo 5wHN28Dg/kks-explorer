@@ -290,8 +290,8 @@ proc buildPanel*(w: Win, t: Tag) =
       p.field((if s(r, "desc").len > 0: s(r, "desc") else: "Location list"), parts.join(" · "), readonly = true)
   if rl.points.len > 0:     # where the instrument itself sits (a maker's list): beside the rows, never a conflict
     p.title("Instrument point")
-    for r in rl.points:
-      p.field((if s(r, "desc").len > 0: s(r, "desc") else: "Instrument point"),
+    for i, r in rl.points:
+      p.field((if s(r, "desc").len > 0: s(r, "desc") else: "Point " & $(i + 1)),
               (if r.pointText.len > 0: r.pointText else: "—"), readonly = true)
       if r.pointSource.len > 0: p.dim("Source: " & r.pointSource)
   if t.added.len > 0:

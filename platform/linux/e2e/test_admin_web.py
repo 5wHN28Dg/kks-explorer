@@ -282,7 +282,7 @@ class AdminWeb(unittest.TestCase):
                                          {'kks': KKS[2:], 'kind': 'point', 'elev_m': 33, 'grid': EVIL, 'desc': EVIL, 'source': NAME, 'page': 6},
                                          {'kks': KKS[2:], 'kind': 'later', 'level': '99 m', 'cabinet': 'X9'},
                                          {'kks': KKS[2:], 'kind': 1, 'cabinet': 'Y8'}, 5, None, ['x'],
-                                         {'kks': 'constructor', 'level': '1 m'}, {'kks': '__proto__', 'kind': 'point'},
+                                         {'kks': 'constructor', 'level': '1 m'}, {'kks': '__proto__', 'kind': 'point'}, {'kks': KKS[2:], 'kind': 'point', 'desc': {'toString': 0}, 'grid': ['K1'], 'elev_m': 1e-7},
                                          {'kks': 'LBA99CP501', 'kind': 'point', 'elev_m': 12, 'desc': 'Lonely point', 'page': 2.5}]})))
 
         def sheets(route):
@@ -313,8 +313,11 @@ class AdminWeb(unittest.TestCase):
         self.assertIn(EVIL, pt.text_content())
         self.assertNotIn('Y8', loc.text_content())                      # a kind that isn't a string: left out too
         # a code only an instrument point names (on no drawing): found, said so, opened with its point
+        page.fill('#q', 'feed')                                           # odd values in the file don't break the search
+        page.wait_for_selector('#results .res')
         page.fill('#q', 'LBA99CP501')
         page.wait_for_selector('#results .res')
+        self.assertIn('instrument point only', page.text_content('#results'))
         self.assertIn('instrument point · Lonely point', page.text_content('#results'))
         page.locator('#results .res', has_text='LBA99CP501').click()
         pt2 = page.locator(P + ' .sec', has=page.locator('h3', has_text='Instrument point'))
