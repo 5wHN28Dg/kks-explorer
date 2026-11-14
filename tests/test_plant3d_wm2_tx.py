@@ -187,6 +187,7 @@ class Job(unittest.TestCase):
         self.assertEqual([s['value'] for s in fs if s.get('hand') == 'loop_test'], list(train_hands.LOOP_CHECK))
         iss = self.tasks[train_hands.ISSUE]['steps']
         self.assertEqual(iss[1], {'issue': train_hands.SPARE, 'qty': 1, 'for': '$', 'else': 2})
+        self.assertEqual(iss[-1], {'order': train_hands.SPARE})
         # only the storekeeper issues (the validator's authority rule): the issue task is called for the store role
         self.assertTrue(all(s['call']['role'] == 'store' for s in tx if 'call' in s))
 

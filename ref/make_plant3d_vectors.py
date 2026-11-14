@@ -3311,7 +3311,7 @@ def day_forks():
         # vented, unbolted), fits the new one (the part check), sets its range from the data sheet, the loop check;
         # cured. On shift_nospare (none of the spare on the shelf): the storekeeper's issue refused (stock) and the
         # spare reordered (42 days); the trainer hands over the look-alike in free mode, refused at the fitting
-        # (wrong_part); the job held for parts overnight; two jumps (30 days, then 10) bring the delivery; the job
+        # (wrong_part); the job held for parts overnight; two jumps (30 days, then 12) bring the delivery; the job
         # resumes, the storekeeper issues the spare, fitted, cured
         ('npc_hands_failed', Trainee(), FAIL_STEPS,
          {'permits': {'wo_cond_p2_fix': 9}, 'repaired': ['cond_p2_low'],
@@ -3339,13 +3339,16 @@ def day_forks():
 
 
 # (WM2) the forks' lengths and the trainer's inputs on shift_nospare: the look-alike handed over in free mode while the
-# technician waits at the counter, then the jumps once the job is held for parts (found by running the reference)
+# technician waits at the counter, then the jumps once the job is held for parts (found by running the reference); the
+# month's wear leaves closed cooling water pump A's vibration alarm cleared but not acknowledged, which refuses a jump
+# (§7.9): the trainer acknowledges it first
 FAIL_STEPS = 40000
-NOSPARE_LOOK = 20000
+NOSPARE_LOOK = 25000
 NOSPARE_J1 = 70000
-NOSPARE_STEPS = 120000
+NOSPARE_STEPS = 96000
 NOSPARE_EXTRA = [[NOSPARE_LOOK, 'issue', 'pt_unit_a4', 1, 'wo_cond_p2_fix', None],
-                 [NOSPARE_J1, 'jump', '06:00', 30], [NOSPARE_J1 + 2, 'jump', '08:00', 10]]
+                 [NOSPARE_J1, 'jump', '06:00', 30], [NOSPARE_J1 + 2999, 'ack', 'ccw_a_vib_high'],
+                 [NOSPARE_J1 + 3000, 'jump', '08:00', 12]]
 
 
 def day_bundle():

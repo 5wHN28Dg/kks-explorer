@@ -210,6 +210,7 @@ LOOP_CHECK = (4, 8, 12, 16, 20)     # mA, the loop check's points (IEC 62382; th
 # says the sensor failed (below NE 43's measuring range, 3.8 mA); the spare and its look-alike (stores.json)
 URV, URV_TOL, FAIL_SEEN = 120, 0.05, 3.7
 SPARE, LOOKALIKE = 'pt_unit_a3', 'pt_unit_a4'
+STORE_FRONT = 'p_store'     # (the point in front of the store counter: the counter is the storekeeper's place)
 
 
 def fault_values(m):
@@ -371,7 +372,9 @@ def close_steps():
 
 # (WM2, REALISM.md §2.24) the job's tasks after its first: the end (the report and the tools back), the replacement
 # (the failed transmitter taken off and a new one fitted), its second half (the wires, the range, the loop check)
-# and the storekeeper's issue against the work order (only a storekeeper issues as an NPC, §2.24)
+# and the storekeeper's issue against the work order (only a storekeeper issues as an NPC, §2.24), then the shelf
+# topped up to its max (an order without qty: refused when nothing is missing; a shelf set empty by a scenario's
+# `stock` makes no edge for the reorder reaction, so this is the order that brings the spare)
 JOB = 'job_cond_p2_fix'
 END, TX, FIT, ISSUE = f'{JOB}_end', f'{JOB}_tx', f'{JOB}_fit', 'issue_cond_p2_fix'
 
@@ -379,13 +382,13 @@ END, TX, FIT, ISSUE = f'{JOB}_end', f'{JOB}_tx', f'{JOB}_fit', 'issue_cond_p2_fi
 def tx_steps():
     """The replacement: the device status read with the communicator (a sensor failure), the work order notified (if it
     isn't open already) so that the spare can be issued against it, the storekeeper called to issue the spare, the
-    technician at the counter until the order is open and the spare handed over; back at the transmitter: the leads
+    technician in front of the counter until the order is open and the spare handed over; back at the transmitter: the leads
     off, the wires lifted, the manifold's block valve shut and the transmitter vented through its flange, unbolted;
     the new one fitted (the part check). Refused (no spare issued, or the look-alike: §2.23's `part`, `wrong_part`), the
     job waits held for parts: the maintenance supervisor told, the technician waiting until a spare is on the shelf
     (held overnight with the permit's lock on, §17.10), then the storekeeper called again and the spare fitted."""
     steps = [{'read': CP2, 'via': 'cpt2_status', 'tol': TOL}, {'wo': {'work': '$', 'action': 'notify'}, 'else': 2},
-             {'call': {'role': 'store', 'task': ISSUE}}, {'go': 'store_counter'},
+             {'call': {'role': 'store', 'task': ISSUE}}, {'go': STORE_FRONT},
              {'wait': {'until': 'cpt2_wo_open', 'minutes': 60, 'else': 5}}, {'work': 3, 'anim': 'write'},
              {'go': {'kks': CP2}}, _hand('disconnect_dmm', 'dmm'), _hand('disconnect_hart', 'hart'),
              _hand('lift_wires', 'sd_term'), _hand('shut_block'), _hand('crack_vent', 'spanner_17'), {'work': 1},
@@ -393,7 +396,7 @@ def tx_steps():
     held = len(steps) + 2
     steps += [_hand('fit_tx', 'spanner_17', **{'else': held}), {'choose': [[1, FIT]]},
               {'say': 'held_for_parts', 'to': 'maint_sup'}, {'wait': {'until': 'cpt2_spare_shelf'}},
-              {'call': {'role': 'store', 'task': ISSUE}}, {'go': 'store_counter'}, {'work': 3, 'anim': 'write'},
+              {'call': {'role': 'store', 'task': ISSUE}}, {'go': STORE_FRONT}, {'work': 3, 'anim': 'write'},
               {'go': {'kks': CP2}}, _hand('fit_tx', 'spanner_17'), {'choose': [[1, FIT]]}]
     return steps
 
@@ -403,7 +406,7 @@ def fit_steps():
     communicator on and the range set from the data sheet (0–120 kPa(a): the factory's is the sensor's limit), the
     multimeter on, the PV and the status read; then the loop check and the close (as the job's own), and its end."""
     return [_hand('open_cover'), _hand('land_wires', 'sd_term'), _hand('open_block'), _hand('connect_hart', 'hart'),
-            _hand('set_range', 'hart', value=URV), _hand('connect_dmm', 'dmm'), {'work': 1},
+            {'work': 1}, _hand('set_range', 'hart', value=URV), _hand('connect_dmm', 'dmm'), {'work': 1},
             {'read': CP2, 'via': 'cpt2_pv', 'tol': TOL}, {'read': CP2, 'via': 'cpt2_status', 'tol': TOL}] + \
         close_steps() + [{'choose': [[1, END]]}]
 
@@ -423,7 +426,8 @@ def tasks():
             dict({'id': FIT, 'title': 'The new transmitter: wires, range, loop check', 'steps': fit_steps()}, **kw),
             {'id': ISSUE, 'title': 'Issue the spare transmitter against its work order', 'priority': 2, 'work': w,
              'steps': [{'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 2}},
-                       {'issue': SPARE, 'qty': 1, 'for': '$', 'else': 2}, {'work': 1, 'anim': 'write'}]}]
+                       {'issue': SPARE, 'qty': 1, 'for': '$', 'else': 2}, {'work': 1, 'anim': 'write'},
+                       {'order': SPARE}]}]
 
 
 TX_SEED, VAC_SEED = 6, 7     # (distinct from every other scenario's; 6 draws the blocked line)
