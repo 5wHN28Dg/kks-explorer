@@ -1099,12 +1099,19 @@ class Windows(unittest.TestCase):
         with open(os.path.join(fix, 'descriptions.json'), 'w') as f:
             json.dump({'11LAB70AA888': {'text': 'Feed water drain valve', 'basis': 'the sample sheet'},
                        '11LAB70AA889': 'Feed water vent valve'}, f)
+        with open(os.path.join(fix, 'locations.json'), 'w') as f:   # a location row and an instrument point: no conflict
+            json.dump({'source': 'e2e list', 'entries': [
+                {'kks': 'LAB70AA888', 'level': '14 m', 'desc': 'Drain platform'},
+                {'kks': 'LAB70AA888', 'kind': 'point', 'level': '33 m', 'elev_m': 33, 'grid': 'K16 F08', 'desc': 'Drain tapping point',
+                 'source': 'Maker list', 'page': 5}]}, f)
         r = subprocess.run([SERVER, 'publish-data', fix, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
                            capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.join('descjoin.uia')
         self.check('desc0.uia', self.show('11LAB70AA888') + [
             'wait\tDraft description (unchecked)\t20', 'wait\tFeed water drain valve\t10', 'wait\tBasis: the sample sheet\t10',
+            'wait\tInstrument point\t10', 'value\tDrain tapping point\t33 m · grid K16 F08',
+            'wait\tSource: Maker list, page 5\t10', 'value\tElevation\t14 m (location list)',
             'click\tConfirm description', 'wait\t~Saved: description of 11LAB70AA888\t20',
             'wait\t~Confirmed by The Manager\t20', 'gone\tConfirm description'])
         self.check('desc1.uia', self.show('11LAB70AA889') + [
