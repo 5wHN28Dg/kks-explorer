@@ -533,7 +533,8 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   Hudson's turn clockwise, so the plant's fan is their mirror image; the blades are flat plates (one part: a blade can
   be changed alone, the steps say so; one part turns on the shaft's line, as `_turning` asks); the hub is one part
   (its spool, two plates and the blade clamps; its bushing and the thrust retainer not drawn) and the blades' 32 clamp
-  bolts are inside it (hidden), drawn backing out downwards, the way their nuts come off; the seal disc is the plant's
+  bolts are inside it (hidden), drawn backing out downwards, clear of the seal disc (a real one is drawn out upwards
+  once its nut is off); the seal disc is the plant's
   dome, closed underneath, on six bolts; the gear case is the plant's closed box (0.9 x 0.7 x 0.6 m whatever the
   fan's size) with everything inside it hidden: the vertical cover is a plate inside its top and the input shaft's
   carrier sits inside its side, so they and the shafts come out through the box's faces in the explode (listed in
@@ -546,8 +547,10 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   drawn standing (the fan's `shaft` node turns about another axis); the stack is thin (the plant draws it open). The
   gear drive is drawn taken apart in place, where Amarillo takes it off the tower to a shop. **The explode:** the guard,
   the drive shaft and the motor come off first and the hub lifts with its blades above the stack, then the blades and
-  the seal disc leave it; the gear drive's parts come out upwards and the input shaft's carrier sideways, and each
-  shaft's parts come off its nearer end. The gear drive's oil sample (REALISM.md §2.19) is now drawn from the gear case
+  the seal disc leave it; the gear drive's parts come out upwards and the input shaft's carrier sideways (the lower bearing
+  covers only rise a little inside the case: a real one comes off from below, which the floor doesn't allow), and each
+  shaft's parts come off its nearer end. The guided steps press the shafts' parts on and off in place, where Amarillo
+  does it on the bench with the shafts out (the steps' reasons say so). The gear drive's oil sample (REALISM.md §2.19) is now drawn from the gear case
   (`gb_case`). **Known limits** (built and tested for the data file's fan only): the gear drive's size does not follow
   the fan's; another blade count gives another `sym` but the same component.
 - **generator** (the air-cooled turbo-generator, K6: kit/parts_machines.gd `_gen_*`; the plant's first generator, the

@@ -754,7 +754,8 @@ const GB_FIT := 1.1           # a part's bore over its shaft's radius (drawn cle
 ## the hub lifts with its blades clear of the stack (a real fan's blades come off the hub in place, one by one: the
 ## steps say so); then the blades and the seal disc leave the hub, the vertical cover with its seal carrier and bearing
 ## cover lifts off the gear case, the output and intermediate shafts lift out together (Amarillo lifts them on a strong
-## back), the input shaft's carrier is drawn out sideways and the lower bearing covers lift; last each shaft is
+## back), the input shaft's carrier is drawn out sideways and the lower bearing covers rise a little in the case (a
+## real one comes off from below, which the floor under the case doesn't allow in the picture); last each shaft is
 ## pressed apart: what sits low on a shaft comes off its lower end, what sits high its upper end.
 static func _fan_comps(g, d: float, nb: int, hs: float, r: float) -> void:
 	var Z := Vector3(0, 0, 1)
@@ -858,7 +859,8 @@ static func _fan_insides(g, sh, d: float, nb: int, zf: float) -> void:
 	m.cyl(at.call(xi, 0.02), at.call(xi, 0.055), 0.06, -1.0, 16)
 	g.only()
 	# the blades' clamp bolts: four through the hub's plates and each blade's clamp (Hudson: heads on top, nuts
-	# underneath), inside the hub; drawn backing out downwards, the way their nuts come off
+	# underneath), inside the hub; drawn backing out downwards, clear of the seal disc over them (a real one is drawn
+	# out upwards once its nut is off)
 	g.comp("hub")
 	var rh := d * 0.08
 	var bolts: Array = []

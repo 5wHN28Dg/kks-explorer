@@ -68,10 +68,10 @@ def components():
         'fan_shield_ee': _c('Exciter-end fan shield', 'The air guide round the rotor\'s fan at the exciter end.',
                             'Steel or insulating sheet', [BHEL]),
         'ped_te': _c('Drive-end bearing pedestal', 'Carries the rotor\'s journal at the turbine end in the bearing\'s '
-                     'bottom half; insulated from the frame against shaft currents at the exciter end.',
+                     'bottom half.',
                      'Cast steel, white-metal lined bearing shell', [BHEL, WEG]),
         'ped_ee': _c('Exciter-end bearing pedestal', 'Carries the rotor\'s journal at the exciter end in the bearing\'s '
-                     'bottom half.', 'Cast steel, white-metal lined bearing shell', [BHEL, WEG]),
+                     'bottom half; insulated from its foundation against shaft currents.', 'Cast steel, white-metal lined bearing shell', [BHEL, WEG]),
         'brg_cap_te': _c('Drive-end bearing top half', 'The bearing\'s top half and its cap with the outer oil catcher; '
                          'its temperature sensor comes out first.', 'Cast steel, white-metal lined shell', [BHEL, WEG]),
         'brg_cap_ee': _c('Exciter-end bearing top half', 'The bearing\'s top half and its cap with the outer oil '
@@ -141,7 +141,7 @@ def assembly(coupled):
         steps.append(_step('coupling_bolts', 'Align the rotor to the turbine\'s and fit the coupling bolts with the '
                            'bolt stretcher; check the coupled run-out.',
                            [('ped_te', 'The rotor is aligned on its bearings: they are in first.',
-                             'Take the coupling bolts out before the bearings are touched.')],
+                             'Take the coupling bolts out before the bearings\' bottom halves are touched.')],
                            why='The coupling\'s run-out is recorded before it is parted (a.2).'))
     steps += [
         _step('es_te_up', 'Lower the drive end shield\'s top half onto the bottom half, sealed.',
@@ -164,7 +164,7 @@ def assembly(coupled):
                 'Lift the bearing\'s top half off first.')], sources=(BHEL, WEG)),
         _step('exciter', 'Set the exciter on its bed, align it to the generator\'s rotor and couple it.',
               [('ped_ee', 'The exciter is coupled to the rotor on its bearings: they are in first.',
-                'Uncouple the exciter and take it off its bed before the exciter-end bearing is touched.')],
+                'Uncouple the exciter and take it off its bed before the exciter-end bearing\'s bottom half is touched.')],
               why='Its swing and run-out are recorded before it is uncoupled (a.3, g.3).'),
         _step('exc_rotor', 'The exciter\'s rotor comes with it, coupled to the generator\'s.'),
         _step('exc_cover', 'Fit the exciter\'s hood.',
