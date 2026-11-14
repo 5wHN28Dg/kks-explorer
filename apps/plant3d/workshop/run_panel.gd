@@ -1,10 +1,13 @@
 ## The Workshop's Run panel (docs/plant3d/WORKSHOP.md §3 "Run it", §6.1): the bench model's inputs (a slider per `set`
 ## op, a button per machine command), the bench clock's Pause and speed (0.1×–2×), the readouts (at most 12) with their
 ## units, the machines' states, the alarms (Acknowledge), the trainer's faults (each pressed to make it, again to
-## repair it) and the last refusal's sentence. Generic: everything comes from the bench file.
+## repair it) and the last refusal's sentence. Generic: everything comes from the bench file. A mirror of the plant's
+## equipment (WORKSHOP.md §6.5) offers none of the bench's ops and faults: it says whose mirror it is, what comes from
+## the plant and what is the bench's own.
 extends PanelContainer
 
 const W = preload("res://ui/widgets.gd")
+const Mirror = preload("res://workshop/mirror.gd")
 
 var ws                          # workshop/workshop.gd
 var box: VBoxContainer
@@ -47,25 +50,47 @@ func machine_shown() -> void:
 		alarm_label = null
 		note = null
 		return
+	var ro: bool = ws.mirror_code != ""     # a mirror: read only (§6.5)
 	box.add_child(W.label("Run", 22, Color.WHITE, false))
+	if ro:
+		var ml := W.label("Mirror of %s, read only" % ws.mirror_code, 20, Color(0.55, 0.85, 1.0))
+		ml.name = "run_mirror"
+		box.add_child(ml)
+		var wo: Dictionary = Mirror.words_of(ws.mirror_info)
+		var got := PackedStringArray()
+		for k in wo.mirrored:
+			got.append(_title(k).to_lower())
+		var t := "From the plant%s: %s. The rest is the bench's own model." % [
+			" as it runs" if ws.mirror_live else " as you left it", ", ".join(got)]
+		for x in wo.missing:
+			t += "\nNot mirrored: %s (%s)." % [_title(x[0]).to_lower(), x[1]]
+		var fl := W.label(t, 16, W.DIM)
+		fl.name = "run_mirror_from"
+		box.add_child(fl)
+		var lb := W.button("Leave the mirror: the bench is yours", func(): ws.leave_mirror())
+		lb.name = "run_leave_mirror"
+		box.add_child(lb)
 	var row := HFlowContainer.new()   # (the machine's commands and the bench's other ops: as many as the file has)
 	box.add_child(row)
 	var rb := W.button("Restart the bench", func(): ws.restart_bench(); machine_shown())
 	rb.name = "run_restart"
-	for o in c.m.ops_ui:
+	for o in ([] if ro else c.m.ops_ui):
 		if not o.has("machine") and o.get("do") != "set":   # an open, a close, a trip's reset
 			var ob := W.button(String(o.get("title", "%s %s" % [String(o.do).capitalize(), _title(o.at)])),
 				ws.run_op.bind(o.at, o.do, o.get("trip")))
 			ob.name = "run_op_%s_%s" % [o.at, o.do] + ("_" + String(o.trip) if o.has("trip") else "")
 			row.add_child(ob)
-	for o in c.m.ops_ui:
+	for o in ([] if ro else c.m.ops_ui):
 		if o.has("machine"):
 			var bt := W.button(String(o.get("title", o.do.capitalize())), ws.run_command.bind(o.at, o.do))
 			bt.name = "run_%s_%s" % [o.machine, o.do]
 			row.add_child(bt)
 	var row2 := HBoxContainer.new()
 	box.add_child(row2)
-	row2.add_child(rb)
+	if ro:
+		rb.free()
+	else:
+		row2.add_child(rb)
 	pause_btn = W.button("Pause", func(): ws.bench.paused = not ws.bench.paused)
 	pause_btn.name = "run_pause"
 	row2.add_child(pause_btn)
@@ -81,7 +106,7 @@ func machine_shown() -> void:
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sp.value_changed.connect(func(v): ws.bench.set_speed(v))
 	row2.add_child(sp)
-	for o in c.m.ops_ui:
+	for o in ([] if ro else c.m.ops_ui):
 		if o.get("do") == "set" and o.has("range"):
 			var r := HBoxContainer.new()
 			box.add_child(r)
@@ -120,9 +145,9 @@ func machine_shown() -> void:
 	var ack := W.button("Acknowledge", func(): ws.ack_bench_alarms())
 	ack.name = "run_ack"
 	box.add_child(ack)
-	if not c.m.faults.is_empty():
+	if not c.m.faults.is_empty() and not ro:
 		box.add_child(W.label("Faults (the trainer's)", 18, W.DIM, false))
-	for f in c.m.faults:
+	for f in ([] if ro else c.m.faults):
 		var b := W.button(String(f.text), ws.toggle_fault.bind(String(f.id)))
 		b.name = "fault_" + String(f.id)
 		b.toggle_mode = true

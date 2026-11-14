@@ -336,6 +336,8 @@ APK 147.8 MB.
 
 **K6, third pull request (2026-11-10):** the gate valve (manual), the globe valve (multi-turn electric actuator) and the butterfly valve (part-turn electric actuator) in the Workshop (WORKSHOP.md §6.10): Crane's, Bray's and AUMA's orders, the plant byte for byte unchanged, new checks of the gate's wedge on its seats and the butterfly's disc in its liner. The Note 9: first entry 128 / 122 / 113 ms, 99.94 / 99.91 / 99.94 % of frames at ≥ 30 fps, no frame over 100 ms, peak PSS 1,158 / 1,159 / 1,166 MB; APK 148.5 MB. Left in K6: the fan and the generator, the heat exchangers, then the mirror.
 
+**K6, the mirror (2026-11-14):** the card's Workshop opens the plant's equipment on its bench, read only (WORKSHOP.md §6.5): the bench's `mirror` entries resolved by the equipment's own bindings (units made the bench's), the plant's machine state and values written over step 2's in both engines (`set_mirror`, with vectors; a mirrored machine moves with the plant only and the bench's trips wait while it is mirrored), no ops or faults offered; frozen as left in single play, following the plant in a session. Left for the user: what the bindings don't carry stays the bench's own (the gas turbine's flame, the steam turbine's load).
+
 **K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
 groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 86 guided
 steps in a major inspection's order, 27,868 triangles, a public source per subassembly; the plant byte for byte

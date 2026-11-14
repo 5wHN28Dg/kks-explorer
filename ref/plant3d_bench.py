@@ -332,21 +332,25 @@ def _reads(x):
     return out
 
 
-def plant_machine(model, code):
-    """The plant machine a code's equipment runs by: the one at the code, else the one at the code of the first value
-    the code's bindings read that has a code with a machine (a casing on another's shaft: its speed is the other's);
-    None without."""
-    at = {mc['kks']: mc for mc in model.machines if 'kks' in mc}
-    if code in at:
-        return at[code]
+def plant_machine(model, code, states):
+    """The plant machine a code's equipment runs by, mapped onto a bench machine with `states` (its state ids) by name:
+    of the machines at the code, in the model's order, the first whose states are all the bench machine's (a gas
+    turbine's start-up sequence, not its compressor wash); else the same among those at the code of a value the code's
+    bindings read, in the bindings' order (a casing on another's shaft: its speed is the other's); None without."""
+    def fits(mc):
+        return all(st['id'] in states for st in mc['states'])
+    for mc in model.machines:
+        if mc.get('kks') == code and fits(mc):
+            return mc
     vals = {name: n for name, n, _ in model.values}
     for x in model.bind:
         if x.get('kks') != code:
             continue
         for r in _reads(x):
             k = vals.get(r, {}).get('kks')
-            if k in at:
-                return at[k]
+            for mc in model.machines:
+                if k is not None and mc.get('kks') == k and fits(mc):
+                    return mc
     return None
 
 
@@ -365,7 +369,8 @@ def mirror_sources(bench, model, code):
         f, v = x['from'], x['value']
         if 'machine' in f:
             mid = v[:-len('_state')]
-            pm = plant_machine(model, code)
+            bmc = next(y for y in bench.b.model.machines if y['id'] == mid)
+            pm = plant_machine(model, code, [st['id'] for st in bmc['states']])
             if pm is not None or 'else' in f:
                 machines.append((mid, pm['id'] if pm is not None else None, f.get('else')))
             else:

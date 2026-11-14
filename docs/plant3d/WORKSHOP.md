@@ -620,6 +620,47 @@ moment the trainee left** (the user, 2026-11-02): the plant is paused, and the p
 open; in a session it follows the plant live. The overwrite is an engine
 addition (both engines, vectors) made in K6.
 
+**As built (K6, the mirror, 2026-11-14).**
+- **The entries** (`ref/plant3d_bench.py`, checked with the file): a machine is mirrored into its `<id>_state`
+  (`{"machine": true}`, with an optional `else`: the state it stands in when no plant machine runs the code: a
+  transmitter's loop supply, on); a value only if it is a `state` or a `lag`, `ramp`, `integrate`, `wrap`, `hold` or
+  `latch` node (written after step 2, a stateless node would be made again from what it reads before anything read
+  it; a timer's and a delay's counts are kept outside their value); each value once. The plant's machine is the one at
+  the code, else the one at the code of a value the code's bindings read (the steam turbine's second casing shows the
+  shaft's speed, whose code runs `st_start`). A plant value's unit is made the bench's: bar from kPa, MPa, mbar,
+  kPa(a) and bar(a) (gauge: less 1.01325 bar) and metres of water (9.80665 kPa/m); any other pair is not mirrored, and
+  the panel says so (`mirror_sources`; the app's `workshop/mirror.gd` gives the same answers, both tested).
+- **The engines** (`ref/plant3d.py`, `sim/engine.gd` `set_mirror`, not an input: no log, no event, not in the
+  digest): after step 2 each mirrored machine standing in another state enters the plant's (its `set` applied, the
+  event's cause `mirror`), then the values are written. Two rules the spec left open, settled here: **a mirrored
+  machine moves with the plant only** (its sequence's moves, commands, trips' and interlocks' actions on it are not
+  taken), and **while a machine is mirrored the bench's trips are held** (not counted, not latched): the plant's
+  protection trips the plant's machine and the mirror brings its state; a bench trip from a value the mirror can't
+  reach (the gas turbine's flame, below) would otherwise trip a running mirror. `plant3d-v1.json`, `plant3d-v2.json`
+  and `plant3d-realism.json` are byte for byte what they were; `plant3d-bench-v1.json` gains four mirrored runs (the
+  transmitter, both turbines, the synthetic kind: followed live, a trip and a command that can't move the mirrored
+  machine, the mirror ended) and eight rejects; both engines run them bit for bit.
+- **The content:** the transmitter mirrors its display's pressure into `p_applied` and its supply `else` on (all 34
+  of the plant's transmitters: 25 in bar, 6 filters' head loss in metres of water, 3 condenser vacuums in kPa(a)); the
+  steam turbine its sequence's state, the shaft's speed and the steam's flow (from the inlet's sound; 30MAB10 has no
+  steam sound: its flow is not mirrored); the gas turbine its sequence's state and speed.
+- **Left open (the user's call):** the mirror reads only what the equipment's bindings show, so the bench's other
+  values stay its own. The gas turbine's flame is on none of 10MBA10's bindings: a running gas turbine is mirrored at
+  its speed and state with the bench's combustor unlit (cold in the heat view, its flame alarm raised). The steam
+  turbine's load (MW) likewise stays the bench's 0. Ways on: a plant binding that carries the flame, or letting a
+  made bench's source name plant values for its mirror (bench data would then hold plant names).
+- **The app:** the card's Workshop opens the mirror (`ui.open_workshop(kind, code, true)`; the settings' list, a
+  manual's link and a failed part open the free bench). The Run panel shows "Mirror of `<code>`, read only", what
+  comes from the plant ("as you left it" or "as it runs") and what is not mirrored and why; no slider, command, fault
+  or restart; one made anyway is refused. Pause, speed, readings, states and alarms (with Acknowledge) stay. **Leave the mirror** (an addition: the card is the main way in, and a powered transmitter or a running turbine can't be taken apart) gives the free bench from its start state, the plant still paused behind it. Single
+  play reads the plant once (the plant is paused while the Workshop shows); a session reads it before every bench step
+  (`bench_clock.mirror_live`). A mirrored machine that runs is not taken apart. `walk=workshop mirror=CODE`.
+- **Tests:** `tests/test_plant3d_workshop_bench.py` `Mirror` (every transmitter, both turbines, the units, every plant
+  state the bench's, the overwrite's rules), the bench vectors in both engines (`GdscriptBench`),
+  `apps/plant3d/tests/test_workshop_mirror.gd` (from the card: the plant's values on the bench, read only, frozen in
+  single play with the plant paused and not stepping, followed in a session with the plant running, the units, the
+  turbines, the free bench from elsewhere; the app's resolution the reference's).
+
 ### 6.6 The steam turbine's bench (K4b)
 
 **As built (K4b, 2026-11-03).**

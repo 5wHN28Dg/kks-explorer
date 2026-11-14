@@ -18,6 +18,9 @@
 ## §7.1: each kind's machine in the Workshop's materials, in the background after the plant's first walkable frame), as
 ## for a trainee who walks a little first; `cold=1` enters at once instead (K3's measurement: the machine's first frame
 ## then compiles them). It logs `WORKSHOP waited … ms`.
+## `mirror=CODE` (K6, §6.5): both entries open as the card does, the plant's equipment CODE mirrored on the bench
+## (its kind, unless `kind=` names it); the bench's commands, sliders and faults are then refused as read only, and the
+## taking apart while it runs, as for a trainee.
 extends Node
 
 const SECONDS := 180.0
@@ -35,6 +38,7 @@ const STEP_SLACK_S := 1.0        # kept free in each phase (each step starts whe
 var main
 var ws
 var kind := ""
+var mirror := ""                # the plant's equipment mirrored (`mirror=CODE`), "" none
 var running := false
 var t := 0.0
 var done := false
@@ -46,6 +50,9 @@ func start(m, k := "") -> void:
 	ws = m.workshop
 	var kinds: Array = ws.kinds()
 	kind = k if k != "" else (kinds[0] if not kinds.is_empty() else "")
+	mirror = String(main.opts.get("mirror", ""))
+	if mirror != "" and k == "" and main.ui != null:
+		kind = String(main.ui.info.part_of(mirror))
 	# the first entry comes after the plant's warm-up has queued the Workshop's pipelines and they are made (as a trainee
 	# who walks a little first finds them; §7.1), unless `cold=1` asks for the entry at once, as K3 measured it
 	if String(main.opts.get("cold", "0")) in ["0", "false", ""]:
@@ -59,7 +66,7 @@ func start(m, k := "") -> void:
 			still = still + 1 if ws.warmed and ws.kinds_warmed and c == c0 else 0
 			c0 = c
 		main._say("WORKSHOP waited %d ms for the plant's warm-up (warmed=%s)" % [Time.get_ticks_msec() - t0, str(ws.warmed and ws.kinds_warmed)])
-	if kind == "" or not ws.open(kind):
+	if kind == "" or not ws.open(kind, mirror, mirror != ""):
 		main._say("WORKSHOP no kind to open (%s)" % str(kinds))
 		done = true
 		main._finish()
@@ -75,10 +82,13 @@ func start(m, k := "") -> void:
 	main._say("WORKSHOP exit=%.0fms (after the first entry)" % ws.exit_ms)
 	for i in 60:
 		await get_tree().process_frame
-	ws.open(kind)
+	ws.open(kind, mirror, mirror != "")
 	if not await _shown():
 		return
 	main._say("WORKSHOP entry=%.0fms load=%.0fms (the second entry)" % [ws.entry_ms, ws.load_ms])
+	if mirror != "":
+		main._say("WORKSHOP mirror of %s: %s, missing %s" % [ws.mirror_code, str(ws.mirror_info.get("values", [])),
+				str(ws.mirror_info.get("missing", []))])
 	_bench_ready()
 	running = true
 

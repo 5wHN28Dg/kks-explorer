@@ -13,7 +13,8 @@ extends "plant_model.gd"
 ##   var e := Engine.new(m, "bench")
 ##
 ## Besides the model: `units` (value -> unit), `readouts`, `binds` (the bench's bindings as written, with `at`),
-## `legends`, `faults` (the trainer's: id, text, at), `ops_ui` (each op as written: at, do, title, input, range).
+## `legends`, `faults` (the trainer's: id, text, at), `ops_ui` (each op as written: at, do, title, input, range),
+## `mirror` (the live mirror's entries, §6.5).
 
 const FORMAT := "walkdown-plant-bench"
 const AT_BENCH := "bench"
@@ -26,6 +27,7 @@ var binds: Array = []
 var legends := {}
 var faults: Array = []
 var ops_ui: Array = []
+var mirror: Array = []          # the live mirror's entries as written (WORKSHOP.md §6.5; workshop/mirror.gd)
 
 
 static func from_text(text: String, comps: Array):
@@ -101,6 +103,11 @@ func _load_bench(d: Dictionary, comps: Array) -> void:
 		_need(k, "readout")
 		readouts.append(k)
 	legends = d.get("legends", {})
+	for x in d.get("mirror", []):
+		if typeof(x) != TYPE_DICTIONARY or typeof(x.get("from")) != TYPE_DICTIONARY or typeof(x.get("value")) != TYPE_STRING:
+			_fail("mirror: an entry is {value, from}")
+			return
+		mirror.append(x)
 	var start: Dictionary = d.get("start", {})
 	for k in start:
 		if not index.has(k):
