@@ -212,7 +212,8 @@ class Forks(unittest.TestCase):
         issues = [x[1:] for x in ev if x[1] == 'issue']
         self.assertEqual(issues, [['issue', 'pt_unit_a3', 1, 'wo_cond_p2_fix', 'store1', 'done', []]])
         self.assertEqual(len([x for x in ev if x[1] == 'repair' and x[2] == 'cond_p2_low']), 1)
-        loop = [x[4] for x in ev if x[1] == 'read' and x[3] == CP2 and x[4] in (0, 30, 60, 90, 120)]
+        first = next(i for i, x in enumerate(ev) if x[1] == 'hand' and x[3] == 'loop_test')
+        loop = [x[4] for x in ev[first:] if x[1] == 'read' and x[3] == CP2 and x[4] in (0, 30, 60, 90, 120)]
         self.assertEqual(loop, [0, 30, 60, 90, 120])
 
     def test_nospare(self):

@@ -93,7 +93,10 @@ class Content(unittest.TestCase):
         roles = {r['id']: r for r in st['roles']}
         self.assertTrue({'issue_parts', 'order_parts'} <= set(roles['store']['authority']))
         self.assertIn('order_parts', roles['maint_sup']['authority'])
-        self.assertTrue(st['tasks'][-1]['id'].startswith('reorder_'))
+        import train_hands      # (after the reorders only the transmitter's replacement's tasks, REALISM.md §2.24)
+        n = len(train_hands.tasks())
+        self.assertEqual([t['id'] for t in st['tasks'][-n:]], [t['id'] for t in train_hands.tasks()])
+        self.assertTrue(st['tasks'][-n - 1]['id'].startswith('reorder_'))
         self.assertTrue(st['reactions'][-1]['task'].startswith('reorder_'))
 
 

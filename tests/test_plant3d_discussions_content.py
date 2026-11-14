@@ -217,9 +217,11 @@ class Content(unittest.TestCase):
 
     def test_appended_after_everything_before(self):
         """The discussions' tasks and reactions come after everything before them (only WM2's stores after them:
-        REALISM.md §2.23), the findings last in every scenario's faults."""
+        REALISM.md §2.23, and the transmitter's replacement's tasks, §2.24), the findings last in every scenario's
+        faults."""
         import train_stores as TS
-        k, kr = len(TS.tasks()), len(TS.reactions())
+        import train_hands as TH
+        k, kr = len(TS.tasks()) + len(TH.tasks()), len(TS.reactions())
         n = len(TD.tasks())
         self.assertEqual([t['id'] for t in self.st['tasks'][-n - k:-k]], [t['id'] for t in TD.tasks()])
         m = len(TD.reactions())

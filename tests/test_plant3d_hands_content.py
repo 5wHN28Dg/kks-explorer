@@ -271,6 +271,10 @@ class Loop(unittest.TestCase):
         the water, the loose terminal, the vent test, the line blown through, the manifold's valve, the trim)."""
         steps = train_hands.job_steps()
         waits = [(i, s['wait']) for i, s in enumerate(steps) if 'wait' in s and 'else' in s['wait']]
+        # (WM2) the first decides on the replacement: a sound sensor goes on, else to the last step, the replacement's
+        # choice (tests/test_plant3d_wm2_tx.py)
+        self.assertEqual(waits[0][1], {'until': 'cpt2_alive', 'minutes': 1, 'else': len(steps) - 1})
+        waits = waits[1:]
         self.assertEqual([w['until'] for _, w in waits],
                          ['cpt2_terminal_block_wet', 'cpt2_loop_low', 'cpt2_pv_apart', 'cpt2_vent_held',
                           'cpt2_pv_high', 'cpt2_pv_lo1'])
@@ -285,7 +289,7 @@ class Loop(unittest.TestCase):
             nxt = steps[w['else']]
             self.assertTrue('wait' in nxt or nxt.get('hand') == 'loop_test', (w, nxt))
         self.assertEqual({c['id']: c['fixed'] for c in train_hands.FAULT['causes']},
-                         {c: 'cpt2_sound' for c in ('drift', 'loose', 'blocked', 'passing', 'wet')})
+                         {c: 'cpt2_sound' for c in ('drift', 'loose', 'blocked', 'passing', 'wet', 'failed')})
         reads = [x for x in steps if 'read' in x]
         self.assertTrue(reads and all(x.get('tol') == train_hands.TOL for x in reads), reads)
 
