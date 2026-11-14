@@ -28,7 +28,7 @@ Every number is invented, round and plausible for the class of machine, from pub
 import math
 
 import train_ageing
-from train_ageing import KINDS, PUMPS, FANS, ZONES
+from train_ageing import KINDS, PUMPS, FANS, ZONES, BRG_RISE, BRG_TAU
 
 STORE = 'store_counter'     # the store's counter (train_staff.py ANCHORS): the CM tools are issued from the stores
 TOOLS = [
@@ -73,6 +73,51 @@ def tone(m, item):
     base = ZONES[group]['base']
     m.tab(f'{p}_bt_k', f'{p}_brg_mgn', [[round(f * pf, 3), round(s * base, 4)] for f, s in TONE], 'mm/s')
     return m.prod(f'{p}_bt', [spd, f'{p}_bt_k'], 'mm/s')
+
+
+# ------------------------------------------------------------------------------------------------ the thermal picture
+# The camera's false-colour picture (REALISM.md §9.3, §2.19; drawn by the app with the Workshop's heat view): each
+# component of the pump's Workshop tree (the motor's inside it) at the temperature of a model value. What a running pump
+# set shows: the bearing housing whose wear the camera's spot reads (the monitored bearing: its rise grows over its P-F
+# interval, train_ageing.py), the motor's frame and its other bearings, the pump's bearing frame and shaft at a sound
+# bearing's rise over the air (BRG_RISE: a frame and its sound bearings run about as warm, the fan's air over the frame
+# keeps it there), what the water wets at the water's temperature, the rest at the air's.
+PICTURE_KIND = {'cw': 'pump_vertical', 'ccw': 'pump_horizontal', 'cep': 'pump_vertical'}
+FLUID_T = {'cw': 'cw_cold_t', 'ccw': 'ccw_t', 'cep': 'cond_t'}    # the pumped water: the CW basin's, the CCW loop's,
+# the condensate's
+PICTURE = {
+    # the monitored bearing is the motor's drive end bearing (beside the coupling: the collector's point)
+    'pump_horizontal': {'brg': ['end_shield_de', 'bearing_de'],
+                        'warm': ['motor', 'end_shield_nde', 'bearing_nde', 'rotor', 'frame', 'end_cover', 'bearing_ib',
+                                 'bearing_ob', 'shaft'],
+                        'fluid': ['volute', 'casing_cover', 'impeller', 'seal'],
+                        'air': ['baseplate', 'coupling', 'guard', 'terminal_box', 'fan', 'fan_cowl', 'grille']},
+    # a vertical motor's oil-bath bearing is its thrust bearing in the top bracket (the oil points' bearing,
+    # train_monitoring.oil): the one that wears and runs hot
+    'pump_vertical': {'brg': ['end_shield_nde', 'bearing_thrust'],
+                      'warm': ['motor', 'end_shield_de', 'bearing_guide', 'rotor'],
+                      'fluid': ['head', 'seal', 'shaft', 'discharge_case', 'bowl_1', 'bowl_2', 'suction_bell',
+                                'impeller_1', 'impeller_2', 'column_1', 'column_2', 'column_3'],
+                      'air': ['soleplate', 'coupling', 'drip_cover', 'fan', 'terminal_box']},
+}
+SPOT = {'pump_horizontal': 'end_shield_de', 'pump_vertical': 'end_shield_nde'}   # where the camera's spot is aimed
+
+
+def warm(m, item):
+    """A running pump set's frame and sound bearings: BRG_RISE over the air at speed, lagging as a housing does."""
+    p, spd = item[0], item[5]
+    m.prod(f'{p}_warm_rise', [spd, BRG_RISE], 'K')
+    m.lag(f'{p}_warm_rl', f'{p}_warm_rise', BRG_TAU, unit='K')
+    m.sum(f'{p}_warm_t', ['ambient_t', f'{p}_warm_rl'], '°C')
+
+
+def picture(p):
+    """The ir point's picture: the kind, where the spot is, and each component's temperature value."""
+    k = p.split('_')[0]
+    kind = PICTURE_KIND[k]
+    val = {'brg': f'{p}_brg_t', 'warm': f'{p}_warm_t', 'fluid': FLUID_T[k], 'air': 'ambient_t'}
+    return {'kind': kind, 'spot': SPOT[kind],
+            'parts': {c: val[role] for role, cs in PICTURE[kind].items() for c in cs}}
 
 
 # ------------------------------------------------------------------------------------------------ oil analysis
@@ -142,6 +187,7 @@ def model(m):
         if area != m.area:
             continue
         tone(m, item)
+        warm(m, item)
         m.meters.append({'id': f'{p}_vel', 'kks': cy, 'point': 'brg', 'tool_kind': 'collector', 'mode': 'vel',
                          'value': f'{p}_vib'})
         m.meters.append({'id': f'{p}_ir', 'kks': code, 'point': 'brg', 'tool_kind': 'camera', 'mode': 'ir',
@@ -190,7 +236,9 @@ def monitoring():
     for item in PUMPS:
         p, code, cy, _, _, _, _, _, title, group, _ = item
         rpm = RPM[p.split('_')[0]]
-        points.append({'code': cy, 'kind': 'vib', 'title': f'{title} motor, drive end bearing', 'meter': f'{p}_vel',
+        # (a vertical motor's monitored bearing is its top thrust bearing, the oil bath's: the camera's hot spot too)
+        brg = 'top thrust bearing' if PICTURE_KIND[p.split('_')[0]] == 'pump_vertical' else 'drive end bearing'
+        points.append({'code': cy, 'kind': 'vib', 'title': f'{title} motor, {brg}', 'meter': f'{p}_vel',
                        'rpm': rpm, 'group': group, 'zones': ZONE_LIMITS[group], 'floor': FLOOR,
                        'tones': o,
                        'lines': [{'name': '2×', 'order': 2, 'share': SHARE_2X},
@@ -198,7 +246,7 @@ def monitoring():
                                  {'name': '2×BPFO', 'order': round(2 * o['bpfo'], 3), 'value': f'{p}_bt',
                                   'share': 0.5}]})
         points.append({'code': code, 'kind': 'ir', 'title': f'{title} motor, bearing housing', 'meter': f'{p}_ir',
-                       'limits': [train_ageing.BRG_T_H - 10, train_ageing.BRG_T_H]})
+                       'limits': [train_ageing.BRG_T_H - 10, train_ageing.BRG_T_H], 'picture': picture(p)})
     for i in FANS:
         gm = PINION_TEETH
         points.append({'code': f'30PAD10CY{i:03d}', 'kind': 'vib', 'title': f'Cooling tower fan {i} gear reducer',
@@ -219,8 +267,9 @@ def monitoring():
 
 
 def values_added():
-    """(tone values, oil values) this tool adds to the first train (REALISM.md §11's budgets)."""
-    return 2 * len(PUMPS), len(oil_points()) * (2 + len(RESULTS))
+    """(tone and picture values, oil values) this tool adds to the first train (REALISM.md §11's budgets: the
+    picture's warm frames count with the wear signs)."""
+    return 2 * len(PUMPS) + 3 * len(PUMPS), len(oil_points()) * (2 + len(RESULTS))
 
 
 assert math.isclose(orders()['bpfo'], 3.085, abs_tol=0.01)
