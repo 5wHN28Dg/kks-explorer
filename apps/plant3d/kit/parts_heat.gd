@@ -314,8 +314,8 @@ static func _ste_bundle(g, st: Dictionary, n: int) -> void:
 	g.only()
 
 ## Where the tubes, the tie rods and the baffles are: a triangular pitch (a picture: a real 1.2 m shell holds about
-## 1,500 tubes of 19 mm) inside the floating tubesheet's rim; four places of it, round the outside at 45 degrees,
-## carry the tie rods; the baffles evenly between the tubesheets. {tubes: [Vector2 (x, z from the axis)], rods,
+## 1,500 tubes of 19 mm) inside the floating tubesheet's rim; four places of it, near the rim on each side at
+## mid-height (through every baffle, whichever side it is cut), carry the tie rods; the baffles evenly between the tubesheets. {tubes: [Vector2 (x, z from the axis)], rods,
 ## rt: a tube's radius, rr: a rod's, baffles: [y], tb: their thickness}.
 static func ste_layout(st: Dictionary) -> Dictionary:
 	var rt := 0.0095
@@ -331,10 +331,11 @@ static func ste_layout(st: Dictionary) -> Dictionary:
 			var x := i * p + off
 			if Vector2(x, z).length() <= R:
 				pts.append(Vector2(x, z))
+	# the tie rods where every baffle is (the cut leaves z within half the radius each side): two each side near the
+	# rim at mid-height, a little above and below it
 	var rods: Array = []
 	for k in 4:
-		var a := PI * 0.25 + PI * 0.5 * k
-		var want := Vector2(cos(a), sin(a)) * R * 0.8
+		var want := Vector2(R * (0.8 if k < 2 else -0.8), R * (0.22 if k % 2 == 0 else -0.22))
 		var best := 0
 		for i in pts.size():
 			if (pts[i] as Vector2).distance_to(want) < (pts[best] as Vector2).distance_to(want):
@@ -406,8 +407,9 @@ static func plate_hx(_part: String, g) -> void:
 		var tight: Array = []
 		var lock: Array = []
 		for x: float in [-Wp * 0.62, Wp * 0.62]:
-			for z: float in [0.4, H * 0.5, H - 0.4]:
-				(lock if z == H * 0.5 else tight).append(Vector3(x, yf + 0.06, z))
+			for j in 3:   # (by place, not by height: a low exchanger's three heights can be one)
+				var z: float = [0.4, H * 0.5, H - 0.4][j]
+				(lock if j == 1 else tight).append(Vector3(x, yf + 0.06, z))
 		_bolts_y(g, "tightening_bolts", tight, 0.02, yf + 0.06 - (yb - 0.1), "steel", 0.04)
 		_bolts_y(g, "locking_bolts", lock, 0.02, yf + 0.06 - (yb - 0.1), "steel", 0.04)
 	var ws := {}

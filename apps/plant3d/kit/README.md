@@ -531,7 +531,8 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   mid-height (the manual's first bolt layout, p. 35), as long as each other (a real locking bolt is shorter); the
   pressure plate has no feet and the frame plate's stud bolts round its portholes are not drawn (the plant's nozzles
   are the frame plate's); the plant's carrying bar leaves the pressure plate 0.25 m to the column, so the explode
-  pushes it back that far and takes the plates out to the side (End plate I, the first off, farthest).
+  pushes it back that far and takes the plates out to the side (End plate I, the first off, farthest); both bolt
+  groups back out together there (the steps take the locking bolts out first).
   `tests/test_workshop.gd _packs` checks that the plates lie square to the line from the pressure plate to the frame
   plate, follow each other plate by plate without a gap from one plate's inner face to the other's, and that every bolt runs along
   that line beside the plates, from beyond the pressure plate's outer face to beyond the frame plate's. **The
@@ -553,12 +554,18 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   flange, so the packing rings and the lantern ring sit in the shell's end round the floating tubesheet and the rear
   bonnet's studs are not drawn (its step says so); the plant's shell nozzles stand inside the shell (their points lie
   under its top) and are left out; the plant's tube inlet stands a few centimetres off the rear bonnet and stays so,
-  the rear bonnet's; the plant's saddles are boxes reaching 0.3 m up into the shell, and the bundle passes their
-  tops as it is drawn out (listed in `tests/test_workshop.gd`). `tests/test_workshop.gd _bundles` checks that every
+  the rear bonnet's; the plant's saddles are boxes reaching 0.3 m up into the shell, so the bundle's lowest tubes,
+  baffles and tie rods stand in their tops (seen in the X-ray and the cutaway) and the floating tubesheet passes the
+  front one's top as the bundle is drawn out (listed in `tests/test_workshop.gd`); the four tie rods stand near the
+  rim at mid-height, where every baffle is whichever side it is cut. `tests/test_workshop.gd _bundles` checks that every
   tube runs straight along the bundle's line from the stationary tubesheet's outer face to the floating one's,
   inside the floating tubesheet's rim and the shell's bore. **The stand-ins:** the joint's stud ring (a fastener group) and
-  the two tube nozzles. **Known limits:** built and tested for the data file's 1.2 m shell only; a shell whose
-  circle has an odd number of segments leaves the plant's front bonnet open (the plant's own cylinder and caps).
+  the two tube nozzles. **Known limits** (built and tested for the data file's 1.2 m shell only, as the Workshop builds
+  one scene per kind; WORKSHOP.md §5's scenes per equipment need these first): a shell whose circle has an odd
+  number of segments leaves the plant's front bonnet open (the plant's own cylinder and caps); a shell under about
+  1.1 m long (1.3 m at 5 m across) has no room between its tubesheets for the baffles; a 0.2 m shell holds three
+  tubes, a long thin one far too many baffles; the data file's "32 front bonnet studs" is the 1.2 m flange's count;
+  the vertical exchanger has no tree.
 
 ## Tables and their sources
 

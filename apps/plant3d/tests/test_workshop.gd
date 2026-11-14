@@ -47,12 +47,9 @@ const PASSES := {
 	"steam_turbine|valve_r|ctrl_r": "the same chest on the other side",
 	"motor|end_shield_de|rotor": "the plant draws the drive-end shield's face closed and the shaft's stub standing on it: "
 		+ "the shield comes off forwards over the stub, as a real one does through its bore",
-	"shell_tube_hx|saddles|bundle": "the plant draws the saddles as boxes reaching 0.3 m up into the shell (a real "
-		+ "saddle is a cradle under it): the bundle passes their tops as it is drawn out",
-	"shell_tube_hx|saddles|tubesheet_f": "the same saddles: the bundle's floating tubesheet",
-	"shell_tube_hx|saddles|baffles": "the same saddles: the bundle's baffles",
-	"shell_tube_hx|saddles|tubes": "the same saddles: the bundle's lowest tubes",
-	"shell_tube_hx|saddles|tie_rods": "the same saddles: the bundle's lower tie rods",
+	"shell_tube_hx|saddles|tubesheet_f": "the plant draws the saddles as boxes reaching 0.3 m up into the shell (a "
+		+ "real saddle is a cradle under it): the bundle's floating tubesheet passes the front one's top as the bundle "
+		+ "is drawn out (its lowest tubes, baffles and tie rods stand in their tops already, assembled)",
 	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
 		+ "comes out through its wall",
 }
@@ -1034,16 +1031,28 @@ func _packs(part: String, ws: Dictionary) -> void:
 			if n.length() > 1e-12 and absf(n.normalized().dot(a)) > 0.0001 and absf(n.normalized().dot(a)) < 0.9999:
 				bad += 1
 		check(bad == 0, "%s: %s: %d faces lie neither square to the pack's line nor along it" % [part, w.plates[i], bad])
-		# each plate of the component (a connected piece) in turn along the line
-		var spans: Array = []
-		for pc in _pieces_of(plates[i]):
-			spans.append(_span(pc, a))
-		spans.sort_custom(func(x: Vector2, y: Vector2) -> bool: return x.x < y.x)
-		for k in spans.size():
-			var sp: Vector2 = spans[k]
-			check(absf(sp.x - at) <= 0.001, "%s: %s's plate %d starts %.1f mm from where the one before it ends (%s)" % [
-				part, w.plates[i], k + 1, (sp.x - at) * 1000.0, "the pressure plate" if i == 0 and k == 0 else "the plate before"])
-			at = sp.y
+		var sp := _span(plates[i], a)
+		check(absf(sp.x - at) <= 0.001, "%s: %s starts %.1f mm from where the one before it ends (%s)" % [part,
+			w.plates[i], (sp.x - at) * 1000.0, "the pressure plate" if i == 0 else w.plates[i - 1]])
+		at = sp.y
+		# plate by plate: its faces across the line lie in planes; between two plates two faces share a plane (twice
+		# a plate's face area there), at the component's ends one; no two planes closer than half a millimetre (a
+		# plate of no thickness, or one drawn over another, shows here)
+		var planes := {}
+		for t in plates[i]:
+			var n: Vector3 = (t[1] - t[0]).cross(t[2] - t[0])
+			if n.length() > 1e-12 and absf(n.normalized().dot(a)) >= 0.9999:
+				var k := snappedf((t[0] as Vector3).dot(a), 0.0001)
+				planes[k] = planes.get(k, 0.0) + n.length() * 0.5
+		var ks: Array = planes.keys()
+		ks.sort()
+		var one: float = planes[ks[0]] if not ks.is_empty() else 0.0
+		for j in ks.size():
+			var want := one if j == 0 or j == ks.size() - 1 else one * 2.0
+			check(absf(planes[ks[j]] - want) <= one * 0.01, "%s: %s: the faces at %.4f have %.3f m² where %.3f are a plate's (each plate once, between its neighbours)" % [
+				part, w.plates[i], ks[j], planes[ks[j]], want])
+			check(j == 0 or ks[j] - ks[j - 1] >= 0.0005, "%s: %s: two faces %.2f mm apart (a plate of no thickness or drawn twice)" % [
+				part, w.plates[i], (ks[j] - ks[j - 1]) * 1000.0 if j > 0 else 0.0])
 	check(absf(at - f_in) <= 0.001, "%s: the pack ends %.1f mm from the frame plate's face" % [part, (at - f_in) * 1000.0])
 	for gid in w.bolts:
 		var found := false
