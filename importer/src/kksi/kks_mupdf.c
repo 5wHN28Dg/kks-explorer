@@ -402,6 +402,7 @@ typedef struct {
 	size_t seqno;
 	size_t logidx;           /* index in PyMuPDF's get_bboxlog(): one per path, text, shade or image call */
 	int want_images;
+	int want_text;           /* the path store of a text-layer drawing: glyph outlines as paths (glyph_paths) */
 	struct kks_image *images; int n_images, cap_images;
 } kks_lineart;
 
@@ -603,6 +604,119 @@ static void lineart_fill_path(fz_context *ctx, fz_device *dev_, const fz_path *p
 	dev->seqno += 1;
 }
 
+
+/* A dashed stroke for the path store (which has no dash patterns: the plant's first drawings drew their dashes as
+   separate strokes): the path flattened (16 pieces per curve) in device space, then cut by the pattern, each dash a
+   line piece of one path. The pattern starts again at every subpath, as in PDF; its lengths scale with the CTM. */
+typedef struct { fz_point *pts; int n, cap; int *starts; int ns, caps; fz_matrix ctm; fz_point first, cur; } flat_t;
+static void flat_add(flat_t *f, fz_point p)
+{
+	if (f->n == f->cap) { f->cap = f->cap ? f->cap * 2 : 64; f->pts = realloc(f->pts, sizeof *f->pts * f->cap); }
+	f->pts[f->n++] = p;
+}
+static void flat_moveto(fz_context *c, void *a, float x, float y)
+{
+	flat_t *f = a;
+	if (f->ns == f->caps) { f->caps = f->caps ? f->caps * 2 : 16; f->starts = realloc(f->starts, sizeof *f->starts * f->caps); }
+	f->starts[f->ns++] = f->n;
+	f->cur = f->first = fz_make_point(x, y);
+	flat_add(f, fz_transform_point(f->cur, f->ctm));
+}
+static void flat_lineto(fz_context *c, void *a, float x, float y)
+{
+	flat_t *f = a;
+	if (f->ns == 0) flat_moveto(c, a, f->cur.x, f->cur.y);
+	f->cur = fz_make_point(x, y);
+	flat_add(f, fz_transform_point(f->cur, f->ctm));
+}
+static void flat_curveto(fz_context *c, void *a, float x1, float y1, float x2, float y2, float x3, float y3)
+{
+	flat_t *f = a;
+	if (f->ns == 0) flat_moveto(c, a, f->cur.x, f->cur.y);
+	fz_point p0 = f->cur;
+	for (int k = 1; k <= 16; k++) {
+		float t = k / 16.0f, u = 1 - t;
+		float x = u*u*u*p0.x + 3*u*u*t*x1 + 3*u*t*t*x2 + t*t*t*x3;
+		float y = u*u*u*p0.y + 3*u*u*t*y1 + 3*u*t*t*y2 + t*t*t*y3;
+		flat_add(f, fz_transform_point(fz_make_point(x, y), f->ctm));
+	}
+	f->cur = fz_make_point(x3, y3);
+}
+static void flat_close(fz_context *c, void *a)
+{
+	flat_t *f = a;
+	if (f->ns == 0) return;
+	flat_lineto(c, a, f->first.x, f->first.y);
+	f->cur = f->first;
+}
+static const fz_path_walker flat_walker = { flat_moveto, flat_lineto, flat_curveto, flat_close };
+
+static void dash_piece(kks_lineart *dev, fz_point a, fz_point b)
+{
+	kks_item it = {'l', {a.x, a.y, b.x, b.y}, 0};
+	cur_add(dev, it);
+	fz_rect r = fz_make_rect(fminf(a.x, b.x), fminf(a.y, b.y), fmaxf(a.x, b.x), fmaxf(a.y, b.y));
+	dev->pathrect = fz_is_infinite_rect(dev->pathrect) ? r : fz_union_rect(dev->pathrect, r);
+}
+
+static int dash_path(kks_lineart *dev, const fz_path *path, const fz_stroke_state *st, fz_matrix ctm)
+{
+	flat_t f = {0};
+	f.ctm = ctm;
+	dev->pathrect = fz_infinite_rect;
+	dev->linecount = 0;
+	dev->cur.n_items = 0;
+	dev->cur.close_path = 0;
+	dev->cur.has_fill_color = dev->cur.has_stroke = dev->cur.has_color = 0;
+	float scale = sqrtf(fabsf(ctm.a * ctm.d - ctm.b * ctm.c));
+	int nd = st->dash_len;
+	float total = 0;
+	for (int i = 0; i < nd; i++) total += st->dash_list[i] * scale * (nd % 2 ? 2 : 1);
+	fz_try(g_ctx) fz_walk_path(g_ctx, path, &flat_walker, &f);
+	fz_catch(g_ctx) { free(f.pts); free(f.starts); fz_rethrow(g_ctx); }
+	if (!(total > 0) || !isfinite(total)) {      /* an all-zero pattern draws the line whole */
+		for (int s = 0; s < f.ns; s++) {
+			int end = s + 1 < f.ns ? f.starts[s + 1] : f.n;
+			for (int k = f.starts[s] + 1; k < end; k++) dash_piece(dev, f.pts[k - 1], f.pts[k]);
+		}
+	} else {
+		int period = nd % 2 ? nd * 2 : nd;
+		for (int s = 0; s < f.ns; s++) {
+			int end = s + 1 < f.ns ? f.starts[s + 1] : f.n;
+			/* where the phase puts the pattern's start */
+			float phase = fmodf(st->dash_phase * scale, total);
+			if (phase < 0) phase += total;
+			int di = 0;
+			float left = st->dash_list[0] * scale;
+			while (phase > 0 && phase >= left) { phase -= left; di = (di + 1) % period; left = st->dash_list[di % nd] * scale; }
+			left -= phase;
+			int on = di % 2 == 0;
+			for (int k = f.starts[s] + 1; k < end; k++) {
+				fz_point a = f.pts[k - 1], b = f.pts[k];
+				float len = hypotf(b.x - a.x, b.y - a.y), done = 0;
+				int guard = 0;
+				while (len - done > left && guard++ < 1000000) {
+					float t0 = done / len, t1 = (done + left) / len;
+					if (on) dash_piece(dev, fz_make_point(a.x + (b.x - a.x) * t0, a.y + (b.y - a.y) * t0),
+					                   fz_make_point(a.x + (b.x - a.x) * t1, a.y + (b.y - a.y) * t1));
+					done += left;
+					di = (di + 1) % period;
+					left = st->dash_list[di % nd] * scale;
+					on = di % 2 == 0;
+				}
+				if (len > done && on) {
+					float t0 = done / len;
+					dash_piece(dev, fz_make_point(a.x + (b.x - a.x) * t0, a.y + (b.y - a.y) * t0), b);
+				}
+				left -= len - done;
+			}
+		}
+	}
+	free(f.pts);
+	free(f.starts);
+	return dev->cur.n_items > 0;
+}
+
 static void lineart_stroke_path(fz_context *ctx, fz_device *dev_, const fz_path *path, const fz_stroke_state *stroke,
                                 fz_matrix ctm, fz_colorspace *cs, const float *color, float alpha, fz_color_params cp)
 {
@@ -611,7 +725,10 @@ static void lineart_stroke_path(fz_context *ctx, fz_device *dev_, const fz_path 
 	dev->logidx += 1;
 	dev->ctm = ctm;
 	dev->path_type = 2;
-	if (!lineart_path(dev, path)) return;
+	if (dev->want_images && stroke->dash_len > 0) {   /* the path store: the dashes as separate pieces */
+		if (!dash_path(dev, path, stroke, ctm)) return;
+	}
+	else if (!lineart_path(dev, path)) return;
 	strcpy(dev->cur.type, "s");
 	dev->cur.has_fill = 0;
 	dev->cur.has_stroke = 1;
@@ -620,7 +737,7 @@ static void lineart_stroke_path(fz_context *ctx, fz_device *dev_, const fz_path 
 	dev->cur.width = pathfactor * stroke->linewidth;
 	dev->cur.cap[0] = stroke->start_cap; dev->cur.cap[1] = stroke->dash_cap; dev->cur.cap[2] = stroke->end_cap;
 	dev->cur.join = (int)(float)stroke->linejoin;
-	dev->cur.dash_len = stroke->dash_len;
+	dev->cur.dash_len = dev->want_images ? 0 : stroke->dash_len;
 	if (dev->cur.close_path < 0) dev->cur.close_path = 0;
 	dev->cur.seqno = dev->seqno;
 	dev->cur.rect[0] = dev->pathrect.x0; dev->cur.rect[1] = dev->pathrect.y0;
@@ -630,10 +747,74 @@ static void lineart_stroke_path(fz_context *ctx, fz_device *dev_, const fz_path 
 }
 
 #define INC(d) do { ((kks_lineart *)(d))->seqno += 1; ((kks_lineart *)(d))->logidx += 1; } while (0)
+
+/* Text, for the path store of a drawing read from its text layer only (want_text; a glyph-read drawing's path store
+   stays as it was, without its few words of real text): each glyph's outline as a filled (or stroked) path, so a drawing whose
+   text is real text keeps it in the .kkp, which holds only paths and images. All of one text call's glyphs share its
+   seqno, which then moves on by one as before: the paths' order against the images (by the bbox log) is unchanged.
+   The reader's get_drawings (want_images off) still only counts text, as PyMuPDF does. A glyph without an outline
+   (a Type 3 or bitmap font) is an import error: the path store never drops what it can't hold. */
+static void glyph_paths(fz_context *c, kks_lineart *d, const fz_text *t, const fz_stroke_state *st, fz_matrix m,
+                        fz_colorspace *cs, const float *col, float a)
+{
+	for (fz_text_span *span = t->head; span; span = span->next) {
+		fz_matrix tm = span->trm;
+		for (int i = 0; i < span->len; i++) {
+			int gid = span->items[i].gid;
+			if (gid < 0) continue;
+			tm.e = span->items[i].x;
+			tm.f = span->items[i].y;
+			fz_path *path = fz_outline_glyph(c, span->font, gid, tm);
+			if (!path) {
+				if (fz_font_t3_procs(c, span->font) || !fz_font_ft_face(c, span->font))
+					fz_throw(c, FZ_ERROR_GENERIC, "text in a Type 3 or bitmap font is not supported in the path store");
+				continue;   /* an outline font's empty glyph (a space) */
+			}
+			fz_try(c) {
+				d->ctm = m;
+				if (lineart_path(d, path)) {
+					if (st) {
+						float pathfactor = sqrtf(fabsf(m.a * m.d - m.b * m.c));
+						strcpy(d->cur.type, "s");
+						d->cur.has_fill = 0;
+						d->cur.has_stroke = 1;
+						d->cur.stroke_opacity = a;
+						d->cur.has_color = lineart_color(cs, col, d->cur.color);
+						d->cur.width = pathfactor * st->linewidth;
+						d->cur.cap[0] = st->start_cap; d->cur.cap[1] = st->dash_cap; d->cur.cap[2] = st->end_cap;
+						d->cur.join = (int)(float)st->linejoin;
+						d->cur.dash_len = 0;
+						if (d->cur.close_path < 0) d->cur.close_path = 0;
+					} else {
+						strcpy(d->cur.type, "f");
+						d->cur.has_fill = 1;
+						d->cur.even_odd = 0;
+						d->cur.fill_opacity = a;
+						d->cur.has_fill_color = lineart_color(cs, col, d->cur.fill);
+					}
+					d->cur.seqno = d->seqno;
+					d->cur.rect[0] = d->pathrect.x0; d->cur.rect[1] = d->pathrect.y0;
+					d->cur.rect[2] = d->pathrect.x1; d->cur.rect[3] = d->pathrect.y1;
+					append_merge(d);
+				}
+			}
+			fz_always(c) fz_drop_path(c, path);
+			fz_catch(c) fz_rethrow(c);
+		}
+	}
+}
 static void inc_text(fz_context *c, fz_device *d, const fz_text *t, fz_matrix m, fz_colorspace *cs, const float *col,
-                     float a, fz_color_params cp) { INC(d); }
+                     float a, fz_color_params cp)
+{
+	if (((kks_lineart *)d)->want_text) glyph_paths(c, (kks_lineart *)d, t, NULL, m, cs, col, a);
+	INC(d);
+}
 static void inc_stroke_text(fz_context *c, fz_device *d, const fz_text *t, const fz_stroke_state *s, fz_matrix m,
-                            fz_colorspace *cs, const float *col, float a, fz_color_params cp) { INC(d); }
+                            fz_colorspace *cs, const float *col, float a, fz_color_params cp)
+{
+	if (((kks_lineart *)d)->want_text) glyph_paths(c, (kks_lineart *)d, t, s, m, cs, col, a);
+	INC(d);
+}
 static void inc_ignore_text(fz_context *c, fz_device *d, const fz_text *t, fz_matrix m) { INC(d); }
 static void inc_shade(fz_context *c, fz_device *d, fz_shade *s, fz_matrix m, float a, fz_color_params cp) { INC(d); }
 static void inc_image_mask(fz_context *c, fz_device *d, fz_image *i, fz_matrix m, fz_colorspace *cs, const float *col,
@@ -705,13 +886,13 @@ static void inc_image(fz_context *c, fz_device *d_, fz_image *image, fz_matrix m
 /* All paths of page 0 (strokes, fills, fill+stroke merged), in drawing order. Returns the count; *out is malloc'd
    (free with kks_free_paths). -1 on error. unrotate: run with the page's /Rotate set to 0 and restored after, like
    PyMuPDF's Page.get_cdrawings (coordinates in the unrotated page). */
-int kks_drawings_images(fz_document *doc, kks_path **out, int unrotate, kks_image **images, int *n_images);
+int kks_drawings_images(fz_document *doc, kks_path **out, int unrotate, kks_image **images, int *n_images, int text);
 int kks_drawings(fz_document *doc, kks_path **out, int unrotate)
 {
-	return kks_drawings_images(doc, out, unrotate, NULL, NULL);
+	return kks_drawings_images(doc, out, unrotate, NULL, NULL, 0);
 }
 
-int kks_drawings_images(fz_document *doc, kks_path **out, int unrotate, kks_image **images, int *n_images)
+int kks_drawings_images(fz_document *doc, kks_path **out, int unrotate, kks_image **images, int *n_images, int text)
 {
 	fz_context *ctx = g_ctx;   /* fz_new_derived_device expects `ctx` */
 	int n = -1;
@@ -728,6 +909,7 @@ int kks_drawings_images(fz_document *doc, kks_path **out, int unrotate, kks_imag
 		}
 		dev = fz_new_derived_device(g_ctx, kks_lineart);
 		dev->want_images = images != NULL;
+		dev->want_text = images != NULL && text;
 		dev->super.fill_path = lineart_fill_path;
 		dev->super.stroke_path = lineart_stroke_path;
 		dev->super.fill_text = inc_text;
@@ -881,5 +1063,81 @@ char *kks_annot_notes(fz_document *doc, size_t *len)
 		free(out);
 		out = NULL;
 	}
+	return out;
+}
+
+/* ---------------------------------------------------------------- the text layer (textlayer.nim) */
+
+/* Page 0's text as MuPDF's structured text sees it, without the annotations (like the reader, which reads the page
+   without them): one record per character, in MuPDF's line order, with the line's index and baseline direction.
+   No spaces are made up between characters (FZ_STEXT_INHIBIT_SPACES): textlayer.nim splits a line at its gaps.
+   Coordinates are the page's (what kks_render draws at zoom 1). Returns a malloc'd array (*n records) or NULL on
+   error; more than max_chars characters is an error too (a crafted file), with *n = -1. */
+typedef struct { int c; int line; float x0, y0, x1, y1; float size; float dx, dy; } kks_tchar;
+
+static int text_block(fz_stext_block *b, kks_tchar **out, int *n, int *cap, int *line, int max_chars)
+{
+	for (; b; b = b->next) {
+		if (b->type == FZ_STEXT_BLOCK_STRUCT && b->u.s.down) {
+			if (!text_block(b->u.s.down->first_block, out, n, cap, line, max_chars)) return 0;
+			continue;
+		}
+		if (b->type != FZ_STEXT_BLOCK_TEXT) continue;
+		for (fz_stext_line *l = b->u.t.first_line; l; l = l->next) {
+			for (fz_stext_char *ch = l->first_char; ch; ch = ch->next) {
+				if (*n >= max_chars) return 0;
+				if (*n == *cap) {
+					*cap = *cap ? *cap * 2 : 1024;
+					kks_tchar *grown = realloc(*out, (size_t)*cap * sizeof **out);
+					if (!grown) fz_throw(g_ctx, FZ_ERROR_SYSTEM, "malloc (%zu bytes) failed", (size_t)*cap * sizeof **out);
+					*out = grown;
+				}
+				fz_rect r = fz_rect_from_quad(ch->quad);
+				kks_tchar t = { ch->c, *line, r.x0, r.y0, r.x1, r.y1, ch->size, l->dir.x, l->dir.y };
+				(*out)[(*n)++] = t;
+			}
+			(*line)++;
+		}
+	}
+	return 1;
+}
+
+kks_tchar *kks_text_chars(fz_document *doc, int max_chars, int *n)
+{
+	kks_tchar *out = NULL;
+	fz_page *page = NULL;
+	fz_stext_page *text = NULL;
+	fz_device *dev = NULL;
+	int cap = 0, line = 0, ok = 1;
+	fz_var(out); fz_var(page); fz_var(text); fz_var(dev); fz_var(ok);
+	*n = 0;
+	fz_try(g_ctx) {
+		page = fz_load_page(g_ctx, doc, 0);
+		fz_stext_options opts;
+		fz_init_stext_options(g_ctx, &opts);
+		opts.flags = FZ_STEXT_INHIBIT_SPACES | FZ_STEXT_PRESERVE_WHITESPACE | FZ_STEXT_PRESERVE_LIGATURES;
+		text = fz_new_stext_page(g_ctx, fz_bound_page(g_ctx, page));
+		dev = fz_new_stext_device(g_ctx, text, &opts);
+		fz_run_page_contents(g_ctx, page, dev, fz_identity, NULL);
+		fz_close_device(g_ctx, dev);
+		ok = text_block(text->first_block, &out, n, &cap, &line, max_chars);
+	}
+	fz_always(g_ctx) {
+		fz_drop_device(g_ctx, dev);
+		fz_drop_stext_page(g_ctx, text);
+		fz_drop_page(g_ctx, page);
+	}
+	fz_catch(g_ctx) {
+		snprintf(g_error, sizeof g_error, "%s", fz_caught_message(g_ctx));
+		free(out);
+		return NULL;
+	}
+	if (!ok) {
+		snprintf(g_error, sizeof g_error, "the page's text layer has more than %d characters", max_chars);
+		free(out);
+		*n = -1;
+		return NULL;
+	}
+	if (!out) out = malloc(1);   /* no text: an empty array, not an error */
 	return out;
 }

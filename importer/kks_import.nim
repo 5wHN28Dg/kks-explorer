@@ -5,11 +5,13 @@
 ##     (the cutover: an existing v1 sheet gets its path store and pyramid; its tags and notes, hand-verified ones
 ##      included, stay exactly as they are; refused if the image size differs from the sheet's, as the boxes
 ##      would no longer line up)
-##              [--glyphs fontlib.kgl] [--effort N] [--legend auto|hrsg|none]
+##              [--glyphs fontlib.kgl] [--effort N] [--legend auto|hrsg|none] [--reader auto|glyphs|text] [--unit NN]
 ##   Options go before the positional arguments or anywhere among them; after `--` everything is positional (the
 ##   server passes the sheet name, which the manager types, after it).
 ##
-## Reads page 1 of a vector (AutoCAD-plotted) PDF and writes into DIR (default plant-data/):
+## Reads page 1 of a vector (AutoCAD-plotted) PDF and writes into DIR (default plant-data/). The tags come from the
+## page's text layer when it holds any (textlayer.nim; --reader text|glyphs forces one way), else from the glyph reader
+## on the drawn strokes, unchanged. --unit NN completes text codes the drawing writes without their unit number.
 ##   sheets/<id>.pdf      the drawing as given (the source of record)
 ##   sheets/<id>.kkp      the grid-indexed path store (docs/PATHSTORE.md)
 ##   sheets/<id>.o<k>.jxl the overview pyramid (docs/PATHSTORE.md "Overview pyramid")
@@ -21,7 +23,7 @@
 
 import std/[os, strutils, times, parseopt, algorithm]
 import kks/[json, pathstore]
-import kksi/[mupdf, fontlib, reader, textlines, extract, kkp, jxl, connectors, valves]
+import kksi/[mupdf, fontlib, reader, textlines, extract, kkp, jxl, connectors, valves, textlayer]
 
 const
   RepoGlyphs = currentSourcePath().parentDir / "fontlib.kgl"
@@ -85,6 +87,8 @@ proc main() =
   var glyphs = ""
   var effort = 7
   var legend = "auto"
+  var tagReader = "auto"
+  var unit = ""
   # "--": everything after it is a positional argument (issue #38; parseopt's remainingArgs skips the first one)
   var params = commandLineParams()
   var positional: seq[string]
@@ -105,8 +109,10 @@ proc main() =
       of "glyphs": glyphs = val
       of "effort": effort = parseInt(val)
       of "legend": legend = val
+      of "reader": tagReader = val
+      of "unit": unit = val
       of "help", "h":
-        echo "kks-import DRAWING.pdf \"Display name\" [SHEET_ID] [--rotate auto|0|90|180|270] [--replace] [--data-dir DIR] [--glyphs fontlib.kgl] [--effort 1-9] [--legend auto|hrsg|none]"
+        echo "kks-import DRAWING.pdf \"Display name\" [SHEET_ID] [--rotate auto|0|90|180|270] [--replace] [--data-dir DIR] [--glyphs fontlib.kgl] [--effort 1-9] [--legend auto|hrsg|none] [--reader auto|glyphs|text] [--unit NN]"
         quit 0
       else: die "Unknown option --" & key
     of cmdEnd: discard
@@ -114,6 +120,8 @@ proc main() =
   if args.len notin 2 .. 3: die "Usage: kks-import DRAWING.pdf \"Display name\" [SHEET_ID] [options]; --help for more."
   if rotate notin ["auto", "0", "90", "180", "270"]: die "--rotate must be auto, 0, 90, 180 or 270."
   if legend notin ["auto", "hrsg", "none"]: die "--legend must be auto, hrsg or none."
+  if tagReader notin ["auto", "glyphs", "text"]: die "--reader must be auto, glyphs or text."
+  if unit.len > 0 and not unit.full("DD"): die "--unit must be two digits (the unit number the drawing leaves out)."
   let src = args[0]
   let name = args[1]
   let sid = if args.len == 3: args[2] else: sheetId(name)
@@ -136,8 +144,29 @@ proc main() =
   var rd = Reader(lib: lib)
   let t0 = epochTime()
 
+  # The text layer first: a drawing whose tags are real text needs no glyph reading (and no orientation guess from
+  # stroke lines, which such a drawing hardly has). A drawing without one takes the glyph reader's path, unchanged.
+  var textMode = false
+  if not keepTags and tagReader != "glyphs":
+    let d0 = rotatedCopy(src, if rotate == "auto": 0 else: parseInt(rotate))
+    let n = try: textTags(d0, unit).len except TextLimitError as e: die e.msg
+    d0.close()
+    if n > 0: log "Reading the tags from the drawing's text layer (" & $n & " found; --reader glyphs reads the strokes instead)."
+    elif tagReader == "text": die "--reader text: the drawing's text layer holds no tags."
+    textMode = n > 0
   var rot: int
-  if rotate == "auto":
+  if textMode and rotate == "auto":
+    log "Finding orientation from the text..."
+    var best = -1
+    for extra in [0, 90, 180, 270]:
+      let d = rotatedCopy(src, extra)
+      let n = leftToRight(d)
+      d.close()
+      log "  " & align($extra, 3) & "°: " & $n & " characters reading left to right"
+      if n > best:
+        best = n
+        rot = extra
+  elif rotate == "auto":
     log "Finding orientation..."
     var best = -1
     for extra in [0, 90, 180, 270]:
@@ -153,14 +182,16 @@ proc main() =
     log "Rotation forced to " & $rot & "°."
   var doc = rotatedCopy(src, rot)
   var found: seq[Tag]
-  if not keepTags:
+  if textMode:
+    found = textTags(doc, unit)
+  elif not keepTags:
     log "Extracting tags (this is the slow part)..."
     found = extract.extract(rd, doc, loadPaths(doc))
   # The text-line score can't tell upright from upside down, but the reader can (import_sheet.py).
   var nFound = 0
   for t in found:
     if t.status != "ignore": inc nFound
-  if not keepTags and rotate == "auto" and nFound >= 10 and float(autoCount(found)) < 0.25 * float(nFound):
+  if not keepTags and not textMode and rotate == "auto" and nFound >= 10 and float(autoCount(found)) < 0.25 * float(nFound):
     let flip = (rot + 180) mod 360
     log "Only " & $autoCount(found) & " of " & $nFound & " tags readable at " & $rot & "°: the sheet may be upside down. Trying " & $flip & "°..."
     let doc2 = rotatedCopy(src, flip)
@@ -189,7 +220,7 @@ proc main() =
   createDir(dataDir / "sheets")
   log "Writing the path store..."
   let srcDoc = mupdf.open(src)
-  let drawing = fromPdfPage(srcDoc, sheetExtra(rot, srcDoc.pageRotation))   # the overview's frame
+  let drawing = fromPdfPage(srcDoc, sheetExtra(rot, srcDoc.pageRotation), text = textMode)   # the overview's frame
   writeAtomic(dataDir / "sheets" / (sid & ".kkp"), encode(drawing))
   let notes = srcDoc.annotNotes()
   srcDoc.close()
@@ -272,7 +303,8 @@ proc main() =
       formatFloat(epochTime() - t0, ffDecimal, 1) & " s)."
   log "RESULT " & toText(newObj(@[("id", newStr(sid)), ("name", newStr(name)), ("auto", newInt(nAuto)),
                                   ("review", newInt(nReview)), ("rotation", newInt(rot)), ("w", newInt(w0)),
-                                  ("h", newInt(h0)), ("notes", newInt(noteArr.elems.len)), ("links", newInt(links.len))]))
+                                  ("h", newInt(h0)), ("notes", newInt(noteArr.elems.len)), ("links", newInt(links.len)),
+                                  ("reader", newStr(if keepTags: "none" elif textMode: "text" else: "glyphs"))]))
 
 # Out of memory: one plain line and exit code 3 (the server explains its import_memory_mb limit when it sees that
 # code). Nim's own allocator calls the hook; MuPDF reports a failed allocation as an error.
