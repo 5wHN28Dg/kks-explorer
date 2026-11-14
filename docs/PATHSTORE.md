@@ -15,7 +15,10 @@ the rectangle touches, and drawing their paths with the platform's own 2D API:
 ## What the drawings contain (evidence, 2026-09-30, all 11 plant sheets)
 
 - 16k–119k paths per sheet, 59k–331k segments (lines, cubic curves, rectangles, quads).
-- **No dash patterns:** dashed lines are already separate strokes.
+- **No dash patterns:** dashed lines are already separate strokes. (Drawings since then that use dash patterns get
+  their dashes cut into separate strokes by the importer, importer/README "Tags from the text layer".)
+- **No text** in these plots. A drawing with real text that the importer reads from its text layer gets each glyph's
+  outline as a filled path (same README section); the format has no text record.
 - Line caps butt or round; joins miter, round or bevel.
 - Width 0 (hairline) is common.
 - Fills use both the nonzero and the even-odd rule.
