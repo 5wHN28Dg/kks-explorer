@@ -120,6 +120,26 @@ class Content(unittest.TestCase):
         self.assertAlmostEqual(o['bpfo'] + o['bpfi'], T.BALLS, places=2)
         self.assertAlmostEqual(o['ftf'] * T.BALLS, o['bpfo'], places=2)
 
+    def test_thermal_picture(self):
+        """The camera's picture (REALISM.md §9.3, K6): each pump's Workshop kind, the monitored bearing's housing and
+        bearing at the meter's value (the spot), the frame and sound bearings at BRG_RISE over the air when running, what
+        the water wets at the water's temperature; a running set's frame warmer than the air, its worn bearing the
+        hottest."""
+        for p in self.mon['points']:
+            if p['kind'] != 'ir':
+                continue
+            pic = p['picture']
+            meter = self.b.model.meter_ix[p['meter']]['value']
+            self.assertEqual(pic['parts'][pic['spot']], meter)
+            self.assertEqual(self.b.model.p.equipment[p['code']]['part'], pic['kind'])
+            hot = [c for c, v in pic['parts'].items() if v == meter]
+            self.assertEqual(len(hot), 2, f'{p["code"]}: the housing and its bearing')
+            self.assertTrue(all(c.startswith(('end_shield', 'bearing')) for c in hot), hot)
+            pre = meter[:-len('_brg_t')]
+            self.assertEqual(self.values[f'{pre}_warm_rise']['product'][1], A.BRG_RISE)
+            self.assertEqual(self.values[f'{pre}_warm_rl']['tau'], A.BRG_TAU)
+            self.assertEqual(pic['parts']['motor'], f'{pre}_warm_t')
+
     def test_check_refuses(self):
         def bad(change, code):
             d = copy.deepcopy(self.mon)
@@ -137,6 +157,15 @@ class Content(unittest.TestCase):
         bad(lambda d: d['points'][vib]['lines'][0].update(value='no_value'), 'bad_ref')
         bad(lambda d: d['points'][vib]['lines'][0].pop('share'), 'missing_key')
         bad(lambda d: d['points'][ir].update(limits=[90, 80]), 'bad_number')
+        # the camera's picture (REALISM.md §9.3): the code's own kind, every component of its tree at a °C value, the
+        # spot at the meter's value
+        bad(lambda d: d['points'][ir]['picture'].update(kind='motor'), 'bad_ref')
+        bad(lambda d: d['points'][ir]['picture']['parts'].pop('fan'), 'bad_ref')
+        bad(lambda d: d['points'][ir]['picture']['parts'].update(impeller_9='ambient_t'), 'bad_ref')
+        bad(lambda d: d['points'][ir]['picture']['parts'].update(fan='cw_a_vib'), 'bad_ref')
+        bad(lambda d: d['points'][ir]['picture'].update(spot='nowhere'), 'bad_ref')
+        bad(lambda d: d['points'][ir]['picture'].update(spot='fan'), 'bad_ref')
+        bad(lambda d: d['points'][ir]['picture'].update(colour='iron'), 'unknown_key')
         bad(lambda d: d['points'][oil].update(action='open_cover'), 'bad_ref')
         bad(lambda d: d['points'][oil]['results'][0].update(node='cw_a_oil_fe'), 'bad_ref')
         bad(lambda d: d['points'][oil]['results'][0].update(alert=40), 'bad_number')
@@ -155,10 +184,10 @@ class Content(unittest.TestCase):
         """§11: the tones count against the wear signs (AG2's 183 of 250), the oil results against the chemistry
         share (150)."""
         tones, oil = T.values_added()
-        self.assertEqual((tones, oil), (14, 78))
+        self.assertEqual((tones, oil), (35, 78))
         self.assertLessEqual(183 + tones, 250)
         self.assertLessEqual(oil, 150)
-        added = [f'{p[0]}_{k}' for p in A.PUMPS for k in ('bt', 'bt_k')] + \
+        added = [f'{p[0]}_{k}' for p in A.PUMPS for k in ('bt', 'bt_k', 'warm_rise', 'warm_rl', 'warm_t')] + \
             [f'{p}_{k}' for p, *_ in T.oil_points() for k in ['oil_fe', 'oil_pc'] + [f'lab_{r}' for r, _, _ in T.RESULTS]]
         self.assertEqual(len(set(added)), tones + oil)
         for k in added:

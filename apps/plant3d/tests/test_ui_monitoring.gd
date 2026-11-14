@@ -8,6 +8,10 @@
 ##   points (the collector at its probe, the camera at the motor); without the tools, the screens say what to carry;
 ## - the tools taken at the store counter; at the pump: the collector's screen shows its meter's value, the zone and
 ##   the spectrum, a reading recorded (S1's read with the meter) and listed; the camera's spot reading the same;
+## - the camera's false-colour picture (ui/thermal_picture.gd, K6): the pump's Workshop tree, every component drawn
+##   at its model value's temperature in the iron palette over the picture's range (the heat view's ws_ramp), the
+##   spot on the monitored bearing's housing at the meter's own value, the hottest named; a bearing running hot is the
+##   picture's hot spot; a vertical pump's string in its pit not drawn;
 ## - the oil sample at CW pump A's motor: its hand action with the kit, ten minutes under way, the sample queued at the
 ##   lab; the clock moved on past the lab's turnaround (as a jump would), the results arrive: a toast, the lab's report
 ##   with its levels.
@@ -252,12 +256,17 @@ func _round(tree: SceneTree) -> Array:
 		ui.clock.run_steps(2)
 		if Mon.readings(e, mv.points[ii]).size() != 1:
 			p.append("the camera's reading was not recorded")
+		p += await _picture(tree, mv, e, ii, "end_shield_de", "ccw_a_brg_t")
 	# the oil sample, at CW pump A's motor
 	_go(ui, "w_" + OIL_AT.to_lower())
 	mv.open(OIL_AT)
 	_fresh(mv)
 	var po: Dictionary = mv.points[io]
 	var node0: String = po["results"][0]["node"]
+	for k in mv.points.size():
+		if mv.points[k]["code"] == OIL_AT and mv.points[k]["kind"] == "ir":
+			p += await _picture(tree, mv, e, k, "end_shield_nde", "cw_a_brg_t")
+			_fresh(mv)
 	var sb = mv.body.find_child("point_%d" % io, true, false).find_child("sample", true, false)
 	(sb as Button).pressed.emit()
 	var end := 0
@@ -317,3 +326,66 @@ func _round(tree: SceneTree) -> Array:
 	main.free()
 	return p
 
+
+
+## The camera's picture at point `i`: loaded, every drawn component at its value's temperature and colour, the spot
+## at the meter's value; the monitored bearing (`hot_value`) made hot, the picture's hottest is its housing.
+func _picture(tree: SceneTree, mv, e, i: int, spot: String, hot_value: String) -> Array:
+	var p: Array = []
+	var pt: Dictionary = mv.points[i]
+	var box = mv.body.find_child("point_%d" % i, true, false)
+	var tp = box.find_child("thermal_picture", true, false) if box != null else null
+	if tp == null:
+		return ["no thermal picture at %s: %s" % [pt["code"], App.texts(box if box != null else mv.body).left(300)]]
+	var end := Time.get_ticks_msec() + 30000
+	while tp.machine == null and Time.get_ticks_msec() < end:
+		await tree.process_frame
+		mv._write(e, null)
+	if tp.machine == null or tp.comps.is_empty():
+		return ["the picture of %s did not load" % pt["code"]]
+	var pic: Dictionary = pt["picture"]
+	if String(pic["spot"]) != spot or not tp.comps.has(spot):
+		p.append("the spot at %s is %s, drawn %s" % [pt["code"], pic["spot"], str(tp.comps.has(spot))])
+	if absf(float(tp.shown[spot]) - Hands.shown(e, String(pt["meter"]), e.cur)) > 1e-9:
+		p.append("the spot's component at %.2f °C, the meter %.2f" % [tp.shown[spot], Hands.shown(e, String(pt["meter"]), e.cur)])
+	_colours(p, tp, e, pic)
+	if pic["kind"] == "pump_vertical":
+		for c in ["bowl_1", "suction_bell", "column_2"]:
+			if tp.comps.has(c):
+				p.append("the vertical pump's %s (in its pit) is drawn" % c)
+		if not tp.comps.has("motor") or not tp.comps.has("head"):
+			p.append("the vertical pump's motor and head are not drawn: %s" % str(tp.comps.keys()))
+	# the running set: its frame warmer than the air
+	var amb: float = e.cur[e.ix["ambient_t"]]
+	if float(tp.shown["motor"]) < amb + 1.0:
+		p.append("the running motor's frame (%.1f °C) is not warmer than the air (%.1f)" % [tp.shown["motor"], amb])
+	# the monitored bearing running hot: the picture's hot spot
+	var n0: int = tp.renders
+	var c: PackedFloat64Array = e.cur
+	c[e.ix[hot_value]] = 95.0
+	e.cur = c
+	mv._write(e, null)
+	if tp.renders != n0 + 1 or tp.hottest(tp.shown, tp.comps.keys()) != spot:
+		p.append("a bearing at 95 °C: drawn again %d times, the hottest %s (not %s)" % [tp.renders - n0,
+				tp.hottest(tp.shown, tp.comps.keys()), spot])
+	if not (tp.max_label.text.contains(spot.replace("_", " ")) and tp.max_label.text.contains("95.0 °C")):
+		p.append("the hottest is named as %s" % tp.max_label.text)
+	if tp.hi < 95.0 or tp.lo > amb:
+		p.append("the scale %.0f to %.0f does not hold 95 °C and the air" % [tp.lo, tp.hi])
+	_colours(p, tp, e, pic)
+	mv._write(e, null)
+	if tp.renders != n0 + 1:
+		p.append("drawn again with nothing changed")
+	return p
+
+static func _colours(p: Array, tp, e, pic: Dictionary) -> void:
+	for comp in tp.comps:
+		var t: float = e.cur[e.ix[String(pic["parts"][comp])]]
+		if absf(float(tp.shown[comp]) - t) > 1e-9:
+			p.append("%s drawn at %.2f °C, its value %.2f" % [comp, tp.shown[comp], t])
+		var want: Color = tp.iron((t - tp.lo) / (tp.hi - tp.lo)).srgb_to_linear()
+		for g in tp.comps[comp]:
+			var got: Color = g.get_instance_shader_parameter("ws_ramp")
+			if not got.is_equal_approx(Color(want.r, want.g, want.b, 1.0)):
+				p.append("%s coloured %s, wanted %s" % [comp, str(got), str(want)])
+				break
