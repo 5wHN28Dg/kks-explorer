@@ -741,13 +741,14 @@ static func fan_axial(_part: String, g) -> void:
 # cooling tower fan". Every piece here is a Workshop piece hidden inside the plant's: plant mode draws what it drew
 # before.
 const FAN_MOTOR_OUT := 2.5   # how far the motor moves out along the deck, away from the stack, in the explode (m)
-const FAN_HUB_LIFT := 2.5    # how far the hub with its blades lifts, clear of the stack's top (m)
+const FAN_HUB_LIFT := 4.0    # how far the hub with its blades lifts, clear of the stack's top and the cover's path (m)
 
 ## The gearbox's insides (the plant draws the gear case as one closed box under the hub: 0.9 x 0.7 x 0.6 m whatever the
 ## fan's size): the output shaft on the fan's axis, the intermediate shaft beside it towards the motor, the input shaft
 ## along x at the height of the intermediate shaft's spiral bevel gear (z, the generator's frame).
 const GB_INT_X := 0.22        # the intermediate shaft's x
 const GB_IN_Z := 0.25         # the input shaft's height
+const GB_FIT := 1.1           # a part's bore over its shaft's radius (drawn clear of the shaft's polygon, so it slides off)
 
 ## The tree. The stack, the beams and the gear case stay; the guard, the drive shaft and the motor come off first and
 ## the hub lifts with its blades clear of the stack (a real fan's blades come off the hub in place, one by one: the
@@ -766,9 +767,9 @@ static func _fan_comps(g, d: float, nb: int, hs: float, r: float) -> void:
 	g.comp("hub", {"explode": [Z, FAN_HUB_LIFT], "anim": "shaft", "sym": [Z, 0]})
 	g.comp("blades", {"parent": "hub", "explode": [Z, 1.2], "sym": [Z, nb]})
 	g.comp("seal_disc", {"parent": "hub", "explode": [Z, 0.6], "sym": [Z, 0]})
-	g.comp("gb_cover", {"parent": "gb_case", "explode": [Z, 1.6]})
-	g.comp("gb_seal_carrier", {"parent": "gb_cover", "explode": [Z, 0.4], "sym": [Z, 0]})
-	g.comp("gb_int_cover", {"parent": "gb_cover", "explode": [Z, 0.6], "sym": [Z, 0]})
+	g.comp("gb_cover", {"parent": "gb_case", "explode": [Z, 2.4]})
+	g.comp("gb_seal_carrier", {"parent": "gb_cover", "explode": [Z, 0.5], "sym": [Z, 0]})
+	g.comp("gb_int_cover", {"parent": "gb_cover", "explode": [Z, 0.8], "sym": [Z, 0]})
 	g.comp("gb_out_shaft", {"parent": "gb_case", "explode": [Z, 1.0], "sym": [Z, 0]})
 	g.comp("gb_helical", {"parent": "gb_out_shaft", "explode": [-Z, 0.5], "sym": [Z, 0]})
 	g.comp("gb_out_brg_lo", {"parent": "gb_out_shaft", "explode": [-Z, 0.8], "sym": [Z, 0]})
@@ -783,7 +784,7 @@ static func _fan_comps(g, d: float, nb: int, hs: float, r: float) -> void:
 	g.comp("gb_pinion", {"parent": "gb_in_shaft", "explode": [-X, 0.6], "sym": [X, 0]})
 	g.comp("gb_in_brg_in", {"parent": "gb_in_shaft", "explode": [-X, 0.35], "sym": [X, 0]})
 	g.comp("gb_in_brg_out", {"parent": "gb_in_shaft", "explode": [X, 0.3], "sym": [X, 0]})
-	g.comp("gb_low_covers", {"parent": "gb_case", "explode": [Z, 0.4]})
+	g.comp("gb_low_covers", {"parent": "gb_case", "explode": [Z, 0.1]})
 
 ## The Workshop's own pieces: the gear drive's insides in the plant's closed gear case (the output shaft, its helical
 ## gear and bearings turning in the `shaft` node with the hub), the seal disc's closing face and bolts, the blades'
@@ -802,12 +803,12 @@ static func _fan_insides(g, sh, d: float, nb: int, zf: float) -> void:
 	sh.cyl(at.call(0, 0.06), at.call(0, 0.598), 0.045, -1.0, 16)
 	g.comp("gb_helical")
 	sh.use("steel_dark", "identify")
-	sh.tube(at.call(0, 0.14), at.call(0, 0.20), 0.15, 0.045, 32)
+	sh.tube(at.call(0, 0.14), at.call(0, 0.20), 0.15, GB_FIT * 0.045, 32)
 	g.comp("gb_out_brg_lo")
 	sh.use("chrome", "identify")
-	sh.tube(at.call(0, 0.06), at.call(0, 0.10), 0.08, 0.045, 16)
+	sh.tube(at.call(0, 0.06), at.call(0, 0.10), 0.08, GB_FIT * 0.045, 16)
 	g.comp("gb_out_brg_up")
-	sh.tube(at.call(0, 0.36), at.call(0, 0.40), 0.08, 0.045, 16)
+	sh.tube(at.call(0, 0.36), at.call(0, 0.40), 0.08, GB_FIT * 0.045, 16)
 	# the seal disc closed underneath (the plant's dish is open where it sits on the hub)
 	g.comp("seal_disc")
 	sh.use("paint_yellow", "identify")
@@ -819,12 +820,12 @@ static func _fan_insides(g, sh, d: float, nb: int, zf: float) -> void:
 	m.use("steel_dark", "identify")
 	m.tube(at.call(xi, 0.14), at.call(xi, 0.20), 0.055, 0.03, 16)
 	g.comp("gb_bevel")
-	m.tube(at.call(xi, 0.30), at.call(xi, 0.34), 0.11, 0.03, 24)
+	m.tube(at.call(xi, 0.30), at.call(xi, 0.34), 0.11, GB_FIT * 0.03, 24)
 	g.comp("gb_int_brg_lo")
 	m.use("chrome", "identify")
-	m.tube(at.call(xi, 0.06), at.call(xi, 0.10), 0.05, 0.03, 16)
+	m.tube(at.call(xi, 0.06), at.call(xi, 0.10), 0.05, GB_FIT * 0.03, 16)
 	g.comp("gb_int_brg_up")
-	m.tube(at.call(xi, 0.36), at.call(xi, 0.40), 0.05, 0.03, 16)
+	m.tube(at.call(xi, 0.36), at.call(xi, 0.40), 0.05, GB_FIT * 0.03, 16)
 	# the input shaft along x under the bevel gear's rim: its pinion, the inner and outer bearing cones, the
 	# horizontal carrier round them and the oil seal plate at the case's side (the shaft's extension, which takes the
 	# drive shaft's hub outside the case, is the plant's drive shaft's end)
@@ -833,12 +834,12 @@ static func _fan_insides(g, sh, d: float, nb: int, zf: float) -> void:
 	m.cyl(at.call(0.29, zi), at.call(0.449, zi), 0.025, -1.0, 12)
 	g.comp("gb_pinion")
 	m.use("steel_dark", "identify")
-	m.tube(at.call(0.29, zi), at.call(0.33, zi), 0.04, 0.025, 16)
+	m.tube(at.call(0.29, zi), at.call(0.33, zi), 0.04, GB_FIT * 0.025, 16)
 	g.comp("gb_in_brg_in")
 	m.use("chrome", "identify")
-	m.tube(at.call(0.34, zi), at.call(0.36, zi), 0.05, 0.025, 16)
+	m.tube(at.call(0.34, zi), at.call(0.36, zi), 0.05, GB_FIT * 0.025, 16)
 	g.comp("gb_in_brg_out")
-	m.tube(at.call(0.40, zi), at.call(0.42, zi), 0.05, 0.025, 16)
+	m.tube(at.call(0.40, zi), at.call(0.42, zi), 0.05, GB_FIT * 0.025, 16)
 	g.comp("gb_in_carrier")
 	m.use("paint_darkgrey", "identify")
 	m.tube(at.call(0.335, zi), at.call(0.445, zi), 0.08, 0.052, 24)

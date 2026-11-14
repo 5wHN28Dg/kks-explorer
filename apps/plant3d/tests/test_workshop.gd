@@ -22,10 +22,11 @@ const Explode = preload("res://workshop/explode.gd")
 ## A kind whose flow leaves the shaft radially (a centrifugal pump's impeller, a motor's fan) says "radial", with the
 ## number of its moving rows whose vanes lean (RADIAL_ROWS): an impeller's vanes curve back against its turn, a
 ## motor's fan has straight radial blades (it cools whichever way the motor turns), so it has none.
-## A cooling tower's fan pushes its air up out of the stack (Godot's +y).
+## A cooling tower's fan pushes its air up out of the stack (Godot's +y); a generator's rotor fans have straight
+## blades, as a motor's.
 const FLOW := {"steam_turbine": Vector3(0, 0, 1), "gas_turbine": Vector3(0, 0, -1), "pump_horizontal": "radial",
-	"motor": "radial", "pump_vertical": "radial", "fan_axial": Vector3(0, 1, 0)}
-const RADIAL_ROWS := {"pump_horizontal": 1, "motor": 0, "pump_vertical": 2}
+	"motor": "radial", "pump_vertical": "radial", "fan_axial": Vector3(0, 1, 0), "generator": "radial"}
+const RADIAL_ROWS := {"pump_horizontal": 1, "motor": 0, "pump_vertical": 2, "generator": 0}
 ## Axial kinds with one moving row and no stationary one (a fan in its stack: no guide vanes). Their blades must lean as
 ## a moving row's, pushing the flow its way as the shaft turns; the same blades with the shaft turning the other way
 ## must fail it; and what turns is checked as the radial kinds' are (_turning).
@@ -58,6 +59,8 @@ const PASSES := {
 		+ "the shield comes off forwards over the stub, as a real one does through its bore",
 	"fan_axial|gb_case|gb_*": "the plant draws the gear case as one closed box: a real one's top is its vertical "
 		+ "cover and the input shaft's carrier sits in its side, so what is inside comes out through them",
+	"generator|exc_cover|exc*": "the plant draws the exciter's hood as a closed drum round the shaft's end: lifted "
+		+ "off, it passes over the exciter as if its ends were open round the shaft, as a real hood's are",
 	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
 		+ "comes out through its wall",
 }

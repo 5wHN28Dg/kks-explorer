@@ -97,9 +97,9 @@ def _step(place, text, needs=(), why=None, sources=(BHEL,)):
     return s
 
 
-# The guided order (reassembly; taking apart is its reverse: BHEL B.a 1-8 and WEG §8.1). BHEL puts it back as f.1-6
-# and g.1-3: the rotor threaded in and the bottom end shields, alignment and coupling, the top end shields, the
-# bearings, then the exciter on its bed, coupled, its hood; the coolers and pipes (d.7) and the bushings (a.1) back.
+# The guided order (reassembly): the reverse of BHEL's take-apart (B.a 1-8) and WEG's (§8.1), so that the steps undone
+# one by one are BHEL's order. BHEL's own reassembly (f.1-6, g.1-3) is the same in outline: the rotor threaded in and
+# the bottom end shields, alignment and coupling, the top end shields, the bearings, the exciter on its bed and its hood.
 def assembly(coupled):
     steps = [
         _step('plinth', 'The foundation block stays.', sources=(WEG,)),
@@ -182,7 +182,14 @@ def assembly(coupled):
               why='Each bushing is pressure-tested on its own while it is out (a.1). WEG disconnects the electrical '
                   'connections before the generator is opened.', sources=(BHEL, WEG)),
     ]
-    return steps
+    # the reverse of BHEL's take-apart (a.1 the bushings, a.2 the bearings' top halves and the coupling, a.3 the
+    # exciter's hood and the exciter, a.5 the pipes, the coolers, the end shields and fan shields, a.7 the bearings and
+    # the bottom end shields, a.8 the rotor)
+    order = ['plinth', 'stator', 'rotor', 'es_te_lo', 'es_ee_lo', 'ped_te', 'ped_ee', 'fan_shield_te', 'fan_shield_ee',
+             'es_te_up', 'es_ee_up', 'cooler', 'cw_pipes', 'exciter', 'exc_rotor', 'exc_cover', 'coupling_bolts',
+             'brg_cap_te', 'brg_cap_ee', 'terminal_box']
+    by = {s['place']: s for s in steps}
+    return [by[p] for p in order if p in by]
 
 
 def data(coupled=True):
