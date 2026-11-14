@@ -278,7 +278,9 @@ class AdminWeb(unittest.TestCase):
             [{'id': 'EP-1', 'title': EVIL, 'path': [NAME], 'page': 3, 'steps': [{'n': 1, 'text': EVIL}, {'n': 2, 'text': NAME}]}])))
         page.route('**/data/locations.json', lambda r: r.fulfill(status=200, content_type='application/json', body=json.dumps(
             {'source': NAME, 'entries': [{'kks': KKS[2:], 'level': EVIL, 'cabinet': NAME, 'desc': EVIL, 'direction': NAME, 'page': 4},
-                                         {'kks': 'LBA10AA001', 'level': '14 m', 'cabinet': NAME, 'desc': EVIL, 'direction': '', 'page': 5}]})))
+                                         {'kks': 'LBA10AA001', 'level': '14 m', 'cabinet': NAME, 'desc': EVIL, 'direction': '', 'page': 5},
+                                         {'kks': KKS[2:], 'kind': 'point', 'elev_m': 33, 'grid': EVIL, 'desc': EVIL, 'source': NAME, 'page': 6},
+                                         {'kks': KKS[2:], 'kind': 'later', 'level': '99 m', 'cabinet': 'X9'}]})))
 
         def sheets(route):
             r = route.fetch()
@@ -300,6 +302,12 @@ class AdminWeb(unittest.TestCase):
         loc = page.locator(P + ' .sec', has=page.locator('h3', has_text='Location list'))
         self.assertIn(EVIL, loc.text_content())
         self.assertIn(f'{NAME}, page 4', loc.text_content())
+        self.assertNotIn('X9', loc.text_content())                      # an unknown kind of entry is left out
+        self.assertNotIn('different values', loc.text_content())        # the point is no conflict
+        pt = page.locator(P + ' .sec', has=page.locator('h3', has_text='Instrument point'))
+        self.assertIn(f'33 m · grid {EVIL}', pt.text_content())
+        self.assertIn(f'{NAME}, page 6', pt.text_content())
+        self.assertIn(EVIL, pt.text_content())
         self.assertEqual(page.input_value('#f_area'), NAME)
         self.assertEqual(page.input_value('#f_notes'), EVIL)
         self.assertEqual(page.input_value('#f_near'), EVIL)   # (your pending value is shown)

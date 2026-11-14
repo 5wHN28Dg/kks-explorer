@@ -1471,6 +1471,11 @@ class Phone(unittest.TestCase):
         plant = os.path.join(self.dir, 'plant-data')
         with open(os.path.join(plant, 'descriptions.json'), 'w') as f:
             json.dump({'11LAB70AA501': {'text': 'Feed water isolation valve', 'basis': 'e2e test'}}, f)
+        with open(os.path.join(plant, 'locations.json'), 'w') as f:   # a location row and an instrument point: no conflict
+            json.dump({'source': 'e2e list', 'entries': [
+                {'kks': 'LAB70AA501', 'level': '14 m', 'desc': 'Feed platform'},
+                {'kks': 'LAB70AA501', 'kind': 'point', 'elev_m': 33, 'grid': 'K16 F08', 'desc': 'Feed tapping point',
+                 'source': 'Maker list', 'page': 5}]}, f)
         r = subprocess.run([SERVER, 'publish-data', plant, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
                            capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -1493,6 +1498,11 @@ class Phone(unittest.TestCase):
         self.assertEqual(self.wait_server(confirmed, 'the confirmed description never reached the server')[0]['v'],
                          'Feed water isolation valve')
         ui.find('Confirmed by The Manager', timeout=20)
+        # the instrument point beside the location row; the platform's 14 m stays the elevation (no conflict)
+        ui.scroll_to('Instrument point', exact=True)
+        ui.scroll_to('33 m · grid K16 F08', exact=True)
+        ui.scroll_to('Source: Maker list, page 5', exact=True)
+        ui.scroll_to('14 m (location list)', exact=True)
         ui.scroll_to('by the e2e stair')
         ui.find('by Nura Credit, ')                         # the author of the field, not the approver
 
