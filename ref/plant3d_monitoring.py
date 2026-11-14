@@ -30,6 +30,7 @@ def _picture(pic, p, m, b, w):
     """The thermal camera's false-colour picture (REALISM.md §9.3): the equipment's own Workshop kind, every component
     of its tree at a model value in °C, the spot on a component at the meter's own value."""
     keys(pic, ('kind', 'spot', 'parts'), (), w)
+    need(isinstance(pic['kind'], str) and isinstance(pic['spot'], str), 'bad_type', f'{w}: kind and spot are names')
     eq = m.p.equipment.get(p['code'])
     need(eq is not None and eq.get('part') == pic['kind'], 'bad_ref',
          f'{w}.kind: {pic["kind"]} is not the part kind of {p["code"]}')
@@ -39,6 +40,7 @@ def _picture(pic, p, m, b, w):
          f'{w}.parts: every component of the {pic["kind"]} tree, and only those')
     units = {name: n.get('unit') for name, n, _ in m.values}
     for c, v in pic['parts'].items():
+        need(isinstance(v, str), 'bad_ref', f'{w}.parts.{c}: a value\'s name')
         need(units.get(v) == '°C' or v == 'ambient_t' and v in m.ext, 'bad_ref',
              f'{w}.parts.{c}: {v!r} is no model value in °C (nor the air\'s, ambient_t)')
     need(pic['spot'] in tree, 'bad_ref', f'{w}.spot: no component {pic["spot"]!r}')

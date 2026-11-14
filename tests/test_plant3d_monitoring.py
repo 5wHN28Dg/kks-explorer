@@ -166,6 +166,8 @@ class Content(unittest.TestCase):
         bad(lambda d: d['points'][ir]['picture'].update(spot='nowhere'), 'bad_ref')
         bad(lambda d: d['points'][ir]['picture'].update(spot='fan'), 'bad_ref')
         bad(lambda d: d['points'][ir]['picture'].update(colour='iron'), 'unknown_key')
+        bad(lambda d: d['points'][ir]['picture'].update(spot=['fan']), 'bad_type')
+        bad(lambda d: d['points'][ir]['picture']['parts'].update(fan=['ambient_t']), 'bad_ref')
         bad(lambda d: d['points'][oil].update(action='open_cover'), 'bad_ref')
         bad(lambda d: d['points'][oil]['results'][0].update(node='cw_a_oil_fe'), 'bad_ref')
         bad(lambda d: d['points'][oil]['results'][0].update(alert=40), 'bad_number')

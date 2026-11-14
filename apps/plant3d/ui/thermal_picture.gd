@@ -94,9 +94,10 @@ func setup(p: Dictionary) -> void:
 	elif not ResourceLoader.exists(_loading):
 		_loading = ""
 		max_label.text = "No picture: the %s has no Workshop scene." % String(p["kind"]).replace("_", " ")
-	elif ResourceLoader.load_threaded_get_status(_loading) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+	else:
+		# (requests are counted, each collected once: this picture's own, beside the Workshop's warm-up or an earlier
+		# picture's of the same kind)
 		ResourceLoader.load_threaded_request(_loading, "PackedScene", true)
-	# (else a request is under way or done, from a panel rebuilt meanwhile: polled below)
 
 
 ## Each look (the monitoring view's, 4 a second): the scene once loaded, then the components' temperatures.
@@ -109,6 +110,8 @@ func update(e) -> void:
 				return
 			if st == ResourceLoader.THREAD_LOAD_LOADED:
 				ps = ResourceLoader.load_threaded_get(_loading) as PackedScene
+			elif st == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE and _scenes.has(_loading):
+				ps = _scenes[_loading]
 			if ps == null:
 				max_label.text = "No picture: the camera's view of the %s did not load." % String(pic["kind"]).replace("_", " ")
 				_loading = ""
@@ -156,6 +159,7 @@ func _show(n: Node3D) -> void:
 	comps.clear()
 	var box := AABB()
 	var first := true
+	_hide_fasteners(machine)
 	for c in _components(machine):
 		var id := String(c.get_meta("id"))
 		var own := []
@@ -163,8 +167,11 @@ func _show(n: Node3D) -> void:
 			if g is GeometryInstance3D and g.has_meta("mat"):
 				own.append(g)
 		var b := _box_of(c, own)
-		if b.size == Vector3.ZERO or b.end.y < 0.0:
-			c.visible = false               # (below the floor: the camera can't see it)
+		if own.is_empty() or b.size == Vector3.ZERO:
+			continue                        # (nothing of its own to draw: its children are components of their own)
+		if b.end.y < 0.0:
+			for g in own:
+				g.visible = false           # (below the floor: the camera can't see it)
 			continue
 		for g in own:
 			g.material_override = _mat
@@ -176,6 +183,23 @@ func _show(n: Node3D) -> void:
 		box.position.y = 0.0
 	frame_box = box
 	_frame(box)
+
+
+## (tests) the fastener groups that would be drawn.
+func _items_shown(n: Node, out: Array) -> void:
+	for c in n.get_children():
+		if c.has_meta("items") and c is Node3D and c.is_visible_in_tree():
+			out.append(c.name)
+		_items_shown(c, out)
+
+
+## The fastener groups (a MultiMesh per material, whose items the Workshop places when it shows a machine): not drawn.
+static func _hide_fasteners(n: Node) -> void:
+	for c in n.get_children():
+		if c.has_meta("items") and c is Node3D:
+			c.visible = false
+		else:
+			_hide_fasteners(c)
 
 
 static func _components(n: Node) -> Array:
@@ -224,7 +248,7 @@ static func temps(e, p: Dictionary) -> Dictionary:
 	var parts: Dictionary = p["parts"]
 	for c in parts:
 		var i: int = e.ix.get(String(parts[c]), -1)
-		if i >= 0:
+		if i >= 0 and is_finite(e.cur[i]):
 			out[c] = e.cur[i]
 	return out
 

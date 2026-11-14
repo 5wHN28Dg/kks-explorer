@@ -358,6 +358,11 @@ func _picture(tree: SceneTree, ui, mv, e, i: int, spot: String, hot_value: Strin
 		if tp.frame_box.position.y < 0.0 or tp._mat.get_shader_parameter("ws_sec_on") != 1.0 or \
 				tp._mat.get_shader_parameter("ws_plane2") != Vector4(0, -1, 0, 0):
 			p.append("the pit is framed (%s) or its shaft not cut at the floor" % str(tp.frame_box))
+	# no fastener group drawn (their items are placed only by the Workshop)
+	var fast := []
+	tp._items_shown(tp.machine, fast)
+	if not fast.is_empty():
+		p.append("fastener groups drawn in the picture: %s" % str(fast))
 	# a rebuilt panel (a reading recorded, the camera put down and taken up) takes the kind's scene at once
 	var tp2 = tp.get_script().new()
 	tp2.setup(pic)
