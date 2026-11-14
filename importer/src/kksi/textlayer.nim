@@ -19,6 +19,7 @@ import mupdf, fontlib, extract, textlines
 const
   MaxChars* = 2_000_000     ## characters on one page; a real P&ID page has a few thousand (a crafted file is refused)
   MaxCodeRuns* = 20_000     ## code-like runs on one page; pairing is quadratic in them (real pages: about 150)
+  CandsEach = 4             ## nearest candidates kept per system code (and per code for its letters)
   GapSplit = 0.6            ## a line splits where the gap between characters is wider than this × the font size
 
 type
@@ -58,12 +59,12 @@ proc axis(x, y: float): (int, int) =
   if abs(abs(y) - 1) < 0.02 and abs(x) < 0.02: return (0, sy)
   (0, 0)
 
-proc runs*(doc: Doc): seq[Run] =
+proc runs*(doc: Doc, maxChars = MaxChars): seq[Run] =
   ## page 0's text as runs (see the module's notes), in MuPDF's order
   var n: cint
-  let p = kks_text_chars(doc, MaxChars, addr n)
+  let p = kks_text_chars(doc, cint(maxChars), addr n)
   if p == nil:
-    if n < 0: raise newException(TextLimitError, "The drawing's text layer has more than " & $MaxChars &
+    if n < 0: raise newException(TextLimitError, "The drawing's text layer has more than " & $maxChars &
                                  " characters on the page: refused (a real P&ID has a few thousand).")
     raise newException(MupdfError, $kks_error())
   var i = 0
@@ -152,17 +153,28 @@ proc textTags*(doc: Doc, unit = ""): seq[Tag] =
   if nCode > MaxCodeRuns:
     raise newException(TextLimitError, "The drawing's text layer has more than " & $MaxCodeRuns &
                        " code-like words on the page: refused (a real P&ID has a few hundred).")
-  # system code over component code, nearest first
+  # system code over component code, nearest first. Only the code-like runs are compared (at most MaxCodeRuns), and
+  # each keeps its CandsEach nearest candidates, so a crafted page can't make the list quadratic in memory.
   type Cand = tuple[gap, off: float, s, c: int]
+  proc candCmp(x, y: Cand): int = cmp((x.gap, x.off, x.s, x.c), (y.gap, y.off, y.s, y.c))
+  var syss, comps, lets: seq[int]
+  for i in 0 ..< rs.len:
+    case kinds[i]
+    of sysCode, sysNoUnit: syss.add i
+    of comp: comps.add i
+    of letters: lets.add i
+    else: discard
   var cands: seq[Cand]
-  for i, s in rs:
-    if kinds[i] notin {sysCode, sysNoUnit}: continue
-    for j, c in rs:
-      if kinds[j] != comp or not similarSize(s, c): continue
-      let (ok, gap) = under(s, c)
-      if ok and overlap(s, c) > 0.5 * (c.a1 - c.a0):
-        cands.add (gap, abs((s.a0 + s.a1) - (c.a0 + c.a1)) / 2, i, j)
-  cands.sort(proc (x, y: Cand): int = cmp((x.gap, x.off, x.s, x.c), (y.gap, y.off, y.s, y.c)))
+  for i in syss:
+    var mine: seq[Cand]
+    for j in comps:
+      if not similarSize(rs[i], rs[j]): continue
+      let (ok, gap) = under(rs[i], rs[j])
+      if ok and overlap(rs[i], rs[j]) > 0.5 * (rs[j].a1 - rs[j].a0):
+        mine.add (gap, abs((rs[i].a0 + rs[i].a1) - (rs[j].a0 + rs[j].a1)) / 2, i, j)
+    mine.sort(candCmp)
+    cands.add mine[0 ..< min(mine.len, CandsEach)]
+  cands.sort(candCmp)
   var used = newSeq[bool](rs.len)
   type Found = tuple[top, code: int, low: int]    ## the system (or whole) code's run, the component's (-1: none)
   var found: seq[Found]
@@ -183,12 +195,15 @@ proc textTags*(doc: Doc, unit = ""): seq[Tag] =
     let codeText = rs[f.code].text & (if f.low >= 0: rs[f.low].text else: "")
     let compAt = if kinds[f.code] in {sysNoUnit, fullNoUnit}: 5 else: 7
     if codeText.len <= compAt or codeText[compAt] != 'C': continue
-    for j, u in rs:
-      if kinds[j] != letters or used[j] or not similarSize(rs[f.code], u): continue
-      let (ok, gap) = under(u, rs[f.code])
-      if ok and overlap(u, rs[f.code]) >= 0.8 * (u.a1 - u.a0):
-        lc.add (gap, abs((u.a0 + u.a1) - (rs[f.code].a0 + rs[f.code].a1)) / 2, fi, j)
-  lc.sort(proc (x, y: Cand): int = cmp((x.gap, x.off, x.s, x.c), (y.gap, y.off, y.s, y.c)))
+    var mine: seq[Cand]
+    for j in lets:
+      if not similarSize(rs[f.code], rs[j]): continue
+      let (ok, gap) = under(rs[j], rs[f.code])
+      if ok and overlap(rs[j], rs[f.code]) >= 0.8 * (rs[j].a1 - rs[j].a0):
+        mine.add (gap, abs((rs[j].a0 + rs[j].a1) - (rs[f.code].a0 + rs[f.code].a1)) / 2, fi, j)
+    mine.sort(candCmp)
+    lc.add mine[0 ..< min(mine.len, CandsEach)]
+  lc.sort(candCmp)
   var letterUsed = newSeq[bool](rs.len)
   for c in lc:
     if letterOf[c.s] >= 0 or letterUsed[c.c]: continue

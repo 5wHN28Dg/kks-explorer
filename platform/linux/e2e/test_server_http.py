@@ -94,13 +94,16 @@ def many_circles_pdf(n):
     return out
 
 
-def text_pdf():
+def text_pdf(strokes=False):
     """a page whose tags are real text (Helvetica), turned by /Rotate like a CAD export: an equipment code over its
     component, an instrument with its letters above, and a sentence that names a code (not a tag)"""
     def t(s, x, y):
         return f'BT /F1 6 Tf 0 1 -1 0 {x} {y} Tm ({s}) Tj ET'
     content = '\n'.join([t('10LAB70', 300, 50), t('AA101', 307, 50), t('PI', 250, 105), t('10LAB70', 257, 100),
                          t('CP501', 264, 101), t('see 10LAB71AA102 on sheet 2', 200, 50)]).encode() + b'\n'
+    if strokes:   # and 30 lines of text drawn in strokes (like an AutoCAD plot's): the strokes carry the tags
+        content += ''.join(f'{20 + 4 * c} {150 + 12 * r} m {20 + 4 * c} {155 + 12 * r} l S\n'
+                           for r in range(30) for c in range(8)).encode()
     objs = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
             b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 600] /Rotate 90 /Contents 4 0 R'
             b' /Resources << /Font << /F1 5 0 R >> >> >>',
@@ -217,6 +220,12 @@ class Drawings(Base):
         for t in tags.values():                           # the boxes lie on the sheet
             x0, y0, x1, y1 = t['bbox']
             self.assertTrue(0 <= x0 < x1 <= sheet['w'] and 0 <= y0 < y1 <= sheet['h'], t)
+        # the same text on a drawing whose strokes draw far more lines of text: the glyph reader's, as before
+        boss.req('POST', '/api/sheets/import?id=mixed&name=Mixed', raw=text_pdf(strokes=True),
+                 headers={'Content-Type': 'application/pdf'})
+        job = self.wait(boss)
+        self.assertEqual((job['state'], job['result']['reader']), ('done', 'glyphs'), job['log'])
+        self.assertTrue(any('reading the strokes' in l for l in job['log']), job['log'])
 
 
 FAKE_DIR = tempfile.mkdtemp(prefix='kks-fake-importer-')

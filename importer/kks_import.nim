@@ -29,6 +29,7 @@ const
   RepoGlyphs = currentSourcePath().parentDir / "fontlib.kgl"
   OverviewMax = 6400.0   ## level 0's long side at most (px), and at most 2 px per point
   ThumbMax = 512         ## the last level's long side is at most this
+  TextOverStrokes = 10   ## auto: the text layer's tags × this must reach the drawn strokes' text lines (textlines.score)
 
 proc log(s: string) =
   stdout.writeLine s
@@ -146,14 +147,35 @@ proc main() =
 
   # The text layer first: a drawing whose tags are real text needs no glyph reading (and no orientation guess from
   # stroke lines, which such a drawing hardly has). A drawing without one takes the glyph reader's path, unchanged.
+  # In auto mode the text wins only when its tags are not outnumbered by the drawn strokes' text lines (a stroke
+  # drawing with a code in a stamp or a note stays with the glyph reader), and anything wrong with the text layer
+  # (a limit, a font MuPDF can't read for text) leaves the drawing to the glyph reader as before.
   var textMode = false
+  if keepTags and tagReader == "text": die "--keep-tags reads no tags: --reader text does not go with it."
   if not keepTags and tagReader != "glyphs":
     let d0 = rotatedCopy(src, if rotate == "auto": 0 else: parseInt(rotate))
-    let n = try: textTags(d0, unit).len except TextLimitError as e: die e.msg
+    var n = 0
+    var why = ""
+    try:
+      for t in textTags(d0, unit):
+        if t.status == "auto": inc n
+    except TextLimitError, MupdfError:
+      why = getCurrentExceptionMsg()
+    if why.len > 0:
+      if tagReader == "text": die why
+      log "The drawing's text layer was not read (" & why & "): reading the strokes."
+    elif n == 0:
+      if tagReader == "text": die "--reader text: the drawing's text layer holds no tags."
+    elif tagReader == "text":
+      textMode = true
+    else:
+      let (h, v) = score(loadPaths(d0))
+      textMode = n * TextOverStrokes >= h + v
+      if not textMode:
+        log "The text layer holds " & $n & " tags, but the strokes draw " & $(h + v) &
+            " lines of text: reading the strokes (--reader text reads the text layer)."
     d0.close()
-    if n > 0: log "Reading the tags from the drawing's text layer (" & $n & " found; --reader glyphs reads the strokes instead)."
-    elif tagReader == "text": die "--reader text: the drawing's text layer holds no tags."
-    textMode = n > 0
+    if textMode: log "Reading the tags from the drawing's text layer (" & $n & " found; --reader glyphs reads the strokes instead)."
   var rot: int
   if textMode and rotate == "auto":
     log "Finding orientation from the text..."

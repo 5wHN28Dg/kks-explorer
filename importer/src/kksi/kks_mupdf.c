@@ -417,7 +417,9 @@ static void cur_add(kks_lineart *dev, kks_item it)
 {
 	if (dev->cur.n_items == dev->cap_items) {
 		dev->cap_items = dev->cap_items ? dev->cap_items * 2 : 8;
-		dev->cur.items = realloc(dev->cur.items, sizeof(kks_item) * dev->cap_items);
+		kks_item *grown = realloc(dev->cur.items, sizeof(kks_item) * dev->cap_items);
+		if (!grown) fz_throw(g_ctx, FZ_ERROR_SYSTEM, "malloc (%zu bytes) failed", sizeof(kks_item) * (size_t)dev->cap_items);
+		dev->cur.items = grown;
 	}
 	dev->cur.items[dev->cur.n_items++] = it;
 }
@@ -611,13 +613,23 @@ static void lineart_fill_path(fz_context *ctx, fz_device *dev_, const fz_path *p
 typedef struct { fz_point *pts; int n, cap; int *starts; int ns, caps; fz_matrix ctm; fz_point first, cur; } flat_t;
 static void flat_add(flat_t *f, fz_point p)
 {
-	if (f->n == f->cap) { f->cap = f->cap ? f->cap * 2 : 64; f->pts = realloc(f->pts, sizeof *f->pts * f->cap); }
+	if (f->n == f->cap) {
+		fz_point *grown = realloc(f->pts, sizeof *f->pts * (f->cap ? f->cap * 2 : 64));
+		if (!grown) fz_throw(g_ctx, FZ_ERROR_SYSTEM, "malloc (%zu bytes) failed", sizeof *f->pts * (size_t)(f->cap ? f->cap * 2 : 64));
+		f->pts = grown;
+		f->cap = f->cap ? f->cap * 2 : 64;
+	}
 	f->pts[f->n++] = p;
 }
 static void flat_moveto(fz_context *c, void *a, float x, float y)
 {
 	flat_t *f = a;
-	if (f->ns == f->caps) { f->caps = f->caps ? f->caps * 2 : 16; f->starts = realloc(f->starts, sizeof *f->starts * f->caps); }
+	if (f->ns == f->caps) {
+		int *grown = realloc(f->starts, sizeof *f->starts * (f->caps ? f->caps * 2 : 16));
+		if (!grown) fz_throw(g_ctx, FZ_ERROR_SYSTEM, "malloc (%zu bytes) failed", sizeof *f->starts * (size_t)(f->caps ? f->caps * 2 : 16));
+		f->starts = grown;
+		f->caps = f->caps ? f->caps * 2 : 16;
+	}
 	f->starts[f->ns++] = f->n;
 	f->cur = f->first = fz_make_point(x, y);
 	flat_add(f, fz_transform_point(f->cur, f->ctm));
@@ -651,17 +663,22 @@ static void flat_close(fz_context *c, void *a)
 }
 static const fz_path_walker flat_walker = { flat_moveto, flat_lineto, flat_curveto, flat_close };
 
+#define MAX_DASH_PIECES 1000000   /* in one path: a crafted pattern of tiny dashes on a long line is refused */
 static void dash_piece(kks_lineart *dev, fz_point a, fz_point b)
 {
+	if (dev->cur.n_items >= MAX_DASH_PIECES)
+		fz_throw(g_ctx, FZ_ERROR_GENERIC, "a dash pattern cuts one line into more than %d pieces: not supported in the path store", MAX_DASH_PIECES);
 	kks_item it = {'l', {a.x, a.y, b.x, b.y}, 0};
 	cur_add(dev, it);
 	fz_rect r = fz_make_rect(fminf(a.x, b.x), fminf(a.y, b.y), fmaxf(a.x, b.x), fmaxf(a.y, b.y));
 	dev->pathrect = fz_is_infinite_rect(dev->pathrect) ? r : fz_union_rect(dev->pathrect, r);
 }
 
+static void dash_cut(kks_lineart *dev, flat_t *fp, const fz_stroke_state *st, float scale, int nd, float total);
 static int dash_path(kks_lineart *dev, const fz_path *path, const fz_stroke_state *st, fz_matrix ctm)
 {
 	flat_t f = {0};
+	fz_var(f.pts); fz_var(f.starts);
 	f.ctm = ctm;
 	dev->pathrect = fz_infinite_rect;
 	dev->linecount = 0;
@@ -671,9 +688,21 @@ static int dash_path(kks_lineart *dev, const fz_path *path, const fz_stroke_stat
 	float scale = sqrtf(fabsf(ctm.a * ctm.d - ctm.b * ctm.c));
 	int nd = st->dash_len;
 	float total = 0;
-	for (int i = 0; i < nd; i++) total += st->dash_list[i] * scale * (nd % 2 ? 2 : 1);
-	fz_try(g_ctx) fz_walk_path(g_ctx, path, &flat_walker, &f);
-	fz_catch(g_ctx) { free(f.pts); free(f.starts); fz_rethrow(g_ctx); }
+	/* a negative length counts as 0 (it would run the pattern backwards) */
+	#define DASH(i) fmaxf(0.0f, st->dash_list[(i)] * scale)
+	for (int i = 0; i < nd; i++) total += DASH(i) * (nd % 2 ? 2 : 1);
+	fz_try(g_ctx) {
+		fz_walk_path(g_ctx, path, &flat_walker, &f);
+		dash_cut(dev, &f, st, scale, nd, total);
+	}
+	fz_always(g_ctx) { free(f.pts); free(f.starts); }
+	fz_catch(g_ctx) fz_rethrow(g_ctx);
+	return dev->cur.n_items > 0;
+}
+
+static void dash_cut(kks_lineart *dev, flat_t *fp, const fz_stroke_state *st, float scale, int nd, float total)
+{
+	flat_t f = *fp;
 	if (!(total > 0) || !isfinite(total)) {      /* an all-zero pattern draws the line whole */
 		for (int s = 0; s < f.ns; s++) {
 			int end = s + 1 < f.ns ? f.starts[s + 1] : f.n;
@@ -687,8 +716,8 @@ static int dash_path(kks_lineart *dev, const fz_path *path, const fz_stroke_stat
 			float phase = fmodf(st->dash_phase * scale, total);
 			if (phase < 0) phase += total;
 			int di = 0;
-			float left = st->dash_list[0] * scale;
-			while (phase > 0 && phase >= left) { phase -= left; di = (di + 1) % period; left = st->dash_list[di % nd] * scale; }
+			float left = DASH(0);
+			while (phase > 0 && phase >= left) { phase -= left; di = (di + 1) % period; left = DASH(di % nd); }
 			left -= phase;
 			int on = di % 2 == 0;
 			for (int k = f.starts[s] + 1; k < end; k++) {
@@ -701,7 +730,7 @@ static int dash_path(kks_lineart *dev, const fz_path *path, const fz_stroke_stat
 					                   fz_make_point(a.x + (b.x - a.x) * t1, a.y + (b.y - a.y) * t1));
 					done += left;
 					di = (di + 1) % period;
-					left = st->dash_list[di % nd] * scale;
+					left = DASH(di % nd);
 					on = di % 2 == 0;
 				}
 				if (len > done && on) {
@@ -712,9 +741,7 @@ static int dash_path(kks_lineart *dev, const fz_path *path, const fz_stroke_stat
 			}
 		}
 	}
-	free(f.pts);
-	free(f.starts);
-	return dev->cur.n_items > 0;
+	#undef DASH
 }
 
 static void lineart_stroke_path(fz_context *ctx, fz_device *dev_, const fz_path *path, const fz_stroke_state *stroke,
@@ -737,6 +764,7 @@ static void lineart_stroke_path(fz_context *ctx, fz_device *dev_, const fz_path 
 	dev->cur.width = pathfactor * stroke->linewidth;
 	dev->cur.cap[0] = stroke->start_cap; dev->cur.cap[1] = stroke->dash_cap; dev->cur.cap[2] = stroke->end_cap;
 	dev->cur.join = (int)(float)stroke->linejoin;
+	if (dev->want_images && stroke->dash_len > 0) dev->cur.cap[0] = stroke->dash_cap;   /* each piece ends as a dash */
 	dev->cur.dash_len = dev->want_images ? 0 : stroke->dash_len;
 	if (dev->cur.close_path < 0) dev->cur.close_path = 0;
 	dev->cur.seqno = dev->seqno;
@@ -1071,6 +1099,7 @@ char *kks_annot_notes(fz_document *doc, size_t *len)
 /* Page 0's text as MuPDF's structured text sees it, without the annotations (like the reader, which reads the page
    without them): one record per character, in MuPDF's line order, with the line's index and baseline direction.
    No spaces are made up between characters (FZ_STEXT_INHIBIT_SPACES): textlayer.nim splits a line at its gaps.
+   Only text that is drawn (filled or stroked: not an invisible OCR layer) and on the page (FZ_STEXT_CLIP) counts.
    Coordinates are the page's (what kks_render draws at zoom 1). Returns a malloc'd array (*n records) or NULL on
    error; more than max_chars characters is an error too (a crafted file), with *n = -1. */
 typedef struct { int c; int line; float x0, y0, x1, y1; float size; float dx, dy; } kks_tchar;
@@ -1085,6 +1114,7 @@ static int text_block(fz_stext_block *b, kks_tchar **out, int *n, int *cap, int 
 		if (b->type != FZ_STEXT_BLOCK_TEXT) continue;
 		for (fz_stext_line *l = b->u.t.first_line; l; l = l->next) {
 			for (fz_stext_char *ch = l->first_char; ch; ch = ch->next) {
+				if (!(ch->flags & (FZ_STEXT_FILLED | FZ_STEXT_STROKED))) continue;   /* invisible (an OCR layer) */
 				if (*n >= max_chars) return 0;
 				if (*n == *cap) {
 					*cap = *cap ? *cap * 2 : 1024;
@@ -1115,7 +1145,7 @@ kks_tchar *kks_text_chars(fz_document *doc, int max_chars, int *n)
 		page = fz_load_page(g_ctx, doc, 0);
 		fz_stext_options opts;
 		fz_init_stext_options(g_ctx, &opts);
-		opts.flags = FZ_STEXT_INHIBIT_SPACES | FZ_STEXT_PRESERVE_WHITESPACE | FZ_STEXT_PRESERVE_LIGATURES;
+		opts.flags = FZ_STEXT_INHIBIT_SPACES | FZ_STEXT_PRESERVE_WHITESPACE | FZ_STEXT_PRESERVE_LIGATURES | FZ_STEXT_CLIP;
 		text = fz_new_stext_page(g_ctx, fz_bound_page(g_ctx, page));
 		dev = fz_new_stext_device(g_ctx, text, &opts);
 		fz_run_page_contents(g_ctx, page, dev, fz_identity, NULL);

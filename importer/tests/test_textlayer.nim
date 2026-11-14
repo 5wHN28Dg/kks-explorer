@@ -165,6 +165,60 @@ suite "tags from the text layer":
     expect TextLimitError:
       discard tagsOf(dir / "many.pdf")
 
+  test "limits: characters on the page, invisible text":
+    writePdf(dir / "chars.pdf", txt("10LAB70", 50, 350) & txt("AA101", 50, 343))
+    let d = rotatedCopy(dir / "chars.pdf", 0)
+    check runs(d, 12).len == 2
+    expect TextLimitError:
+      discard runs(d, 11)
+    d.close()
+    # render mode 3 (invisible, an OCR layer): not a tag
+    writePdf(dir / "chars.pdf", "BT 3 Tr /F1 6 Tf 50 350 Td (10LAB70) Tj 0 -7 Td (AA101) Tj ET\n")
+    check tagsOf(dir / "chars.pdf").len == 0
+    removeFile(dir / "chars.pdf")
+
+  test "dash patterns: odd length, phase, zero and negative entries":
+    proc dashes(pattern: string): int =
+      writePdf(dir / "dash.pdf", pattern & " 0.5 w 50 50 m 200 50 l S\n")
+      let doc = mupdf.open(dir / "dash.pdf")
+      let d = fromPdfPage(doc, 0, images = true)
+      doc.close()
+      for p in d.paths:
+        for k in p.cmdStart ..< p.cmdStart + p.cmdCount:
+          if d.ops[k] == OpMove: inc result
+    check dashes("[3] 0 d") == 25          # 3 on, 3 off
+    check dashes("[3 2] 1 d") == 31        # the first dash 2 long, then every 5 pt: the last one cut short at 150
+    check dashes("[3 2] 0 d") == 30
+    check dashes("[0 0] 0 d") == 1         # nothing to cut: the line whole
+    check dashes("[3 -2] 0 d") >= 1        # a negative gap counts as 0: no piece runs backwards
+    removeFile(dir / "dash.pdf")
+
+  test "a Type 3 font in a text-layer drawing's path store is refused":
+    var objs = @["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                 "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 400] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"]
+    let content = "BT /F1 6 Tf 50 350 Td (A) Tj ET\n"
+    let glyph = "1000 0 0 0 750 750 d1 0 0 750 750 re f\n"
+    objs.add "<< /Length " & $content.len & " >>\nstream\n" & content & "endstream"
+    objs.add "<< /Type /Font /Subtype /Type3 /FontBBox [0 0 750 750] /FontMatrix [0.001 0 0 0.001 0 0] " &
+             "/CharProcs << /a 6 0 R >> /Encoding << /Type /Encoding /Differences [65 /a] >> /FirstChar 65 /LastChar 65 /Widths [1000] >>"
+    objs.add "<< /Length " & $glyph.len & " >>\nstream\n" & glyph & "endstream"
+    var s = "%PDF-1.4\n"
+    var offs: seq[int]
+    for i, o in objs:
+      offs.add s.len
+      s.add $(i + 1) & " 0 obj\n" & o & "\nendobj\n"
+    let xref = s.len
+    s.add "xref\n0 " & $(objs.len + 1) & "\n0000000000 65535 f \n"
+    for o in offs: s.add align($o, 10, '0') & " 00000 n \n"
+    s.add "trailer\n<< /Size " & $(objs.len + 1) & " /Root 1 0 R >>\nstartxref\n" & $xref & "\n%%EOF\n"
+    writeFile(dir / "t3.pdf", s)
+    let doc = mupdf.open(dir / "t3.pdf")
+    discard fromPdfPage(doc, 0, images = true)      # a glyph-read drawing: text left out as before
+    expect MupdfError:
+      discard fromPdfPage(doc, 0, images = true, text = true)
+    doc.close()
+    removeFile(dir / "t3.pdf")
+
   removeFile(dir / "text.pdf")
   removeFile(dir / "turned.pdf")
   removeFile(dir / "strokes.pdf")
