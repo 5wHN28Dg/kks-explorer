@@ -275,6 +275,7 @@ def make_manual(src, content, all_ids):
             fail(where, 'source %r without a citation' % s['id'])
     out = {'format': 'walkdown-plant-manual', 'version': 1, 'id': mid, 'number': m['number'], 'title': m['title'],
            'short': m['short'], 'kinds': kinds,
+           **({'kind_tags': m['kind_tags']} if len(m['kinds']) > 1 else {}),
            'sources': [{k: s[k] for k in ('id', 'cite', 'url') if k in s} for s in m['sources']],
            'figures': figures, 'sections': sections}
     check_links(out, content, all_ids)
@@ -407,10 +408,17 @@ def parts_table(m, content, where):
                 fail(where, 'comes_with %s -> %s: not both components of %s' % (c, parent, k))
             if c in w['components']:
                 matched.add(c)
+        # and this kind's own (`comes_with_kinds`: in a manual of several kinds, parts that come with a sealed part
+        # of one kind, whose ids another kind's tree uses for parts of its own)
+        ck = dict(comes)
+        for c, parent in m.get('comes_with_kinds', {}).get(k, {}).items():
+            if c not in w['components'] or parent not in w['components']:
+                fail(where, 'comes_with_kinds %s: %s -> %s not both components of it' % (k, c, parent))
+            ck[c] = parent
         for cid, c in w['components'].items():
-            if cid in comes:
+            if cid in ck:
                 continue
-            inside = [x for x, p in comes.items() if p == cid]
+            inside = [x for x, p in ck.items() if p == cid]
             note = c.get('material', '')
             if inside:
                 names = [w['components'][x]['name'][0].lower() + w['components'][x]['name'][1:] for x in inside]

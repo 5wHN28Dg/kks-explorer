@@ -476,6 +476,48 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   a column of about DN 500 the shaft is wider than the stand rings' bore; under about 22 kW the fan stands through the
   drip cover's ceiling.
 
+- **valve_gate** (a manual handwheel on top, K6: kit/parts_valves.gd `_rising`, `_gv_*`): a bolted-bonnet
+  outside-screw-and-yoke gate valve, as the Crane Pacific cast steel valves' manual draws, lists and takes one apart
+  (the gland's nuts, the bonnet's, the bonnet lifted with the stem and the wedge, the wedge off the stem, the stem
+  drawn out, the packing; the handwheel and the stem nut last; the seat rings never). The yoke is the bonnet's own, as
+  Crane's is. **Simplified:** the body's flow passages are not drawn (as the control valve's): the wedge and the two
+  seat rings stand in a round well under the bonnet, as wide as the plant's bonnet flange lets its opening be, so the
+  seat rings' bore is a little under half the pipe's (the well stands inside the bonnet studs' circle, and its
+  opening is cut from the skin's bulge and cones) (a real gate valve's is the pipe's); the wedge is a round slab whose
+  faces lean 5° (thicker at the top), the rings' faces lean with them (`tests/test_workshop.gd _wedge` checks that the
+  wedge lies on both rings at 0 travel, covers their bore, and clears it at full travel); the stem's T-head and the
+  wedge's slot are not drawn; the gasket and the backseat bushing are not drawn; the stem nut stays in the yoke's
+  head, which the plant draws as one closed block (a real one comes out of it once its retainer is off), and the
+  handwheel sits on top of the head without the nut showing. Drawn at the closed position: opened in the bench (later),
+  the wedge would rise into the plant's bonnet, which is narrower than it. **The stand-ins:** the plant's body, neck,
+  bonnet flange and bonnet are one (`body`, `bonnet`), its bonnet bolt ring a fastener group.
+- **valve_globe** (a multi-turn electric actuator, K6: `_rising`, `_gv_stem`, `_gl_*`): a bolted-bonnet globe valve
+  (Crane's: the operator off first, then the gland, the bonnet, the disc freed from the stem, the packing; the seat
+  ring stays) under an electric actuator with an output drive type A (AUMA SA: the stem nut turns in the drive on its
+  thrust bearing, and Crane takes the actuator off by unscrewing it off the stem with its handwheel, so the stem nut
+  rides with it). **Simplified:** the actuator is one part (its motor, worm gear, switches and controls not drawn: its
+  maker's service opens it), sealed with its stem nut, display (a thin part) and handwheel, which come off the valve
+  with it; the body's passages are the control valve's well
+  (`_cv_body`), the disc a plain plug on the seat ring (`_seats` checks it as the control valve's); the block and
+  travel pointer in the yoke's window are the stem's (Crane names none: the plant draws it); the four actuator
+  bolts stand under the actuator's flange beside the yoke's head, which the plant draws smaller than the flange.
+- **valve_butterfly** (a part-turn electric actuator, K6: `_quarter`, `_bf_*`): a resilient-seated butterfly valve
+  with a one-piece shaft, as Bray's Series 35/36 (its disc on taper pins; the actuator off, the gland, the pins, the
+  shaft out through the top with its bushing and packing, the disc, the seat squeezed out) under an AUMA SQ part-turn
+  actuator (the coupling on the shaft first, the actuator over it). **Simplified:** the body is the plant's closed
+  drum (its faces meet the pipe's flanges), so the disc comes out through the face and the shaft through the neck's
+  closed top flange in the explode; the taper pins and the bottom plate with its thrust bearing are not drawn (the
+  steps say where they come out); the liner is a plain rubber ring round the bore (`tests/test_workshop.gd _discs`
+  checks that the disc's edge lies on its bore, within its width, and lies edge-on when turned by its travel); the
+  actuator is one part, sealed with its coupling, its position indicator (the plant's, turning with the disc) and its
+  handwheel, and the shaft sealed with its bushing and packing (Bray drives them out together). **The stand-in:** the plant's drum lists its first face's points mirrored (an odd circle): the Workshop
+  draws the plant's drum and closes it with a seam (`C._zip`); the disc's face the same, hidden.
+- **Known limits** of the three (built and tested for the data files' sizes only, as the Workshop builds one scene per
+  kind): the gate's well follows the bonnet flange (refused below DN 80, where its wedge has no room) and the
+  globe's the control valve's (refused at DN 32 and below); the gate's lid drops below the bonnet's seat towards the
+  cones, so a boss under the bonnet flange (the body's) closes the view under it;
+  the other actuators of each kind have no tree.
+
 ## Tables and their sources
 
 The kit derives what a part looks like from what its content says it is (§9: content says what the equipment *is*).

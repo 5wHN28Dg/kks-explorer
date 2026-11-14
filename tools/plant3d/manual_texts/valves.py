@@ -13,6 +13,11 @@ MANUAL = {
                    'valve_butterfly': 'Butterfly valve', 'valve_check': 'Check valve'},
     'kind_tags': {'valve_gate': 'GA', 'valve_globe': 'GL', 'valve_ball': 'BA', 'valve_butterfly': 'BF',
                   'valve_check': 'CH'},
+    # the parts that come with a sealed part of one kind's Workshop tree (the actuators, the butterfly's shaft):
+    # the gate's own handwheel and packing are parts of their own
+    'comes_with_kinds': {'valve_globe': {'stem_nut': 'actuator', 'display': 'actuator', 'handwheel': 'actuator'},
+                         'valve_butterfly': {'coupling': 'actuator', 'indicator': 'actuator',
+                                             'handwheel': 'actuator', 'packing': 'shaft'}},
     'params': {'dn': ('Nominal size', 'DN {}'), 'rating': ('Pressure rating', '{}'), 'actuator': ('Operator', '{}')},
     'consumables': [
         ('packing_set', 'Stem packing rings (graphite or PTFE), by size', '1 set', 'New at every repacking'),
