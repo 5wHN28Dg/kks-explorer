@@ -831,9 +831,8 @@ does is in both engines bit for bit, with vectors.
   `oil`), title, its meter or hand action, the running speed (rpm), the ISO 20816-3 group and zone limits, the
   spectrum's lines (order, value or share), the oil results' nodes with their units and alert and alarm limits, the
   sources. The app reads it for drawing and words only; the engine never reads it.
-- **The thermal camera's false-colour picture (the user's call, 2026-11-08: option A):** spot readings now; the
-  picture (§9.3: the work view with the Workshop's heat view) comes with K6's pump and motor kinds, the first
-  equipment with a work view whose temperatures teach something (today's work views are the transmitters').
+- **The thermal camera's false-colour picture (the user's call, 2026-11-08: option A):** spot readings first; the
+  picture (§9.3: the Workshop's heat view) came with K6's pump and motor kinds (as built below, 2026-11-14).
 - **As built (2026-11-08):**
   - **Where:** the reference (`ref/plant3d_hands.py`, `ref/plant3d_monitoring.py`), the GDScript engine
     (`sim/hands.gd`, `sim/plant_model.gd`, `sim/engine.gd`, saves in `ui/autosave.gd`), the content
@@ -876,6 +875,36 @@ does is in both engines bit for bit, with vectors.
     numbers, not for their order (a tampered queue can only delay its node's results); the due's
     `ceil(hours × 36,000)` adds a tenth for hours that are not exact in binary (both engines alike; the content's
     48 is exact).
+- **As built (2026-11-14, the camera's false-colour picture, with K6's pump and motor kinds):**
+  - **On the camera's screen, not in a work view:** the pumps have no jobs, so no work view (§3.3) and no unmerged
+    piece to swap; the picture is the camera's own screen in the monitoring panel (`ui/thermal_picture.gd`), as the
+    collector's screen draws its spectrum: the pump's pre-built Workshop scene (`built/workshop/<kind>.scn`, the motor's
+    tree inside it, loaded on a worker thread) in a SubViewport of its own, every component in ws_lit with its heat ramp
+    at full strength (`ws_ramp`: no new shader), an iron palette over the picture's range (the coolest to the hottest
+    drawn, at least 10 K, whole degrees), a three-quarter view from above, the spot's cross on the monitored housing,
+    the hottest component named; drawn again only when a temperature moves by 0.1 K, lit by ambient light alone (so a surface
+    shows the scale's colour). What lies below the plant's floor (a vertical pump's column, bowls and bell in their
+    pit, and its shaft below the floor, cut by ws_lit's section plane) is not drawn, and the view is framed on what
+    stands above: a camera on the floor doesn't see it. Fastener groups are not drawn. A vertical pump's collector
+    point is now titled at its top thrust bearing (it was "drive end"), the same bearing as its oil and its hot spot. The
+    scene is the kind's (one per kind), not the instance's size.
+  - **The temperatures are model values** (§9.3), named per component in the monitoring file's `picture` (kind, spot,
+    parts; `ref/plant3d_monitoring.py` checks the kind is the code's, every component of its tree once, every value in
+    °C or the air's, and the spot at the camera meter's own value). The monitored bearing (its housing and the bearing:
+    the horizontal pump's motor drive end, beside the coupling; a vertical motor's top bracket and thrust bearing, its
+    oil bath, the oil points' bearing) at `<p>_brg_t`, rising over its P-F interval; the motor's frame, its other
+    bearings, the pump's bearing frame and shaft at a new `<p>_warm_t` (BRG_RISE, 25 K over the air at speed, lagging
+    as a housing does: a sound bearing's rise, and about a TEFC frame's); what the water wets at the water's own
+    temperature (the CW basin's, the closed cooling water's, the condensate's); the rest at the air's. The winding
+    inside the frame is not a value of its own: the camera sees the frame. 21 values (3 a pump), counted with the wear
+    signs (AG2's 183 and AG3's 14 tones: 218 of 250). `plant3d-v1.json` and `plant3d-v2.json` made again: the values
+    added, nothing else changed but v2's digests.
+  - **Tests:** `tests/test_plant3d_monitoring.py` (the picture of every camera point, its checks' refusals, the
+    budget), `apps/plant3d/tests/test_ui_monitoring.gd` (at closed cooling water pump A and CW pump A: the picture
+    loads, each drawn component at its value and its iron colour, the spot at the meter's value, the running frame
+    warmer than the air, a bearing made hot the hottest and the scale holding it, nothing drawn again unchanged, the
+    vertical pump's string not drawn).
+
 ### 2.20 WM1's details (settled 2026-11-08, before the code: work orders and job history)
 
 §7.1 leaves these open; settled here. What is drawn is the app's, pinned by app tests; what the engine does is in
