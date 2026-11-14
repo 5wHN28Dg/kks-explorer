@@ -10,9 +10,55 @@ history) and **read exactly what that importer read**. That was the gate of deci
 
     kks-import DRAWING.pdf "Display name" [SHEET_ID] [--rotate auto|0|90|180|270] [--replace]
                [--data-dir plant-data] [--glyphs importer/fontlib.kgl] [--effort 7] [--legend auto|hrsg|none]
+               [--reader auto|glyphs|text] [--unit NN]
 
 The last output line is `RESULT {json}` (with `links`: the connectors found). Formats: docs/PATHSTORE.md (the files), docs/GLYPHLIB.md (the glyph
 library).
+
+## Tags from the text layer (`src/kksi/textlayer.nim`, 2026-11-14)
+
+Some P&IDs carry their tags as real PDF text (CAD exports with fonts), not as loose strokes. When page 1's text layer
+holds at least one tag, the importer takes the tags from it and skips the glyph reader; a drawing without one (every
+AutoCAD plot so far) goes the glyph reader's way exactly as before. The log says which (`Reading the tags from the
+drawing's text layer (N found)`), and `RESULT` has `"reader": "text"` or `"glyphs"`. `--reader glyphs` reads the
+strokes even when there is text; `--reader text` refuses a drawing whose text holds no tag. The outputs are the same
+files as the glyph reader's (`.kkp`, overview pyramid, sheets.json, tags.json, connectors and valve types as usual).
+
+- **Characters:** MuPDF's structured text of the page without its annotations (like the glyph reader), with no
+  spaces made up. A line splits into runs where the gap between two characters is wider than 0.6 × the font size (a
+  pipe's code and the class letter printed beside it); ordinary spaces stay inside a run, so a code inside a sentence
+  ("see … on sheet 2") is never a tag. Slanted text is skipped.
+- **Pairs:** a run that is a system code (`DDLLLDD`) pairs with the run on the next line in its own reading direction
+  (gap less than one line height, similar font size, more than half its width under the system code) that is a
+  component code (`LLDDD` and a suffix the KKS grammar allows). Nearest pairs first; each run is used once. A run that
+  is a whole code on its own is a tag too.
+- **Instrument letters:** 1–6 capitals on the line just above the system code (at least 80 % of their width over it)
+  make the tag an instrument, only when its component is a measurement (`C…`). The drawings this was built on write
+  other words above valves too (normally open/closed marks, signal names): those never become letters.
+- **The grammar** is the glyph reader's (`fontlib.matchFull`, the same patterns), without its reading corrections
+  (I→1, G→C …): text is not misread. Equipment = system + `LLDDD[L]`; letters + a full code = instrument; a full code
+  with a longer suffix and no letters = instrument without letters. Confidence is 1.0; tags are `auto`.
+- **Unit number left out:** some drawings write `LLLDD` over `LLDDD` and give the unit only in the title block.
+  Such tags go to the review queue (`suspect`, with a note), or, with `--unit NN`, get that number and a note saying so.
+- **Boxes:** the runs' union, 1 pt around, in the same frame as the glyph reader's. Ids are `t<n>` in page order (top to
+  bottom, then left to right). The same code twice on a sheet is flagged as by the glyph reader.
+- **Orientation:** the turn (0/90/180/270) under which the most characters of the page's text read left to right
+  (title block and notes included). Text tells upright from upside down, so there is no second try.
+- **Path store:** the path store holds paths and images only, so for such a drawing each glyph's outline is written as
+  a filled path (a stroked text's as a stroked one); a Type 3 or bitmap font is an import error (nothing is dropped
+  silently). Dashed lines are cut into their dashes (the pattern starts again at each subpath, curves flattened in
+  16 pieces), in every import: a dash pattern used to stop an import. A glyph-read drawing's path store is unchanged:
+  its few words of real text (notes, stamps) stay out of it as before.
+- **Limits for crafted files:** more than 2 000 000 characters (`MaxChars`) or 20 000 code-like runs
+  (`MaxCodeRuns`, pairing is quadratic in them) on the page is refused before anything is written. The drawings this
+  was built on have a few thousand characters and about 150 code-like runs per page.
+- **Several pages:** the importer reads page 1 only. Split a multi-page drawing into one PDF per page first and import
+  each as its own sheet.
+- **Tested:** `tests/test_textlayer.nim` (synthetic pages in Helvetica: pairs across and up the page, letters, marks
+  that are not letters, a code in a sentence, a code missing its unit, slanted text, a turned page, the path store's
+  outlines and dashes, the limits) and `platform/linux/e2e/test_server_http.py` (an import through the server).
+- **Checked against the glyph reader's path:** the importer before and after this change on all 17 real sheets and
+  `tests/vectors/kkp-sample.pdf`: every output file byte for byte the same (none has a tag in its text layer).
 
 ## Off-page connectors (`src/kksi/connectors.nim`, 2026-10-07)
 

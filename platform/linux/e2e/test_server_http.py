@@ -94,8 +94,37 @@ def many_circles_pdf(n):
     return out
 
 
+def text_pdf():
+    """a page whose tags are real text (Helvetica), turned by /Rotate like a CAD export: an equipment code over its
+    component, an instrument with its letters above, and a sentence that names a code (not a tag)"""
+    def t(s, x, y):
+        return f'BT /F1 6 Tf 0 1 -1 0 {x} {y} Tm ({s}) Tj ET'
+    content = '\n'.join([t('10LAB70', 300, 50), t('AA101', 307, 50), t('PI', 250, 105), t('10LAB70', 257, 100),
+                         t('CP501', 264, 101), t('see 10LAB71AA102 on sheet 2', 200, 50)]).encode() + b'\n'
+    objs = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+            b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 600] /Rotate 90 /Contents 4 0 R'
+            b' /Resources << /Font << /F1 5 0 R >> >> >>',
+            b'<< /Length %d >>\nstream\n' % len(content) + content + b'endstream',
+            b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']
+    out = b'%PDF-1.4\n'
+    offs = []
+    for i, o in enumerate(objs):
+        offs.append(len(out))
+        out += b'%d 0 obj\n' % (i + 1) + o + b'\nendobj\n'
+    xref = len(out)
+    out += b'xref\n0 %d\n0000000000 65535 f \n' % (len(objs) + 1) + b''.join(b'%010d 00000 n \n' % o for o in offs)
+    out += b'trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n' % (len(objs) + 1, xref)
+    return out
+
+
 @unittest.skipUnless(os.path.exists(IMPORTER), 'the importer (kks_import) is not built')
 class Drawings(Base):
+    def manager(self):
+        # one server per class, and its setup link works once: the tests share the manager
+        if not hasattr(type(self), 'boss'):
+            type(self).boss = super().manager()
+        return type(self).boss
+
     def wait(self, c):
         for _ in range(600):
             job = c.req('GET', '/api/sheets/job')[1]['job']
@@ -168,6 +197,26 @@ class Drawings(Base):
         self.assertEqual((job['state'], job['result'] and job['result']['name']), ('done', '--replace'), job['log'])
         # managers only
         self.assertEqual(Client(self.base).req('GET', '/api/sheets')[0], 401)
+
+    def test_text_layer(self):
+        """a drawing whose tags are real text: read from its text layer, upright, its text in the path store"""
+        boss = self.manager()
+        st, r, _ = boss.req('POST', '/api/sheets/import?id=txt&name=Text', raw=text_pdf(),
+                            headers={'Content-Type': 'application/pdf'})
+        self.assertEqual(st, 200, r)
+        job = self.wait(boss)
+        self.assertEqual(job['state'], 'done', job['log'])
+        self.assertEqual((job['result']['reader'], job['result']['auto'], job['result']['review']), ('text', 2, 0), job)
+        self.assertTrue(any('text layer' in l for l in job['log']), job['log'])
+        tags = {t['kks']: t for t in boss.req('GET', '/data/tags.json')[1] if t['sheet'] == 'txt'}
+        self.assertEqual(set(tags), {'10LAB70AA101', '10LAB70CP501'})
+        self.assertEqual((tags['10LAB70CP501']['kind'], tags['10LAB70CP501']['isa']), ('instrument', 'PI'))
+        self.assertEqual((tags['10LAB70AA101']['kind'], tags['10LAB70AA101']['orient']), ('equipment', 'h'))
+        sheet = [x for x in boss.req('GET', '/data/sheets.json')[1] if x['id'] == 'txt'][0]
+        self.assertGreater(sheet['w'], sheet['h'])        # turned upright: the text reads across
+        for t in tags.values():                           # the boxes lie on the sheet
+            x0, y0, x1, y1 = t['bbox']
+            self.assertTrue(0 <= x0 < x1 <= sheet['w'] and 0 <= y0 < y1 <= sheet['h'], t)
 
 
 FAKE_DIR = tempfile.mkdtemp(prefix='kks-fake-importer-')
