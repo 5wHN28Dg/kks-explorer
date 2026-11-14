@@ -404,10 +404,11 @@ func _picture(tree: SceneTree, ui, mv, e, i: int, spot: String, hot_value: Strin
 
 static func _colours(p: Array, tp, e, pic: Dictionary) -> void:
 	for comp in tp.comps:
+		# (drawn again when any temperature moves by more than STEP_K: each within it of its value now)
 		var t: float = e.cur[e.ix[String(pic["parts"][comp])]]
-		if absf(float(tp.shown[comp]) - t) > 1e-9:
-			p.append("%s drawn at %.2f °C, its value %.2f" % [comp, tp.shown[comp], t])
-		var want: Color = tp.iron((t - tp.lo) / (tp.hi - tp.lo)).srgb_to_linear()
+		if absf(float(tp.shown[comp]) - t) > tp.STEP_K:
+			p.append("%s drawn at %.4f °C, its value %.4f" % [comp, tp.shown[comp], t])
+		var want: Color = tp.iron((float(tp.shown[comp]) - tp.lo) / (tp.hi - tp.lo)).srgb_to_linear()
 		for g in tp.comps[comp]:
 			var got: Color = g.get_instance_shader_parameter("ws_ramp")
 			if not got.is_equal_approx(Color(want.r, want.g, want.b, 1.0)):
