@@ -37,6 +37,11 @@
 ##                           mode, closed cooling water pump A's vibration reported from its card, the work order
 ##                           panel open on the motor's history and then on the list (the plant at 1×); the WO line
 ##                           gives the panel's open time and the view's draw calls and triangles with it and before it
+##   walk=diagnosis          the debrief's diagnosis tab (REALISM.md §2.22, milestone HW3): the scenario shift_cold,
+##                           transmitter 2's fault with water in its terminal side named and then repaired by the
+##                           instructor, the debrief opened on its Diagnosis tab, then its failed part opened in the Workshop and left
+##                           after 20 s, the tab open again (the plant at 1×); the DIAG line gives the tab's and the
+##                           Workshop's open times and the view's draw calls and triangles with the tab and before it
 ##   walk=stores             the stores' walk (REALISM.md §2.23, milestone WM2): the scenario shift_aged in free mode,
 ##                           closed cooling water pump A's vibration reported and planned, a part drawn at the counter
 ##                           against its order and another ordered, the stores panel then left open on the catalogue
@@ -170,6 +175,7 @@ var job_walk := false       # walk=job: the work view open at a code, its camera
 var monitor_walk := false   # walk=monitor: the monitoring panel open at a machine, the plant at 1× (milestone AG3)
 var jsa_walk := false       # walk=jsa: the permit form's JSA picker open, the plant at 1× (milestone HS1)
 var wo_walk := false        # walk=workorders: the work order panel open, the plant at 1× (milestone WM1)
+var diag_walk := false      # walk=diagnosis: the debrief's diagnosis tab open, the plant at 1× (milestone HW3)
 var stores_walk := false    # walk=stores: the stores panel open on the catalogue, the plant at 1× (milestone WM2)
 var disc_walk := false      # walk=discuss: the crew panel open on a discussion the player takes part in (milestone DC3)
 var drawings_walk := false  # walk=drawings: each P&ID in turn, panned and zoomed (REALISM.md §6.1.1, DC1)
@@ -337,7 +343,7 @@ func _ready() -> void:
 	add_child(ui)
 	if opts.get("walk", "") == "job" and not opts.has("scenario"):
 		opts["scenario"] = "shift_cold"   # (the work view needs a person played: the crews' scenario)
-	if opts.get("walk", "") in ["jsa", "discuss"] and not opts.has("scenario"):
+	if opts.get("walk", "") in ["jsa", "discuss", "diagnosis"] and not opts.has("scenario"):
 		opts["scenario"] = "shift_cold"   # (the JSA needs a supervisor played: the crews' scenario)
 	if opts.get("walk", "") in ["monitor", "workorders", "stores"] and not opts.has("scenario"):
 		opts["scenario"] = "shift_aged"   # (the aged plant: a pump running with its bearing's signs)
@@ -761,6 +767,9 @@ func _start_walk() -> void:
 	if opts.walk == "monitor":
 		await _monitor_walk()
 		return
+	if opts.walk == "diagnosis":
+		await _diag_walk()
+		return
 	if opts.walk == "jsa":
 		await _jsa_walk()
 		return
@@ -993,6 +1002,51 @@ func _disc_walk() -> void:
 		did, ["npc", "open"][e.dsc[di]["mode"]], "yes" if shown != null else "no", run_ms, open_ms, inview.x, inview.y,
 		before.x, before.y])
 	disc_walk = true
+	last_us = Time.get_ticks_usec()
+
+
+## walk=diagnosis: the fault made with its cause named, the debrief's Diagnosis tab opened (its DIAG line), the failed
+## part opened in the Workshop and left; the frames are then measured with the tab open as any walk's.
+func _diag_walk() -> void:
+	var e = ui.clock.engine
+	if ui.work == null or not ui.work.has_job("30MAG10CP002"):
+		_say("DIAG none: transmitter 2 has no work view in this build")
+		_finish()
+		return
+	ui.inputs.fault("cond_p2_low", "wet")
+	ui.clock.run_steps(2)
+	ui.inputs.repair("cond_p2_low")         # (the instructor's repair: the tab shows a cause once it is put right)
+	ui.clock.run_steps(2)
+	for i in 30:
+		await get_tree().process_frame
+	var before: Vector2i = await _view_counts()
+	var t0 := Time.get_ticks_usec()
+	ui.open_debrief()
+	ui.debrief._tab("diagnosis")
+	var open_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	for i in 30:
+		await get_tree().process_frame
+	var inview: Vector2i = await _view_counts()
+	var ws_ms := -1.0
+	var b = ui.debrief._list.find_child("failed_part", true, false)
+	if b != null and workshop != null:
+		var t1 := Time.get_ticks_usec()
+		b.pressed.emit()
+		while workshop.is_open and (workshop.machine == null or workshop.selected == ""):
+			await get_tree().process_frame
+		ws_ms = (Time.get_ticks_usec() - t1) / 1000.0
+		var t2 := Time.get_ticks_msec()
+		while Time.get_ticks_msec() - t2 < 20000:
+			await get_tree().process_frame
+		workshop.close()
+		for i in 30:
+			await get_tree().process_frame
+		ui.open_debrief()
+		ui.debrief._tab("diagnosis")
+	_say("DIAG reviews=%d cause=%s open_ms=%.1f workshop_ms=%.1f view_draws=%d view_tris=%d before_draws=%d before_tris=%d" % [
+		ui.debrief.diagnosis.size(), str(e.cause_of.get("cond_p2_low")), open_ms, ws_ms, inview.x, inview.y,
+		before.x, before.y])
+	diag_walk = true
 	last_us = Time.get_ticks_usec()
 
 
@@ -1249,7 +1303,7 @@ func _process(delta: float) -> void:
 		_say("SPEED %s at %.1f s, uptime %d ms" % ["fast-forward" if ff else "normal", t_walk, WalkFrames.uptime_ms()])
 	if job_walk and ui.work.is_open:
 		ui.work._turn(Vector2(delta * 25.0, 0.0))      # slowly round the transmitter (the whole scene in turn)
-	if not screens_walk and not job_walk and not monitor_walk and not jsa_walk and not wo_walk and not stores_walk and not disc_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
+	if not screens_walk and not job_walk and not monitor_walk and not jsa_walk and not wo_walk and not stores_walk and not diag_walk and not disc_walk and not drawings_walk and not manuals_walk and not drive_walk and (workshop_walk == null or not workshop_walk.running) and (auto == null or not auto.running):
 		return
 	t_walk += delta
 	if drawings_walk:

@@ -216,6 +216,20 @@ class Manuals(unittest.TestCase):
             with self.assertRaises(M.ManualError):
                 M.parts_table(dict(m, comes_with=bad), content, 'w')
 
+    def test_comes_with_one_kind(self):
+        """K6: `comes_with_kinds` drops the parts that come with one kind's sealed part (the globe's actuator's
+        handwheel) and keeps another kind's own part of the same id (the gate's handwheel); a pair not in that kind's
+        tree is refused."""
+        content = M.load_content()
+        m = {'short': 'MV', 'kinds': ['valve_gate', 'valve_globe'], 'kind_tags': {'valve_gate': 'GA', 'valve_globe': 'GL'},
+             'comes_with_kinds': {'valve_globe': {'handwheel': 'actuator'}}}
+        nums = json.dumps(M.parts_table(m, content, 'w')['table']['rows'])
+        self.assertIn('WDP-MV-GA-HANDWHEEL', nums)
+        self.assertNotIn('WDP-MV-GL-HANDWHEEL', nums)
+        self.assertIn('comes with its handwheel', nums)
+        with self.assertRaises(M.ManualError):
+            M.parts_table(dict(m, comes_with_kinds={'valve_gate': {'handwheel': 'actuator'}}), content, 'w')
+
     def test_generic_words(self):
         for mid, m in self.manuals.items():
             for w in set(re.findall(r'[a-z]+', json.dumps(m, ensure_ascii=False).lower())):

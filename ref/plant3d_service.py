@@ -5,6 +5,7 @@ anchors from it. Checked here so that both read only a checked file."""
 import re
 
 from ref.plant3d import FormatError, need, keys, ident  # noqa: F401
+from ref.courses import is_num
 
 IDENT = re.compile(r'[a-z_][a-z0-9_]*\Z')
 ALIAS_MAX, STATE_MAX = 8, 6
@@ -24,7 +25,7 @@ def check(s, workshop, tools, rel):
     """s: the parsed file; workshop: its kind's checked Workshop data; tools: tools.json's ids (or None)."""
     need(isinstance(s, dict), 'bad_type', rel)
     keys(s, ('format', 'version', 'part', 'sources', 'equipment', 'states', 'values', 'actions', 'meters', 'hart'),
-         ('consts',), rel)
+         ('consts', 'causes', 'tests', 'fixes', 'parts'), rel)
     need(s['format'] == 'walkdown-plant-service' and s['version'] == 1, 'bad_value', f'{rel}: format and version')
     need(s['part'] == workshop['part'], 'bad_ref', f'{rel}: part')
     need(tools is not None, 'missing_key', f'{rel}: a service file needs tools.json')
@@ -67,11 +68,12 @@ def check(s, workshop, tools, rel):
         need(name not in made, 'dup_id', f'{rel}: value {name}')
         need(isinstance(node, dict) and len(node) == 1, 'bad_type', f'{rel}: value {name}: one node')
         made.add(name)
-    loop = {'$_ma', '$_ma_tx', '@_tx', '@_trim'}    # the loop's values, the model's own content
+    # the loop's values, the model's own content (the ohms a wet terminal side reads: HW3)
+    loop = {'$_ma', '$_ma_tx', '@_tx', '@_trim', '$_ohm_v'}
     acts = set()
     for a in s['actions']:
-        keys(a, ('action', 'title', 'component', 'set'), ('tools', 'wrong', 'needs', 'minutes', 'anchors', 'sources',
-                                                         'part'), f'{rel}: action')
+        keys(a, ('action', 'title', 'component'), ('set', 'input', 'range', 'tools', 'wrong', 'needs', 'minutes',
+                                                   'anchors', 'sources', 'part'), f'{rel}: action')
         w = f'{rel}: action {a["action"]}'
         ident(a['action'], w)
         need((a['action'], a['component']) not in acts and a['action'] not in {x for x, _ in acts}, 'dup_id', w)
@@ -85,9 +87,15 @@ def check(s, workshop, tools, rel):
         for n, sentence in a.get('needs', []):
             need(n in made, 'bad_ref', f'{w}: needs {n}, which the file doesn\'t make')
             _text(sentence, f'{w}: needs {n}', 200)
-        for n in a['set']:
-            need(n.startswith('$_') and n in made and n not in dict(s['values']), 'bad_ref',
+        # a value the person gives (HW3: the loop test's current) is written into a component state, in its range
+        need('set' in a or 'input' in a, 'missing_key', f'{w}: set or input')
+        need(('input' in a) == ('range' in a), 'missing_key', f'{w}: an input comes with its range')
+        for n in list(a.get('set', {})) + ([a['input']] if 'input' in a else []):
+            need(isinstance(n, str) and n.startswith('$_') and n in made and n not in dict(s['values']), 'bad_ref',
                  f'{w}: sets {n}, not a component state')
+        if 'range' in a:
+            need(isinstance(a['range'], list) and len(a['range']) == 2 and all(is_num(x) for x in a['range'])
+                 and a['range'][0] <= a['range'][1], 'bad_number', f'{w}: range')
         for x in a.get('sources', []):
             need(x in srcs, 'bad_ref', f'{w}: source {x}')
         if 'part' in a:     # REALISM.md §2.23: the stores' part it fits (the model's check looks it up in stores.json)
@@ -111,4 +119,50 @@ def check(s, workshop, tools, rel):
     for a in s['actions']:     # (the anchors are the generator's: the content build checks them, WORKSHOP.md §4.1)
         for n in a.get('anchors', []):
             ident(n, f'{rel}: action {a["action"]}: anchor')
+    _diagnosis(s, comps, srcs, {a['action'] for a in s['actions']}, ids, rel)
     return s
+
+
+def _diagnosis(s, comps, srcs, acts, meters, rel):
+    """REALISM.md §2.22 (milestone HW3): the kind's hidden causes (each in a component of the tree), the tests that
+    tell them apart (a hand action or a meter of the file, and the causes it shows), the fixes (a hand action or the
+    HART op `hart:<do>`, and the causes it puts right) and the parts a fix uses up. Every cause is shown by a test and
+    put right by a fix; every test shows a known cause and leaves some cause out (a test that shows every cause
+    tells nothing)."""
+    causes = set()
+    for c in s.get('causes', []):
+        keys(c, ('id', 'title', 'component', 'found'), ('bench', 'sources'), f'{rel}: cause')
+        ident(c['id'], f'{rel}: cause')
+        need(c['id'] not in causes, 'dup_id', f'{rel}: cause {c["id"]}')
+        causes.add(c['id'])
+        _text(c['title'], f'{rel}: cause {c["id"]}', 80)
+        _text(c['found'], f'{rel}: cause {c["id"]}', 300)
+        need(c['component'] in comps, 'bad_ref', f'{rel}: cause {c["id"]}: {c["component"]} is not in the tree')
+        if 'bench' in c:
+            ident(c['bench'], f'{rel}: cause {c["id"]}: bench')
+        for x in c.get('sources', []):
+            need(x in srcs, 'bad_ref', f'{rel}: cause {c["id"]}: source {x}')
+    shown, fixed = set(), set()
+    harts = {f'hart:{h["do"]}' for h in s['hart']}
+    for t in s.get('tests', []):
+        keys(t, ('title', 'shows'), ('action', 'meter'), f'{rel}: test')
+        need(('action' in t) != ('meter' in t), 'missing_key', f'{rel}: test {t["title"]!r}: an action or a meter')
+        need(t['action'] in acts if 'action' in t else t['meter'] in meters, 'bad_ref',
+             f'{rel}: test {t["title"]!r}: not an action or meter of the file')
+        _text(t['title'], f'{rel}: test', 120)
+        need(isinstance(t['shows'], list) and t['shows'] and set(t['shows']) <= causes
+             and len(set(t['shows'])) == len(t['shows']) and set(t['shows']) != causes, 'bad_ref',
+             f'{rel}: test {t["title"]!r}: shows some of the causes, not all')
+        shown |= set(t['shows'])
+    for x in s.get('fixes', []):
+        need(isinstance(x, list) and len(x) == 2 and (x[0] in acts or x[0] in harts), 'bad_ref',
+             f'{rel}: fix {x!r}: a hand action or hart:<do> of the file')
+        need(isinstance(x[1], list) and x[1] and set(x[1]) <= causes, 'bad_ref', f'{rel}: fix {x[0]}: its causes')
+        fixed |= set(x[1])
+    for x in s.get('parts', []):
+        need(isinstance(x, list) and len(x) == 3 and x[0] in acts, 'bad_ref', f'{rel}: part {x!r}: a hand action')
+        ident(x[1], f'{rel}: part of {x[0]}')
+        _text(x[2], f'{rel}: part of {x[0]}', 80)
+    need(shown == causes and fixed == causes, 'bad_ref',
+         f'{rel}: every cause shown by a test and put right by a fix: {sorted(causes - shown)} '
+         f'{sorted(causes - fixed)}')

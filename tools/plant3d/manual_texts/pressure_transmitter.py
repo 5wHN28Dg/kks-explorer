@@ -132,7 +132,8 @@ MANUAL = {
                'no differential pressure. A gauge transmitter: vented to air. Either should read zero; [trim the '
                'zero](#calibration) if it does not. An absolute transmitter (the condenser\'s) cannot be zeroed '
                'this way: check it against a reference instead (a [two-point check](#calibration)).',
-               'Simulate the output (the communicator\'s loop test) at `4`, `8`, `12`, `16` and `20 mA`. At each '
+               'Simulate the output (the communicator\'s [loop test](work:loop_test)) at `4`, `8`, `12`, `16` and '
+               '`20 mA`. At each '
                'one the operator reads the value on the screen; both agree within the loop\'s tolerance.',
                'Check the alarms and trips that use this transmitter from the field, one at a time, with the '
                'control room confirming each.',
@@ -259,16 +260,23 @@ MANUAL = {
                  '[Tighten the signal terminals](work:tighten_terms); a ferrule on every wire end; check again', 'loose'),
                 ('Reads steady while the process changes',
                  'A blocked impulse line, or a closed root or block valve',
-                 'Check the valves are open; isolate and blow the line through'),
+                 'Check the valves are open. [Vent the flange](work:crack_vent) and [shut it again](work:close_vent): '
+                 'a clear line goes back to the process, a blocked one keeps the air\'s pressure. Isolate and [blow the '
+                 'line through](work:blow_line)', 'blocked'),
                 ('A differential transmitter reads low, or near zero',
                  'The manifold\'s equalising valve is passing',
                  'Shut it tight; if it still passes, replace the manifold'),
+                ('An absolute transmitter on vacuum reads high against its partners; the loop current agrees with its '
+                 'PV',
+                 'The manifold\'s test/vent valve is passing: air leaks in to the transmitter\'s side of the line',
+                 '[Shut the valve firmly](work:shut_test); if it still passes, replace the manifold', 'passing'),
                 ('Reading noisy or wandering',
                  'Gas in a liquid line or liquid in a gas line; legs at different temperatures; vibration',
                  'Vent or drain the lines; run the legs together; lengthen the damping only after the cause is found'),
                 ('Reading noisy, current jumping; water in the terminal side',
                  'Water got in at the cable gland or a cover',
-                 'Dry it, replace the gland seal and the cover O-ring, check the insulation of the cable'),
+                 '[Dry it](work:dry_terms), [replace the gland seal](work:reseal_gland) and the cover O-ring, '
+                 '[check the insulation](work:dmm_ohm) from the terminals to earth', 'wet'),
                 ('`0 mA`, nothing on the display',
                  'No loop power: a lifted wire, an open terminal, a blown fuse, reversed wires',
                  'Measure the voltage at the terminals; trace the loop; land the wires the right way round'),

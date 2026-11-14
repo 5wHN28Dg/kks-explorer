@@ -21,10 +21,13 @@ from workshop import motor as ws_motor  # noqa: E402
 from workshop import pump_horizontal as ws_pump_horizontal  # noqa: E402
 from workshop import pump_vertical as ws_pump_vertical  # noqa: E402
 from workshop import valve_control as ws_valve_control  # noqa: E402
+from workshop import valve_gate as ws_valve_gate  # noqa: E402
+from workshop import valve_globe as ws_valve_globe  # noqa: E402
+from workshop import valve_butterfly as ws_valve_butterfly  # noqa: E402
 
 # the part kinds with Workshop data (docs/plant3d/WORKSHOP.md §4): each a module of tools/plant3d/workshop/
 WORKSHOP = [ws_pressure_transmitter, ws_steam_turbine, ws_gas_turbine, ws_motor, ws_pump_horizontal, ws_pump_vertical,
-            ws_valve_control]
+            ws_valve_control, ws_valve_gate, ws_valve_globe, ws_valve_butterfly]
 
 OUT = os.path.join(ROOT, 'data', 'plant3d')
 
@@ -151,6 +154,8 @@ def build():
     files['weather.json'] = train_weather.weather()
     # the ageing scenario, and every scenario's training rate and age (REALISM.md §4.3, milestone AG2)
     files['scenarios/shift_aged.json'] = train_ageing.aged_scenario(files['scenarios/shift_cold.json'])
+    files['scenarios/shift_vac.json'] = train_hands.vac_scenario(files['scenarios/shift_cold.json'])    # (HW3)
+    files['scenarios/shift_tx.json'] = train_hands.scenario(files['scenarios/shift_cold.json'])
     for k in [k for k in files if k.startswith('scenarios/')]:
         files[k] = train_ageing.apply(files[k])
     files['staff.json'] = train_staff.staff(models, train_staff.load_layout())

@@ -481,6 +481,19 @@ func open_workshop(kind: String, code := "") -> bool:
 	return true
 
 
+## A job's failed part opened in the Workshop from the debrief's diagnosis tab (REALISM.md §3.5, milestone HW3):
+## the kind's machine with the cause's component picked, what was found there, and the cause's bench fault.
+func open_failed_part(r: Dictionary) -> bool:
+	if main == null or main.workshop == null:
+		return false
+	main.workshop.failed = {"component": r.component, "title": r.cause_title, "found": r.found, "bench_fault": r.bench}
+	if not open_workshop(String(r.kind), String(r.kks)):
+		main.workshop.failed = {}
+		return false
+	close_debrief()
+	return true
+
+
 ## The settings' Workshop row: a button per part kind the Workshop has.
 func _workshop_settings(box: VBoxContainer) -> void:
 	var kinds: Array = main.workshop.kinds() if main.workshop != null else load("res://workshop/workshop.gd").kinds()

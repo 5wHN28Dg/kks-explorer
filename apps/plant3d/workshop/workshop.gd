@@ -60,6 +60,9 @@ var entry_ms := -1.0            # Workshop button to the machine's first frame (
 var exit_ms := -1.0             # Back to the plant's first frame (last exit)
 var load_ms := -1.0
 var note := ""                  # the last refusal or hint (shown by the panels)
+## The failed part a job found (REALISM.md §3.5, milestone HW3: the debrief's diagnosis tab opens it): {component,
+## title, found, bench_fault}; empty otherwise. Set before open(); cleared on close.
+var failed := {}
 var _loading := ""
 var _t0 := 0
 var _prev_speed := -1
@@ -165,6 +168,7 @@ func can_open() -> bool:
 func close() -> void:
 	if not is_open:
 		return
+	failed = {}
 	_closed_frame = Engine.get_process_frames()
 	var t0 := Time.get_ticks_usec()
 	_gen += 1
@@ -464,6 +468,8 @@ func _show_machine(ps: PackedScene) -> void:
 	cam.set_home()
 	panels.machine_shown()
 	apply()
+	if not failed.is_empty():
+		show_failed()
 	await main._drawn()   # the next frame drawn (headless: the next frame)
 	var gw := machine.get_node_or_null("ghost_warm") if machine != null else null
 	if gw != null:
@@ -608,6 +614,20 @@ func select(id: String) -> void:
 	if panels != null:
 		panels.selected_changed()
 	apply()
+
+## The failed part (REALISM.md §3.5, milestone HW3): the cause's component picked and what was found there in the
+## note; on the bench, the cause's fault made, when the kind's bench model has one (a blocked impulse line).
+func show_failed() -> void:
+	select(String(failed.get("component", "")))
+	note = "Failed: %s. %s" % [String(failed.get("title", "")), String(failed.get("found", ""))]
+	if panels != null:
+		panels.selected_changed()
+	var bf := String(failed.get("bench_fault", ""))
+	if bf != "" and bench != null and bench.loaded():
+		for f in bench.m.faults:
+			if String(f.id) == bf:
+				bench.fault(bf)
+
 
 func _highlight(id: String, on: bool) -> void:
 	var n: Node = comps.get(id, groups.get(id))
