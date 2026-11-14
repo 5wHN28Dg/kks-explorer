@@ -494,7 +494,7 @@ func _replace(tree: SceneTree) -> Array:
 				# the spare arrives on the shelf (as a delivery would: the test's shortcut past the jump)
 				var ix: int = e._sr["ix"]["pt_unit_a3"]
 				e.sr_stock[ix] = 1
-				e.cur[e.m.index["pt_unit_a3_stock"]] = 1.0
+				e.cur[e._sr_slot[2 * ix]] = 1.0
 				stocked = true
 				continue
 		if not await _play(tree, ui, log):

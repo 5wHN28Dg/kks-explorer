@@ -1304,6 +1304,87 @@ parts). Lead times are clock days (§2.1).
     in the catalogue is refused on the form, nothing sent: the storekeeper hands over what is written, so the
     look-alike's lesson is a number copied wrong, not a number that does not exist.
   - A jump vote in a session carries its days only when they are not 0; votes agree when time and days do.
+- **Replacing a transmitter (part 3, HW3's leftover; 2026-11-14):**
+  - **The sixth cause, `failed`** (`train_hands.FAULT`): the sensor module failed. The output goes to NAMUR NE 43's
+    low alarm current, 3.6 mA (`cpt2_ma_f`, after the 3.8–20.5 mA clamp, before the loop test's select: the
+    electronics still answer, so a loop test still drives the output), and HART's device status reports it (the new
+    meter `$_status`, 1 for a sensor failure); the control system shows what 3.6 mA stands for (−3 kPa(a): the
+    `bad` select gains the failure). Weighed by the new value `cpt2_w_fail`, 0 in every scenario but the two new
+    ones, so every earlier draw and value stands. Put right only by a new transmitter: `cpt2_sound` now also needs
+    the sensor sound, the transmitter bolted to its manifold and its range the data sheet's.
+  - **The range:** a new state `$_electronics_urv` (the upper range value set in the transmitter; 0 is the
+    commissioned one's, the data sheet's 120 kPa). Above 0 the output's gain is 16/URV through a table over whole kPa
+    (`cpt2_rng_k`: there is no division node) and a select keeps the old node otherwise, so every earlier value is
+    bit for bit; the screen then shows what the current stands for. A new unit arrives as the factory ships it, its
+    range the sensor's upper limit (248 kPa, range code 3): the PV on the screen is 120/248 of the true one until the
+    range is set with HART (`set_range`, a hand action with an input, 1–248 kPa). The loop check at forced currents
+    can't see the range (the loop test drives the current); the PV read after it, and `cpt2_sound`, do.
+  - **The hand actions** (the service file): `remove_tx` (17 mm spanner, 5 minutes) needs the wires lifted, the
+    leads off, the manifold's block valve shut and the transmitter vented through its flange's drain/vent valve;
+    `fit_tx` (17 mm, 10 minutes, `"part": "pt_unit_a3"`, the complete transmitter WDP-PT-UNIT-A3; the look-alike
+    A4 is `wrong_part`) needs the old one off and sets the new unit's states: sensor sound, bolted, URV 248, vent shut,
+    cover on, a dry and tight terminal block, no loop test. Both act on the `process_flange` (a hand action's
+    component is one of the tree's components, not a fastener group: the state is `$_flange_bolts_off`). Settled
+    here: the replacement leaves the gland as it is (the gland stays with the cable), and the old unit's drift and
+    trim (`cond_p2_drift`, `cond_p2_trim`, not component states) are not reset by it.
+  - **The diagnosis data:** the cause `failed` (in the sensor module; sources [R3051], NE 43 and the HART
+    specifications), its tests (`$_status` and `$_ao`, each showing only it), its fix (`fit_tx`) and its part
+    (`pt_unit_a3`, "A complete pressure transmitter, range 3"); every cause still has a test and a fix, and every
+    two causes are told apart by some test.
+  - **The job** (`train_hands.py`; it is at the 64-step limit, so the replacement is tasks of its own). After the
+    readings, a wait on `cpt2_alive` (the AO above 3.7 mA) goes on at once for a sound sensor (no minute waited) and
+    else to the job's last step, a `choose` of the replacement task; the job's old end (the report, the tools back)
+    is a task of its own (`job_cond_p2_fix_end`) chosen by the step before, so the replacement is never reached by
+    falling through. A choice keeps the task's work (its permit, its lock, `"$"`). The tasks, appended after every
+    earlier task (no index moves), each under the job's work and held overnight as it is:
+    - `job_cond_p2_fix_tx` (24 steps): the status read; the work order notified (`else`: already open); the
+      storekeeper called (`issue_cond_p2_fix`); in front of the counter (`p_store`: the counter itself is the
+      storekeeper's place) until the order is open, then three minutes there; back at the transmitter: the leads off,
+      the wires lifted, the block valve shut, the vent cracked, unbolted; the new one fitted. Refused (no spare
+      issued, or the look-alike), its `else`: "held for parts" said to the maintenance supervisor, a wait until a
+      spare is on the shelf (`cpt2_spare_shelf`, no minutes: held at the duty's end with the lock on, which lets a
+      jump to a date pass), then the storekeeper called again, the counter, the fitting.
+    - `job_cond_p2_fix_fit` (36 steps): the cover off, the wires landed, the block valve opened, the communicator on,
+      a minute, the range set to 120 kPa, the multimeter on, the PV and the status read, the loop check and the close
+      (as the job's), then the end task.
+    - `issue_cond_p2_fix` (the storekeeper's, priority 2): a wait until the order is open (planned, scheduled or in
+      progress, `cpt2_wo_open`), the issue of the spare against it, then an order of the spare without a quantity
+      (up to its max; refused `qty` when nothing is missing). The order is there because a scenario's `stock` that
+      starts a part at or under its reorder point makes no edge for the reorder reaction.
+    - `cpt2_spare_shelf` and `cpt2_wo_open` are content nodes in the store's area (`model/admin.json`, after the
+      parts' nodes).
+  - **Scenarios:** `shift_fail` (shift_tx with `cpt2_w_fail` 1, world seed 13: it draws `failed`, the spare on the
+    shelf) and `shift_nospare` (shift_fail with `"stock": {"pt_unit_a3": 0}`, seed 15, `failed` again).
+  - **The app:** the diagnosis tab's review gains `removed` (a hand action of the service file with `part` done at
+    the equipment: the old part is off); its button reads "Open the removed part in the Workshop" then, and the
+    Workshop opens it writable (`failed.writable`): taken apart there as any part. Opened for a part still in the
+    plant (every other cause) it is read only: the slider's taking apart, the guided steps and picking a part up
+    are refused with "Read only: this part is still in the plant…" (`workshop.gd` `read_only`), looking (picking,
+    hiding, isolating) stays. The work view gives the fitting's refusals in words as before.
+  - **Vectors** (made again, compared item by item with this branch's before: `39fb06c4`): `plant3d-realism.json`
+    unchanged; `plant3d-v1.json`: only values added (the new nodes in every snapshot); `plant3d-v2.json`: `wtp`,
+    `wtp_cip`, `wtp_regen` values added; the day's events and states unchanged (values added); every digest of the
+    day and of every fork moved (the digest hashes every value, and the new ones are there from step 0); two forks
+    appended: `npc_hands_failed` (shift_fail: the cause drawn, the work order notified, the storekeeper's issue of
+    the spare, the old one off, the new one fitted, its range set, the loop check at 0–120 kPa(a), cured, the
+    tools back by 33,242 of its 40,000 steps) and `npc_hands_nospare` (shift_nospare: the storekeeper's issue refused
+    `stock` and the spare ordered, PO-0001 for 3, 42 days; the trainer hands over the look-alike in free mode, the
+    fitting refused `wrong_part` and the job held for parts at 16:00 with its lock; the trainer jumps to 06:00 30 days
+    on, acknowledges the vibration alarm the month left (a jump is refused with an alarm unacknowledged, §7.9), and
+    jumps to 08:00 12 days on: the delivery in that step, the job resumed, the spare issued and fitted, cured). Changed
+    in earlier forks, and only these: `npc_hands`, `npc_hands_drift`, `npc_hands_blocked`, `npc_hands_passing` and
+    `npc_hands_wet` each gain two events after the permit's return, the job's done and its end task's start, and the
+    job's last `task … done` is now the end task's (`job_cond_p2_fix_end`): every other event, every input,
+    expectation, end state and value as before (the choice's draw from the technician's stream changed nothing that
+    followed).
+  - **Tests:** `tests/test_plant3d_wm2_tx.py` (the low alarm current and the status; only a new transmitter with its
+    range cures it, the factory's range reads 120/248; the hand actions' needs, part and input; the weights and the
+    two seeds' draws; the diagnosis data; the job's lengths, its way to the replacement and the order of its steps;
+    the forks), `tests/test_plant3d_hw3.py` and `tests/test_plant3d_hands_content.py` (the six causes and the
+    weights), `apps/plant3d/tests/test_ui_hands.gd` (`_replace`: the trainee as the I&C technician with the sensor
+    failed and no spare: the look-alike drawn at the counter and refused at the fitting with its sentence in the work
+    view, the storekeeper's issue, the range through the work view's field, the loop check, the diagnosis tab's cause
+    and part, the removed transmitter writable in the Workshop; and HW3's failed terminal block read only).
 
 ## 3. Hands-on work and tools
 
