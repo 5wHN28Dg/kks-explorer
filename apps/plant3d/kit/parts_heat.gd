@@ -41,9 +41,13 @@ static func _ws_nozzle(g, from: Vector3, to: Vector3, od: float, mat: String, ra
 	_closed_cyl(m, to - d * (f.tf * 2.2), to - d * f.tf, od * 0.5 + f.tf * 0.6, od * 0.5 + f.tf * 0.3, m.segs(od * 0.5, 8, 32))
 	C.bolt_ring(m, to - d * f.tf * 0.5, d, f.pcd, f.n, f.bolt_r, f.tf * 2.4)
 
-## A cylinder (or a frustum) from a to b closed at both ends, its faces listed as the cylinder lists its rims (C._face).
+## A cylinder (or a frustum) from a to b closed at both ends: for an even n the kit's caps meet its rims (their
+## points are the same), for an odd one the faces are listed as the cylinder lists its rims (C._face).
 static func _closed_cyl(m, a: Vector3, b: Vector3, ra: float, rb: float, n: int) -> void:
 	var d := (b - a).normalized()
+	if n % 2 == 0:
+		m.cyl(a, b, ra, rb, n, true)
+		return
 	m.cyl(a, b, ra, rb, n, false)
 	C._face(m, a, d, 0.0, ra, n, false)
 	C._face(m, b, d, 0.0, rb, n, true)

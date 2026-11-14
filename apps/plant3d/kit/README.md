@@ -518,6 +518,48 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   cones, so a boss under the bonnet flange (the body's) closes the view under it;
   the other actuators of each kind have no tree.
 
+- **plate_hx** (K6: kit/parts_heat.gd `plate_hx`, `_phe_*`): a gasketed plate heat exchanger as the Grundfos by Alfa
+  Laval maintenance manual names its parts (the frame plate, the pressure plate, the carrying bar, the guiding bar,
+  the support column, the plate package of End plate II, the channel plates and End plate I, the tightening and
+  locking bolts) and opens and closes it (the locking bolts out, the tightening bolts loosened with the plates kept
+  parallel and taken out, the pressure plate pushed back along the carrying bar, the plates out one by one; closed
+  the reverse, the tightening bolts crosswise to 1.2 times the A-measurement, then the locking bolts, all to the
+  A-measurement). **Simplified:** the plate package is the plant's pack drawn as as many plates as the plant draws
+  plates' edges on it plus one (46 for the data file's 300 plates: each as thick as several real ones, a picture),
+  plain slabs (their portholes, gaskets and corrugation not drawn); the channel plates are one part (the steps hang them
+  one by one); the plant's six bolts are the four tightening bolts at the corners and the two locking bolts at
+  mid-height (the manual's first bolt layout, p. 35), as long as each other (a real locking bolt is shorter); the
+  pressure plate has no feet and the frame plate's stud bolts round its portholes are not drawn (the plant's nozzles
+  are the frame plate's); the plant's carrying bar leaves the pressure plate 0.25 m to the column, so the explode
+  pushes it back that far and takes the plates out to the side (End plate I, the first off, farthest).
+  `tests/test_workshop.gd _packs` checks that the plates lie square to the line from the pressure plate to the frame
+  plate, follow each other without a gap from one plate's inner face to the other's, and that every bolt runs along
+  that line beside the plates, from beyond the pressure plate's outer face to beyond the frame plate's. **The
+  stand-ins:** the plant's pack with the plates' edges it draws on it, its bolts (the two fastener groups) and its
+  nozzles (drawn again with each piece closed: `_ws_nozzle`).
+- **shell_tube_hx** (the horizontal one, K6: `shell_tube_hx`, `_ste_*`): a removable bundle with a bonnet at each
+  end and a packed floating tubesheet with a lantern ring at the rear (TEMA BEW), the type the generator draws (a
+  flanged bonnet in front, a bonnet on the rear end with the tube side's inlet: one pass, straight tubes) and the
+  public manuals take apart: the Xylem Standard Xchange CPK manual (the bonnet or channel, the lantern ring and the
+  packing rings at the packed end, new gaskets and packing, the bundle drawn from the stationary end with rods through
+  its tubes, carried by its tubesheets and baffles) and API Heat Transfer's Basco guide (AEW/BEW and BEP). Neither
+  takes apart a split-ring floating head (TEMA S), so the tree is not one. The bundle is sealed: the stationary
+  tubesheet (its own piece), the floating tubesheet, the tubes, the segmental baffles (cut a quarter, alternately at
+  the top and the bottom) and the tie rods come out as one. **Simplified:** the tubes are a picture (117 of 19 mm on a
+  90 mm triangular pitch in the 1.2 m shell, which would hold about 1,500); the tube holes in the baffles and the
+  baffles' spacers are not drawn (a tie rod is one rod); the plant draws the joint's two flanges as one disc, so it is
+  the front bonnet's flange and the stationary tubesheet sits in the shell's end behind it (a real one is clamped
+  between the shell's flange and the bonnet's with a gasket each side); the plant draws the rear bonnet without a
+  flange, so the packing rings and the lantern ring sit in the shell's end round the floating tubesheet and the rear
+  bonnet's studs are not drawn (its step says so); the plant's shell nozzles stand inside the shell (their points lie
+  under its top) and are left out; the plant's tube inlet stands a few centimetres off the rear bonnet and stays so,
+  the rear bonnet's; the plant's saddles are boxes reaching 0.3 m up into the shell, and the bundle passes their
+  tops as it is drawn out (listed in `tests/test_workshop.gd`). `tests/test_workshop.gd _bundles` checks that every
+  tube runs straight along the bundle's line from within the stationary tubesheet to within the floating one, inside
+  the floating tubesheet's rim and the shell's bore. **The stand-ins:** the joint's stud ring (a fastener group) and
+  the two tube nozzles. **Known limits:** built and tested for the data file's 1.2 m shell only; a shell whose
+  circle has an odd number of segments leaves the plant's front bonnet open (the plant's own cylinder and caps).
+
 ## Tables and their sources
 
 The kit derives what a part looks like from what its content says it is (§9: content says what the equipment *is*).

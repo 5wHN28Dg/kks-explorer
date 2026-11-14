@@ -47,8 +47,12 @@ const PASSES := {
 	"steam_turbine|valve_r|ctrl_r": "the same chest on the other side",
 	"motor|end_shield_de|rotor": "the plant draws the drive-end shield's face closed and the shaft's stub standing on it: "
 		+ "the shield comes off forwards over the stub, as a real one does through its bore",
-	"shell_tube_hx|bundle|saddles": "the plant draws the saddles as boxes reaching 0.3 m up into the shell (a real "
-		+ "saddle is a cradle under it): the bundle's baffles pass their tops as it is drawn out",
+	"shell_tube_hx|saddles|bundle": "the plant draws the saddles as boxes reaching 0.3 m up into the shell (a real "
+		+ "saddle is a cradle under it): the bundle passes their tops as it is drawn out",
+	"shell_tube_hx|saddles|tubesheet_f": "the same saddles: the bundle's floating tubesheet",
+	"shell_tube_hx|saddles|baffles": "the same saddles: the bundle's baffles",
+	"shell_tube_hx|saddles|tubes": "the same saddles: the bundle's lowest tubes",
+	"shell_tube_hx|saddles|tie_rods": "the same saddles: the bundle's lower tie rods",
 	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
 		+ "comes out through its wall",
 }
@@ -943,7 +947,7 @@ func _span(tris: Array, a: Vector3) -> Vector2:
 func _face_at(tris: Array, a: Vector3, side: float) -> float:
 	var area := {}
 	for t in tris:
-		var n: Vector3 = (t[1] - t[0]).cross(t[2] - t[0])
+		var n: Vector3 = (t[2] - t[0]).cross(t[1] - t[0])   # outwards (Godot's front faces are clockwise)
 		if n.length() < 1e-12 or n.normalized().dot(a) * side < 0.9999:
 			continue
 		var k := snappedf((t[0] as Vector3).dot(a), 0.0001)
@@ -982,7 +986,15 @@ func _packs(part: String, ws: Dictionary) -> void:
 	var pack: AABB = box.call(plates[0])
 	for x in plates:
 		pack = pack.merge(box.call(x))
-	var a: Vector3 = (pack.get_center() - (box.call(press) as AABB).get_center()).normalized()   # towards the frame plate
+	# the pack's line: the normal of the pressure plate's largest face towards the pack
+	var a := Vector3.ZERO
+	var towards: Vector3 = pack.get_center() - (box.call(press) as AABB).get_center()
+	var most := 0.0
+	for t in press:
+		var n: Vector3 = (t[2] - t[0]).cross(t[1] - t[0])   # outwards
+		if n.length() * 0.5 > most and n.dot(towards) > 0.0:
+			most = n.length() * 0.5
+			a = n.normalized()
 	var f_in: float = _face_at(frame, a, -1.0)
 	var f_out: float = _face_at(frame, a, 1.0)
 	var p_in: float = _face_at(press, a, 1.0)
