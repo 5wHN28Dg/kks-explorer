@@ -1002,6 +1002,48 @@ addition (both engines, vectors) made in K6.
 
   The APK is 148.5 MB (the second pull request's was 148.3 MB).
 
+### 6.11 The plate and shell-and-tube heat exchangers (K6, fourth pull request)
+
+**As built (K6, 2026-11-14).**
+- **The plate heat exchanger** (`kit/parts_heat.gd plate_hx`, `_phe_*`; the data file names the plant's plate heat
+  exchanger, 300 plates, 2.5 m): the frame plate with its four nozzles, the pressure plate, the carrying and guiding
+  bars, the support column, the plate package as End plate II, the channel plates and End plate I (46 plates drawn, a
+  picture), the four tightening bolts and the two locking bolts. 8 components, 2 fastener groups, 10 guided steps,
+  1,940 triangles (the plant's 1,812). The order is Alfa Laval's (the Grundfos by Alfa Laval maintenance manual: opening
+  pp. 45-48, closing pp. 50-52, plates p. 55, the bolt layout p. 35).
+- **The shell-and-tube heat exchanger** (`shell_tube_hx`, `_ste_*`, horizontal; the plant has none, so the data file
+  names the kit's defaults, 1.2 m by 5 m): a removable bundle with bonnets at both ends and a packed floating
+  tubesheet with a lantern ring (TEMA BEW), the type the generator draws and the public manuals take apart: the shell
+  and its saddles, the sealed bundle (the stationary and floating tubesheets, 117 tubes, five segmental baffles, the
+  tie rods), the inner packing rings, the lantern ring, the outer packing rings, the rear and front bonnets and the
+  front bonnet's 32 studs. 12 components, 1 fastener group, 13 guided steps, 7,342 triangles (the plant's 2,844). The
+  order is the Xylem Standard Xchange CPK manual's (items 3-19) with API Heat Transfer's Basco guide as a second source.
+- **The plant unchanged** (`test_kit_frozen`); what is simplified and the trees' limits are in the kit README.
+- **New checks** (`tests/test_workshop.gd`): `_packs` (the plates lie square to the line from the pressure plate to
+  the frame plate and follow each other plate by plate without a gap between their faces; every bolt runs along that line beside the
+  plates, from beyond the pressure plate's outer face to beyond the frame plate's) and `_bundles` (every tube runs
+  straight along the bundle's line from the stationary tubesheet's outer face to the floating one's, inside the floating
+  tubesheet's rim and the shell's bore). Each made to fail once: a gap of 10 mm before End plate I, the locking bolts
+  0.3 m short, the tubes ending 50 mm before the floating tubesheet.
+- **The Note 9** (`lean+vis`, a test-signed release build, a fresh install for each kind, `probe=1`, SAMPLE=1, battery
+  26.2 / 27.0 °C at the start; the shell-and-tube walk was made with the build before the tie rods moved to mid-height,
+  the same triangles):
+
+  | | plate heat exchanger | shell-and-tube |
+  |---|---|---|
+  | first entry (after the plant's warm-up) | 488 ms (load 138 ms) | 123 ms (load 49 ms) |
+  | second entry | 42 ms | 25 ms |
+  | back to the plant | 36–41 ms | 17–18 ms |
+  | guided steps | all walked, 0 loose | all walked, 0 loose |
+  | longest frame / over 100 ms | 192.1 ms / 1, the kernel's reclaim | 48.6 ms / 0 |
+  | frames at ≥ 30 fps | 98.98 % | **99.84 %** |
+  | median / p95 frame | 17.0 / 36.4 ms | 16.9 / 36.6 ms |
+  | peak PSS | 1,233 MB | 1,152 MB |
+  | pipelines after the first 5 s | 7 | 0 |
+
+  The plate heat exchanger's walk had the kernel reclaiming memory in 13.85 % of its samples: not judged, to be walked
+  again (the reclaim rule). The APK is 148.7 MB (the third pull request's was 148.5 MB).
+
 ## 7. Shaders and cut faces
 
 Decision 0060: one lit shader and one vertex format; each lit ubershader is 0.6–0.9 s of serial compile on the Note

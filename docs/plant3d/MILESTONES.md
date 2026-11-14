@@ -336,6 +336,8 @@ APK 147.8 MB.
 
 **K6, third pull request (2026-11-10):** the gate valve (manual), the globe valve (multi-turn electric actuator) and the butterfly valve (part-turn electric actuator) in the Workshop (WORKSHOP.md §6.10): Crane's, Bray's and AUMA's orders, the plant byte for byte unchanged, new checks of the gate's wedge on its seats and the butterfly's disc in its liner. The Note 9: first entry 128 / 122 / 113 ms, 99.94 / 99.91 / 99.94 % of frames at ≥ 30 fps, no frame over 100 ms, peak PSS 1,158 / 1,159 / 1,166 MB; APK 148.5 MB. Left in K6: the fan and the generator, the heat exchangers, then the mirror.
 
+**K6, fourth pull request (2026-11-14):** the plate heat exchanger (Alfa Laval's order) and the shell-and-tube heat exchanger with a packed floating tubesheet (Xylem's CPK and the Basco guide) in the Workshop (WORKSHOP.md §6.11), the plant byte for byte unchanged, new checks of the plate pack and the tube bundle. The Note 9 (shell-and-tube): first entry 123 ms, 99.84 % of frames at ≥ 30 fps, no frame over 100 ms, peak PSS 1,152 MB; the plate heat exchanger's walk is to be made again (the kernel reclaimed memory through it); APK 148.7 MB. Left in K6: the fan and the generator, the condenser, then the mirror.
+
 **K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
 groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 86 guided
 steps in a major inspection's order, 27,868 triangles, a public source per subassembly; the plant byte for byte
