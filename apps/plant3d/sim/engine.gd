@@ -1016,8 +1016,6 @@ func apply_input(item: Array) -> void:
 			hand(item[2], item[3], item[4], item[5], item[6], slot)
 		"weather":
 			weather(item[2], slot)
-		"mirror":
-			set_mirror(item[2], item[3])     # (the Workshop's mirror in the bench vectors' form: not an input)
 		"repair":
 			if item.size() > 3:
 				repair_under(item[2], item[3], item[4], slot)
