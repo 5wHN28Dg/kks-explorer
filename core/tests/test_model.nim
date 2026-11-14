@@ -55,6 +55,42 @@ suite "model":
   test "the location list: one elevation when the rows agree":
     check m.refLoc("LAB70AA501").elev == "14.5 m"
     check m.refLoc("LAB70AA501").cabinet == "C1"
+  test "instrument points: beside the rows, never a conflict; other kinds left out":
+    let c = sample()
+    c.locations = buildLocations(j("""{"entries":[{"kks":"LAB70AA501","level":"14.50m","cabinet":"C1","desc":"feed valve"},
+      {"kks":"LAB70AA501","kind":"point","elev_m":33,"grid":"K16 F08","desc":"tapping point at the drum","source":"Maker list","page":5},
+      {"kks":"LAB70AA501","kind":"point","elev_m":12.5,"source":"Other list"},
+      {"kks":"LAB70AA501","kind":"future","level":"99 m","cabinet":"X9"}]}"""))
+    let rl = c.refLoc("LAB70AA501")
+    check rl.rows.len == 1 and rl.points.len == 2
+    check rl.elev == "14.5 m" and rl.cabinet == "C1"          # the points' 33 m and the unknown kind's 99 m don't count
+    check rl.points[0].pointText == "33 m · grid K16 F08" and rl.points[0].pointSource == "Maker list, page 5"
+    check rl.points[1].pointText == "12.5 m" and rl.points[1].pointSource == "Other list"
+    let v = tagView(c, "a:2")
+    check v["list_elev"].s == "14.5 m" and v["location_list"].elems.len == 1
+    check v["instrument_points"].elems.len == 2
+    check v["instrument_points"][0]["text"].s == "33 m · grid K16 F08"
+    check v["instrument_points"][0]["desc"].s == "tapping point at the drum"
+    check v["instrument_points"][0]["source"].s == "Maker list, page 5"
+    check c.search("drum")[0].full == "11LAB70AA501"          # a point's description is searchable
+    check pointText(j("""{"elev_m":"high"}""")) == ""     # not a number: no elevation
+  test "instrument points: malformed entries, numbers, pages, the bare list, grid search":
+    let c = sample()
+    c.locations = buildLocations(j("""[5, null, ["x"], {"kks":"LAB70AA501","kind":1,"cabinet":"Y8"},
+      {"kks":"LAB70AA501","level":"14 m","cabinet":"C1"},
+      {"kks":"LAB70AA501","kind":"point","elev_m":33.0,"grid":"K16 F08","page":5.0,"source":"L"},
+      {"kks":"LAB70AA501","kind":"point","page":2.5},
+      {"kks":"LAB70AA501","kind":"point","elev_m":1e300,"page":1e300},
+      {"kks":"LAB70AA501","kind":"point","elev_m":1e-7},{"kks":"LAB70AA501","kind":"point","elev_m":-0.0004},
+      {"kks":"LAB70AA501","kind":"point","elev_m":12.3456}]"""))
+    let rl = c.refLoc("LAB70AA501")
+    check rl.rows.len == 1 and rl.cabinet == "C1"                 # the non-string kind is left out (Y8)
+    check rl.points.len == 6
+    check rl.points[3].pointText == "0 m" and rl.points[4].pointText == "0 m" and rl.points[5].pointText == "12.346 m"
+    check rl.points[0].pointText == "33 m · grid K16 F08" and rl.points[0].pointSource == "L, page 5"
+    check rl.points[1].pointText == "" and rl.points[1].pointSource == ""   # 2.5 is no page
+    check rl.points[2].pointText == "" and rl.points[2].pointSource == ""   # out of range
+    check c.search("k16")[0].full == "11LAB70AA501"                         # found by its grid
   test "search: exact codes first, without the unit, partial, by description":
     check m.search("11LAB70AA501")[0].id == "a:2"
     check m.search("LAB70AA501")[0].id == "a:2"

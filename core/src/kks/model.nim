@@ -112,6 +112,13 @@ proc parseTag(x: JNode): Tag =
 proc parseTags*(j: JNode): seq[Tag] =
   for x in j.elems: result.add parseTag(x)
 
+proc entryKind*(r: JNode): string =
+  ## a locations.json entry's kind (PROTOCOL-v2 §19): "row" without one, "point", or "" for any other (left out)
+  let k = r.get("kind")
+  if k == nil or k.kind == jNull: "row"
+  elif k.kind == jStr and k.s == "point": "point"
+  else: ""
+
 proc buildLocations*(j: JNode): Table[string, seq[JNode]] =
   ## locations.json {source, note, entries: [{kks, level, cabinet, desc, …}]}: the list has no unit prefix, so it is
   ## keyed by the KKS without the 2-digit unit (index.html)
@@ -119,7 +126,8 @@ proc buildLocations*(j: JNode): Table[string, seq[JNode]] =
                 elif j.kind == jArr: j.elems
                 else: @[]
   for row in entries:
-    result.mgetOrPut(row.s("kks"), @[]).add row
+    if row.kind == jObj and row.entryKind in ["row", "point"]:   # rows and instrument points; other kinds left out (§19)
+      result.mgetOrPut(row.s("kks"), @[]).add row
 
 const DescriptionMax* = 2000
 
@@ -236,12 +244,46 @@ proc lvlName(l: string): string =
   x
 
 type RefLoc* = object
-  rows*: seq[JNode]
+  rows*: seq[JNode]       ## location rows (the platform or floor, a cabinet …)
+  points*: seq[JNode]     ## instrument points ("kind": "point": the instrument's own elevation and grid)
   elev*, cabinet*: string
 
+proc pointElev*(r: JNode): string =
+  ## an instrument point's elevation as text ("33 m", "12.5 m"), "" without a number
+  let v = r.get("elev_m")
+  if v == nil or v.kind notin {jInt, jFloat}: return ""
+  let x = v.num
+  if x != x or x > 1e6 or x < -1e6: return ""
+  # to the millimetre, never in exponent form, without trailing zeros (index.js ptElev the same)
+  var t = formatFloat(x, ffDecimal, 3)
+  t = t.strip(leading = false, chars = {'0'}).strip(leading = false, chars = {'.'})
+  if t == "-0": t = "0"
+  t & " m"
+
+proc pointText*(r: JNode): string =
+  ## "33 m · grid K16 F08" (the parts there are)
+  var parts: seq[string]
+  if r.pointElev.len > 0: parts.add r.pointElev
+  if r.s("grid").len > 0: parts.add "grid " & r.s("grid")
+  parts.join(" · ")
+
+proc pointSource*(r: JNode): string =
+  ## "<document>, page N" (the parts there are)
+  result = r.s("source")
+  let p = r.get("page")
+  # a whole number from 1 to 100000 (JSON writes 5 or 5.0 alike), else no page
+  if p != nil and p.kind in {jInt, jFloat} and p.num == p.num and p.num >= 1 and p.num <= 100000 and
+     p.num == float(int64(p.num)):
+    result.add (if result.len > 0: ", page " else: "page ") & $int64(p.num)
+
 proc refLoc*(m: Model, body: string): RefLoc =
-  ## the location list's value per field, or "" when the list contradicts itself
-  result.rows = m.locations.getOrDefault(body)
+  ## the location list's value per field, or "" when the list contradicts itself; instrument points apart (PROTOCOL-v2
+  ## §19 locations.json): they never count toward the rows' agreement. Entries of other kinds are left out.
+  for r in m.locations.getOrDefault(body):
+    case r.entryKind
+    of "row": result.rows.add r
+    of "point": result.points.add r
+    else: discard
   var elevs, cabs: HashSet[string]
   for r in result.rows:
     let e = lvlName(r.s("level"))
@@ -340,7 +382,9 @@ proc search*(m: Model, q: string, limit = 60): seq[Tag] =
     if score == 0 and words.len > 0:
       var hay = (m.kindName(t) & " " & m.systemName(if t.kks.len >= 5: t.kks[2 .. 4] else: "") & " " &
                  t.isa & " " & m.equipment(f).s("notes")).toLowerAscii
-      for r in m.refLoc(t.bodyOf).rows: hay.add " " & r.s("desc").toLowerAscii
+      let rl = m.refLoc(t.bodyOf)
+      for r in rl.rows: hay.add " " & r.s("desc").toLowerAscii
+      for r in rl.points: hay.add " " & r.s("desc").toLowerAscii & " " & r.s("grid").toLowerAscii
       var all = true
       for w in words:
         if w notin hay: all = false

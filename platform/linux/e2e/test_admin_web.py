@@ -278,7 +278,12 @@ class AdminWeb(unittest.TestCase):
             [{'id': 'EP-1', 'title': EVIL, 'path': [NAME], 'page': 3, 'steps': [{'n': 1, 'text': EVIL}, {'n': 2, 'text': NAME}]}])))
         page.route('**/data/locations.json', lambda r: r.fulfill(status=200, content_type='application/json', body=json.dumps(
             {'source': NAME, 'entries': [{'kks': KKS[2:], 'level': EVIL, 'cabinet': NAME, 'desc': EVIL, 'direction': NAME, 'page': 4},
-                                         {'kks': 'LBA10AA001', 'level': '14 m', 'cabinet': NAME, 'desc': EVIL, 'direction': '', 'page': 5}]})))
+                                         {'kks': 'LBA10AA001', 'level': '14 m', 'cabinet': NAME, 'desc': EVIL, 'direction': '', 'page': 5},
+                                         {'kks': KKS[2:], 'kind': 'point', 'elev_m': 33, 'grid': EVIL, 'desc': EVIL, 'source': NAME, 'page': 6},
+                                         {'kks': KKS[2:], 'kind': 'later', 'level': '99 m', 'cabinet': 'X9'},
+                                         {'kks': KKS[2:], 'kind': 1, 'cabinet': 'Y8'}, 5, None, ['x'],
+                                         {'kks': 'constructor', 'level': '1 m'}, {'kks': '__proto__', 'kind': 'point'}, {'kks': KKS[2:], 'kind': 'point', 'desc': {'toString': 0}, 'grid': ['K1'], 'elev_m': 1e-7},
+                                         {'kks': 'LBA99CP501', 'kind': 'point', 'elev_m': 12, 'desc': 'Lonely point', 'page': 2.5}]})))
 
         def sheets(route):
             r = route.fetch()
@@ -300,6 +305,29 @@ class AdminWeb(unittest.TestCase):
         loc = page.locator(P + ' .sec', has=page.locator('h3', has_text='Location list'))
         self.assertIn(EVIL, loc.text_content())
         self.assertIn(f'{NAME}, page 4', loc.text_content())
+        self.assertNotIn('X9', loc.text_content())                      # an unknown kind of entry is left out
+        self.assertNotIn('different values', loc.text_content())        # the point is no conflict
+        pt = page.locator(P + ' .sec', has=page.locator('h3', has_text='Instrument point'))
+        self.assertIn(f'33 m · grid {EVIL}', pt.text_content())
+        self.assertIn(f'{NAME}, page 6', pt.text_content())
+        self.assertIn(EVIL, pt.text_content())
+        self.assertNotIn('Y8', loc.text_content())                      # a kind that isn't a string: left out too
+        # a code only an instrument point names (on no drawing): found, said so, opened with its point
+        page.fill('#q', 'feed')                                           # odd values in the file don't break the search
+        page.wait_for_selector('#results .res')
+        page.fill('#q', 'LBA99CP501')
+        page.wait_for_selector('#results .res')
+        self.assertIn('instrument point only', page.text_content('#results'))
+        self.assertIn('instrument point · Lonely point', page.text_content('#results'))
+        page.locator('#results .res', has_text='LBA99CP501').click()
+        pt2 = page.locator(P + ' .sec', has=page.locator('h3', has_text='Instrument point'))
+        pt2.wait_for()
+        self.assertIn('12 m', pt2.text_content())
+        self.assertNotIn('page', pt2.text_content())                    # 2.5 is no page number
+        self.assertEqual(page.locator(P + ' .sec', has=page.locator('h3', has_text='Location list')).count(), 0)
+        page.fill('#q', '')
+        page.goto(self.base + '/?kks=' + KKS)
+        page.wait_for_function("k => typeof selTag !== 'undefined' && selTag && full(selTag) === k", arg=KKS, timeout=30000)
         self.assertEqual(page.input_value('#f_area'), NAME)
         self.assertEqual(page.input_value('#f_notes'), EVIL)
         self.assertEqual(page.input_value('#f_near'), EVIL)   # (your pending value is shown)

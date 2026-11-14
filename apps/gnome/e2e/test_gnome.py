@@ -61,6 +61,11 @@ class Plant(unittest.TestCase):
         os.makedirs(cfg['plant_dir'], exist_ok=True)
         json.dump({'11LCB20AA101': {'text': 'Condensate drain valve', 'basis': 'drawing note'}},
                   open(os.path.join(cfg['plant_dir'], 'descriptions.json'), 'w'))
+        # a location row (the platform) and an instrument point (a maker's list) for the same code: no conflict
+        json.dump({'source': 'e2e list', 'entries': [
+            {'kks': 'LCB20AA101', 'level': '14 m', 'desc': 'Drain platform'},
+            {'kks': 'LCB20AA101', 'kind': 'point', 'level': '33 m', 'elev_m': 33, 'grid': 'K16 F08', 'desc': 'Drain tapping point',
+             'source': 'Maker list', 'page': 5}]}, open(os.path.join(cfg['plant_dir'], 'locations.json'), 'w'))
         pdf = open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb').read()
         assert cls.boss.req('POST', '/api/sheets/import?id=sample&name=Sample%20sheet', raw=pdf, ctype='application/pdf').get('ok')
         for _ in range(300):
@@ -1295,6 +1300,12 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name='11LCB20AA101'))
         atspi.find(a, 'label', name='Draft description (unchecked)', timeout=10)
         atspi.find(a, None, name='Condensate drain valve', timeout=10)
+        # the instrument point beside the location row; the platform's 14 m stays the elevation (no conflict)
+        atspi.find(a, None, name='Instrument point', timeout=10)
+        atspi.find(a, None, name='Drain tapping point', timeout=10)
+        atspi.find(a, None, contains='33 m · grid K16 F08', timeout=10)
+        atspi.find(a, None, contains='Source: Maker list, page 5', timeout=10)
+        atspi.find(a, None, contains='14 m (location list)', timeout=10)
         atspi.click(atspi.find(a, 'button', name='Confirm description'))
         atspi.find(a, None, contains='Confirmed by The Manager', timeout=15)
         for _ in range(40):

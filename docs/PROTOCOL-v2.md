@@ -724,7 +724,21 @@ A published version is a `setting` (manager only), key `plant_data`, value `{"ve
   **completely**, and never mix versions.
 
 **File kinds:**
-- `sheets.json`, `tags.json`, `procedures.json`, `locations.json` (JSON, as in v1);
+- `sheets.json`, `tags.json`, `procedures.json` (JSON, as in v1);
+- `locations.json`: `{"source", "note", "entries": [...]}` (or the bare list), each entry keyed by `kks` **without its
+  unit number** (the lists cover every unit). An entry is one of:
+  - a **location row** (no `kind`, as in v1): `level` (the platform or floor, e.g. `"14 m"`), `cabinet`, `desc`,
+    `direction`, `page` (in the file's `source`). Where the rows for a code agree, the apps show their one elevation and
+    cabinet; where they disagree, the list counts as contradicting itself ("check on site");
+  - an **instrument point** (`"kind": "point"`, 2026-11-14): where the instrument itself sits, from a maker's list:
+    `elev_m` (a number, metres), `grid` (text, e.g. `"K16 F08"`), `desc`, `source` (the document it comes from: its
+    own, not the file's), `page` (a whole number). Shown as its own "Instrument point" line next to the location rows;
+    it never counts toward their agreement and never sets the equipment's elevation. Like a row, it makes the code
+    count as placed in the coverage view, and its `desc` and `grid` are searched;
+  - any other `kind` (or a `kind` that isn't a string): ignored, so a later kind can be added without old apps
+    misreading it. Apps before this change read every entry as a location row: their equipment panel lists a point as
+    one more row and the web client's location section warns of rows with different values. Nothing in the protocol
+    stops such a file; the manager publishes one only once the release that reads points is out.
 - `descriptions.json` (optional): `{code: {text, basis}}`, drafted descriptions shown as unchecked until a person
   confirms one as the equipment's custom field `Description` (through an ordinary `equipment` change);
 - `sheets/<id>.pdf`: the original drawing, the source of record;
