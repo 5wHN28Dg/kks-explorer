@@ -256,7 +256,7 @@ func _round(tree: SceneTree) -> Array:
 		ui.clock.run_steps(2)
 		if Mon.readings(e, mv.points[ii]).size() != 1:
 			p.append("the camera's reading was not recorded")
-		p += await _picture(tree, mv, e, ii, "end_shield_de", "ccw_a_brg_t")
+		p += await _picture(tree, ui, mv, e, ii, "end_shield_de", "ccw_a_brg_t")
 	# the oil sample, at CW pump A's motor
 	_go(ui, "w_" + OIL_AT.to_lower())
 	mv.open(OIL_AT)
@@ -265,7 +265,7 @@ func _round(tree: SceneTree) -> Array:
 	var node0: String = po["results"][0]["node"]
 	for k in mv.points.size():
 		if mv.points[k]["code"] == OIL_AT and mv.points[k]["kind"] == "ir":
-			p += await _picture(tree, mv, e, k, "end_shield_nde", "cw_a_brg_t")
+			p += await _picture(tree, ui, mv, e, k, "end_shield_nde", "cw_a_brg_t")
 			_fresh(mv)
 	var sb = mv.body.find_child("point_%d" % io, true, false).find_child("sample", true, false)
 	(sb as Button).pressed.emit()
@@ -330,7 +330,7 @@ func _round(tree: SceneTree) -> Array:
 
 ## The camera's picture at point `i`: loaded, every drawn component at its value's temperature and colour, the spot
 ## at the meter's value; the monitored bearing (`hot_value`) made hot, the picture's hottest is its housing.
-func _picture(tree: SceneTree, mv, e, i: int, spot: String, hot_value: String) -> Array:
+func _picture(tree: SceneTree, ui, mv, e, i: int, spot: String, hot_value: String) -> Array:
 	var p: Array = []
 	var pt: Dictionary = mv.points[i]
 	var box = mv.body.find_child("point_%d" % i, true, false)
@@ -355,9 +355,14 @@ func _picture(tree: SceneTree, mv, e, i: int, spot: String, hot_value: String) -
 				p.append("the vertical pump's %s (in its pit) is drawn" % c)
 		if not tp.comps.has("motor") or not tp.comps.has("head"):
 			p.append("the vertical pump's motor and head are not drawn: %s" % str(tp.comps.keys()))
-	# the running set: its frame warmer than the air
+	# two minutes on: a running set's frame warmer than the air (the frame's and the bearings' heat lag 600 s; CW pump A
+	# stands in the aged plant at 06:30)
+	ui.clock.run_steps(1200)
+	mv._write(e, null)
+	_colours(p, tp, e, pic)
 	var amb: float = e.cur[e.ix["ambient_t"]]
-	if float(tp.shown["motor"]) < amb + 1.0:
+	var rise: float = e.cur[e.ix[hot_value.trim_suffix("_brg_t") + "_warm_rise"]]
+	if rise > 1.0 and float(tp.shown["motor"]) < amb + 1.0:
 		p.append("the running motor's frame (%.1f °C) is not warmer than the air (%.1f)" % [tp.shown["motor"], amb])
 	# the monitored bearing running hot: the picture's hot spot
 	var n0: int = tp.renders
@@ -365,10 +370,11 @@ func _picture(tree: SceneTree, mv, e, i: int, spot: String, hot_value: String) -
 	c[e.ix[hot_value]] = 95.0
 	e.cur = c
 	mv._write(e, null)
-	if tp.renders != n0 + 1 or tp.hottest(tp.shown, tp.comps.keys()) != spot:
+	if tp.renders != n0 + 1 or tp.hottest(tp.shown, tp.comps.keys(), spot) != spot:
 		p.append("a bearing at 95 °C: drawn again %d times, the hottest %s (not %s)" % [tp.renders - n0,
-				tp.hottest(tp.shown, tp.comps.keys()), spot])
-	if not (tp.max_label.text.contains(spot.replace("_", " ")) and tp.max_label.text.contains("95.0 °C")):
+				tp.hottest(tp.shown, tp.comps.keys(), spot), spot])
+	var spot_name: String = tp._words(spot)
+	if not (tp.max_label.text.contains(spot_name) and tp.max_label.text.contains("95.0 °C")):
 		p.append("the hottest is named as %s" % tp.max_label.text)
 	if tp.hi < 95.0 or tp.lo > amb:
 		p.append("the scale %.0f to %.0f does not hold 95 °C and the air" % [tp.lo, tp.hi])

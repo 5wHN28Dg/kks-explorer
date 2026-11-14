@@ -128,7 +128,7 @@ func update(e) -> void:
 		var col: Color = iron((float(t.get(c, lo)) - lo) / maxf(hi - lo, 1e-6)).srgb_to_linear()
 		for g in comps[c]:
 			g.set_instance_shader_parameter("ws_ramp", Color(col.r, col.g, col.b, 1.0))
-	var hot := hottest(t, comps.keys())
+	var hot := hottest(t, comps.keys(), String(pic["spot"]))
 	scale_label.text = "%.0f °C  …  %.0f °C" % [lo, hi]
 	max_label.text = "Hottest: %s, %.1f °C" % [_words(hot), float(t.get(hot, 0.0))]
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
@@ -197,8 +197,11 @@ func _frame(box: AABB) -> void:
 	cam.far = r * 8.0
 
 
+## A component's name as the Workshop gives it (the kind's data file), its id without.
 func _words(c: String) -> String:
-	return c.replace("_", " ")
+	var w: Dictionary = machine.get_meta("workshop", {}) if machine != null else {}
+	var x = w.get("components", {}).get(c, {})
+	return String(x.get("name", c.replace("_", " "))) if x is Dictionary else c.replace("_", " ")
 
 
 # ------------------------------------------------------------------ what is drawn (pure: the tests call these)
@@ -229,12 +232,15 @@ static func range_of(t: Dictionary, drawn: Array) -> Array:
 	return [a, b]
 
 
-## The hottest component drawn (the first of equals in the tree's order).
-static func hottest(t: Dictionary, drawn: Array) -> String:
+## The hottest component drawn: the spot's when it is as hot as any (the housing the camera is aimed at, not the
+## bearing inside it), else the first of equals in the tree's order.
+static func hottest(t: Dictionary, drawn: Array, spot := "") -> String:
 	var best := ""
 	for c in drawn:
 		if t.has(c) and (best == "" or float(t[c]) > float(t[best])):
 			best = c
+	if best != "" and t.has(spot) and spot in drawn and float(t[spot]) >= float(t[best]):
+		return spot
 	return best
 
 
