@@ -732,10 +732,13 @@ A published version is a `setting` (manager only), key `plant_data`, value `{"ve
     cabinet; where they disagree, the list counts as contradicting itself ("check on site");
   - an **instrument point** (`"kind": "point"`, 2026-11-14): where the instrument itself sits, from a maker's list:
     `elev_m` (a number, metres), `grid` (text, e.g. `"K16 F08"`), `desc`, `source` (the document it comes from: its
-    own, not the file's), `page`. Shown as its own "Instrument point" line next to the location rows; it never counts
-    toward their agreement and never sets the equipment's elevation;
-  - any other `kind`: ignored, so a later kind can be added without old apps misreading it. (Apps before this
-    change read every entry as a location row: a file with points goes out only with the release that reads them.)
+    own, not the file's), `page` (a whole number). Shown as its own "Instrument point" line next to the location rows;
+    it never counts toward their agreement and never sets the equipment's elevation. Like a row, it makes the code
+    count as placed in the coverage view, and its `desc` and `grid` are searched;
+  - any other `kind` (or a `kind` that isn't a string): ignored, so a later kind can be added without old apps
+    misreading it. Apps before this change read every entry as a location row: their equipment panel lists a point as
+    one more row and the web client's location section warns of rows with different values. Nothing in the protocol
+    stops such a file; the manager publishes one only once the release that reads points is out.
 - `descriptions.json` (optional): `{code: {text, basis}}`, drafted descriptions shown as unchecked until a person
   confirms one as the equipment's custom field `Description` (through an ordinary `equipment` change);
 - `sheets/<id>.pdf`: the original drawing, the source of record;

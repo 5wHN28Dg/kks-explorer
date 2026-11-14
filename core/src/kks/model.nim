@@ -112,6 +112,13 @@ proc parseTag(x: JNode): Tag =
 proc parseTags*(j: JNode): seq[Tag] =
   for x in j.elems: result.add parseTag(x)
 
+proc entryKind*(r: JNode): string =
+  ## a locations.json entry's kind (PROTOCOL-v2 §19): "row" without one, "point", or "" for any other (left out)
+  let k = r.get("kind")
+  if k == nil or k.kind == jNull: "row"
+  elif k.kind == jStr and k.s == "point": "point"
+  else: ""
+
 proc buildLocations*(j: JNode): Table[string, seq[JNode]] =
   ## locations.json {source, note, entries: [{kks, level, cabinet, desc, …}]}: the list has no unit prefix, so it is
   ## keyed by the KKS without the 2-digit unit (index.html)
@@ -119,7 +126,7 @@ proc buildLocations*(j: JNode): Table[string, seq[JNode]] =
                 elif j.kind == jArr: j.elems
                 else: @[]
   for row in entries:
-    if row.kind == jObj and row.s("kind") in ["", "point"]:   # rows and instrument points; other kinds left out (§19)
+    if row.kind == jObj and row.entryKind in ["row", "point"]:   # rows and instrument points; other kinds left out (§19)
       result.mgetOrPut(row.s("kks"), @[]).add row
 
 const DescriptionMax* = 2000
@@ -260,14 +267,17 @@ proc pointSource*(r: JNode): string =
   ## "<document>, page N" (the parts there are)
   result = r.s("source")
   let p = r.get("page")
-  if p != nil and p.kind == jInt: result.add (if result.len > 0: ", page " else: "page ") & $p.i
+  # a whole number from 1 to 100000 (JSON writes 5 or 5.0 alike), else no page
+  if p != nil and p.kind in {jInt, jFloat} and p.num == p.num and p.num >= 1 and p.num <= 100000 and
+     p.num == float(int64(p.num)):
+    result.add (if result.len > 0: ", page " else: "page ") & $int64(p.num)
 
 proc refLoc*(m: Model, body: string): RefLoc =
   ## the location list's value per field, or "" when the list contradicts itself; instrument points apart (PROTOCOL-v2
   ## §19 locations.json): they never count toward the rows' agreement. Entries of other kinds are left out.
   for r in m.locations.getOrDefault(body):
-    case r.s("kind")
-    of "": result.rows.add r
+    case r.entryKind
+    of "row": result.rows.add r
     of "point": result.points.add r
     else: discard
   var elevs, cabs: HashSet[string]
@@ -369,7 +379,8 @@ proc search*(m: Model, q: string, limit = 60): seq[Tag] =
       var hay = (m.kindName(t) & " " & m.systemName(if t.kks.len >= 5: t.kks[2 .. 4] else: "") & " " &
                  t.isa & " " & m.equipment(f).s("notes")).toLowerAscii
       let rl = m.refLoc(t.bodyOf)
-      for r in rl.rows & rl.points: hay.add " " & r.s("desc").toLowerAscii
+      for r in rl.rows: hay.add " " & r.s("desc").toLowerAscii
+      for r in rl.points: hay.add " " & r.s("desc").toLowerAscii & " " & r.s("grid").toLowerAscii
       var all = true
       for w in words:
         if w notin hay: all = false

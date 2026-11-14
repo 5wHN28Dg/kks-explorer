@@ -1,7 +1,7 @@
 // The drawings page (index.html). A file of its own, not an inline script, so the Content-Security-Policy can
 // allow scripts from this site only (#8).
 const $=s=>document.querySelector(s);
-let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC={},PTS={},DESC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
+let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC=Object.create(null),PTS=Object.create(null),DESC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
 let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='', PDV='';
 const api=u=>K.api(u);
 // Views are built as elements (K.h: text as text nodes, handlers as functions), never as markup.
@@ -35,7 +35,7 @@ const elevOf=t=>(eq(full(t)).elev||'').trim()||refLoc(bodyOf(t)).elev;
 // an instrument point (core model.pointText / pointSource): "33 m · grid K16 F08", "<document>, page 5"
 const ptElev=r=>typeof r.elev_m==='number'&&Number.isFinite(r.elev_m)&&Math.abs(r.elev_m)<=1e6?String(r.elev_m)+' m':'';
 const ptText=r=>[ptElev(r),typeof r.grid==='string'&&r.grid?'grid '+r.grid:''].filter(Boolean).join(' · ');
-const ptSource=r=>[typeof r.source==='string'?r.source:'',Number.isInteger(r.page)?'page '+r.page:''].filter(Boolean).join(', ');
+const ptSource=r=>[typeof r.source==='string'?r.source:'',Number.isInteger(r.page)&&r.page>=1&&r.page<=100000?'page '+r.page:''].filter(Boolean).join(', ');
 function pointSec(b){
   const P=PTS[b]||[]; if(!P.length) return null;
   return h('div',{class:'sec'},h('h3',null,'Instrument point'),
@@ -90,8 +90,10 @@ async function load(){
   DESC=await fetch('data/descriptions.json').then(r=>r.ok?r.json():{}).catch(()=>({})); DESC=parseDesc(DESC);
   const lj=await fetch('data/locations.json').then(r=>r.ok?r.json():{entries:[]}).catch(()=>({entries:[]}));
   // location rows by KKS body; instrument points ("kind":"point") apart, never a conflict; other kinds left out (PROTOCOL-v2 §19)
-  for(const e of lj.entries){ if(!e||typeof e!=='object')continue; if(!e.kind)(LOC[e.kks]??=[]).push(e); else if(e.kind==='point')(PTS[e.kks]??=[]).push(e) }
-  if(lj.source) LOCSRC=lj.source;
+  // (maps without a prototype: a code is never taken for an inherited member; the bare list as core reads it)
+  for(const e of Array.isArray(lj)?lj:Array.isArray(lj?.entries)?lj.entries:[]){ if(!e||typeof e!=='object'||Array.isArray(e))continue;
+    const kk=typeof e.kks==='string'?e.kks:''; if(e.kind==null)(LOC[kk]??=[]).push(e); else if(e.kind==='point')(PTS[kk]??=[]).push(e) }
+  if(typeof lj?.source==='string'&&lj.source) LOCSRC=lj.source;
   K.onChange(why=>{
     if(why==='plantdata'){   // new drawings/tag lists published: load them, unless the person is typing in the panel
       const P=$('#panel'); if(P.contains(document.activeElement)||P.querySelector('.editing')) toast('New drawings arrived: they load the next time you open this page'); else location.reload();
@@ -1095,7 +1097,7 @@ function covBar(p,wide){
 let covStale=false;
 function renderCoverage(){
   covStale=false;
-  const v=KSys.coverageView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:{...PTS,...LOC},equipment:STATE.equipment,photos:STATE.photos});
+  const v=KSys.coverageView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:Object.assign(Object.create(null),PTS,LOC),equipment:STATE.equipment,photos:STATE.photos});
   const t=v.total, p=t.photos;
   const sheetSub=s=>[plural(s.codes,'code','codes'),pct(s.verified,s.tags)+' of tags checked',pct(s.located,s.codes)+' placed',
     s.review?s.review+' to review':null,s.marked?s.marked+' marked':null].filter(Boolean).join(' · ');
