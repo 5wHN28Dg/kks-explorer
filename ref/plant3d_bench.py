@@ -376,23 +376,24 @@ def mirror_sources(bench, model, code):
             else:
                 missing.append((v, f'no machine runs {code}'))
             continue
+        # the plant's binding of that kind at the code (and of the entry's channel, kind or sound): a show names its
+        # value, an anim and a lamp read `of`, a sound its gain's `of`
         k = f['bind']
+        detail = next((f[d] for d in ('channel', 'kind', 'id') if d in f), '')
         src = None
         for b in binds:
-            if k == 'show' and 'show' in b:
-                src = b['show']
-            elif k == 'anim' and b.get('anim') == f['channel']:
+            if k not in b or (detail and b[k] != detail):
+                continue
+            if not detail:
+                src = b[k]
+            elif 'of' in b:
                 src = b['of']
-            elif k == 'lamp' and b.get('lamp') == f['kind']:
-                src = b['of']
-            elif k == 'sound' and b.get('sound') == f['id'] and isinstance(b.get('gain'), dict):
+            elif isinstance(b.get('gain'), dict):
                 src = b['gain']['of']
             if src is not None:
                 break
         if src is None:
-            what = {'show': 'no display', 'anim': f'no {f.get("channel")} motion', 'lamp': f'no {f.get("kind")} lamp',
-                    'sound': f'no {f.get("id")} sound'}[k]
-            missing.append((v, f'{what} at {code}'))
+            missing.append((v, f'no {(k + " " + detail).strip()} binding at {code}'))
             continue
         bu, pu = bench.units.get(v, ''), units.get(src, '')
         if bu == pu:

@@ -16,7 +16,7 @@ const UNITS := {"bar|kPa": [0.01, 0.0], "bar|MPa": [10.0, 0.0], "bar|mbar": [0.0
 		"bar|kPa(a)": [0.01, -1.01325], "bar|bar(a)": [1.0, -1.01325], "bar|m": [0.0980665, 0.0]}
 
 
-## The value names a plant binding reads, in its keys' order (anim's and lamp's `of`, show, a sound's gain and pitch).
+## The value names a plant binding reads, in its keys' order (`of`, show, a sound's gain and pitch).
 static func _reads(x: Dictionary) -> Array:
 	var out := []
 	for k in ["of", "show"]:
@@ -82,23 +82,27 @@ static func resolve(bm, pm, code: String) -> Dictionary:
 			else:
 				out.missing.append([v, "no machine runs %s" % code])
 			continue
+		# the plant's binding of that kind at the code (and of the entry's channel, kind or sound): a show names its value,
+		# an anim and a lamp read `of`, a sound its gain's `of`
 		var k := String(f["bind"])
+		var detail := ""
+		for dk in ["channel", "kind", "id"]:
+			if f.has(dk):
+				detail = String(f[dk])
 		var src := ""
 		for b in binds:
-			if k == "show" and b.has("show"):
-				src = String(b["show"])
-			elif k == "anim" and b.get("anim") == f.get("channel"):
+			if not b.has(k) or (detail != "" and String(b[k]) != detail):
+				continue
+			if detail == "":
+				src = String(b[k])
+			elif b.has("of"):
 				src = String(b["of"])
-			elif k == "lamp" and b.get("lamp") == f.get("kind"):
-				src = String(b["of"])
-			elif k == "sound" and b.get("sound") == f.get("id") and typeof(b.get("gain")) == TYPE_DICTIONARY:
+			elif typeof(b.get("gain")) == TYPE_DICTIONARY:
 				src = String(b["gain"]["of"])
 			if src != "":
 				break
 		if src == "":
-			var what := {"show": "no display", "anim": "no %s motion" % str(f.get("channel")),
-					"lamp": "no %s lamp" % str(f.get("kind")), "sound": "no %s sound" % str(f.get("id"))}
-			out.missing.append([v, "%s at %s" % [what[k], code]])
+			out.missing.append([v, "no %s binding at %s" % [(k + " " + detail).strip_edges(), code]])
 			continue
 		var bu := String(bm.units.get(v, ""))
 		var pu := ""
