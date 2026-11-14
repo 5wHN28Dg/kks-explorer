@@ -179,12 +179,12 @@ proc main() =
   var rot: int
   if textMode and rotate == "auto":
     log "Finding orientation from the text..."
-    var best = -1
+    var best = low(int)
     for extra in [0, 90, 180, 270]:
       let d = rotatedCopy(src, extra)
-      let n = leftToRight(d)
+      let n = uprightScore(d)
       d.close()
-      log "  " & align($extra, 3) & "°: " & $n & " characters reading left to right"
+      log "  " & align($extra, 3) & "°: " & $n & " (characters reading across or up, minus those reading back or down)"
       if n > best:
         best = n
         rot = extra

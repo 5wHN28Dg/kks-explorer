@@ -46,8 +46,10 @@ files as the glyph reader's (`.kkp`, overview pyramid, sheets.json, tags.json, c
   Such tags go to the review queue (`suspect`, with a note), or, with `--unit NN`, get that number and a note saying so.
 - **Boxes:** the runs' union, 1 pt around, in the same frame as the glyph reader's. Ids are `t<n>` in page order (top to
   bottom, then left to right). The same code twice on a sheet is flagged as by the glyph reader.
-- **Orientation:** the turn (0/90/180/270) under which the most characters of the page's text read left to right
-  (title block and notes included). Text tells upright from upside down, so there is no second try.
+- **Orientation:** the turn (0/90/180/270) with the best score: characters reading left to right or up the page (a
+  drawing's two upright directions), minus those reading right to left or down it, all the page's text counted (title
+  block and notes included: a sparse sheet can have more labels up the page than across it). Text tells upright from
+  upside down, so there is no second try.
 - **Path store:** the path store holds paths and images only, so for such a drawing each glyph's outline is written as
   a filled path (a stroked text's as a stroked one); a Type 3 or bitmap font is an import error (nothing is dropped
   silently). Dashed lines are cut into their dashes (the pattern starts again at each subpath, curves flattened in

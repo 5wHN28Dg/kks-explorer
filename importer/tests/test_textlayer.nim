@@ -109,22 +109,36 @@ suite "tags from the text layer":
     check g.isa == "PGI" and g.kks == "10LAB70GP101"
 
   test "orientation: the most text reading left to right":
-    var best = -1
+    var best = low(int)
     var bestAt = -1
     for extra in [0, 90, 180, 270]:
       let d = rotatedCopy(dir / "text.pdf", extra)
-      let n = leftToRight(d)
+      let n = uprightScore(d)
       d.close()
       if n > best: (best, bestAt) = (n, extra)
     check bestAt == 0
 
+  test "orientation: a sparse sheet with more labels up the page than across it":
+    var c = txt("TITLE OF THE SHEET", 400, 30, 8)                  # 18 characters across
+    for i in 0 .. 5: c.add txt("10LAB7" & $i & " AA10" & $i, 100 + float(i) * 30, 100, m = Up)   # 72 up the page
+    writePdf(dir / "sparse.pdf", c)
+    var best = low(int)
+    var bestAt = -1
+    for extra in [0, 90, 180, 270]:
+      let d = rotatedCopy(dir / "sparse.pdf", extra)
+      let n = uprightScore(d)
+      d.close()
+      if n > best: (best, bestAt) = (n, extra)
+    check bestAt == 0
+    removeFile(dir / "sparse.pdf")
+
   test "a page turned by /Rotate: the same tags once turned back":
     writePdf(dir / "turned.pdf", page(), rotate = 90)
     var at = -1
-    var best = -1
+    var best = low(int)
     for extra in [0, 90, 180, 270]:
       let d = rotatedCopy(dir / "turned.pdf", extra)
-      let n = leftToRight(d)
+      let n = uprightScore(d)
       d.close()
       if n > best: (best, at) = (n, extra)
     let d = rotatedCopy(dir / "turned.pdf", at)

@@ -245,8 +245,11 @@ proc textTags*(doc: Doc, unit = ""): seq[Tag] =
   for t in result.mitems:
     if t.status == "auto" and counts[t.interp.kks & t.interp.suffix] > 1: t.flag = "duplicate KKS on this sheet"
 
-proc leftToRight*(doc: Doc): int =
-  ## how many characters read left to right: the text reader's orientation score (all the text, title block and
-  ## notes included: tags may be written up the page while the sheet's own lettering reads across it)
+proc uprightScore*(doc: Doc): int =
+  ## the text reader's orientation score: characters reading left to right or up the page (a drawing's two upright
+  ## directions) minus those reading right to left or down it. All the text counts, title block and notes included:
+  ## a sparse sheet can have more labels written up the page than across it.
   for r in runs(doc):
-    if r.dir == (1, 0): result += r.text.runeLen
+    let n = r.text.runeLen
+    if r.dir == (1, 0) or r.dir == (0, -1): result += n
+    else: result -= n
