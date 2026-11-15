@@ -397,6 +397,7 @@ each platform whose code it changes (a change to `apps/common/` touches GNOME an
 text needs screenshots of the changed screens on one platform and the list of the changed strings on every platform
 where they show (for X1, F2 and S3); no trees or sizes.
 
+What to collect on each platform:
 
 | Platform | How | Screenshots | Accessibility tree | Sizes and colours |
 |---|---|---|---|---|
