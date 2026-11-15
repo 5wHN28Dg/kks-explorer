@@ -214,11 +214,10 @@ async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return;
 
 // ---------- viewer ----------
 function openSheet(id,then){
-  cur=SHEETS.find(s=>s.id===id); linkSel=null; $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
-  clearLayer();   // the old sheet's tags and connectors go now, not when the new image loads (#356: a click meanwhile followed them)
-  const img=$('#sheetimg'); let first=true;
-  img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
-  const s=cur, g=dark.gen;
+  const was=cur; cur=SHEETS.find(s=>s.id===id); linkSel=null; $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
+  if(cur!==was) clearLayer();   // the old sheet's tags and connectors go now, not when the new image loads (#356: a click meanwhile followed them)
+  const img=$('#sheetimg'), s=cur, g=dark.gen; let first=true;
+  img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); if(cur===s) $('#layer').dataset.sheet=s.id; then&&then(); };
   // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the sheet overview) can't run script
   const show=u=>{ if(cur===s&&dark.gen===g) img.src=u };   // only if neither the sheet nor dark drawings changed meanwhile
   if(cur.levels){ const k=startLevel(); img.dataset.level=k; if(dark.on) levelSrc(k).then(show); else show(levelUrl(k)) }
@@ -396,8 +395,8 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
 // a photo of the tag plate is a photo whose caption starts with "Tag plate" (PROTOCOL-v2 §9; core model.photoCover)
 const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
-// empties the tag layer (all but the select and mark boxes); drawTags fills it again for the open sheet, whose id it
-// notes in data-sheet
+// empties the tag layer (all but the select and mark boxes); data-sheet names the sheet whose image has loaded and
+// whose tags were drawn over it
 function clearLayer(){ const L=$('#layer'); delete L.dataset.sheet; for(const x of [...L.children]) if(x.id!=='selbox'&&x.id!=='markbox') x.remove() }
 function drawTags(){
   // a sync redraws the tags at any moment, so their buttons are updated in place (by tag id), never replaced: a button
@@ -455,7 +454,6 @@ function drawTags(){
   let at=L.firstChild;
   for(const d of want){ if(d===at) at=at.nextSibling; else L.insertBefore(d,at) }
   if(fe&&fe.isConnected&&document.activeElement!==fe) fe.focus({preventScroll:true});
-  L.dataset.sheet=cur.id;
 }
 function tagClick(t){
   if(multi.on){ togglePick(t); return }

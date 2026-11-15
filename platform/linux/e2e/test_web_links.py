@@ -32,7 +32,8 @@ SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/shee
 TAGS = [tag('a:1', 'a', '11LAB70AA501', 40), tag('b:1', 'b', '11LAB70AA502', 40)]
 
 
-# the tag layer has been drawn for the open sheet (index.js drawTags notes the sheet; openSheet clears it at once)
+# the open sheet's image has loaded and its tags are drawn over it (index.js: openSheet clears data-sheet at once,
+# the image's onload sets it after fit and drawTags)
 DRAWN = "id => cur && cur.id === id && document.getElementById('layer').dataset.sheet === id"
 
 
@@ -188,16 +189,21 @@ class WebLinks(unittest.TestCase):
             page.wait_for_function(DRAWN, arg='b')
             self.assertEqual(page.locator('#layer .conn').count(), 3)
             b = page.locator('#layer .conn[data-label="C16"]').bounding_box()
-            page.select_option('#sheetSel', 'c')
-            page.wait_for_function("() => cur.id === 'c'")
-            page.wait_for_timeout(300)
-            self.assertEqual(len(held), 1, "sheet c's image is held back")
-            self.assertEqual(page.evaluate("document.getElementById('sheetimg').complete && document.getElementById('sheetimg').src.includes('/c.png')"), False)
-            self.assertEqual(page.locator('#layer .conn').count(), 0, "sheet b's connectors are gone while c's image loads")
-            self.assertEqual(page.locator('#layer .hs').count(), 0, "and its tags")
-            page.mouse.click(b['x'] + b['width'] / 2, b['y'] + b['height'] / 2)     # where b's C16 was
+            # the switch and the look in one task: a sync's redraw (K.onChange, at any moment) can't come between them
+            at = [b['x'] + b['width'] / 2, b['y'] + b['height'] / 2]          # where b's C16 is
+            seen = page.evaluate("""([x, y]) => { const s = document.getElementById('sheetSel'); s.value = 'c';
+                s.dispatchEvent(new Event('change', {bubbles: true}));
+                const L = document.getElementById('layer'), e = document.elementFromPoint(x, y);
+                return {cur: cur.id, conn: L.querySelectorAll('.conn').length, hs: L.querySelectorAll('.hs').length,
+                        under: e?.closest('#layer button')?.className ?? ''} }""", at)
+            self.assertEqual(seen, {'cur': 'c', 'conn': 0, 'hs': 0, 'under': ''},
+                             "sheet b's connectors and tags are gone at once, before c's image has loaded")
+            page.mouse.click(*at)
             page.wait_for_timeout(500)
-            self.assertEqual(page.evaluate('cur.id'), 'c', "a click there doesn't follow b's connector")
+            self.assertEqual(page.evaluate('cur.id'), 'c', "a click where b's C16 was doesn't follow it")
+            self.assertEqual(page.locator('#layer .conn').count(), 0)
+            self.assertEqual(len(held), 1, "sheet c's image is held back")
+            self.assertEqual(page.evaluate("document.getElementById('layer').dataset.sheet"), None, "c's image hasn't loaded")
             held[0].continue_()
             page.wait_for_function(DRAWN, arg='c')
             self.assertEqual(page.locator('#layer .conn').count(), 0)
