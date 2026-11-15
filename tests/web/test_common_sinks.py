@@ -51,8 +51,51 @@ class Sinks(unittest.TestCase):
             }""", EVIL)
             pg.wait_for_function("document.querySelector('#kov .code') && document.querySelector('#kov .code').style.display === ''")
             self.clean(pg, 'joinWait')
-            self.assertIn('123 ' + EVIL[:5], pg.inner_text('#kov .code b'))
+            self.assertIn('123' + EVIL[:5], pg.inner_text('#kov .code b'))
             self.assertEqual(pg.text_content('#kov h1'), 'Joining ' + EVIL)
+        self.each(run)
+
+    def test_join_code_copies_whole(self):
+        """G14: the join code reads as two groups (123 456) but copies as one (123456): the gap is a margin"""
+        def run(pg):
+            pg.evaluate("""() => { K.api = async (path, body) => body ? {} : {state: 'confirm', code: '123456'}; K.joinWait({}) }""")
+            pg.wait_for_function("document.querySelector('#kov .code') && document.querySelector('#kov .code').style.display === ''")
+            got = pg.evaluate("""() => { const b = document.querySelector('#kov .code b'), r = document.createRange();
+              r.selectNodeContents(b); getSelection().removeAllRanges(); getSelection().addRange(r);
+              const [x, y] = b.children; return [getSelection().toString(), y.getBoundingClientRect().left - x.getBoundingClientRect().right] }""")
+            self.assertEqual(got[0], '123456')
+            self.assertGreater(got[1], 4)   # still apart on screen
+        self.each(run)
+
+    def test_user_text(self):
+        """G15: text someone wrote takes its own direction, and a KKS code in Arabic text keeps its characters in order
+        (a plain element of the same text splits "11" from "LAB70AA501": the measure below sees that)"""
+        NOTE = 'مضخة التغذية 11LAB70AA501 تعمل'
+        def run(pg):
+            got = pg.evaluate("""(note) => {
+              // the code's characters side by side, left to right, in the order they are written?
+              const inOrder = el => { const code = '11LAB70AA501', xs = [];
+                const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n, all = [];
+                while ((n = w.nextNode())) for (let i = 0; i < n.data.length; i++) all.push([n, i]);
+                const text = all.map(([n, i]) => n.data[i]).join(''), at = text.indexOf(code);
+                for (let j = at; j < at + code.length; j++) { const r = document.createRange(); r.setStart(all[j][0], all[j][1]);
+                  r.setEnd(all[j][0], all[j][1] + 1); const q = r.getBoundingClientRect(); xs.push([q.left, q.right]) }
+                return xs.every(([l], j) => j === 0 || Math.abs(l - xs[j - 1][1]) <= 2) };   // (WebKit rounds each box out by a pixel)
+              const box = K.h('div', {style: 'width:600px;font:16px sans-serif'}); document.body.append(box);
+              const plain = K.h('div', null, note), block = K.userText(note, 'div', {class: 'n'}),
+                    inline = K.h('div', null, 'Note: ', K.userText(note)), mixed = K.h('div', null, K.userText('Pump مضخة 11LAB70AA501 ok'));
+              box.append(plain, block, inline, mixed);
+              const field = K.h('textarea'), line = K.h('input'), pw = K.h('input', {type: 'password'}), ltr = K.h('input', {dir: 'ltr'});
+              field.value = note; line.value = note; box.append(field, line);
+              return {plain: inOrder(plain), block: inOrder(block), inline: inOrder(inline), mixed: inOrder(mixed),
+                      blockDir: block.getAttribute('dir'), blockClass: block.className, blockRtl: block.matches(':dir(rtl)'),
+                      text: block.textContent, fields: [field.getAttribute('dir'), line.getAttribute('dir'), pw.getAttribute('dir'), ltr.getAttribute('dir')],
+                      fieldRtl: [field.matches(':dir(rtl)'), line.matches(':dir(rtl)')]} }""", NOTE)
+            self.assertFalse(got['plain'], 'the measure sees the split in a plain element')
+            self.assertTrue(got['block'] and got['inline'] and got['mixed'], got)
+            self.assertEqual((got['blockDir'], got['blockClass'], got['blockRtl'], got['text']), ('auto', 'n', True, NOTE))
+            self.assertEqual(got['fields'], ['auto', 'auto', None, 'ltr'])
+            self.assertEqual(got['fieldRtl'], [True, True])
         self.each(run)
 
     def test_h(self):
