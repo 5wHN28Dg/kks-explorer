@@ -1071,23 +1071,24 @@ addition (both engines, vectors) made in K6.
   tubesheet's rim and the shell's bore). Each made to fail once: a gap of 10 mm before End plate I, the locking bolts
   0.3 m short, the tubes ending 50 mm before the floating tubesheet.
 - **The Note 9** (`lean+vis`, a test-signed release build, a fresh install for each kind, `probe=1`, SAMPLE=1, battery
-  26.2 / 27.0 °C at the start; the shell-and-tube walk was made with the build before the tie rods moved to mid-height,
-  the same triangles):
+  29.1 / 27.0 °C at the start, the kernel reclaiming in 0.99 / 0.98 % of the samples). The plate heat exchanger was
+  walked with the pull request's head (2026-11-15; its first walk, the day before, had the kernel reclaiming memory in
+  13.85 % of its samples and was not judged); the shell-and-tube with the build of 2026-11-14, before its tie rods
+  moved to mid-height (the same triangles):
 
   | | plate heat exchanger | shell-and-tube |
   |---|---|---|
-  | first entry (after the plant's warm-up) | 488 ms (load 138 ms) | 123 ms (load 49 ms) |
-  | second entry | 42 ms | 25 ms |
-  | back to the plant | 36–41 ms | 17–18 ms |
+  | first entry (after the plant's warm-up) | 172 ms (load 44 ms) | 123 ms (load 49 ms) |
+  | second entry | 19 ms | 25 ms |
+  | back to the plant | 14–15 ms | 17–18 ms |
   | guided steps | all walked, 0 loose | all walked, 0 loose |
-  | longest frame / over 100 ms | 192.1 ms / 1, the kernel's reclaim | 48.6 ms / 0 |
-  | frames at ≥ 30 fps | 98.98 % | **99.84 %** |
-  | median / p95 frame | 17.0 / 36.4 ms | 16.9 / 36.6 ms |
-  | peak PSS | 1,233 MB | 1,152 MB |
-  | pipelines after the first 5 s | 7 | 0 |
+  | longest frame / over 100 ms | 41.1 ms / 0 | 48.6 ms / 0 |
+  | frames at ≥ 30 fps | **99.75 %** | **99.84 %** |
+  | median / p95 frame | 17.0 / 36.7 ms | 16.9 / 36.6 ms |
+  | peak PSS | 1,179 MB | 1,152 MB |
+  | pipelines after the first 5 s | 0 | 0 |
 
-  The plate heat exchanger's walk had the kernel reclaiming memory in 13.85 % of its samples: not judged, to be walked
-  again (the reclaim rule). The APK is 148.7 MB (the third pull request's was 148.5 MB).
+  The APK is 148.7 MB (the third pull request's was 148.5 MB).
 
 ## 7. Shaders and cut faces
 

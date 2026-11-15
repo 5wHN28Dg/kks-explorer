@@ -92,9 +92,8 @@ ASSEMBLY = [
     _step('bundle', 'Push the tube bundle into the shell from the stationary end, the floating tubesheet first, '
           'level, until the stationary tubesheet sits on the shell\'s flange.',
           [('shell', 'The bundle goes into the shell.', 'Draw the bundle out before the shell is moved.')],
-          why='Drawn out, it is pulled from the floating tubesheet with rods through two or more tubes and bearing '
-              'plates at each end (a jack on the floating tubesheet breaks it free if it has stuck), carried by its '
-              'tubesheets and baffles in a cradle, never by the tubes, and never dragged (CPK items 6 to 10).',
+          why='Drawn out, it is pulled by rods through two or more tubes and carried by its tubesheets and baffles '
+              'in a cradle, never by the tubes, and never dragged (CPK items 6 to 10).',
           sources=(CPK, BASCO)),
     _step('tubesheet_f', 'The floating tubesheet comes with the bundle, at its far end.'),
     _step('tubes', 'The tubes come with the bundle, expanded into both tubesheets.',
@@ -102,25 +101,24 @@ ASSEMBLY = [
               'less 1/8 inch (CPK item 14).'),
     _step('baffles', 'The baffles come with the bundle, on their tie rods.'),
     _step('tie_rods', 'The tie rods and spacers come with the bundle.'),
-    _step('packing_in', 'Slide the first packing rings over the floating tubesheet into the recess in the shell\'s '
+    _step('packing_in', 'Slide the inner packing rings over the floating tubesheet into the recess in the shell\'s '
           'flange, not twisted and square in the recess.',
           [('bundle', 'The packing seals round the floating tubesheet: put the bundle in first.',
-            'Take the packing out before the bundle is drawn.')],
+            'Take the inner packing rings out before the bundle is drawn.')],
           why='CPK item 16 c; new packing rings at every reassembly (item 15).'),
     _step('lantern_ring', 'Slide the lantern ring over the floating tubesheet against the packing rings.',
-          [('packing_in', 'The lantern ring goes against the first packing rings.',
-            'Take the lantern ring out before the first packing rings.')], why='CPK item 16 d.'),
-    _step('packing_out', 'Slide the remaining packing rings over the floating tubesheet against the lantern ring, not '
+          [('packing_in', 'The lantern ring goes against the inner packing rings.',
+            'Take the lantern ring out before the inner packing rings.')], why='CPK item 16 d.'),
+    _step('packing_out', 'Slide the outer packing rings over the floating tubesheet against the lantern ring, not '
           'twisted.',
-          [('lantern_ring', 'The second packing rings go against the lantern ring.',
-            'Take the second packing rings out before the lantern ring.')], why='CPK item 16 e.'),
-    _step('rear_bonnet', 'Set the rear bonnet on with its studs finger tight, the second packing ring in the bonnet\'s '
-          'recess, then tighten each nut one or two turns.',
+          [('lantern_ring', 'The outer packing rings go against the lantern ring.',
+            'Take the outer packing rings out before the lantern ring.')], why='CPK item 16 e.'),
+    _step('rear_bonnet', 'Set the rear bonnet on with its studs finger tight, the outer packing rings in the '
+          'bonnet\'s recess, then tighten each nut one or two turns.',
           [('packing_out', 'The bonnet presses the packing in: fit all the rings first.',
             'Take the rear bonnet off before the packing rings come out.')],
-          why='CPK item 16 f and g: the gap between the flanges is then about 3/8 inch; the packing is set when the '
-              'exchanger is tested or started (h). The plant draws this bonnet without its flange: its studs are '
-              'not drawn.', sources=(CPK, BASCO)),
+          why='CPK item 16 f and g: the gap between the flanges is then about 3/8 inch (10 mm). This model\'s rear '
+              'bonnet has no flange drawn, so its studs are not shown.', sources=(CPK, BASCO)),
     _step('front_bonnet', 'Fit new gaskets and set the front bonnet on the stationary tubesheet.',
           [('bundle', 'The front bonnet closes over the stationary tubesheet: put the bundle in first.',
             'Take the front bonnet off before the bundle is drawn.')],
