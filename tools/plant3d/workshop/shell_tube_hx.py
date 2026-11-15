@@ -45,9 +45,9 @@ def components():
                     'Carbon steel'),
         'saddles': _c('Saddles', 'Carry the shell on its foundation. The foundation bolts at the floating end are left '
                       'loose so the shell can expand.', 'Painted carbon steel', (CPK, BASCO)),
-        'bundle': _c('Tube bundle (stationary tubesheet)', 'The tubes, their two tubesheets, the baffles and the tie '
-                     'rods, drawn out of the shell as one from the stationary end. This tubesheet, at the front, '
-                     'is held at the joint between the shell and the front bonnet.', 'Steel tubesheet',
+        'bundle': _c('Tube bundle', 'The tubes, their two tubesheets, the baffles and the tie rods, drawn out of the shell '
+                     'as one from the stationary end. Picked, it shows its stationary tubesheet, at the front, held at '
+                     'the joint between the shell and the front bonnet.', 'Steel tubesheet',
                      sealed_why='The tubes are expanded into both tubesheets and the baffles are held on the tie rods: '
                                 'the bundle is pulled, carried and cleaned as one and never taken apart in the field '
                                 '(a leaking tube joint is rolled again or the tube plugged).'),

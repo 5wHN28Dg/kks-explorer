@@ -92,6 +92,12 @@ func run(tree: SceneTree) -> Array:
 	for i in 3:
 		await tree.process_frame
 	check(stray.is_empty(), "a quick close and open: no stray signal (%s)" % str(stray))
+	# the panels fill the screen (#388: their root had no size, the parts tree a sliver and the tools off screen)
+	var vp: Vector2 = ws.panels.get_viewport().get_visible_rect().size
+	check(ws.panels.size.is_equal_approx(vp), "the Workshop's panels fill the screen (%s, the screen %s)" % [str(ws.panels.size), str(vp)])
+	ws.panels.tree_panel.visible = true
+	await tree.process_frame
+	check(ws.panels.tree_panel.size.y > vp.y * 0.3, "the parts tree has room (%.0f px of %.0f)" % [ws.panels.tree_panel.size.y, vp.y])
 	ws.close()
 	await ws.left
 	ws.left.disconnect(on_left)
