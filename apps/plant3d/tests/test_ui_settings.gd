@@ -185,6 +185,14 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 	else:
 		p += await _click_close(tree, hud, at + "over the screens")
 		ui.close_screens()
+	# a toast shows over the settings (it is on a layer above them)
+	hud.show_settings(true)
+	ui.toast("A notice")
+	var tl: CanvasLayer = ui._toast.get_canvas_layer_node()
+	if tl == null or tl.layer <= hud.settings_layer.layer or not ui._toast.is_visible_in_tree():
+		p.append("a toast %sis drawn under the settings (layer %s, the settings' %d)" % [at, str(tl.layer if tl else null),
+			hud.settings_layer.layer])
+	hud.show_settings(false)
 	# opened again: the help folded as at first
 	hud.show_settings(true)
 	cb.button_pressed = true

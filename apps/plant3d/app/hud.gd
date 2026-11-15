@@ -375,7 +375,9 @@ func show_settings(on: bool) -> void:
 	if not on and main.ui != null and main.ui.mimic != null:
 		# the focus back to the top panel under the settings (a side panel, the drawings, the screens' canvas): the
 		# About button that had it is hidden now
-		if main.ui.wants_focus():
+		if main.workshop_open():
+			pass                            # (the Workshop opened from the settings takes its own focus)
+		elif main.ui.wants_focus():
 			main.ui.focus_top()
 		else:
 			main.ui.mimic.take_focus()      # the screens' canvas again, when they are open

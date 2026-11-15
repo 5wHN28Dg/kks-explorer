@@ -362,7 +362,18 @@ func _build_toast() -> void:
 	_toast.add_theme_stylebox_override("normal", bg)
 	_toast.visible = false
 	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(_toast)
+	# on a layer of its own above the settings (app/hud.gd, layer 8), which would hide it; shown with the layer's root
+	# (the Workshop hides that)
+	var tl := CanvasLayer.new()
+	tl.name = "toast_layer"
+	tl.layer = 9
+	add_child(tl)
+	var tr := Control.new()
+	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tl.add_child(tr)
+	tr.add_child(_toast)
+	root.visibility_changed.connect(func(): tl.visible = root.visible)
 	_layout_toast()
 
 

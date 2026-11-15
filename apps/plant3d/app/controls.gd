@@ -20,8 +20,8 @@
 ##   driving   at a bus's wheel (app/bus_drive.gd, PLANT3D §21.16): move forward/back and the right/left triggers
 ##             (throttle, brake), Space (gamepad RB: the up action) too to brake, move left/right to steer; use (E, A) the doors, fly (F, Y) the
 ##             wheel to the engine and back
-##   home      H, gamepad X: to the control room and its screens, and the screens off again there (B is Godot's
-##             ui_cancel: it closes the top panel)
+##   home      H, gamepad X: to the control room and its screens, and the screens off again there (B is not
+##             Godot's ui_cancel: the settings, About, the manual reader and the Workshop read B themselves)
 extends Node
 
 const KEYS := {
