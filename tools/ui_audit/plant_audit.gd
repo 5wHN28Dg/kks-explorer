@@ -165,6 +165,7 @@ func _run() -> void:
 	ui.toast("Copied 30PAC10AP001")
 	await shot("18_toast", 5)
 	main.free()
+	RunSave.remove(Autosave.default_path)   # the audit's run save, not left in the app's data
 	quit(0)
 
 

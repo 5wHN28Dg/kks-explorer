@@ -6,8 +6,7 @@
   `vm.lock`. `adb install -t ~/kks-work/build/plant-w2-debug.apk` (a test-key debug build; its only native library is
   `lib/arm64-v8a/libgodot_android.so`) failed: `INSTALL_FAILED_NO_MATCHING_ABIS: Failed to extract native libraries,
   res=-113`. The arm64 build can't run on this emulator.
-- Note 9: not used. The phone window was closed when checked, and the
-  emulator and Windows work ended at 13:27, before the window opened. The Honor was not touched.
+- Note 9: not used in this pass (no phone session was possible during it).
 - So nothing of Plant on Android was run. Plant's phone layout on the desktop (`tests/mimic_shots.gd --phone`) is the
   stand-in the policy names (§4 limits); that is the desktop helper's part, not repeated here.
 
@@ -15,11 +14,11 @@
 
 Every rule for Plant on Android: **Not checked: the arm64 build does not run on the emulator** (an accepted limit,
 policy §4: "Plant on Android, if its arm64 build does not run on the x86-64 emulator: the phone layout on the desktop
-stands in until a phone window"), and the Note 9's window was not open during this run.
+stands in until a phone window"), and no phone session was possible during this run.
 
 | Rule | Plant Android |
 |---|---|
-| T1, T2, T4, T5 | Not checked (arm64 build does not run on the emulator; no phone window) |
+| T1, T2, T4, T5 | Not checked (arm64 build does not run on the emulator; no phone session) |
 | T3 | N/A (desktop rule) |
 | R1, R2, R3, R4 | Not checked (same reason) |
 | C1, C2, C3 | Not checked (same reason) |

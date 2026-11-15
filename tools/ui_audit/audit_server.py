@@ -26,18 +26,22 @@ if not fresh:   # the same ports again (devices remember them)
     proc.wait()
     sys.exit()
 proc, setup = t.start_server(SERVER, DIR, cfg, sync=True)
-base = f'http://127.0.0.1:{cfg["port"]}'
-boss = t.Client(base)
-assert boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
-                                       'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
-with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f:
-    assert boss.req('POST', '/api/sheets/import?id=sample&name=Sample%20sheet', raw=f.read(), ctype='application/pdf').get('ok')
-for _ in range(300):
-    job = boss.req('GET', '/api/sheets/job')['job']
-    if job['state'] != 'running':
-        break
-    time.sleep(0.2)
-assert job['state'] == 'done', job
+try:
+    base = f'http://127.0.0.1:{cfg["port"]}'
+    boss = t.Client(base)
+    assert boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
+                                           'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
+    with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f:
+        assert boss.req('POST', '/api/sheets/import?id=sample&name=Sample%20sheet', raw=f.read(), ctype='application/pdf').get('ok')
+    for _ in range(300):
+        job = boss.req('GET', '/api/sheets/job')['job']
+        if job['state'] != 'running':
+            break
+        time.sleep(0.2)
+    assert job['state'] == 'done', job
+except BaseException:
+    proc.terminate()   # never leave the test server running after a failed setup
+    raise
 codes = ['11LAB70AA501'] + [f'11LAB70AA5{i:02d}' for i in range(2, 22)]
 for i, c in enumerate(codes):
     x, y = 100 + (i % 7) * 140, 300 + (i // 7) * 90

@@ -7,6 +7,8 @@ sys.path.insert(0, os.path.join(REPO, 'apps', 'gnome', 'e2e'))
 import atspi
 from gi.repository import Atspi
 G, OUT = sys.argv[1], sys.argv[2]
+# the accessibility switches below must reach headless.sh's private bus, never the desktop's
+assert os.environ.get('XDG_CONFIG_HOME', '').endswith('/home/config'), 'run under apps/gnome/e2e/headless.sh'
 before = {a.get_process_id() for a in [Atspi.get_desktop(0).get_child_at_index(i) for i in range(Atspi.get_desktop(0).get_child_count())] if a}
 subprocess.run(['gdbus', 'call', '--session', '--dest', 'org.a11y.Bus', '--object-path', '/org/a11y/bus', '--method',
                 'org.freedesktop.DBus.Properties.Set', 'org.a11y.Status', 'IsEnabled', '<true>'])
@@ -39,6 +41,9 @@ try:
         if len(nodes) > 30 and time.time() - t0 > 60:
             break
 finally:
+    for prop in ('IsEnabled', 'ScreenReaderEnabled'):
+        subprocess.run(['gdbus', 'call', '--session', '--dest', 'org.a11y.Bus', '--object-path', '/org/a11y/bus', '--method',
+                        'org.freedesktop.DBus.Properties.Set', 'org.a11y.Status', prop, '<false>'])
     p.terminate()
     try:
         p.wait(15)

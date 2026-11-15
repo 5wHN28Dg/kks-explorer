@@ -34,7 +34,7 @@ def dump(tag):
     """uiadrive (a copy with rectangles, uiadrive-rects.cpp) dumps every element of the app's windows"""
     ok, log = run('dump-' + tag, ['dump'])
     out = os.path.join(OUT, 'dump-%s.tsv' % tag)
-    rows = ['dpi\t96']
+    rows = ['dpi\t96']   # assumes the VM at 100 % scaling: T2/T3 sizes are wrong at any other
     for l in log.splitlines():
         i = l.find('RECT\t')
         if i >= 0:

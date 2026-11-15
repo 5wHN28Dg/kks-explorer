@@ -47,7 +47,7 @@ follow the scale: medium, call it LARGE with PLANT-3. The others look right.
 
 ### Plant on Android (`plant-android.md`)
 
-Pass 1's "Not checked" on every rule is the accepted limit (arm64 build, no phone window). Two corrections:
+Pass 1's "Not checked" on every rule is the accepted limit (arm64 build, no phone session). Two corrections:
 
 | Rule | Pass 1 | Pass 2 | Evidence |
 |---|---|---|---|

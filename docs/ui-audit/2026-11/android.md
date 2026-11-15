@@ -6,8 +6,7 @@
   :app2:assembleDebug` (memjob 6, heavyslot), APK dated 2026-11-15 12:52, version 0.10.6. Server and importer from the same
   commit (built by the "desk" helper from the same checkout; byte-identical copies used).
 - Emulator: AVD Pixel_9_Pro_XL (Android 16, x86_64 only, 1344 × 2992, density 480 = 3.0), started as CLAUDE.md says
-  (own scope MemoryMax=8G, `-gpu guest`), under `vm.lock`, `ANDROID_SERIAL=emulator-5554` for every call (a real phone was
-  attached; never touched). Demo-mode status bar (12:00) for the screenshots.
+  (own scope MemoryMax=8G, `-gpu guest`), under `vm.lock`, `ANDROID_SERIAL=emulator-5554` for every call. Demo-mode status bar (12:00) for the screenshots.
 - Data (synthetic only): a fresh server with the sample sheet `importer/tests/vectors/kkp-sample.pdf`, 21 marked tags
   11LAB70AA501…521, 11LAB70AA501 with long "How to find it" text and the fixture note `مضخة التغذية 11LAB70AA501 تعمل`
   (Near and Notes), a member `تالا Member` with 20 open proposals. The phone joined as the manager.
