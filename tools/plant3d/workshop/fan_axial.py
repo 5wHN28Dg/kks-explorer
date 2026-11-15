@@ -135,6 +135,7 @@ def components():
     mc = _motors(motor.components('motor'))
     mc.pop('motor')
     mc['fan'] = dict(mc['fan'], name='Motor\'s cooling fan')
+    mc['fan_cowl'] = dict(mc['fan_cowl'], name='Motor\'s fan cowl')
     return dict(own, **mc)
 
 
