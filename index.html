@@ -213,7 +213,7 @@ dt{color:var(--muted)} dd{margin:0}
     <button type="button" class="ghost" id="pickNote">Note for all…</button><button type="button" class="primary" id="pickDone">Done</button></div>
   <div id="coverlegend" role="note">Photos:<i class="sw p-both"></i>both<i class="sw p-equipment"></i>equipment only<i class="sw p-plate"></i>tag plate only<i class="sw p-none"></i>none</div>
   <div id="banner"><span id="bannerText"></span><button id="bannerDone">Done</button></div>
-  <div id="toast" role="status" aria-live="polite"></div>
+  <div role="status" aria-live="polite" aria-atomic="true"><div id="toast"></div></div>
   <aside class="drawer" id="procDrawer"><div class="head"><h2>Operation manual procedures</h2><button class="x" data-close="procDrawer">×</button></div>
     <div style="padding:8px 10px 0"><input id="procQ" placeholder="Filter procedures…" style="width:100%;padding:7px 8px;border-radius:5px;border:1px solid var(--line);background:var(--chrome)"></div>
     <div class="body" id="procBody"></div></aside>

@@ -116,7 +116,9 @@
       this.toggles = {};
       for (const tg of fig.toggles || []) this.toggles[tg.key] = tg.on ? 1 : 0;
       this.mode = 0;
-      this.playing = !reduceMotion && !this.static;
+      this.reduce = !!reduceMotion;
+      this.playing = !this.reduce && !this.static;
+      this.snap = false;
       this.state = new Map();
       this.first = true;
       this.flows = [];     // [flow, particles]
@@ -132,8 +134,15 @@
     }
     get drive() { return this.f.slider && this.f.slider.drive; }
     setSlider(v) { this.v = +v; if (this.drive) this.playing = false; }
-    toggle(key) { this.toggles[key] = 1 - this.toggles[key]; this.t = 0; this.playing = true; }
-    setMode(i) { this.mode = i | 0; this.playing = true; }
+    toggle(key) { this.toggles[key] = 1 - this.toggles[key]; this.t = 0; this.resume(); }
+    setMode(i) { this.mode = i | 0; this.resume(); }
+    // §9.6: a toggle or mode plays; under reduced motion a paused figure instead jumps to the new state (each
+    // follow at its target) and stays paused
+    resume() {
+      if (!this.reduce || this.playing || this.static) { this.playing = true; return; }
+      this.snap = true;
+      try { this.step(0); } finally { this.snap = false; }
+    }
     play() { this.playing = true; }
     pause() { this.playing = false; }
     tick(elapsed) {
@@ -164,6 +173,7 @@
       if ('follow' in n) {
         const target = this.vals[n.follow];
         if (this.first) this.state.set(name, 'init' in n ? n.init : target);
+        if (this.snap) this.state.set(name, target);
         let o = this.state.get(name);
         const k = target >= o ? n.rate : ('rate_down' in n ? n.rate_down : n.rate);
         o = o + (target - o) * Math.min(1, dt * k);

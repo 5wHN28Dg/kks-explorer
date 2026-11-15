@@ -260,6 +260,45 @@ class CourseWeb(unittest.TestCase):
             self.assertTrue(any('CSP violation: script-src' in e for e in errors), (name, errors))
             browser.close()
 
+    def reduced(self, name):
+        """#380: with reduced motion a figure starts still, and a toggle shows the new state at once without starting
+        the animation (it used to start its endless loop)"""
+        cid, fid = next((c, f) for c, course in COURSES.items() for f, fig in course['figures'].items()
+                        if fig.get('toggles') and any('follow' in v for _, v in fig.get('values', [])))
+        fig = COURSES[cid]['figures'][fid]
+        pg = next(p for p in COURSES[cid]['pages'] if any(b.get('figure') == fid for b in p.get('body', [])))
+        with sync_playwright() as p:
+            browser = getattr(p, name).launch()
+            ctx = browser.new_context(reduced_motion='reduce', viewport={'width': 1280, 'height': 900})
+            ctx.add_init_script(CSP_WATCH)
+            ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
+                             headers={'Origin': self.base})
+            page = ctx.new_page()
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(f'{self.base}/course.html?c={cid}#{pg["id"]}')
+            box = page.locator('figure.vis', has=page.locator('.vis-title', has_text=fig['title'])).first
+            box.scroll_into_view_if_needed()
+            canvas = box.locator('canvas')
+            page.wait_for_function('c => c.width > 0', arg=canvas.element_handle())
+            page.wait_for_timeout(300)
+            shot = lambda: canvas.evaluate('c => c.toDataURL()')
+            before = shot()
+            self.assertEqual(box.locator('.vis-btn').inner_text(), 'Play')
+            box.get_by_label(fig['toggles'][0]['label']).click()   # (flips it, whichever way it starts)
+            page.wait_for_timeout(300)
+            self.assertEqual(box.locator('.vis-btn').inner_text(), 'Play', name)   # still paused
+            after = shot()
+            self.assertNotEqual(after, before, f'{name}: the new state is drawn')
+            page.wait_for_timeout(600)
+            self.assertEqual(shot(), after, f'{name}: and nothing moves')
+            self.assertEqual(errors, [], name)
+            browser.close()
+
+    def test_reduced_chromium(self): self.reduced('chromium')
+    def test_reduced_firefox(self): self.reduced('firefox')
+    def test_reduced_webkit(self): self.reduced('webkit')
+
     def test_links_chromium(self): self.links('chromium')
     def test_links_firefox(self): self.links('firefox')
     def test_links_webkit(self): self.links('webkit')

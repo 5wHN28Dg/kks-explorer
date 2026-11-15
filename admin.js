@@ -54,7 +54,7 @@ const canUpdate=()=>!K.cfg?.app&&(K.cfg?.mode==='peer'||isAdmin());
 const TABS=[['queue','Approvals',isAdmin],['mine','My submissions',()=>true],['board','Leaderboard',()=>true],['users','Users',isAdmin],['devices','Devices',()=>true],['drawings','Drawings',()=>isManager()&&!K.cfg?.app],['history','History',isAdmin],['updates','Updates',canUpdate],['account','Account',()=>true],['about','About',()=>!K.cfg?.app]];
 async function init(){
   ME=await K.start(); K.toast=toast;
-  $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`;
+  $('#who').replaceChildren(K.userText(ME.user.full_name||ME.user.username),` · ${ME.user.role}`);
   const t=location.hash.slice(1); show(TABS.some(x=>x[0]===t&&x[2]())?t:isAdmin()?'queue':'mine');
 }
 // Each show() gets a number; a view draws into #main only if no later show() started meanwhile (a sync and a filter
@@ -96,7 +96,7 @@ addEventListener('hashchange',()=>{ const t=location.hash.slice(1); if(ME&&t!==t
 const signups=async()=>K.cfg?.mode==='server'&&isAdmin()&&K.online?K.api('/api/signups').catch(()=>null):null;
 const signupBadge=S=>{ const b=$('#un'), n=S?.requests.length||0; if(b){ b.textContent=n; b.style.display=n?'':'none' } };
 // ---------- rendering a submission ----------
-const val=v=>v==null||v===''?h('span',{class:'sub'},'(empty)'):Array.isArray(v)?v.map(c=>c.k+': '+c.v).join('; ')||'(none)':typeof v==='object'?h('span',{class:'mono'},JSON.stringify(v)):String(v);
+const val=v=>v==null||v===''?h('span',{class:'sub'},'(empty)'):Array.isArray(v)?(v.length?v.map((c,i)=>[i?'; ':'',K.userText(c.k),': ',K.userText(c.v)]):'(none)'):typeof v==='object'?h('span',{class:'mono'},JSON.stringify(v)):K.userText(v);
 const photoImg=file=>h('img',{src:'photos/'+file,alt:'',onclick:e=>lightbox(e.currentTarget.src)});
 function detail(s){
   const p=s.payload;
@@ -113,7 +113,7 @@ function detail(s){
       const bg=sh.levels?'':`url(${JSON.stringify(encodeURI(sh.file))})`;
       crop=h('div',{'data-crop':sh.levels?sh.id:null,style:`width:${Math.round(w*sc)}px;height:${Math.round(ht*sc)}px;background:#fff ${bg} no-repeat;background-size:${sh.w*sc}px auto;background-position:${-(b[0]-20)*sc}px ${-(b[1]-20)*sc}px;border:1px solid var(--line);border-radius:4px;margin:6px 0`}) }
     return [h('div',null,K.describe(s.kind,p)+' ',appLink('/?sheet='+encodeURIComponent(p.sheet),{class:'sub'},'open sheet')),crop,
-      p.note?h('div',{class:'sub'},'Note: '+p.note):null,
+      p.note?h('div',{class:'sub'},'Note: ',K.userText(p.note)):null,
       h('div',{class:'row',style:'margin-top:4px'},h('span',{class:'sub'},'Code as it should be saved:'),
         h('input',{id:'ek-'+s.id,class:'mono',value:(p.kks||'')+(p.suffix||''),placeholder:'KKS, empty = review queue',style:'width:190px'}),
         h('input',{id:'ei-'+s.id,class:'mono',value:p.isa||'',placeholder:'letters',style:'width:80px'}))];
@@ -123,8 +123,8 @@ function detail(s){
   if(s.kind==='photo_delete') return [h('div',{class:'del'},'Delete this photo'),s.live?.[0]?.value?h('div',{class:'photos'},h('figure',null,photoImg(s.live[0].value.file))):h('div',{class:'sub'},'(already gone)')];
   return h('div',{class:s.kind==='link'&&p.on===false?'del':'add'},K.describe(s.kind,p));
 }
-const who=s=>s.by_name&&s.by_name!==s.by?[s.by_name+' ',h('span',{class:'mono'},`(${s.by??''})`)]:String(s.by??'');  // full name + username
-const rnote=s=>s.request_note?h('div',{class:'rnote'},`“${s.request_note}”`):null;   // the requester's note for the approver
+const who=s=>s.by_name&&s.by_name!==s.by?[K.userText(s.by_name),' ',h('span',{class:'mono'},`(${s.by??''})`)]:String(s.by??'');  // full name + username
+const rnote=s=>s.request_note?h('div',{class:'rnote'},'“',K.userText(s.request_note),'”'):null;   // the requester's note for the approver
 const badge=s=>{ const st=String((s.conflicts?.length?'conflict':s.status)??''); return h('span',{class:'badge '+st},st) };
 
 // ---------- views ----------
@@ -144,7 +144,7 @@ const VIEWS={
     const button=(cls,label,onclick)=>h('button',{class:cls,onclick},label);
     const tick=s=>h('label',{class:'pick'},h('input',{type:'checkbox','data-id':s.id,checked:PICKED.has(s.id),
       onchange:e=>{ e.currentTarget.checked?PICKED.add(s.id):PICKED.delete(s.id); pickedBar() }}),h('span',null,'Select'),
-      h('span',{class:'vh'},` #${s.id}, ${K.describe(s.kind,s.payload)}`));
+      h('span',{class:'vh'},` #${s.id}, `,K.userText(K.describe(s.kind,s.payload))));
     const oldest=g=>Math.min(...g.kinds.flatMap(k=>k.items.map(s=>s.created||0)));
     for(const g of [...groups].sort((a,b)=>oldest(a)-oldest(b))){
       // the code opens its tag on the drawing; a change without a code (a review) opens its tag by id
@@ -157,7 +157,7 @@ const VIEWS={
         if(kd.kind.endsWith('_photo')) return h('div',{class:'kind','data-kind':kd.kind},h('h4',null,`${kd.label} (${L.length})`),
           kd.pick?h('div',{class:'sub'},`Several ${kd.label.toLowerCase()}s proposed. “Use this one” approves it and rejects the other ${kd.label.toLowerCase()}s of this code. Votes are only a hint.`):null,
           h('div',{class:'photos'},L.map(s=>h('figure',null,tick(s),photoImg(s.payload.file),
-            h('div',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`,kd.pick?` · ${s.votes} vote${s.votes===1?'':'s'}`:''),s.payload.caption?h('div',null,s.payload.caption):null,rnote(s),
+            h('div',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`,kd.pick?` · ${s.votes} vote${s.votes===1?'':'s'}`:''),s.payload.caption?K.userText(s.payload.caption,'div'):null,rnote(s),
             h('div',{class:'row',style:'margin-top:6px'},
               kd.pick?[button('primary','Use this one',()=>decide(s.id,'pick')),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
               button('danger','Reject',()=>decide(s.id,'reject')))))));
@@ -198,7 +198,7 @@ const VIEWS={
           h('button',{class:'ghost',onclick:async()=>{await K.retryRefused(i.client_id);show(tab)}},'Try again'),' ',
           h('button',{class:'ghost',onclick:async()=>{if(confirm('Discard this photo? It is not on the server.')){await K.discardQueued(i.client_id);show(tab)}}},'Discard')]:null))));
     if(toVote.length) out.push(h('div',{class:'card'},h('h3',null,'Photo proposals from others'),h('div',{class:'sub'},'Vote for the photo that shows the equipment best. An admin makes the final choice.'),
-      h('div',{class:'photos'},toVote.map(s=>h('figure',null,photoImg(s.payload.file),h('div',{class:'sub'},`${s.payload.kks??''} · ${s.by_name||s.by||''} · ${s.votes} vote${s.votes===1?'':'s'}`),
+      h('div',{class:'photos'},toVote.map(s=>h('figure',null,photoImg(s.payload.file),h('div',{class:'sub'},`${s.payload.kks??''} · `,K.userText(s.by_name||s.by||''),` · ${s.votes} vote${s.votes===1?'':'s'}`),
         h('button',{class:s.voted?'primary':'ghost',onclick:()=>vote(s.id)},s.voted?'Voted ✓':'Vote'))))));
     const sel=(name,label,opts,v)=>h('label',{class:'sub'},label+' ',h('select',{name,'aria-label':label,onchange:e=>{ MINE_F[name]=e.currentTarget.value; show('mine') }},
       opts.map(([val,text])=>h('option',{value:val,selected:val===v},text))));
@@ -217,7 +217,7 @@ const VIEWS={
           h('td',{class:'sub'},kindName[s.group_kind]||s.kind,s.fields?.length?h('div',null,s.fields.join(', ')):null),h('td',null,badge(s)),
           h('td',null,K.describe(s.kind,s.payload),rnote(s)),
           h('td',{class:'sub'},when(s.created)),
-          h('td',{class:'sub'},s.status==='conflict'?'waiting for an admin (clashes with a newer change)':s.note&&!s.note.startsWith('[')?s.note:''),
+          h('td',{class:'sub'},s.status==='conflict'?'waiting for an admin (clashes with a newer change)':s.note&&!s.note.startsWith('[')?K.userText(s.note):''),
           h('td',null,['pending','conflict'].includes(s.status)?h('button',{class:'ghost',onclick:()=>withdraw(s.id)},'Withdraw'):null))))));
     }
     if(!mine.length) out.push(h('p',{class:'sub'},F.status==='all'&&F.kind==='all'?'You haven\'t submitted anything yet.':'Nothing matches these filters.'));
@@ -261,8 +261,8 @@ const VIEWS={
             document.querySelectorAll('#signups input.supick').forEach(c=>{ c.checked=on; on?SU_PICKED.add(c.dataset.id):SU_PICKED.delete(c.dataset.id) }); suBar() }}),h('span',null,`Select all (${S.requests.length})`)):null,'Name','Username','Asked',''),
           S.requests.map(r=>h('tr',{'data-user':r.username},
           many?h('td',null,h('label',{class:'pick'},h('input',{type:'checkbox',class:'supick','data-id':r.id,checked:SU_PICKED.has(String(r.id)),
-            onchange:e=>{ e.currentTarget.checked?SU_PICKED.add(String(r.id)):SU_PICKED.delete(String(r.id)); suBar() }}),h('span',{class:'vh'},`Select ${r.full_name} (${r.username})`))):null,
-          h('td',null,r.full_name,r.position?h('div',{class:'sub'},r.position):null),
+            onchange:e=>{ e.currentTarget.checked?SU_PICKED.add(String(r.id)):SU_PICKED.delete(String(r.id)); suBar() }}),h('span',{class:'vh'},'Select ',K.userText(r.full_name),` (${r.username})`))):null,
+          h('td',null,K.userText(r.full_name),r.position?K.userText(r.position,'div',{class:'sub'}):null),
           h('td',{class:'mono'},r.username,r.person?h('div',{class:'del'},`this is the username of ${whoIs(r.person)}, who uses the app and has no web sign-in`,
               canEdit(r.person)?null:' (only the manager can approve an admin as the same person)')
             :r.taken?h('div',{class:'del'},'this username exists already: approve with another one'):null,
@@ -288,7 +288,7 @@ const VIEWS={
         h('div',{class:'sub'},'There is no email: you get a one-time link (valid 7 days) to give the person. They set their own password with it.'),h('div',{id:'newlink'})),
       hiddenBar(true,nHidden),   // (whether a person still has a device is the server's to tell: Clear removed asks it)
       table(head('Name','Username','Role','Status',''),U.map(u=>h('tr',{class:u.hidden?'hidden-row':null},
-        h('td',null,u.full_name?u.full_name:h('span',{class:'del'},'no name yet'),u.position?h('div',{class:'sub'},u.position):null),
+        h('td',null,u.full_name?K.userText(u.full_name):h('span',{class:'del'},'no name yet'),u.position?K.userText(u.position,'div',{class:'sub'}):null),
         h('td',{class:'mono'},u.username,u.id===ME.user.id?[' ',h('span',{class:'sub'},'(you)')]:null),
         h('td',null,u.role),
         h('td',null,u.no_account?(u.active?[`own device${u.devices===1?'':'s'} `,h('span',{class:'sub'},`(${u.devices})`)]:h('span',{class:'del'},'all devices removed'))
@@ -311,7 +311,7 @@ const VIEWS={
       idle(); return c };
     // (on a server, the account's own key, which its web sign-ins use: the server never removes the key the request comes with, so no Remove)
     const isSelf=d=>d.this_computer||d.this_signin;
-    const devRow=(d,mine)=>h('tr',null,h('td',null,d.label||'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:d.this_signin?[' ',h('span',{class:'sub'},'(your web sign-in)')]:null,mine?null:h('div',{class:'sub'},d.username)),
+    const devRow=(d,mine)=>h('tr',null,h('td',null,d.label?K.userText(d.label):'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:d.this_signin?[' ',h('span',{class:'sub'},'(your web sign-in)')]:null,mine?null:h('div',{class:'sub'},d.username)),
       h('td',{class:'mono sub'},`${d.device.slice(0,12)}…`),h('td',null,d.revoked?h('span',{class:'del'},'removed'):'active'),
       !d.revoked&&!isSelf(d)&&own(d)?ownRemove(d):h('td',null,!d.revoked&&!isSelf(d)?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
         :d.revoked&&isAdmin()?h('button',{class:'ghost',onclick:()=>d.hidden?setHidden([d.device,d.person],false):setHidden([d.device],true)},d.hidden?'Show again':'Hide'):null));
@@ -372,8 +372,8 @@ const VIEWS={
         return [`${str(r.key)}: `,keys.map((k,i)=>[i?' · ':'',`${k} `,val((b||{})[k]),' → ',val((a||{})[k])])] }
       return [`${str(r.entity)} ${str(r.key)}: `,val(b),' → ',val(a)] };
     put(mainFor(g),h('p',{class:'sub'},'Every applied change, newest first. ',h('b',null,'Revert'),' undoes one change. ',h('b',null,'Restore to here'),' puts all data (notes, locations, photos, links, reviews) back to how it was right after that change. Both are new entries themselves, so they can be undone too. Accounts are not affected.'),
-      table(head('Rev','When','By','Change',''),R.map(r=>h('tr',null,h('td',{class:'mono'},r.rev),h('td',{class:'sub'},when(r.ts)),h('td',null,r.full_name||r.username||'server console'),
-        h('td',null,summary(r),r.note&&!['user','sheet'].includes(r.entity)?[' ',h('span',{class:'sub'},`(${r.note})`)]:null),
+      table(head('Rev','When','By','Change',''),R.map(r=>h('tr',null,h('td',{class:'mono'},r.rev),h('td',{class:'sub'},when(r.ts)),h('td',null,r.full_name?K.userText(r.full_name):r.username||'server console'),
+        h('td',null,summary(r),r.note&&!['user','sheet'].includes(r.entity)?[' ',h('span',{class:'sub'},'(',K.userText(r.note),')')]:null),
         h('td',{class:'row'},!['user','sheet'].includes(r.entity)?[h('button',{class:'ghost',onclick:()=>revert(String(r.hid))},'Revert'),h('button',{class:'ghost',onclick:()=>restoreTo(String(r.hid),r.rev)},'Restore to here')]:null)))),
       R.length?h('div',{class:'row',style:'margin-top:10px'},R.length===100?h('button',{class:'ghost',onclick:()=>VIEWS.history(++SHOW_GEN,R[R.length-1].rev)},'Older →'):null,
                                                           isAdmin()?h('button',{class:'danger',onclick:()=>restoreTo(0)},'Restore to before any logged change'):null)
@@ -660,9 +660,9 @@ async function pollLobby(){
   // (not under a password being typed for one's own device: once the form is gone)
   if(!el.querySelector('form')){
     put(el,r.requests.length?r.requests.map(q=>{const x=q.request, c=str(q.code), lk=JSON.stringify([q.device,q.code,q.request,q.existing,q.needs_position]);return rows.get(lk)||h('div',{class:'row',style:'margin-top:8px;align-items:center','data-lk':lk,'data-device':str(q.device)},
-      h('span',{style:'font-family:var(--mono);font-size:18px;letter-spacing:2px'},`${c.slice(0,3)} ${c.slice(3)}`),
-      h('span',null,h('b',null,str(x.full_name)),` (${str(x.username)}${x.position?', '+x.position:''}) · “${x.label||'?'}”`,
-        q.existing?[h('br'),h('span',{class:'sub'},`${str(q.existing.full_name)} (${str(q.existing.username)}, ${str(q.existing.role)}) already exists: accepting adds this device as theirs.`)]:null,
+      h('span',{style:'font-family:var(--mono);font-size:18px;letter-spacing:2px'},K.codeGroups(c)),
+      h('span',null,h('b',null,K.userText(x.full_name)),` (${str(x.username)}`,x.position?[', ',K.userText(x.position)]:null,') · “',K.userText(x.label||'?'),'”',
+        q.existing?[h('br'),h('span',{class:'sub'},K.userText(q.existing.full_name),` (${str(q.existing.username)}, ${str(q.existing.role)}) already exists: accepting adds this device as theirs.`)]:null,
         q.needs_position?h('div',{class:'warn needs-position'},noPosition(x.full_name)):null),
       h('span',{class:'row'},h('button',{class:'primary',disabled:!!q.needs_position,onclick:e=>{ const b=e.currentTarget.parentNode, row=b.parentNode;
           // (Cancel: the row is made again with its buttons)
@@ -712,17 +712,17 @@ async function startInvite(){
       h('div',{id:'invstate',style:'margin:8px 0'},'Waiting for a device to scan it…'),
       h('details',null,h('summary',{class:'sub',style:'cursor:pointer'},'No camera? Copy the code instead'),
         h('textarea',{readonly:true,rows:4,style:'width:100%;font-family:var(--mono);font-size:11px',onclick:e=>e.currentTarget.select()},r.code),' ',
-        h('button',{class:'ghost',onclick:()=>navigator.clipboard.writeText(r.code).then(()=>toast('Copied'))},'Copy')),
+        h('button',{class:'ghost',onclick:()=>navigator.clipboard.writeText(r.code).then(()=>toast('Copied the invite code'))},'Copy')),
       h('button',{class:'ghost',style:'margin-top:8px',onclick:()=>cancelInvite(tok)},'Cancel'))));
   pollInvite(tok);
 }
 async function pollInvite(tok){
   const el=$('#invstate'); if(!el) return;            // left the Devices page
   let st; try{ st=await K.api(`/api/invites/${tok}`) }catch(e){ el.dataset.ended='1'; el.textContent=e.message; return }
-  const str=v=>String(v??''), who=q=>[h('b',null,str(q.full_name)),` (${str(q.username)}${q.position?', '+q.position:''}) · device “${q.label||'?'}”`];
+  const str=v=>String(v??''), who=q=>[h('b',null,K.userText(q.full_name)),` (${str(q.username)}`,q.position?[', ',K.userText(q.position)]:null,') · device “',K.userText(q.label||'?'),'”'];
   if(st.state==='open') el.textContent='Waiting for a device to scan it…';
   else if(st.state==='asked'){ if(el.dataset.asked!==st.request.device){ el.dataset.asked=st.request.device;
-      put(el,who(st.request),' wants to join.',st.existing?h('div',{class:'sub'},`${str(st.existing.full_name)} (${str(st.existing.username)}, ${str(st.existing.role)}) already exists: accepting adds this device as theirs. Only if you know it is them.`)
+      put(el,who(st.request),' wants to join.',st.existing?h('div',{class:'sub'},K.userText(st.existing.full_name),` (${str(st.existing.username)}, ${str(st.existing.role)}) already exists: accepting adds this device as theirs. Only if you know it is them.`)
                                                     :h('div',{class:'sub'},'A new person (role: user).'),
         st.needs_position?h('div',{class:'warn needs-position'},noPosition(st.request.full_name)):null,
         h('div',{class:'row',style:'margin-top:6px'},h('button',{class:'primary',disabled:!!st.needs_position,onclick:e=>mineName(st.existing?.username)?ownPassword(e.currentTarget.parentNode,'Accept',
@@ -798,7 +798,7 @@ async function renderUpdate(u){
 async function checkUpdate(){ try{ renderUpdate(await K.api('/api/update/check',{})) }catch(e){ toast(e.message) } }
 async function installUpdate(){ try{ renderUpdate(await K.api('/api/update/install',{})) }catch(e){ toast(e.message) } }
 async function saveDetails(f){ await act(async()=>{ const r=await K.api('/api/profile',{full_name:f.full_name.value,position:f.position.value});
-  ME=await K.api('/api/me').catch(()=>ME); $('#who').textContent=`${ME.user.full_name||ME.user.username} · ${ME.user.role}`; return r },'Saved') }
+  ME=await K.api('/api/me').catch(()=>ME); $('#who').replaceChildren(K.userText(ME.user.full_name||ME.user.username),` · ${ME.user.role}`); return r },'Saved') }
 async function editDetails(id,name,pos){
   const n=prompt('Full name:',name); if(n===null) return; const p=prompt('Position (optional):',pos); if(p===null) return;
   await act(()=>K.api(`/api/users/${id}`,{full_name:n,position:p}),'Details updated');
