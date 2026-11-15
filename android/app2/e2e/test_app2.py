@@ -1725,7 +1725,7 @@ class Phone(unittest.TestCase):
         # History: the approved photo in words, with who and when (before 2026-11-15 the rows read fields
         # /api/revisions never sent: "#" and "added_tag <id>")
         ui.tap('Manage', exact=True)
-        if not ui.present('History', exact=True):
+        if ui.present('Open on the drawing', exact=True):    # Manage reopened on Approvals: back to its list
             ui.sh('input', 'keyevent', '4')
         ui.scroll_to('History', exact=True)
         ui.tap('History', exact=True)

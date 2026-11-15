@@ -22,6 +22,7 @@ proc historyBy*(r: JNode): string =
   who & (if ts != nil and ts.isInt and ts.i > 0: " · " & fromUnix(ts.i).local.format("yyyy-MM-dd HH:mm") else: "")
 
 proc historyUndoable*(r: JNode): bool =
-  ## Revert and Restore are offered as admin.html offers them: not for accounts and drawings
+  ## Revert and Restore are offered as admin.html offers them: not for accounts and drawings (today's core records
+  ## no such rows; the check keeps the apps in step with admin.html if it does)
   let hid = r.get("hid")
   hid != nil and not hid.isNull and r.str("entity") notin ["user", "sheet"]
