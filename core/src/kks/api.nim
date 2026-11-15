@@ -1087,7 +1087,11 @@ proc histVal(v: JNode): string =
   ## row's before and after carry the whole value).
   if v.isNull or (v.kind in {jStr, jArr} and v.len == 0): return "(empty)"
   result = histValFull(v)
-  if result.runeLen > 160: result = result.runeSubStr(0, 160) & "…"
+  if result.runeLen > 160:
+    # cut at the last space before 160 characters, never inside a word (a KKS code is never cut short)
+    let head = result.runeSubStr(0, 160)
+    let sp = head.rfind(' ')
+    if sp > 0: result = head[0 ..< sp] & " …"
 
 proc historySummary*(entity: string, key, before, after: JNode, note: string): string =
   ## What a change did, in the words admin.html's History uses, for the apps' History lists (the same line on every

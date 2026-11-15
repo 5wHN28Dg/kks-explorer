@@ -924,8 +924,11 @@ suite "History lines (historySummary)":
     check historySummary("review", newStr("lp:4"), newNull(), parseStrict("""{"state":"ok"}"""), "") ==
       "review lp:4: (empty) → {\"state\":\"ok\"}"
   test "long values are cut, and a row whose fields read the same says it was updated":
-    let long = "x".repeat(300)
+    let long = "x".repeat(150) & " 11LAB70AA501 " & "y".repeat(100)
     let line = historySummary("equipment", newStr("11LAB70AA501"), newNull(), newObj(@[("notes", newStr(long))]), "")
-    check line == "11LAB70AA501: notes (empty) → " & "x".repeat(160) & "…"
+    check line == "11LAB70AA501: notes (empty) → " & "x".repeat(150) & " …"     # cut before the code, not inside it
+    let word = "z".repeat(300)    # one long word: kept whole
+    check historySummary("equipment", newStr("A"), newNull(), newObj(@[("notes", newStr(word))]), "") ==
+      "A: notes (empty) → " & word
     check historySummary("equipment", newStr("11LAB70AA501"), parseStrict("""{"custom":[]}"""),
       parseStrict("""{"loc":""}"""), "") == "11LAB70AA501: updated"

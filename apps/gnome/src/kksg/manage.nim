@@ -296,6 +296,7 @@ proc history(w: Win, box: W) =
       let r = revs[i]
       let hid = r.get("hid")
       let rw = row(historyTitle(r), historyBy(r), selectable = true)
+      adw_preferences_row_set_title_selectable(rw, 1)    # the line holds the code: it can be copied
       if historyUndoable(r):
         let rev = button("Revert", "flat", proc () =
           confirm(w.window, "Revert this change?", "This writes a new change that undoes it; History keeps both.", "Revert", true, proc () =

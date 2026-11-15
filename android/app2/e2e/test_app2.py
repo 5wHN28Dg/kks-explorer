@@ -1738,6 +1738,11 @@ class Phone(unittest.TestCase):
         ui.sh('settings', 'put', 'system', 'font_scale', '1.3')
         try:
             time.sleep(2)
+            if not ui.present('photo added 11LAB70AA501'):    # the font change restarted the activity
+                ui.tap('Manage', exact=True)
+                ui.scroll_to('History', exact=True)
+                ui.tap('History', exact=True)
+                ui.find('photo added 11LAB70AA501', timeout=20)
             with open(os.path.join(SHOTS, 'history-font1.3.png'), 'wb') as f:
                 f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
         finally:
