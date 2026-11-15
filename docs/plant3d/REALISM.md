@@ -1346,6 +1346,18 @@ parts). Lead times are clock days (§2.1).
   - A save's purchase order count has no cap of 9,999 (the engines have none: PO-10000 follows PO-9999).
   - In a session, a jump vote whose days are not a whole number 0 to 30 is refused (`session.gd` `jump_days`: -1),
     as the engine refuses such a jump, never committed as a plain jump.
+  - The UI/UX audit (docs/UI-UX-POLICY.md, 2026-11-15; PR #361's comments hold its tables) changed the stores'
+    screens:
+    - each part number and PO number can be copied, or written on the counter's request with a press;
+    - the levels say "none on the shelf" or "at or below the reorder point";
+    - refusals say what to do next;
+    - a form's error is shown at its field, with the focus there;
+    - the typed number, quantity and work are kept through a visit to the catalogue (each part's order quantity
+      too);
+    - fields are labelled and named, and quantities have − and + (a gamepad has no keyboard);
+    - the order and work order buttons naming roles wrap;
+    - notices keep clear of the stores and work order panels and stay on the screen;
+    - the debrief says the stores' events in words, without today's stock.
   - The counter's issue form keeps the work chosen by its id across rebuilds (works entering or leaving the list
     while it is open), and a work the trainee chose stays chosen; a chosen work that leaves the list leaves none.
 - **Replacing a transmitter (part 3, HW3's leftover; 2026-11-14):**
