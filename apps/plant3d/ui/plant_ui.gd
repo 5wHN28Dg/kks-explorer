@@ -448,6 +448,7 @@ func add_settings(box: VBoxContainer) -> void:
 		var cb := CheckBox.new()
 		cb.text = row[1]
 		cb.focus_mode = Control.FOCUS_ALL
+		cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # wraps in the settings panel's width
 		var on: bool = cf.get_value("ui", row[0], row[2])
 		cb.button_pressed = on
 		_setting(row[0], on)

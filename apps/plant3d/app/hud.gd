@@ -43,7 +43,8 @@ var controls_btn: Button       # "Controls": folds the keyboard and gamepad help
 var controls_help: Label
 var _fit_queued := false
 var settings_layer: CanvasLayer
-const SETTINGS_W := 700.0      # the settings panel's width (less on a narrower canvas)
+var _theme_scale := 0.0        # the UI scale the settings' theme was made for
+const SETTINGS_W := 700.0      # the settings panel's width at UI scale 1 (less on a narrower canvas)
 const SETTINGS_MARGIN := 16.0  # the least room left round the settings panel (as the layer's panels)
 const SETTINGS_LAYER := 8      # the settings' canvas layer (_settings)
 const SETTINGS_TOP := 160.0    # where it may begin without the interaction layer (below the HUD's buttons)
@@ -297,7 +298,7 @@ func _fit_settings() -> void:
 		else SETTINGS_TOP
 	var room := maxf(vs.y - top - SETTINGS_MARGIN, 200.0)
 	var pad := panel.get_theme_stylebox("panel").get_minimum_size()
-	var w := minf(SETTINGS_W, vs.x - 2.0 * SETTINGS_MARGIN)
+	var w := minf(SETTINGS_W * W.scale, vs.x - 2.0 * SETTINGS_MARGIN)
 	var body: Control = settings_scroll.get_child(0)
 	var want := settings_head.get_combined_minimum_size().y + float(settings_box.get_theme_constant("separation")) \
 		+ body.get_combined_minimum_size().y + pad.y
@@ -348,7 +349,12 @@ func show_settings(on: bool) -> void:
 	var was_on := panel.visible
 	panel.visible = on
 	if on:
-		# the Controls button as the layer's buttons at its UI scale (W.scale is chosen after the HUD is made)
+		# the layer's theme (ui/widgets.gd: its buttons' fills and focus ring, its text size) at its UI scale, chosen
+		# after the HUD is made; on the opaque panel the default theme's buttons barely showed
+		if panel.theme == null or _theme_scale != W.scale:
+			panel.theme = W.make_theme()
+			_theme_scale = W.scale
+		# the Controls button as the layer's buttons
 		controls_btn.custom_minimum_size = Vector2(0, 52 * W.scale)
 		controls_btn.add_theme_font_size_override("font_size", int(20 * W.scale))
 		if not was_on:                       # each opening as the first: the help folded, the body at its top

@@ -52,8 +52,8 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 		var pr: Rect2 = hud.panel.get_global_rect()
 		if not canvas.encloses(pr):
 			p.append("the settings panel %s(%s) is not inside the %s canvas: %s" % [at, when, str(canvas.size), str(pr)])
-		if pr.size.x > hud.SETTINGS_W + 0.5 or absf(pr.get_center().x - canvas.get_center().x) > 1.0:
-			p.append("the settings panel %s(%s) is not %d px wide at most and centred: %s" % [at, when, hud.SETTINGS_W, str(pr)])
+		if pr.size.x > hud.SETTINGS_W * W.scale + 0.5 or absf(pr.get_center().x - canvas.get_center().x) > 1.0:
+			p.append("the settings panel %s(%s) is not %d px wide at most and centred: %s" % [at, when, hud.SETTINGS_W * W.scale, str(pr)])
 		if pr.position.y < main.ui.panels_top() - 0.5:
 			p.append("the settings panel %s(%s) reaches up over the bars (from %.0f, the bars end at %.0f)" % [at, when,
 				pr.position.y, main.ui.panels_top()])
