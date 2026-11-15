@@ -73,6 +73,37 @@ class CourseFigure(unittest.TestCase):
             self.assertIsNone(close(g, {'points': f['points'], 'length': f['length'], 'at': [p for _, p in f['at']]}, 'flatten'))
         self.assertEqual(got['units']['choose'], [c['routes'] for c in U['choose']])
 
+    def reduced(self, engine):
+        """Under reduced motion a toggle or mode on a paused figure jumps to the new state and stays paused (#380);
+        without it, the same events play."""
+        fig = {'title': 'x', 'caption': [], 'alt': 'x', 'w': 10, 'h': 10, 'period': 2,
+               'toggles': [{'key': 'on', 'label': 'On', 'on': False}],
+               'modes': [{'label': 'A'}, {'label': 'B'}, {'label': 'C'}],
+               'values': [['a', {'follow': 'on', 'rate': 1, 'init': 0}], ['b', {'follow': 'mode', 'rate': 1}]],
+               'scene': []}
+        with sync_playwright() as p:
+            b = getattr(p, engine).launch()
+            pg = b.new_page()
+            pg.set_content('<!doctype html><meta charset=utf-8><body></body>')
+            pg.add_script_tag(content=self.js)
+            got = pg.evaluate("""(f) => { const out = [];
+              for (const reduce of [true, false]) {
+                const ev = new KCF.Figure(f, reduce), r = [[ev.playing, ev.vals.a, ev.vals.b]];
+                ev.toggle('on'); r.push([ev.playing, ev.vals.a, ev.vals.b]);
+                ev.setMode(2); r.push([ev.playing, ev.vals.a, ev.vals.b]);
+                ev.tick(0.05); r.push([ev.playing, ev.t, ev.vals.a, ev.vals.b]);
+                ev.play(); ev.setMode(1); r.push([ev.playing, ev.vals.b]);   // played on purpose: stays playing
+                out.push(r);
+              }
+              return out; }""", fig)
+            b.close()
+        self.assertEqual(got[0], [[False, 0, 0], [False, 1, 0], [False, 1, 2], [False, 0, 1, 2], [True, 2]], engine)
+        self.assertEqual(got[1][:3], [[True, 0, 0], [True, 0, 0], [True, 0, 0]], engine)
+
+    def test_reduced_chromium(self): self.reduced('chromium')
+    def test_reduced_firefox(self): self.reduced('firefox')
+    def test_reduced_webkit(self): self.reduced('webkit')
+
     def test_chromium(self): self.check('chromium')
     def test_firefox(self): self.check('firefox')
     def test_webkit(self): self.check('webkit')

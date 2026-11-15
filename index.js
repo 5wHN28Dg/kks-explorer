@@ -66,7 +66,7 @@ function selectLoc(b){
 
 async function load(){
   const me=await K.start(); K.toast=toast;
-  $('#who').textContent=me.user.full_name||me.user.username; $('#plantName').textContent=K.cfg?.plant_name?'· '+K.cfg.plant_name:'';
+  $('#who').replaceChildren(K.userText(me.user.full_name||me.user.username)); $('#plantName').textContent=K.cfg?.plant_name?'· '+K.cfg.plant_name:'';
   try{
     // procedures are optional: a plant may not have published its operation manual (yet)
     [SHEETS,BASE_TAGS,PROCS,KKS]=await Promise.all(['data/sheets.json','data/tags.json','data/procedures.json','data/kks.json'].map(u=>fetch(u).then(r=>{
@@ -477,7 +477,7 @@ function kindName(t){ const d=decode(t); if(!d) return t.kind; return KKS.compon
 
 // ---------- who and when (/api/state: photos[].by_name, equipment_by {code: {field: {by, by_name, at}}}) ----------
 const day=t=>t?new Date(t*1000).toLocaleDateString():'';
-const byLine=w=>w&&w.by_name?`by ${w.by_name}${w.at?', '+day(w.at):''}`:'';
+const byLine=w=>w&&w.by_name?['by ',K.userText(w.by_name),w.at?', '+day(w.at):'']:'';
 const eqBy=k=>(STATE.equipment_by||{})[k]||{};
 
 // ---------- descriptions: drafts from descriptions.json until a person confirms one (core views.descriptionOf) ----------
@@ -509,8 +509,8 @@ function descSec(t){
       h('button',{class:'ghost',onclick:()=>editDesc(t,d.text)},'Edit'));
   const basis=d.basis?h('div',{class:'sub'},'Basis: '+d.basis):null;
   return h('div',{class:'sec',id:'descSec'},h('h3',null,'Description'),
-    d.status==='draft'?h('div',{class:'draft'},h('div',{class:'lbl'},'Draft description (unchecked)'),h('div',{class:'desc'},d.text),basis)
-      :[h('div',{class:'desc'},d.text),h('div',{class:'by'},'Confirmed'+(d.by_name?' by '+d.by_name:'')+(d.at?', '+day(d.at):'')),basis,
+    d.status==='draft'?h('div',{class:'draft'},h('div',{class:'lbl'},'Draft description (unchecked)'),K.userText(d.text,'div',{class:'desc'}),basis)
+      :[K.userText(d.text,'div',{class:'desc'}),h('div',{class:'by'},'Confirmed',d.by_name?[' by ',K.userText(d.by_name)]:null,d.at?', '+day(d.at):''),basis,
         d.draft_differs?h('div',{class:'sub'},'Differs from the drafted text.'):null],
     tools);
 }
@@ -564,7 +564,7 @@ function select(t){
     out.push(h('div',{class:'sec'},h('h3',null,'Check this tag'),
       h('div',{class:'crop','data-sheet':t.sheet,style:cropStyle(t)}),
       h('div',{class:'sub'},'Reader saw: ',h('span',{class:'mono'},`${t.read[0]??''} / ${t.read[1]??''}`),` · confidence ${Math.round(t.conf*100)}%`),
-      t.note?h('div',{class:'warn'},t.note):null,s.note?h('div',{class:'warn'},s.note):null,
+      t.note?K.userText(t.note,'div',{class:'warn'}):null,s.note?K.userText(s.note,'div',{class:'warn'}):null,
       h('div',{class:'row2',style:'margin-top:8px'},h('div',{class:'field'},h('label',null,'KKS (with suffix)'),h('input',{id:'rvK',class:'mono',value:(s.kks)||((t.kks||'')+(t.suffix||''))})),
         h('div',{class:'field'},h('label',null,'Function letters (instruments)'),h('input',{id:'rvI',class:'mono',value:s.isa||t.isa||''}))),
       h('button',{class:'primary',onclick:()=>review(t.id,'confirmed')},'Confirm'),' ',h('button',{class:'ghost',onclick:()=>review(t.id,'rejected')},'Not a tag'),
@@ -584,7 +584,7 @@ function select(t){
   }
   const vt=valveTypeOf(t); if(vt) out.push(valveSec(t,vt));
   out.push(locSec(bodyOf(t),t.suffix));
-  if(t.added) out.push(h('div',{class:'sec'},h('h3',null,'Added by hand'),h('div',{class:'sub'},'The app\'s reader missed this tag; someone marked it on the drawing.'+(t.note?' Note: '+t.note:'')),
+  if(t.added) out.push(h('div',{class:'sec'},h('h3',null,'Added by hand'),h('div',{class:'sub'},'The app\'s reader missed this tag; someone marked it on the drawing.',t.note?[' Note: ',K.userText(t.note)]:null),
     h('button',{class:'ghost',style:'margin-top:6px',onclick:()=>removeAdded(t.added,k||'this mark')},'Remove this tag')));
   if(where.length){
     out.push(h('div',{class:'sec'},h('h3',null,'Appears on'),where.map(x=>h('span',{class:'chip',onclick:()=>goTo(x.id)},sheetName(x.sheet)))));
@@ -664,7 +664,7 @@ function cfRow(k,v,ro,by){
 }
 function fld(id,label,val,o={}){
   const a={id,readonly:true,placeholder:'—','data-ph':o.ph||''};   // the hint only once it is being edited
-  return h('div',{class:'field lock'},h('label',{for:id},label,o.by&&val?[' ',h('span',{class:'by'},'· '+o.by)]:null),h('div',{class:'lk'},
+  return h('div',{class:'field lock'},h('label',{for:id},label,o.by&&val?[' ',h('span',{class:'by'},'· ',o.by)]:null),h('div',{class:'lk'},
     o.area?h('textarea',{...a,rows:2},val||''):h('input',{...(o.type==='number'?{type:'number',inputmode:'numeric',min:0,max:10,step:1}:{}),...a,value:val||''}),
     h('button',{class:'pen',onclick:()=>unlock(id),title:`Edit ${label}`,'aria-label':`Edit ${label}`},'✎')));
 }
@@ -1074,7 +1074,7 @@ function renderSystems(){
   const row=it=>h('button',{type:'button',class:'sysrow','data-tag':it.tag,onclick:()=>{ focusPanel=true; if(innerWidth<=720){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') } goTo(it.tag) }},
     h('span',{class:'sysdot p-'+it.photos,'aria-hidden':'true',title:COVER_WORDS[it.photos]}),
     h('span',{class:'mono'},it.code),
-    h('span',{class:'d'},[it.desc,it.sheet_name].filter(Boolean).join(' · '),it.count>1?' · ×'+it.count:''),
+    h('span',{class:'d'},it.desc?[K.userText(it.desc),it.sheet_name?' · ':'']:null,it.sheet_name||'',it.count>1?' · ×'+it.count:''),
     h('span',{class:'vh'},' · '+COVER_WORDS[it.photos]));
   const out=v.blocks.map(b=>{ const n=b.systems.reduce((a,s)=>a+s.count,0);
     return h('details',{class:'lvl-blk',open:true},sum(b.blk+(b.blk_name?' · '+b.blk_name:''),n),

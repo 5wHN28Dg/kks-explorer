@@ -79,6 +79,10 @@ class WebValve(unittest.TestCase):
         n = ENGINES.index(name)
         gate, globe, cp = f'11LAB70AA5{n}1', f'11LAB70AA5{n}2', f'11LAB70CP5{n}3'
         x = 40 + n * 180
+        # an Arabic note and description on the instrument (G15: they read right to left, the code in them in order)
+        note = f'مضخة التغذية {gate} تعمل'
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': cp, 'changes': {
+            'notes': note, 'custom': [{'k': 'Description', 'v': note}, {'k': 'ملاحظة', 'v': note}]}, 'base': {}}}).get('status'), 'approved')
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
             ctx = browser.new_context(viewport={'width': 1200, 'height': 800})
@@ -111,6 +115,9 @@ class WebValve(unittest.TestCase):
             page.fill('#f_notes', 'half typed')
             page.click('#valveSec button:text-is("Confirm type")')
             self.assertEqual(page.text_content('#toast'), 'Save or cancel your edits first')
+            # the toast is in a live region that is always there (G10: screen readers hear it, the focus stays)
+            live = page.locator('[role=status][aria-live=polite]', has=page.locator('#toast'))
+            self.assertEqual(live.inner_text(), 'Save or cancel your edits first')
             self.assertEqual(page.input_value('#f_notes'), 'half typed')
             self.assertIsNone(self.custom(gate))
             page.click('#eqSave button:text-is("Cancel")')
@@ -150,6 +157,15 @@ class WebValve(unittest.TestCase):
             page.wait_for_function(f"() => document.querySelector('#panelBody .phead .kks')?.textContent === '{cp}'")
             self.assertEqual(page.locator('#valveSec').count(), 0)
             self.assertEqual(page.locator('#layer .vsym').count(), 0)
+            # its Arabic note, description and custom field: in their own direction, the code in them isolated
+            rtl = lambda sel: page.evaluate("s => [...document.querySelectorAll(s)].map(e => [e.getAttribute('dir'), e.matches(':dir(rtl)')])", sel)
+            self.assertEqual(rtl('#f_notes'), [['auto', True]])
+            self.assertEqual(page.input_value('#f_notes'), note)
+            self.assertEqual(rtl('#descSec .desc'), [['auto', True]])
+            self.assertEqual(page.text_content('#descSec .desc bdi[dir=ltr]'), gate)
+            self.assertEqual(rtl('#cfs .cf input'), [['auto', False]] + [['auto', True]] * 3)   # (Description, its text; ملاحظة, its text)
+            self.assertIn('by The Manager', page.text_content('#descSec .by'))
+            self.assertEqual(page.text_content('#descSec .by bdi[dir=auto]'), 'The Manager')
             # a member: Confirm sends a proposal; the panel says it waits, and offers no second one
             mctx = browser.new_context(viewport={'width': 1200, 'height': 800})
             mctx.add_init_script(CSP_WATCH)

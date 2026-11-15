@@ -133,14 +133,14 @@ K.start().then(() => {
         ctrl.append(h('label', null, f.slider.label, st.slider, st.out));
       }
       for (const tg of f.toggles || []) {
-        const cb = h('input', {type: 'checkbox', onchange: () => { ev.toggle(tg.key); cb.checked = !!ev.toggles[tg.key]; sync(st); }});
+        const cb = h('input', {type: 'checkbox', onchange: () => { ev.toggle(tg.key); cb.checked = !!ev.toggles[tg.key]; if (!ev.playing) paint(st); sync(st); }});
         cb.checked = !!ev.toggles[tg.key];
         ctrl.append(h('label', {style: 'flex:0 0 auto'}, cb, tg.label));
       }
       if (f.modes) {
         const name = 'm' + Math.random().toString(36).slice(2, 8);
         ctrl.append(h('div', {class: 'chips', role: 'radiogroup', 'aria-label': f.title}, f.modes.map((m, i) => {
-          const r = h('input', {type: 'radio', name, checked: i === 0, onchange: () => { ev.setMode(i); sync(st); }});
+          const r = h('input', {type: 'radio', name, checked: i === 0, onchange: () => { ev.setMode(i); if (!ev.playing) paint(st); sync(st); }});
           return h('label', {style: 'flex:0 0 auto'}, r, m.label);
         })));
       }
