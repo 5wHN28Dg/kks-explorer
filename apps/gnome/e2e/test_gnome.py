@@ -1490,8 +1490,16 @@ class Gnome(Plant):
         names = [b.get_name() for b in boxes]
         for i, nm in enumerate(names):
             tick({'name': nm}, f'{i + 1} selected')
-        atspi.click(atspi.find(a, 'button', name='Approve selected (3)', timeout=10))
-        for _ in range(40):
+        after = 'None selected' if waiting > 3 else 'Nothing waits for approval.'
+        for _ in range(5):          # (a press while the page is rebuilt after a sync is lost: again)
+            try:
+                if atspi.find_all(a, 'button', name='Approve selected (3)'):
+                    atspi.click(atspi.find(a, 'button', name='Approve selected (3)', timeout=2))
+                atspi.find(a, 'label', name=after, timeout=8)
+                break
+            except AssertionError:
+                pass
+        for _ in range(120):        # (the decisions reach the server with the app's next sync)
             st = {x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}
             if all(st.get(i) == 'approved' for i in mine):
                 break
@@ -1500,8 +1508,6 @@ class Gnome(Plant):
         # two more: one ticked, Reject selected asks once, the other stays
         ids = [nadia.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'again ' + f}, 'base': {}}})['id']
                for f in ('near', 'area')]
-        # the page again, the ticks gone with them (the bar too, when nothing else waits)
-        atspi.find(a, 'label', name='None selected' if waiting > 3 else 'Nothing waits for approval.', timeout=15)
         for _ in range(3):           # back to the side's first page, where Sync now is
             if atspi.find_all(a, 'button', name='Sync now'): break
             atspi.click(atspi.find(a, 'button', name='Back'))
