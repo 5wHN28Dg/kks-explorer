@@ -18,7 +18,8 @@
 ##                           scrolling it (ui/manual_view.gd: the MANUALS line)
 ##   walk=workshop           the Workshop walk (app/workshop_walk.gd, docs/plant3d/WORKSHOP.md §8): 3 minutes in the
 ##                           Workshop on `kind=PART` (default the first kind built), then back to the plant; its
-##                           first entry waits for the plant's warm-up of the Workshop's pipelines unless `cold=1`
+##                           first entry waits for the plant's warm-up of the Workshop's pipelines unless `cold=1`;
+##                           `mirror=CODE` opens it as the card does, CODE's state in the plant on the bench (§6.5)
 ##   walk=job job=CODE       the work view's walk (REALISM.md §3.3, §11, milestone HW2): the scenario shift_cold, the
 ##                           role of the first I&C technician, put at CODE's work place (default 30MAG10CP002) with its
 ##                           work view open, the camera going slowly round it; JOB lines give the work scene's load

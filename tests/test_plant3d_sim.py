@@ -63,6 +63,8 @@ def apply(e, item):
         e.jsa(item[2], item[3], item[4], item[5])       # a JSA (REALISM.md §8.6: the free-mode forks' and the day's)
     elif kind == 'talk':
         e.talk(item[2], item[3], item[4])
+    elif kind == 'mirror':
+        e.set_mirror(item[2], item[3])                  # the Workshop's mirror (WORKSHOP.md §6.5: the bench's runs)
     else:
         raise ValueError(f'an input this harness does not replay: {item}')
 
@@ -668,6 +670,40 @@ class GdscriptBench(unittest.TestCase):
             for run, (start, chunks, names, _, states) in want.items():
                 self.assertEqual((got[run]['from'], got[run]['chunks']), (start, chunks), f'{run} {extra}')
                 self.assertEqual(got[run]['state'], states, f'{run} {extra}: the state digests')
+
+
+@unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')
+class MirrorSources(unittest.TestCase):
+    """The live mirror's resolution (WORKSHOP.md §6.5): the app's (apps/plant3d/workshop/mirror.gd) at every piece of
+    the plant's equipment of each kind with a bench, the reference's (ref/plant3d_bench.py mirror_sources) exactly."""
+
+    def test_the_app_resolves_as_the_reference(self):
+        from ref import plant3d_bench as BM
+        b = P.check_dir(os.path.join(REPO, 'data', 'plant3d'))
+        codes = {}
+        for code, eq in b.model.p.equipment.items():
+            if eq.get('part') in b.bench:
+                codes.setdefault(eq['part'], []).append(code)
+        self.assertEqual(sorted(codes), sorted(b.bench))
+        with tempfile.TemporaryDirectory() as d:
+            cin, cout = os.path.join(d, 'codes.json'), os.path.join(d, 'out.json')
+            with open(cin, 'w', encoding='utf-8') as f:
+                json.dump(codes, f)
+            r = godot('mirror_sources.gd', f'--codes={cin}', f'--out={cout}', timeout=300)
+            no_errors(self, r)
+            self.assertIn('MIRROR ok', r.stdout, r.stdout[-2000:])
+            with open(cout, encoding='utf-8') as f:
+                got = json.load(f)
+        n = 0
+        for part, cs in codes.items():
+            for code in cs:
+                vals, mcs, missing = BM.mirror_sources(b.bench[part], b.model, code)
+                want = {'values': [[v, s, f, o] for v, s, f, o in vals],
+                        'machines': [[m, p or '', e or ''] for m, p, e in mcs],
+                        'missing': [list(x) for x in missing]}
+                self.assertEqual(got[part][code], want, f'{part} at {code}')
+                n += 1
+        self.assertGreaterEqual(n, 37)
 
 
 @unittest.skipUnless(HAVE or REQUIRED, 'no Godot editor (tools/plant3d/bench/fetch_godot.sh)')

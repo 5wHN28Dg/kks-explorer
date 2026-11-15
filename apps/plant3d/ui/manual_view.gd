@@ -701,6 +701,7 @@ func _follow_workshop(kind: String, place: String) -> void:
 	var c := code if manuals.units.get(code, {}).get("manual", "") == manuals.of_kind(kind) else ""
 	close()
 	if ws.is_open and ws.part == kind:
+		ws.leave_mirror()           # (a manual's step is the trainee's own bench, not a mirror: WORKSHOP.md §6.5)
 		_pick_step(ws, place)
 		return
 	if ws.is_open:

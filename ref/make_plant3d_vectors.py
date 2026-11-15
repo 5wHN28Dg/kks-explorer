@@ -579,6 +579,8 @@ def apply(e, item, slot=None):
         getattr(e, kind)(item[2], item[3], slot=slot)
     elif kind == 'weather':
         e.weather(item[2], slot=slot)
+    elif kind == 'mirror':
+        e.set_mirror(item[2], item[3])                  # (the Workshop's mirror, WORKSHOP.md §6.5: not an input)
     elif kind == 'jsa':             # REALISM.md §8.6 (the free-mode forks' JSAs)
         e.jsa(item[2], item[3], item[4], item[5], slot=slot)
     elif kind == 'talk':

@@ -101,7 +101,8 @@ proc sheetExtra*(rot, pageRotation: int): int =
   ## sheet's path store against its overview and tags (tests/test_kkp.nim checks all 16 combinations).
   (720 - rot mod 360 - pageRotation mod 360) mod 360
 
-proc fromPdfPage*(doc: Doc, extra: int, images = true, effort = 9): Drawing =
+proc fromPdfPage*(doc: Doc, extra: int, images = true, effort = 9, text = false): Drawing =
+  ## text: the page's text as glyph outlines too (a drawing read from its text layer; textlayer.nim)
   let (m, r) = doc.displayGeom(extra)
   result.width = uint32(q(max(0.0, r[2] - r[0])))
   result.height = uint32(q(max(0.0, r[3] - r[1])))
@@ -109,7 +110,7 @@ proc fromPdfPage*(doc: Doc, extra: int, images = true, effort = 9): Drawing =
   var styleIds = initTable[(uint8, uint8, uint8, uint32, array[3, uint8], array[3, uint8]), int]()
   var paths: seq[mupdf.Path]
   var pageImages: seq[PageImage]
-  if images: (paths, pageImages) = doc.drawingsAndImages()
+  if images: (paths, pageImages) = doc.drawingsAndImages(text)
   else: paths = doc.drawings(unrotate = true)
   var seqnos: seq[int]
   # sorted(…, key=seqno): stable

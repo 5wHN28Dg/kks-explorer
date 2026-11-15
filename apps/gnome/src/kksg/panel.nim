@@ -471,6 +471,14 @@ proc buildPanel*(w: Win, t: Tag) =
         if v.len > 0: parts.add v
       rows.add row(if s(r, "desc").len > 0: s(r, "desc") else: "Location list", parts.join(" · "))
     w.panelBox.add section("Location list", rows)
+  if rl.points.len > 0:     # where the instrument itself sits (a maker's list): beside the rows, never a conflict
+    var rows: seq[W]
+    for r in rl.points:
+      let src = r.pointSource
+      rows.add row(if s(r, "desc").len > 0: s(r, "desc") else: "Instrument point",
+                   (if r.pointText.len > 0: r.pointText else: "—") & (if src.len > 0: "\nSource: " & src else: ""),
+                   selectable = true)
+    w.panelBox.add section("Instrument point", rows)
   if t.added.len > 0:
     let g = group("Added by hand", "The reader missed this tag; someone marked it on the drawing." &
                   (if t.note.len > 0: " Note: " & t.note else: ""))

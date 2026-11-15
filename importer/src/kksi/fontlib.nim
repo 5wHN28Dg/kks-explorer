@@ -287,7 +287,7 @@ proc fixKks(s: string): string =
         if c == 'D' and result[i] == 'O': result[i] = '0'
       break
 
-proc matchFull(s: string, kks, suffix: var string): bool =
+proc matchFull*(s: string, kks, suffix: var string): bool =
   ## FULL = ^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})((?:X[A-Z]{1,2}\d{1,2})|[A-Z]{0,2})$
   if not s.fits("DDLLLDDLLDDD"): return false
   let rest = s[12 .. ^1]

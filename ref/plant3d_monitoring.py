@@ -26,6 +26,28 @@ def _limit_pair(alert, alarm, w):
     need(alarm[0] < alert[0] and alert[1] < alarm[1], 'bad_number', f'{w}: the alarm range around the alert range')
 
 
+def _picture(pic, p, m, b, w):
+    """The thermal camera's false-colour picture (REALISM.md §9.3): the equipment's own Workshop kind, every component
+    of its tree at a model value in °C, the spot on a component at the meter's own value."""
+    keys(pic, ('kind', 'spot', 'parts'), (), w)
+    need(isinstance(pic['kind'], str) and isinstance(pic['spot'], str), 'bad_type', f'{w}: kind and spot are names')
+    eq = m.p.equipment.get(p['code'])
+    need(eq is not None and eq.get('part') == pic['kind'], 'bad_ref',
+         f'{w}.kind: {pic["kind"]} is not the part kind of {p["code"]}')
+    tree = b.workshop_tree.get(pic['kind'])
+    need(tree is not None, 'bad_ref', f'{w}.kind: {pic["kind"]} has no Workshop data')
+    need(isinstance(pic['parts'], dict) and set(pic['parts']) == set(tree), 'bad_ref',
+         f'{w}.parts: every component of the {pic["kind"]} tree, and only those')
+    units = {name: n.get('unit') for name, n, _ in m.values}
+    for c, v in pic['parts'].items():
+        need(isinstance(v, str), 'bad_ref', f'{w}.parts.{c}: a value\'s name')
+        need(units.get(v) == '°C' or v == 'ambient_t' and v in m.ext, 'bad_ref',
+             f'{w}.parts.{c}: {v!r} is no model value in °C (nor the air\'s, ambient_t)')
+    need(pic['spot'] in tree, 'bad_ref', f'{w}.spot: no component {pic["spot"]!r}')
+    need(pic['parts'][pic['spot']] == m.meter_ix[p['meter']]['value'], 'bad_ref',
+         f'{w}.spot: the spot reads the meter\'s own value')
+
+
 def check(d, b):
     """Check the monitoring file d against the checked bundle b (its model's values, meters and hand actions)."""
     w0 = 'monitoring.json'
@@ -57,7 +79,7 @@ def check(d, b):
         if k in ('vib', 'ir'):
             req = ('code', 'kind', 'title', 'meter') + (('rpm', 'group', 'zones', 'floor', 'lines') if k == 'vib'
                                                          else ('limits',))
-            keys(p, req, ('tones',) if k == 'vib' else (), w)
+            keys(p, req, ('tones',) if k == 'vib' else ('picture',), w)
             mt = m.meter_ix.get(p['meter'])
             need(mt is not None, 'bad_ref', f'{w}.meter: {p["meter"]} is no meter of the model')
             need(mt['kks'] == p['code'], 'bad_ref', f'{w}.meter: {p["meter"]} is at {mt["kks"]}, not {p["code"]}')
@@ -100,6 +122,8 @@ def check(d, b):
             num(lim[0], f'{w}.limits')
             num(lim[1], f'{w}.limits', lim[0])
             need(lim[0] < lim[1], 'bad_number', f'{w}.limits: the alert below the alarm')
+            if 'picture' in p:
+                _picture(p['picture'], p, m, b, f'{w}.picture')
         else:
             h = m.hand_keys[(p['code'], p['action'])]
             nodes = []

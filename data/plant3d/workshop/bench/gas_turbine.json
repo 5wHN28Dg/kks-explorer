@@ -459,5 +459,9 @@
   "ph",
   "slip",
   "mw"
+ ],
+ "mirror": [
+  {"value": "turbine_state", "from": {"machine": true}},
+  {"value": "speed", "from": {"bind": "anim", "channel": "shaft"}}
  ]
 }

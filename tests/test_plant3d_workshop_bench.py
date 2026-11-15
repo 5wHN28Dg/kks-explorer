@@ -627,5 +627,95 @@ class Transmitter(unittest.TestCase):
         self.assertEqual(cm.exception.code, 'bad_ref')
 
 
+class Mirror(unittest.TestCase):
+    """The live mirror (WORKSHOP.md §6.5, K6): each committed bench's `mirror` resolved at every piece of the plant's
+    equipment of its kind by that equipment's own bindings (ref/plant3d_bench.py mirror_sources, as the app's
+    workshop/mirror.gd), units made the bench's, the plant machine's states all the bench machine's; and the engine's
+    overwrite (ref/plant3d.py set_mirror) as its vectors run it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.b = P.check_dir(DATA)
+        cls.m = cls.b.model
+        cls.benches = {}
+        for part, t, comps, sounds in G.committed():
+            cls.benches[part] = B.check(B.loads(t), comps, 'bench', sounds)
+        cls.codes = {}
+        for code, eq in cls.m.p.equipment.items():
+            cls.codes.setdefault(eq.get('part'), []).append(code)
+
+    def test_every_kind_with_a_bench_mirrors(self):
+        for part, bm in self.benches.items():
+            self.assertTrue(bm.mirror, f'{part}: a bench file with no mirror')
+            self.assertTrue(self.codes.get(part), f'{part}: no equipment of this kind in the plant')
+
+    def test_every_transmitter_mirrors_its_pressure_powered(self):
+        bm = self.benches['pressure_transmitter']
+        units = {name: n.get('unit', '') for name, n, _ in self.m.values}
+        seen = set()
+        for code in self.codes['pressure_transmitter']:
+            vals, mcs, missing = B.mirror_sources(bm, self.m, code)
+            self.assertEqual(missing, [], code)
+            self.assertEqual(mcs, [('supply', None, 'on')], code)
+            self.assertEqual(len(vals), 1, code)
+            v, src, f, o = vals[0]
+            self.assertEqual(v, 'p_applied')
+            seen.add(units[src])
+            if units[src] == 'bar':
+                self.assertEqual((f, o), (1.0, 0.0))
+        self.assertEqual(seen, {'bar', 'kPa(a)', 'm'}, 'the plant\'s transmitters\' units (each made bar here)')
+
+    def test_units_made_the_benchs(self):
+        """A condenser's 9.2 kPa(a) is −0.92 bar gauge; a filter's 10 m of water 0.98 bar; bar is bar."""
+        for pu, x, want in (('kPa(a)', 9.2, -0.92125), ('m', 10, 0.980665), ('kPa', 250, 2.5), ('MPa', 1.2, 12),
+                            ('mbar', 500, 0.5), ('bar(a)', 2.01325, 1.0)):
+            f, o = B.UNITS[('bar', pu)]
+            self.assertAlmostEqual(x * f + o, want, places=9, msg=pu)
+
+    def test_the_turbines(self):
+        st, gt = self.benches['steam_turbine'], self.benches['gas_turbine']
+        self.assertEqual(B.mirror_sources(st, self.m, '30MAA10'),
+                         ([('speed', 'st_speed', 1.0, 0.0), ('flow', 'st_flow', 1.0, 0.0)],
+                          [('turbine', 'st_start', None)], []))
+        # the other casing on the same shaft: its machine is the one whose speed it shows; it makes no steam sound
+        vals, mcs, missing = B.mirror_sources(st, self.m, '30MAB10')
+        self.assertEqual((vals, mcs), ([('speed', 'st_speed', 1.0, 0.0)], [('turbine', 'st_start', None)]))
+        self.assertEqual([x[0] for x in missing], ['flow'])
+        self.assertEqual(B.mirror_sources(gt, self.m, '10MBA10'),
+                         ([('speed', 'gt1_speed', 1.0, 0.0)], [('turbine', 'gt1_start', None)], []))
+
+    def test_every_plant_state_is_the_benchs(self):
+        """A mirrored machine's plant states are all the bench machine's (by name: none would be left unmirrored)."""
+        plant = {mc['id']: [s['id'] for s in mc['states']] for mc in self.m.machines}
+        for part, bm in self.benches.items():
+            bench = {mc['id']: [s['id'] for s in mc['states']] for mc in bm.b.model.machines}
+            for code in self.codes[part]:
+                for mid, pmid, _ in B.mirror_sources(bm, self.m, code)[1]:
+                    if pmid is not None:
+                        self.assertEqual([s for s in plant[pmid] if s not in bench[mid]], [], f'{part} at {code}')
+
+    def test_the_overwrite(self):
+        """The engine writes the mirrored values after step 2 and enters the mirrored state with its set; a trip
+        neither latches nor moves the machine while it is mirrored; nothing of it is an input or in the digest."""
+        bm = B.check(B.loads(G.text(G.gadget_ok())), G.GADGET_COMPS, 'bench', G.GADGET_SOUNDS)
+        e = bm.engine()
+        e.step(2)
+        d0 = e.digest()
+        e.set_mirror({'speed': 1.2, 'valve_cmd': 0.6}, {'drive_m': 'running'})
+        self.assertEqual((e.digest(), e.queue), (d0, []))
+        e.step(10)
+        self.assertEqual((e.v('speed'), e.v('valve_cmd'), e.v('run')), (1.2, 0.6, 0.0))   # (running's set has no run)
+        self.assertEqual(e.mstate['drive_m'], 2)
+        self.assertFalse(e.latched['overspeed'])            # 1.2 > 1.05 for a second: held while mirrored
+        self.assertEqual([x[5] for x in e.events if x[1] == 'machine'], ['mirror'])
+        e.op('rotor', 'stop')
+        e.step()
+        self.assertEqual(e.mstate['drive_m'], 2, 'a command can\'t move a mirrored machine')
+        e.set_mirror({}, {})
+        e.step(5)
+        self.assertTrue(e.latched['overspeed'], 'the mirror ended: the bench\'s own protection again')
+        self.assertLess(e.v('speed'), 1.2)
+
+
 if __name__ == '__main__':
     unittest.main()

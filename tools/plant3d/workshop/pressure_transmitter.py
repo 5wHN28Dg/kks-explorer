@@ -272,4 +272,8 @@ def bench():
         'legends': {'pressure': {'unit': 'bar', 'table': [[-1, '#5e3c99'], [0, '#2c7bb6'], [5, '#ffffbf'],
                                                           [10, '#d7191c']]}},
         'readouts': ['p_applied', 'p_sensed', 'pv', 'pct', 'loop_ma'],
+        # the live plant's transmitter on the bench (WORKSHOP.md §6.5): the pressure its display shows; the loop
+        # supply on (the plant's transmitters have no supply of their own to mirror: they read, so they are powered)
+        'mirror': [{'value': 'p_applied', 'from': {'bind': 'show'}},
+                   {'value': 'supply_state', 'from': {'machine': True, 'else': 'on'}}],
     }
