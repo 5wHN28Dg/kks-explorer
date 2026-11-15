@@ -113,10 +113,12 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
     // reloads (the ones no longer waiting dropped), oldest first as the list shows them
     val subs = remember(r) { groups.flatMap { g -> g.optJSONArray("kinds").objects().flatMap { it.optJSONArray("items").objects() } }.sortedBy { it.optLong("created") } }
     val picked = Picked.ids
+    // photos of one kind that compete for their code: chosen with "Use this one", never approved by the batch
+    val competing = remember(r) { groups.flatMap { g -> g.optJSONArray("kinds").objects().filter { it.optBoolean("pick") }.flatMap { k -> k.optJSONArray("items").objects().map { it.optLong("id") } } }.toSet() }
     LaunchedEffect(subs) { val open = subs.map { it.optLong("id") }.toSet(); picked.retainAll(open) }
     if (groups.isEmpty()) { Dim("Nothing waits for approval."); return }
     Column {
-    if (admin) PickBar(subs, picked, say)
+    if (admin) PickBar(subs, picked, competing, say)
     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. Tick several to approve or reject them at once.") }
         items(groups) { g ->
@@ -151,7 +153,7 @@ private object Picked { val ids = mutableStateListOf<Long>() }
  *  goes as its own approve or reject, oldest first, exactly as its own button sends it; a held one (it clashes with the
  *  value as it is now) is not approved here: it needs its own "Approve anyway". */
 @Composable
-private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, say: (String) -> Unit) {
+private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, competing: Set<Long>, say: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf("") }
     var askReject by remember { mutableStateOf(false) }
@@ -161,10 +163,11 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, say: (Str
         val chosen = subs.filter { it.optLong("id") in picked }
         if (chosen.isEmpty()) { say("Nothing selected"); return }
         scope.launch {
-            var done = 0; val held = mutableListOf<Long>(); val failed = mutableListOf<String>()
+            var done = 0; val held = mutableListOf<Long>(); val rivals = mutableListOf<Long>(); val failed = mutableListOf<String>()
             for ((i, sub) in chosen.withIndex()) {
                 val id = sub.optLong("id")
                 if (action == "approve" && sub.str("status") == "conflict") { held.add(id); continue }
+                if (action == "approve" && id in competing) { rivals.add(id); continue }
                 busy = (if (action == "approve") "Approving " else "Rejecting ") + "${i + 1} of ${chosen.size}…"
                 val res = call("POST", "/api/submissions/$id/$action", JSONObject())
                 if (res.error == null) { done++; picked.remove(id) } else failed.add("#$id: ${res.error}")
@@ -174,6 +177,7 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, say: (Str
             say(buildString {
                 append(if (action == "approve") "Approved" else "Rejected").append(" $done of ${chosen.size}.")
                 if (held.isNotEmpty()) append(" Not approved: ${held.joinToString { "#$it" }} clash${if (held.size == 1) "es" else ""} with the value as it is now; decide ${if (held.size == 1) "it" else "them"} on ${if (held.size == 1) "its" else "their"} own.")
+                if (rivals.isNotEmpty()) append(" Not approved: ${rivals.joinToString { "#$it" }}: several photos of one kind compete for ${if (rivals.size == 1) "its" else "their"} code; choose with “Use this one”.")
                 if (failed.isNotEmpty()) append(" Not done: ${failed.joinToString("; ")}.")
             })
         }

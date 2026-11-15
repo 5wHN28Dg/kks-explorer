@@ -8,7 +8,7 @@ synthetic sample sheet:
   4. account requests (sign-up) the same way: Approve selected approves the plain ones only.
   /path/to/venv-with-playwright/bin/python platform/linux/e2e/test_web_batch.py [unittest arguments]
 $KKS_SERVER and $KKS_IMPORTER name the builds (default /tmp/kkslinux, /tmp/kksimp)."""
-import os, shutil, sys, tempfile, time, unittest
+import os, re, shutil, sys, tempfile, time, unittest
 from playwright.sync_api import sync_playwright, expect
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -162,6 +162,11 @@ class WebBatch(unittest.TestCase):
         held = r['id']
         self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': c, 'changes': {'notes': 'boss'}, 'base': {'notes': 'old'}}})['status'], 'approved')
         self.assertEqual(self.subs('status=open')[held]['status'], 'conflict')
+        # two photos of one kind for one code compete: only "Use this one" chooses between them, never the batch
+        import base64
+        photo = lambda t: 'data:image/jxl;base64,' + base64.b64encode(b'\xff\x0a' + t.encode() * 8).decode()
+        rivals = [self.tom.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': codes[3], 'caption': t, 'dataUrl': photo(t)}})['id']
+                  for t in ('front', 'side')]
         ctx, page, errors = self.context(browser)
         asked = []
         answer = lambda d: (asked.append((d.type, d.message)), d.accept('Not needed'))
@@ -173,18 +178,20 @@ class WebBatch(unittest.TestCase):
         expect(ok).to_be_disabled(); expect(no).to_be_disabled()
         expect(page.locator('#pickN')).to_have_text('None selected')
         # tick two one by one, and the held one
-        for i in (ids[1], ids[2], held):
+        for i in (ids[1], ids[2], held, *rivals):
             page.locator(f'#main label.pick input[data-id="{i}"]').check()
-        expect(page.locator('#pickN')).to_have_text('3 selected')
-        expect(ok).to_have_text('Approve selected (3)')
+        expect(page.locator('#pickN')).to_have_text('5 selected')
+        expect(ok).to_have_text('Approve selected (5)')
         self.assertTrue(page.evaluate("document.querySelector('#pickAll').indeterminate"))
         ok.click()
-        expect(page.locator('#toast')).to_contain_text('Approved 2 of 3.')
+        expect(page.locator('#toast')).to_contain_text('Approved 2 of 5.')
         expect(page.locator('#toast')).to_contain_text(f'#{held} clashes')
+        expect(page.locator('#toast')).to_contain_text(re.compile(rf'#({rivals[0]}|{rivals[1]}), #({rivals[0]}|{rivals[1]}): several photos of one kind compete'))
         S = self.subs()
         self.assertEqual([S[i]['status'] for i in (ids[1], ids[2])], ['approved', 'approved'])
         self.assertEqual(S[held]['status'], 'conflict')
         self.assertEqual(S[ids[0]]['status'], 'pending')
+        self.assertEqual([S[i]['status'] for i in rivals], ['pending', 'pending'])
         self.assertEqual(asked, [])                         # approving asks nothing
         # the held one is still ticked (it is still waiting); Select all ticks the rest
         expect(page.locator(f'#main label.pick input[data-id="{held}"]')).to_be_checked()
@@ -208,8 +215,8 @@ class WebBatch(unittest.TestCase):
         expect(page.locator('#main')).to_contain_text('Nothing waiting for approval.')
         self.assertEqual(asked, [])                         # no browser dialog
         S = self.subs()
-        self.assertEqual({S[i]['status'] for i in (ids[0], ids[3], held)}, {'rejected'})
-        self.assertEqual({S[i].get('note') for i in (ids[0], ids[3], held)}, {'Not needed'})
+        self.assertEqual({S[i]['status'] for i in (ids[0], ids[3], held, *rivals)}, {'rejected'})
+        self.assertEqual({S[i].get('note') for i in (ids[0], ids[3], held, *rivals)}, {'Not needed'})
         # cancelled: nothing happens
         r = self.tom.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': codes[1], 'changes': {'near': 'again'}, 'base': {}}})
         page.reload()
@@ -241,6 +248,9 @@ class WebBatch(unittest.TestCase):
         for u in ('ann', 'boss'):
             page.locator(f'#signups tr[data-user={u}] input.supick').check()
         expect(page.locator('#suN')).to_have_text('2 selected')
+        page.evaluate('rebuild()')                         # what a sync does: the ticks stay
+        expect(page.locator('#suN')).to_have_text('2 selected')
+        expect(page.locator('#signups tr[data-user=ann] input.supick')).to_be_checked()
         ok.click()
         expect(page.locator('#toast')).to_contain_text('Approved 1 of 2.')
         expect(page.locator('#toast')).to_contain_text('Not approved: boss')

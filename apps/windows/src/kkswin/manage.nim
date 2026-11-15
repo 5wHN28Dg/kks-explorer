@@ -71,6 +71,7 @@ proc photoButton(w: Win, sub: JNode, specs: var seq[(string, proc ())]) =
 # kept by id over the page's rebuilds (a sync rebuilds it); the ones no longer waiting are dropped.
 var
   picked: seq[int64]                ## the ticked proposals' ids
+  pickCompeting: seq[int64]       ## photos of one kind that compete for their code (Pick): never approved by the batch
   pickSubs: seq[JNode]              ## the waiting proposals as last drawn, oldest first
   pickChecks: seq[(int64, HWND)]    ## each one's tick
   pickAll, pickCount, pickOk, pickNo: HWND
@@ -100,11 +101,14 @@ proc decideMany(w: Win, action: string) =
                                           "Reject " & what):
     return
   var done = 0
-  var held, failed: seq[string]
+  var held, competing, failed: seq[string]
   for sub in chosen:
     let id = sub["id"].i
     if action == "approve" and sub["status"].s == "conflict":
       held.add "#" & $id
+      continue
+    if action == "approve" and id in pickCompeting:
+      competing.add "#" & $id
       continue
     try:
       discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
@@ -116,6 +120,9 @@ proc decideMany(w: Win, action: string) =
   if held.len > 0:
     msg.add " Not approved: " & held.join(", ") & (if held.len == 1: " clashes" else: " clash") &
             " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
+  if competing.len > 0:
+    msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
+            (if competing.len == 1: "its" else: "their") & " code; choose with “Use this one”."
   if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
   w.toast(msg)
   w.rebuildSide()
@@ -133,9 +140,12 @@ proc approvals(w: Win, p: Page) =
   pickChecks.setLen(0)
   pickSubs.setLen(0)
   pickAll = nil
+  pickCompeting.setLen(0)
   for grp in groups:
     for k in grp["kinds"].elems:
-      for sub in k["items"].elems: pickSubs.add sub
+      for sub in k["items"].elems:
+        pickSubs.add sub
+        if k.get("pick") != nil and k["pick"].kind == jBool and k["pick"].b: pickCompeting.add sub["id"].i
   pickSubs.sort(proc (a, b: JNode): int = cmp(a["created"].i, b["created"].i))
   var open: seq[int64]
   for sub in pickSubs: open.add sub["id"].i

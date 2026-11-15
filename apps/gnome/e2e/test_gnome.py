@@ -1465,9 +1465,9 @@ class Gnome(Plant):
         atspi.set_text(q, '')
         q.get_editable_text_iface().paste_text(0)
         for _ in range(20):
-            if q.get_text_iface().get_text(0, -1) == code: break
+            if Atspi.Text.get_text(q, 0, -1) == code: break
             time.sleep(0.2)
-        self.assertEqual(q.get_text_iface().get_text(0, -1), code)
+        self.assertEqual(Atspi.Text.get_text(q, 0, -1), code)
         atspi.find(a, 'button', name='Close the panel', timeout=5)
         # Approvals: the bar under the list
         atspi.click(atspi.find(a, 'button', name='Manage'))

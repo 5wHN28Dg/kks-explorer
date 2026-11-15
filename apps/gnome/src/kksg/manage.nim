@@ -66,6 +66,7 @@ proc photoButton(w: Win, g: W, sub: JNode) =
 # by id over the page's rebuilds (a sync rebuilds it under the person); the ones no longer waiting are dropped.
 var
   picked: seq[int64]             ## the ticked proposals' ids
+  pickCompeting: seq[int64]       ## photos of one kind that compete for their code (Pick): never approved by the batch
   pickSubs: seq[JNode]           ## the waiting proposals as last drawn, oldest first
   pickChecks: seq[(int64, W)]    ## each one's tick (in the page: not held)
   pickBar: W                     ## the bar under the Approvals page (its toolbar's bottom bar; not held)
@@ -90,15 +91,15 @@ proc pickShow() =
   gtk_button_set_label(pickNo, ("Reject selected" & (if n > 0: " (" & $n & ")" else: "")).cstring)
   for b in [pickOk, pickNo]: gtk_widget_set_sensitive(b, cint(n > 0 and not pickBusy))
 
-proc decideMany(w: Win, action: string, again: proc ()) =
+proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) =
   ## every ticked proposal, oldest first, each as its own button sends it (approve without force, reject). A held one
   ## (it clashes with the value as it is now) is not approved here: its own "Approve anyway" does that.
   if pickBusy: return
   var done = 0
-  var held, failed: seq[string]
+  var held, competing, failed: seq[string]
   var chosen: seq[JNode]
-  for sub in pickSubs:
-    if sub["id"].i in picked: chosen.add sub
+  for sub in pickSubs:      # (`only`: what was ticked when the question was asked, and still waits)
+    if sub["id"].i in picked and (only.len == 0 or sub["id"].i in only): chosen.add sub
   if chosen.len == 0:
     w.toast("Nothing selected")
     return
@@ -108,6 +109,9 @@ proc decideMany(w: Win, action: string, again: proc ()) =
     let id = sub["id"].i
     if action == "approve" and sub["status"].s == "conflict":
       held.add "#" & $id
+      continue
+    if action == "approve" and id in pickCompeting:
+      competing.add "#" & $id
       continue
     try:
       discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
@@ -120,6 +124,9 @@ proc decideMany(w: Win, action: string, again: proc ()) =
   if held.len > 0:
     msg.add " Not approved: " & held.join(", ") & (if held.len == 1: " clashes" else: " clash") &
             " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
+  if competing.len > 0:
+    msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
+            (if competing.len == 1: "its" else: "their") & " code; choose with “Pick this photo”."
   if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
   w.toast(msg)
   idle(again)      # (the bar's own button ran this: the page and the bar are made again after it returned)
@@ -147,10 +154,11 @@ proc fillPickBar(w: Win, again: proc ()) =
   pickNo = button("Reject selected", "destructive-action", proc () =
     let n = picked.len
     if n == 0: return
+    let asked = picked
     ask(w.window, "Reject " & (if n == 1: "1 proposal" else: $n & " proposals") & "?",
         "Each one is rejected as its own Reject button does. The submitters see that it was rejected.",
         "Reject " & (if n == 1: "1 proposal" else: $n & " proposals"), "Cancel", proc (yes: bool) =
-          if yes: w.decideMany("reject", again)))
+          if yes: w.decideMany("reject", again, asked)))
   pickBar.add pickAll, pickCount, pickOk, pickNo
   pickShow()
 
@@ -166,9 +174,12 @@ proc approvals(w: Win, box: W) =
     box.add label(e.msg, "dim-label")
     w.fillPickBar(again)
     return
+  pickCompeting.setLen(0)
   for grp in groups:
     for k in grp["kinds"].elems:
-      for sub in k["items"].elems: pickSubs.add sub
+      for sub in k["items"].elems:
+        pickSubs.add sub
+        if k.get("pick") != nil and k["pick"].kind == jBool and k["pick"].b: pickCompeting.add sub["id"].i
   pickSubs.sort(proc (a, b: JNode): int = cmp(a["created"].i, b["created"].i))
   var open: seq[int64]
   for sub in pickSubs: open.add sub["id"].i
