@@ -1076,6 +1076,26 @@ addition (both engines, vectors) made in K6.
   the plant draws the fan's gear case reaching up inside the hub (`RUBS`), and the exciter hood's end grille across
   the shaft's end (`RUBS`); the gear case and the exciter's hood are closed solids that their insides leave through
   (`PASSES`).
+- **The Note 9** (`lean+vis`, a test-signed release build of this pull request, `probe=1`, SAMPLE=1, battery 26.9–27.4 °C
+  at the start, the kernel reclaiming in 0.63 / 0.16 % of the samples; earlier walks with reclaim over 1 % or a start
+  above 30 °C were walked again):
+
+  | | cooling tower fan | generator |
+  |---|---|---|
+  | first entry (after the plant's warm-up) | 187 ms (load 45 ms) | 128 ms (load 44 ms) |
+  | second entry | 35 ms | 34 ms |
+  | back to the plant | 13–15 ms | 13–17 ms |
+  | guided steps | all walked, 0 loose | all walked, 0 loose |
+  | longest frame / over 100 ms after the first 5 s | 44.6 ms / 0 | 44.8 ms / 0 |
+  | frames at ≥ 30 fps | **99.89 %** | **99.81 %** |
+  | median / p95 frame | 16.7 / 32.0 ms | 16.8 / 36.1 ms |
+  | peak PSS | 1,156 MB | 1,162 MB |
+
+  The APK is 148.7 MB (the third pull request's was 148.5 MB).
+- **UI/UX audit** (docs/UI-UX-POLICY.md, two passes on the PR): the change adds words to the Workshop's existing panels
+  only. The audit found the Workshop's panels collapsed on the phone (their root control has no size: the parts tree a
+  sliver, the tools off screen) for every kind, and their text not fitting at 150 %: on main before this pull request,
+  filed as issues.
 
 ## 7. Shaders and cut faces
 
