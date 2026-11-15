@@ -535,7 +535,7 @@ async function pollLobby(){
     put(el,r.requests.length?r.requests.map(q=>{const x=q.request, c=str(q.code), lk=JSON.stringify([q.device,q.code,q.request,q.existing,q.needs_position]);return rows.get(lk)||h('div',{class:'row',style:'margin-top:8px;align-items:center','data-lk':lk,'data-device':str(q.device)},
       h('span',{style:'font-family:var(--mono);font-size:18px;letter-spacing:2px'},K.codeGroups(c)),
       h('span',null,h('b',null,K.userText(x.full_name)),` (${str(x.username)}`,x.position?[', ',K.userText(x.position)]:null,') · “',K.userText(x.label||'?'),'”',
-        q.existing?[h('br'),h('span',{class:'sub'},`${str(q.existing.full_name)} (${str(q.existing.username)}, ${str(q.existing.role)}) already exists: accepting adds this device as theirs.`)]:null,
+        q.existing?[h('br'),h('span',{class:'sub'},K.userText(q.existing.full_name),` (${str(q.existing.username)}, ${str(q.existing.role)}) already exists: accepting adds this device as theirs.`)]:null,
         q.needs_position?h('div',{class:'warn needs-position'},noPosition(x.full_name)):null),
       h('span',{class:'row'},h('button',{class:'primary',disabled:!!q.needs_position,onclick:e=>{ const b=e.currentTarget.parentNode, row=b.parentNode;
           // (Cancel: the row is made again with its buttons)
@@ -595,7 +595,7 @@ async function pollInvite(tok){
   const str=v=>String(v??''), who=q=>[h('b',null,K.userText(q.full_name)),` (${str(q.username)}`,q.position?[', ',K.userText(q.position)]:null,') · device “',K.userText(q.label||'?'),'”'];
   if(st.state==='open') el.textContent='Waiting for a device to scan it…';
   else if(st.state==='asked'){ if(el.dataset.asked!==st.request.device){ el.dataset.asked=st.request.device;
-      put(el,who(st.request),' wants to join.',st.existing?h('div',{class:'sub'},`${str(st.existing.full_name)} (${str(st.existing.username)}, ${str(st.existing.role)}) already exists: accepting adds this device as theirs. Only if you know it is them.`)
+      put(el,who(st.request),' wants to join.',st.existing?h('div',{class:'sub'},K.userText(st.existing.full_name),` (${str(st.existing.username)}, ${str(st.existing.role)}) already exists: accepting adds this device as theirs. Only if you know it is them.`)
                                                     :h('div',{class:'sub'},'A new person (role: user).'),
         st.needs_position?h('div',{class:'warn needs-position'},noPosition(st.request.full_name)):null,
         h('div',{class:'row',style:'margin-top:6px'},h('button',{class:'primary',disabled:!!st.needs_position,onclick:e=>mineName(st.existing?.username)?ownPassword(e.currentTarget.parentNode,'Accept',

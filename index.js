@@ -564,7 +564,7 @@ function select(t){
     out.push(h('div',{class:'sec'},h('h3',null,'Check this tag'),
       h('div',{class:'crop','data-sheet':t.sheet,style:cropStyle(t)}),
       h('div',{class:'sub'},'Reader saw: ',h('span',{class:'mono'},`${t.read[0]??''} / ${t.read[1]??''}`),` · confidence ${Math.round(t.conf*100)}%`),
-      t.note?h('div',{class:'warn'},t.note):null,s.note?h('div',{class:'warn'},s.note):null,
+      t.note?K.userText(t.note,'div',{class:'warn'}):null,s.note?K.userText(s.note,'div',{class:'warn'}):null,
       h('div',{class:'row2',style:'margin-top:8px'},h('div',{class:'field'},h('label',null,'KKS (with suffix)'),h('input',{id:'rvK',class:'mono',value:(s.kks)||((t.kks||'')+(t.suffix||''))})),
         h('div',{class:'field'},h('label',null,'Function letters (instruments)'),h('input',{id:'rvI',class:'mono',value:s.isa||t.isa||''}))),
       h('button',{class:'primary',onclick:()=>review(t.id,'confirmed')},'Confirm'),' ',h('button',{class:'ghost',onclick:()=>review(t.id,'rejected')},'Not a tag'),
