@@ -80,13 +80,13 @@ K.h = (tag, props, ...kids) => K.build(document.createElement(tag), props, kids)
 // one (123456).
 K.codeGroups = c => { c = String(c ?? ''); return [K.h('span', null, c.slice(0, 3)), K.h('span', {style: 'margin-left:.5em'}, c.slice(3))] };
 // Text someone wrote (a note, a name, a description, a custom field): in its own direction (dir=auto: an Arabic note
-// reads right to left), and each KKS code in it isolated left to right, so its digits stay with its letters whatever
-// the text around it. -> a <bdi> (inline), or `tag` with `props` for a block of its own.
+// reads right to left), and each KKS code in it (also written with spaces, 11 LAB70 AA501) isolated left to right, so
+// its digits stay with its letters whatever the text around it. -> a <bdi> (inline), or `tag` with `props` for a block of its own.
 K.userText = (s, tag = 'bdi', props = null) => {
   s = String(s ?? '');
   const out = [];
   let i = 0;
-  for (const m of s.matchAll(/\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3}[A-Z0-9]*/g)) {
+  for (const m of s.matchAll(/\d{2} ?[A-Z]{3} ?\d{2} ?[A-Z]{2} ?\d{3}[A-Z0-9]*/gi)) {
     if (m.index > i) out.push(s.slice(i, m.index));
     out.push(K.h('bdi', {dir: 'ltr'}, m[0]));
     i = m.index + m[0].length;
