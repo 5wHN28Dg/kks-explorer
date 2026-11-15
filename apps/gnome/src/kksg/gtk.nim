@@ -455,7 +455,6 @@ proc gtk_switch_get_active*(s: W): cint {.importc, header: HA.}
 proc gtk_switch_set_active*(s: W, v: cint) {.importc, header: HA.}
 proc gtk_check_button_get_active*(b: W): cint {.importc, header: HA.}
 proc gtk_check_button_set_active*(b: W, v: cint) {.importc, header: HA.}
-proc gtk_check_button_set_inconsistent*(b: W, v: cint) {.importc, header: HA.}
 proc gtk_accessible_announce*(a: W, message: cstring, priority: cint) {.importc, header: HA.}
 proc gtk_action_bar_new*(): W {.importc, header: HA.}
 proc gtk_action_bar_pack_start*(b, w: W) {.importc, header: HA.}
@@ -771,6 +770,7 @@ proc gtk_widget_set_overflow*(w: W, o: cint) {.importc, header: HA.}
 var GTK_OVERFLOW_HIDDEN* {.importc, header: HA, nodecl.}: cint
 proc gtk_button_new*(): W {.importc, header: HA.}
 proc gtk_button_set_child*(b, c: W) {.importc, header: HA.}
+proc gtk_button_get_child*(b: W): W {.importc, header: HA.}
 proc adw_banner_new*(title: cstring): W {.importc, header: HA.}
 proc adw_banner_set_title*(b: W, t: cstring) {.importc, header: HA.}
 proc adw_banner_set_button_label*(b: W, t: cstring) {.importc, header: HA.}

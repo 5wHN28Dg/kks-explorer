@@ -1774,17 +1774,18 @@ class Phone(unittest.TestCase):
         ui.tap('Manage', exact=True)
         ui.tap('Approvals', exact=True)
         ui.find('Select all (2)', exact=True, timeout=20)
-        tick = [n for n in ui.nodes() if (n.get('content-desc') or '').startswith(f'Select #{ids[0]},')]
-        self.assertEqual(len(tick), 1, 'one tick per proposal, named by it')
+        # (named by the app's own number for each proposal, not the server's)
+        tick = [n for n in ui.nodes() if (n.get('content-desc') or '').startswith('Select #')]
+        self.assertEqual(len(tick), 2, 'one tick per proposal, named by it')
         x, y = ui.center(tick[0])
         ui.sh('input', 'tap', str(x), str(y))
         ui.find('1 selected', exact=True)
         ui.tap('Reject selected (1)', exact=True)
         ui.find('Reject 1 proposal?', exact=True)
         ui.tap('Reject it', exact=True)
-        st = self.wait_server(lambda: (lambda d: d if d[ids[0]] == 'rejected' else None)(
+        st = self.wait_server(lambda: (lambda d: d if 'rejected' in (d[ids[0]], d[ids[1]]) else None)(
             {x['id']: x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}), 'Reject selected never reached the server')
-        self.assertEqual(st[ids[1]], 'pending')
+        self.assertEqual(sorted(('waiting' if x in ('pending', 'conflict') else x) for x in (st[ids[0]], st[ids[1]])), ['rejected', 'waiting'])
         ui.find('Select all (1)', exact=True, timeout=20)
 
     def test_position_required(self):

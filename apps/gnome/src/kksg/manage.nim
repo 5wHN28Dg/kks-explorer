@@ -78,8 +78,12 @@ proc pickShow() =
   if pickBar == nil or pickAll == nil: return
   let n = picked.len
   pickSetting = true
-  gtk_check_button_set_active(pickAll, cint(n > 0 and n == pickSubs.len))
-  gtk_check_button_set_inconsistent(pickAll, cint(n > 0 and n < pickSubs.len))
+  gtk_toggle_button_set_active(pickAll, cint(n > 0 and n == pickSubs.len))
+  for (id, cb) in pickChecks:
+    let on = id in picked
+    gtk_toggle_button_set_active(cb, cint(on))
+    let l = gtk_button_get_child(cb)
+    if l != nil: gtk_label_set_text(l, (if on: "Selected" else: "Select").cstring)
   pickSetting = false
   gtk_label_set_text(pickCount, (if n > 0: $n & " selected" else: "None selected").cstring)
   gtk_button_set_label(pickOk, ("Approve selected" & (if n > 0: " (" & $n & ")" else: "")).cstring)
@@ -128,16 +132,14 @@ proc fillPickBar(w: Win, again: proc ()) =
     gtk_widget_set_visible(pickBar, 0)
     return
   gtk_widget_set_visible(pickBar, 1)
-  pickAll = gtk_check_button_new_with_label(("Select all (" & $pickSubs.len & ")").cstring)
+  # toggle buttons, not check buttons: GTK 4 gives a check button no accessible action (AT-SPI can't press it)
+  pickAll = gtk_toggle_button_new_with_label(("Select all (" & $pickSubs.len & ")").cstring)
   pickAll.on("toggled", proc () =
     if pickSetting: return
-    let on = gtk_check_button_get_active(pickAll) != 0
+    let on = gtk_toggle_button_get_active(pickAll) != 0
     picked.setLen(0)
     if on:
       for sub in pickSubs: picked.add sub["id"].i
-    pickSetting = true
-    for (_, cb) in pickChecks: gtk_check_button_set_active(cb, cint(on))
-    pickSetting = false
     pickShow())
   pickCount = label("None selected", "dim-label")
   gtk_widget_set_hexpand(pickCount, 1)
@@ -205,12 +207,15 @@ proc approvals(w: Win, box: W) =
               gtk_widget_set_margin_top(btns, 6)
               gtk_widget_set_margin_bottom(btns, 10)
               if w.isAdmin:
-                let cb = gtk_check_button_new_with_label("Select")
+                # "Select" on screen (a toggle button: GTK 4 gives a check button no accessible action), and which
+                # one to a screen reader (a child label: GTK names a button after its own label, over the name set here)
+                let cb = gtk_toggle_button_new()
+                gtk_button_set_child(cb, label(if id in picked: "Selected" else: "Select", wrap = false))
                 setAccessibleLabel(cb, "Select #" & $id & ", " & what)
-                gtk_check_button_set_active(cb, cint(id in picked))
+                gtk_toggle_button_set_active(cb, cint(id in picked))
                 cb.on("toggled", proc () =
                   if pickSetting: return
-                  if gtk_check_button_get_active(cb) != 0:
+                  if gtk_toggle_button_get_active(cb) != 0:
                     if id notin picked: picked.add id
                   else: picked.keepItIf(it != id)
                   pickShow())

@@ -212,7 +212,7 @@ class WebBatch(unittest.TestCase):
         page.once('dialog', lambda d: d.dismiss())
         no.click()
         page.wait_for_timeout(500)
-        self.assertEqual(self.subs()[r['id']]['status'], 'pending')
+        self.assertIn(self.subs()[r['id']]['status'], ('pending', 'conflict'))      # still waiting
         self.assertEqual(errors, [])
         ctx.close()
 

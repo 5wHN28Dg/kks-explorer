@@ -430,7 +430,10 @@ proc buildPanel*(w: Win, t: Tag) =
   let headRow = hbox(8)
   headRow.add head
   if k.len > 0:       # the code to the clipboard (the user, 2026-11-15: "copy kks code from the sheet that shows tag info")
-    let copy = button("Copy", "", proc () =
+    # (a child label, not the button's own: GTK names a button after its own label, over the name set below)
+    let copy = gtk_button_new()
+    gtk_button_set_child(copy, label("Copy", wrap = false))
+    copy.onClick(proc () =
       gdk_clipboard_set_text(gtk_widget_get_clipboard(w.window), k.cstring)
       w.toast("Copied " & k))
     gtk_widget_set_valign(copy, GTK_ALIGN_START)

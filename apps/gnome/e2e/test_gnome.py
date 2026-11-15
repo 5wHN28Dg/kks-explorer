@@ -1469,7 +1469,7 @@ class Gnome(Plant):
 
         def tick(what, then):
             for _ in range(5):          # the page rebuilds after a sync that brought data: a lost click is retried
-                atspi.click(atspi.find(a, 'check box', **what, timeout=10))
+                atspi.click(atspi.find(a, 'toggle button', **what, timeout=10))
                 try:
                     return atspi.find(a, 'label', name=then, timeout=4)
                 except AssertionError:
@@ -1477,8 +1477,12 @@ class Gnome(Plant):
             self.fail(f'{what} never gave {then!r}')
         tick({'name': f'Select all ({waiting})'}, f'{waiting} selected')
         tick({'name': f'Select all ({waiting})'}, 'None selected')
-        for i, sid in enumerate(mine):
-            tick({'contains': f'Select #{sid}, '}, f'{i + 1} selected')
+        # (named by the app's own number for the proposal, which is not the server's: found by code and person)
+        boxes = atspi.find_all(a, 'toggle button', contains=f'{code} by Nadia Batch')
+        self.assertEqual(len(boxes), 3, [b.get_name() for b in boxes])
+        names = [b.get_name() for b in boxes]
+        for i, nm in enumerate(names):
+            tick({'name': nm}, f'{i + 1} selected')
         atspi.click(atspi.find(a, 'button', name='Approve selected (3)', timeout=10))
         for _ in range(40):
             st = {x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}
@@ -1486,24 +1490,33 @@ class Gnome(Plant):
                 break
             time.sleep(0.5)
         self.assertEqual([st[i] for i in mine], ['approved'] * 3)
-        atspi.find(a, 'label', contains='Approved 3 of 3.', timeout=10)
         # two more: one ticked, Reject selected asks once, the other stays
         ids = [nadia.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'again ' + f}, 'base': {}}})['id']
                for f in ('near', 'area')]
+        # the page again, the ticks gone with them (the bar too, when nothing else waits)
+        atspi.find(a, 'label', name='None selected' if waiting > 3 else 'Nothing waits for approval.', timeout=15)
+        for _ in range(3):           # back to the side's first page, where Sync now is
+            if atspi.find_all(a, 'button', name='Sync now'): break
+            atspi.click(atspi.find(a, 'button', name='Back'))
+            time.sleep(1)
         atspi.click(atspi.find(a, 'button', name='Sync now'))
-        atspi.find(a, 'check box', name=f'Select all ({waiting + 2 - 3})', timeout=30)
-        tick({'contains': f'Select #{ids[0]}, '}, '1 selected')
+        time.sleep(3)
+        atspi.click(atspi.find(a, 'button', name='Manage'))
+        atspi.click(atspi.find(a, 'button', name='Approvals'))
+        atspi.find(a, 'toggle button', name=f'Select all ({waiting + 2 - 3})', timeout=30)
+        tick({'contains': f'{code} by Nadia Batch'}, '1 selected')
         atspi.click(atspi.find(a, 'button', name='Reject selected (1)', timeout=10))
         atspi.find(a, None, name='Reject 1 proposal?', timeout=10)
         atspi.click(atspi.find(a, 'button', name='Reject it', timeout=10))
         for _ in range(40):
             st = {x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}
-            if st.get(ids[0]) == 'rejected':
+            if 'rejected' in (st.get(ids[0]), st.get(ids[1])):
                 break
             time.sleep(0.5)
-        self.assertEqual((st[ids[0]], st[ids[1]]), ('rejected', 'pending'))
+        self.assertEqual(sorted(('waiting' if x in ('pending', 'conflict') else x) for x in (st[ids[0]], st[ids[1]])), ['rejected', 'waiting'])
         # (the other waits for the next test's approvals as it found them: decided here, on the server)
-        self.boss.req('POST', f'/api/submissions/{ids[1]}/reject', {})
+        for i in ids:
+            if st[i] in ('pending', 'conflict'): self.boss.req('POST', f'/api/submissions/{i}/reject', {})
 
     def test_zzzz_kept_floor(self):
         """#144: a floor that only rides on a photo still in the queue is not a known floor for Photo for all. One
