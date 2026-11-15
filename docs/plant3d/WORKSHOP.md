@@ -120,7 +120,8 @@ A part kind's Workshop data comes from two places, joined by the builder:
 - **the generator** (`kit/parts_*.gd`, R5): everything that is geometry or depends on the parameters: the
   components, their pivots and boxes, explode directions and distances, fastener positions, anchors, flow-path
   points, symmetry for snapping;
-- **the data file** `data/plant3d/workshop/<part>.json`: everything that is words, order or choice: names, what
+- **the data file** `data/plant3d/workshop/<part>.json`: everything that is words, order or choice: the kind's
+  title (`title`, at most 60 characters, shown in the Workshop's title bar and lists), names, what
   each does, materials as text, sealing, the assembly order and its sentences, the cutaway, which parts the X-ray
   takes, the bench model it runs, the sources.
 
@@ -1115,6 +1116,11 @@ addition (both engines, vectors) made in K6.
   front bonnet's 32 studs. 12 components, 1 fastener group, 13 guided steps, 7,342 triangles (the plant's 2,844). The
   order is the Xylem Standard Xchange CPK manual's (items 3-19) with API Heat Transfer's Basco guide as a second source.
 - **The plant unchanged** (`test_kit_frozen`); what is simplified and the trees' limits are in the kit README.
+- **The UI audit** (docs/UI-UX-POLICY.md) brought two fixes for every kind: each data file has a `title` ("Plate heat
+  exchanger", "Horizontal pump"), which the Workshop's title bar and lists show instead of a name made from the id
+  (#391; `test_workshop` and `test_plant3d_workshop` check every kind has one); and the panels' root fills the screen
+  (#388: it kept zero offsets, so the parts tree was a sliver and the tools were off screen; `test_workshop_mode` checks
+  its size).
 - **New checks** (`tests/test_workshop.gd`): `_packs` (the plates lie square to the line from the pressure plate to
   the frame plate and follow each other plate by plate without a gap between their faces; every bolt runs along that line beside the
   plates, from beyond the pressure plate's outer face to beyond the frame plate's) and `_bundles` (every tube runs
