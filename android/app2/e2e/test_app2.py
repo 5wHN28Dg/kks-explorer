@@ -1732,6 +1732,16 @@ class Phone(unittest.TestCase):
         ui.find('photo added 11LAB70AA501', timeout=20)
         self.assertTrue(ui.present(' · 20'), 'who and when under each change')
         self.assertFalse(ui.present('#', exact=True), 'a row with no number and no words')
+        os.makedirs(SHOTS, exist_ok=True)        # for the UI audit: the rows at the normal and the largest font scale
+        with open(os.path.join(SHOTS, 'history.png'), 'wb') as f:
+            f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.3')
+        try:
+            time.sleep(2)
+            with open(os.path.join(SHOTS, 'history-font1.3.png'), 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+        finally:
+            ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
 
     def test_position_required(self):
         """request 7: a new member's join forms need a position; an admin's Add a person too"""
