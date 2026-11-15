@@ -135,8 +135,30 @@ func _run() -> void:
 	_press(sp.body, "issue_send")
 	ui.clock.run_steps(2)
 	await shot("counter_refused", sp)
+	sp.number_edit.text = ""
+	_press(sp.body, "issue_send")
+	await shot("counter_empty_number", sp)
+	sp.number_edit.text = "WDP-PT-FERRULES"
+	sp.qty_edit.text = "0"
+	_press(sp.body, "issue_send")
+	await shot("counter_qty_zero", sp)
+	sp.qty_edit.text = "10"
+	_press(sp.body, "issue_send")
+	ui.clock.run_steps(2)
+	await shot("counter_issued", sp)
+	ui.open_work_orders(wid)
+	await shot("wo_open_order", wp)
+	ui.close_work_orders()
+	ui.open_debrief()
+	await shot("debrief_parts", ui.debrief)
+	ui.close_debrief()
 	ui.open_stores("order", "pt_unit_a3")
 	await shot("order_form", sp)
+	sp.order_qty.text = "2"
+	_press(sp.body, "to_list")
+	await process_frame
+	_press(sp.body, "order_pt_unit_a3")
+	await shot("order_after_catalogue", sp)
 	sp.order("cp_oil", 1)
 	ui.clock.run_steps(2)
 	ui.open_stores()
@@ -180,6 +202,13 @@ func _run() -> void:
 	var x: Dictionary = e.m.hands_ix[PT2 + "|fit_tx"]
 	ui.work._show(Stores.fit_reason(e, x, "wrong_part"), "process_flange")
 	await shot("work_wrong_part", ui.work)
+	var fit = ui.work.actions.find_child("act_fit_tx", true, false)
+	var p = fit.get_parent() if fit != null else null
+	while p != null and not p is ScrollContainer:
+		p = p.get_parent()
+	if p != null:
+		(p as ScrollContainer).ensure_control_visible(fit)
+	await shot("work_wrong_part_scrolled", ui.work)
 	ui.work.close()
 	ui.open_stores("issue")
 	await shot("counter_walk_first", ui.stores)
@@ -203,8 +232,17 @@ func _run() -> void:
 			if ws.is_open and ws.machine != null and ws.selected != "":
 				break
 			await process_frame
-		await shot("workshop_failed_part", ws)
+		await shot("workshop_failed_part", ws, 120)
 		ws.close()
+		for i in 30:
+			await process_frame
+		if ui.open_workshop("pressure_transmitter", PT2):
+			for i in 600:
+				if ws.is_open and ws.machine != null:
+					break
+				await process_frame
+			await shot("workshop_from_settings", ws, 120)   # (the same Workshop opened the usual way, to compare)
+			ws.close()
 	else:
 		print("wm2_shots: no failed_part button")
 		ui.close_debrief()
