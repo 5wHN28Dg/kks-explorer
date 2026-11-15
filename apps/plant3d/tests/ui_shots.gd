@@ -1,7 +1,7 @@
 ## Screenshots of the interaction layer in use, to look at (not a test: it needs a display):
 ##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/ui_shots.gd -- --out=DIR
 ##     [--phone]      at the phone's UI scale (as tests/mimic_shots.gd --phone)
-##     [--settings]   the settings panel only (folded, and with the controls' help open), then quits
+##     [--settings]   the settings panel only (folded, with the controls' help open, over the alarm list), then quits
 ## The app as a trainee has it (app/main.tscn, the full tier), driven through the layer: a refused start at the
 ## pump, the cold start's step with its card, an alarm and the trips with their first out, the instructor's faults,
 ## a tour's stop, a link to another plant's code, and the plant at base load.
@@ -84,6 +84,11 @@ func _run() -> void:
 	await shot("0_settings_controls")
 	main.hud.controls_btn.button_pressed = false
 	main.hud.show_settings(false)
+	ui.toggle_alarms()                                    # over a side panel: the settings stay on top
+	main.hud.show_settings(true)
+	await shot("0_settings_over_alarms")
+	main.hud.show_settings(false)
+	ui.close_alarms()
 	if settings_only:
 		main.free()
 		quit(0)
