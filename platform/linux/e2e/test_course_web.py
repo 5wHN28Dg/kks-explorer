@@ -285,7 +285,7 @@ class CourseWeb(unittest.TestCase):
             shot = lambda: canvas.evaluate('c => c.toDataURL()')
             before = shot()
             self.assertEqual(box.locator('.vis-btn').inner_text(), 'Play')
-            box.get_by_label(fig['toggles'][0]['label']).check()
+            box.get_by_label(fig['toggles'][0]['label']).click()   # (flips it, whichever way it starts)
             page.wait_for_timeout(300)
             self.assertEqual(box.locator('.vis-btn').inner_text(), 'Play', name)   # still paused
             after = shot()
