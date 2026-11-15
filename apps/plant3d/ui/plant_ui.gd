@@ -443,7 +443,7 @@ func add_settings(box: VBoxContainer) -> void:
 		return
 	var cf: ConfigFile = main.cf
 	for row in [["instructor", "Instructor mode: scenarios and trainer faults", false],
-			["reduced_motion", "Reduced motion: no camera shake near machines, no head bob", false],
+			["reduced_motion", "Reduced motion: no camera shake or head bob, Go there without flying", false],
 			["mute", "Mute the plant's sounds", false]]:
 		var cb := CheckBox.new()
 		cb.text = row[1]

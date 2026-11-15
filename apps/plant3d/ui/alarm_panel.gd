@@ -80,7 +80,6 @@ func _ack_all() -> void:
 		any = true
 	if any:
 		ui.sounds.once("horn_ack")           # one acknowledge, one sound
-	refresh()                              # the counts at once
 
 
 ## The alarms "Acknowledge all" acknowledges (above); its button says how many (B1).

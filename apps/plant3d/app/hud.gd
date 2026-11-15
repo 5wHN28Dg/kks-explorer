@@ -11,6 +11,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 const Quality = preload("res://app/quality.gd")
 const Player = preload("res://app/player.gd")
 const About = preload("res://app/about.gd")
+const W = preload("res://ui/widgets.gd")
 const InputMode = preload("res://app/input_mode.gd")
 const TOUCH := ["auto", "on", "off"]   # the settings' values of "Touch controls": Automatic, Always, Never
 
@@ -229,11 +230,10 @@ func _settings(root: Control) -> void:
 	extra = VBoxContainer.new()
 	body.add_child(extra)
 	# the keyboard's and gamepad's controls, folded: opened, the body scrolls to show them
-	controls_btn = Button.new()
+	# (the interaction layer's shared button, ui/widgets.gd; sized to its UI scale when the panel opens: show_settings)
+	controls_btn = W.button("Controls: keyboard and gamepad", func(): pass)
 	controls_btn.name = "controls"
-	controls_btn.text = "Controls: keyboard and gamepad"
 	controls_btn.toggle_mode = true
-	controls_btn.focus_mode = Control.FOCUS_ALL
 	controls_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	body.add_child(controls_btn)
 	controls_help = Label.new()
@@ -249,8 +249,10 @@ func _settings(root: Control) -> void:
 
 ## The opened help scrolled into view (after the layout has placed it), its button kept in view above it.
 func _show_controls_help() -> void:
+	if not is_inside_tree():
+		return
 	await get_tree().process_frame
-	if controls_help.visible:
+	if is_instance_valid(controls_help) and controls_help.is_visible_in_tree():
 		settings_scroll.ensure_control_visible(controls_help)
 		settings_scroll.ensure_control_visible(controls_btn)
 
@@ -324,6 +326,9 @@ func show_settings(on: bool) -> void:
 		about.close()
 	panel.visible = on
 	if on:
+		# the Controls button as the layer's buttons at its UI scale (W.scale is chosen after the HUD is made)
+		controls_btn.custom_minimum_size = Vector2(0, 52 * W.scale)
+		controls_btn.add_theme_font_size_override("font_size", int(20 * W.scale))
 		_fit_settings()
 		_queue_fit()                         # again once the body's wrapped text has its width
 	refresh()

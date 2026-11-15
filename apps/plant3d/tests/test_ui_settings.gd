@@ -13,8 +13,9 @@ const W = preload("res://ui/widgets.gd")
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	var size0: Vector2i = tree.root.size
-	# the window as a laptop's (a 1600 × 900 canvas) and a phone's (wider: 2000 × 900), at their UI scales
-	# (the headless window is 64 px: the canvas would be square)
+	# the window as a laptop's (a 1600 × 900 canvas) and a phone's (wider: 2000 × 900), at their UI scales: the
+	# phone's makes the layer's rows in the panel (instructor, motion, sound, the Workshop) and its bars larger; the
+	# HUD's own rows keep their sizes (issue #382). (The headless window is 64 px: the canvas would be square.)
 	for w in [[Vector2i(1600, 900), ""], [Vector2i(2400, 1080), "1.35"]]:
 		tree.root.size = w[0]
 		p += await _settings(tree, w[1])
@@ -48,6 +49,8 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 		var pr: Rect2 = hud.panel.get_global_rect()
 		if not canvas.encloses(pr):
 			p.append("the settings panel %s(%s) is not inside the %s canvas: %s" % [at, when, str(canvas.size), str(pr)])
+		if pr.size.x > hud.SETTINGS_W + 0.5 or absf(pr.get_center().x - canvas.get_center().x) > 1.0:
+			p.append("the settings panel %s(%s) is not %d px wide at most and centred: %s" % [at, when, hud.SETTINGS_W, str(pr)])
 		if pr.position.y < main.ui.panels_top() - 0.5:
 			p.append("the settings panel %s(%s) reaches up over the bars (from %.0f, the bars end at %.0f)" % [at, when,
 				pr.position.y, main.ui.panels_top()])
@@ -66,6 +69,9 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 		await tree.process_frame
 		return p
 	var cb: Button = hud.controls_btn
+	if cb.size.y < 52 * W.scale - 0.5 or cb.get_theme_font_size("font_size") < int(20 * W.scale):
+		p.append("the Controls button %sis not the layer's button at its UI scale: %s, font %d" % [at, str(cb.size),
+			cb.get_theme_font_size("font_size")])
 	if hud.controls_help.is_visible_in_tree():
 		p.append("the keyboard and gamepad help is not folded at first")
 	cb.button_pressed = true
