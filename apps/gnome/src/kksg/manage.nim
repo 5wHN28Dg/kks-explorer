@@ -148,7 +148,7 @@ proc fillPickBar(w: Win, again: proc ()) =
     if on:
       for sub in pickSubs: picked.add sub["id"].i
     pickShow())
-  pickCount = label("None selected", "dim-label")
+  pickCount = label("None selected", "dim-label", wrap = false)
   gtk_widget_set_hexpand(pickCount, 1)
   pickOk = button("Approve selected", "suggested-action", proc () = w.decideMany("approve", again))
   pickNo = button("Reject selected", "destructive-action", proc () =
@@ -159,7 +159,13 @@ proc fillPickBar(w: Win, again: proc ()) =
         "Each one is rejected as its own Reject button does. The submitters see that it was rejected.",
         "Reject " & (if n == 1: "1 proposal" else: $n & " proposals"), "Cancel", proc (yes: bool) =
           if yes: w.decideMany("reject", again, asked)))
-  pickBar.add pickAll, pickCount, pickOk, pickNo
+  # two rows (the side column is narrow): Select all and the count, then the two actions, each half the width
+  let top = hbox(12)
+  top.add pickAll, pickCount
+  let acts = hbox(12)
+  gtk_box_set_homogeneous(acts, 1)
+  acts.add pickOk, pickNo
+  pickBar.add top, acts
   pickShow()
 
 proc approvals(w: Win, box: W) =
@@ -773,7 +779,7 @@ proc managePage*(w: Win): W =
       margins(b, 8)
       var bar: W = nil
       if tag == "approvals":         # Select all, Approve selected, Reject selected: under the list, always in view
-        bar = hbox(8)
+        bar = vbox(8)
         margins(bar, 8)
         pickBar = bar
       build(b)
