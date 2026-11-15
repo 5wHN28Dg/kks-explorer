@@ -460,6 +460,9 @@ func _form(e, w: Dictionary) -> void:
 		var il := W.label("Parts issued: %s" % (held if held != "" else "none"), 17, W.DIM)
 		il.name = "issued"
 		body.add_child(il)
+		var cr := StoresPanel.copy_row(ui, StoresPanel.issued_numbers(e, wid), "copy_issued_")   # (C1)
+		if cr != null:
+			body.add_child(cr)
 		if st in StoresPanel.WO_OPEN:
 			var db := W.button("Draw parts for it at the counter", func(): ui.open_stores("issue", wid))
 			db.name = "to_counter"

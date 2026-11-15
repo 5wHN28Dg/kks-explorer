@@ -476,6 +476,10 @@ func _build_actions(e) -> void:
 			var pl := W.label(StoresPanel.fitting_words(e, {"part": a["part"]}), 15, W.DIM)
 			pl.name = "part_" + act
 			actions.add_child(pl)
+			var need := StoresPanel.part_of(e, String(a["part"]))   # (its number copied: UI-UX-POLICY C1)
+			var cr := StoresPanel.copy_row(ui, [need["number"]] if not need.is_empty() else [], "copy_part_")
+			if cr != null:
+				actions.add_child(cr)
 
 
 ## The meters of this code whose tool the person carries (its kind, with the meter's mode).

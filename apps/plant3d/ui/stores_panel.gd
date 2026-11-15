@@ -24,7 +24,7 @@ const ISSUE_WHY := {
 	"where": "parts are drawn at the store's counter: walk there first",
 	"storekeeper": "nobody is at the counter to hand it over: come back when the storekeeper is on duty there",
 	"qty": "the quantity is a whole number from 1 to 9,999",
-	"work": "its work order is not planned, scheduled or in progress: plan it first (Work orders)",
+	"work": "its work order is not planned, scheduled or in progress: choose an open one, or plan this one (Work orders)",
 }
 const ORDER_WHY := {
 	"qty": "the quantity is a whole number from 1 to 9,999",
@@ -47,7 +47,8 @@ var order_qty: LineEdit
 var _work_ids: Array = []       # the issue form's works, in the pick's order
 var _draft_number := ""         # the issue form's part number and quantity as typed, kept while the panel goes to the
 var _draft_qty := ""            # catalogue and back (UI-UX-POLICY D3)
-var _draft_order := ""          # the order form's quantity as typed, for the part `part`
+var _draft_order := ""          # the order form's quantity as typed, for the part _draft_order_for
+var _draft_order_for := ""
 var _field_err := ["", ""]      # [field name, message]: a form's error shown at its field (UI-UX-POLICY F5)
 var last_copied := ""           # the last number copied (tests read it: a headless clipboard keeps nothing)
 var _pending: Array = []        # [kind, part, step it takes effect]
@@ -85,8 +86,9 @@ func open(v := "list", id := "") -> void:
 	work = id if v == "issue" else ""
 	if work != "":
 		_picked = work          # (opened for an order: its work; else the work chosen before, kept: UI-UX-POLICY D3)
-	if v == "order" and id != part:
+	if v == "order" and id != _draft_order_for:
 		_draft_order = ""
+		_draft_order_for = id
 	part = id if v == "order" else ""
 	_field_err = ["", ""]
 	visible = true
@@ -289,6 +291,9 @@ static func jump_blocked(e) -> String:
 func issue(number: String, qty: int, wid: String) -> void:
 	var e = ui.clock.engine
 	var pid := part_by_number(e, number)
+	if number.strip_edges() == "":
+		_error("issue_number", "Write the part number, as in the catalogue or the data sheet")
+		return
 	if pid == "":
 		_error("issue_number", "No part numbered %s in the catalogue: copy the number from the catalogue or the data sheet" %
 				number.strip_edges())
@@ -317,13 +322,14 @@ func _error(field: String, text: String) -> void:
 		(f as Control).grab_focus.call_deferred()     # (after the rebuild's own focus restore, which is deferred too)
 
 
-## A form field with its label above it (seen and named for screen readers, UI-UX-POLICY A5) and its error under it.
-func _field(f: Control, words: String) -> void:
+## A form field with its label above it (seen and named for screen readers, UI-UX-POLICY A5) and its error under it;
+## `holder`: the row the field sits in, when it has buttons beside it.
+func _field(f: Control, words: String, holder: Control = null) -> void:
 	var l := W.label(words, 17, Color.WHITE)
 	l.name = f.name + "_label"
 	body.add_child(l)
 	f.accessibility_name = words
-	body.add_child(f)
+	body.add_child(holder if holder != null else f)
 	if _field_err[0] == String(f.name):
 		var er := W.label(_field_err[1], 17, W.BAD_COLOUR)
 		er.name = f.name + "_error"
@@ -332,9 +338,73 @@ func _field(f: Control, words: String) -> void:
 
 ## Copies a number (a part's, a purchase order's) and says so (UI-UX-POLICY C1–C3).
 func copy(number: String) -> void:
-	last_copied = number
+	copy_to(ui, number)
+
+
+## The same, from any panel: the clipboard, then "Copied …", except on Android 13 and later, which shows its own
+## preview of what was copied (C3: never two).
+static func copy_to(u, number: String) -> void:
+	if u.stores != null:
+		u.stores.last_copied = number
 	DisplayServer.clipboard_set(number)
-	ui.toast("Copied " + number)
+	if not (OS.get_name() == "Android" and OS.get_version().get_slice(".", 0).to_int() >= 13):
+		u.toast("Copied " + number)
+
+
+## A row of Copy buttons, one per number (C1: the parts named in a line of text), or null when there are none.
+static func copy_row(u, numbers: Array, prefix := "copy_") -> HFlowContainer:
+	if numbers.is_empty():
+		return null
+	var row := HFlowContainer.new()
+	for n in numbers:
+		var b := W.button("Copy " + String(n), copy_to.bind(u, String(n)))
+		b.name = prefix + String(n)
+		row.add_child(b)
+	return row
+
+
+## The numbers of the parts a work holds (its issued parts), in the file's order.
+static func issued_numbers(e, wid: String) -> Array:
+	var out: Array = []
+	if e._sr == null or not e.sr_issued.has(wid):
+		return out
+	for p in e._sr["parts"]:
+		if int(e.sr_issued[wid].get(p["id"], 0)) > 0:
+			out.append(p["number"])
+	return out
+
+
+## The numbers of the parts the debrief names (drawn, or offered as a look-alike, up to event `to`), in the file's order.
+static func debrief_numbers(e, to: int) -> Array:
+	var out: Array = []
+	if e == null or e._sr == null:
+		return out
+	var seen := {}
+	var evs: Array = e.events
+	for i in mini(to, evs.size()):
+		var ev: Array = evs[i]
+		if ev[1] == "issue" and ev.size() > 6 and ev[6] == "done":
+			seen[ev[2]] = true
+	for p in e._sr["parts"]:
+		if seen.has(p["id"]):
+			out.append(p["number"])
+	return out
+
+
+## A quantity field with − and + beside it (a gamepad has no keyboard: UI-UX-POLICY A1), from 1 to 9,999.
+func _qty_row(f: LineEdit) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	f.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(f)
+	for d in [-1, 1]:
+		var b := W.button("−" if d < 0 else "+", func():
+			var n := f.text.strip_edges().to_int() if f.text.strip_edges().is_valid_int() else 1
+			f.text = str(clampi(n + d, 1, 9999))
+			f.text_changed.emit(f.text), 52)
+		b.name = String(f.name) + ("_minus" if d < 0 else "_plus")
+		b.accessibility_name = ("One fewer" if d < 0 else "One more")
+		row.add_child(b)
+	return row
 
 
 func _sent() -> void:
@@ -365,7 +435,9 @@ static func event_text(e, ev: Array) -> String:
 		var ws := PackedStringArray()
 		for r in why:
 			if r == "stock":
-				ws.append("only %d on the shelf" % stock_of(e, str(ev[2])))
+				var n := stock_of(e, str(ev[2]))
+				ws.append(("only %d on the shelf: ask for %d or fewer, or order more (Order, in the catalogue)" % [n, n])
+						if n > 0 else "none on the shelf: order it (Order, in the catalogue) or wait for a delivery")
 			else:
 				ws.append(ISSUE_WHY.get(r, r))
 		return "Issue of %s refused: %s" % [name, "; ".join(ws)]
@@ -599,7 +671,7 @@ func _issue_form(e) -> void:
 	qty_edit.custom_minimum_size = Vector2(0, 52 * W.scale)
 	qty_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
 	qty_edit.text_changed.connect(func(t: String) -> void: _draft_qty = t)
-	_field(qty_edit, "Quantity")
+	_field(qty_edit, "Quantity", _qty_row(qty_edit))
 	work_pick = OptionButton.new()
 	work_pick.name = "issue_work"
 	# (a work order's long name must not widen the panel past the screen, taking its Close with it: the choice shows
@@ -633,6 +705,9 @@ func _issue_form(e) -> void:
 		if not q.is_valid_int():
 			_error("issue_qty", "Write the quantity as a whole number")
 			return
+		if q.to_int() < 1 or q.to_int() > 9999:
+			_error("issue_qty", "Write a quantity from 1 to 9,999")
+			return
 		if work_pick.selected < 0 or work_pick.selected >= _work_ids.size():
 			_error("issue_work", "Choose the work order the parts are for")
 			return
@@ -652,6 +727,14 @@ func _issue_form(e) -> void:
 		var l := W.label("\n".join(lines), 16, W.DIM)
 		l.name = "issued"
 		body.add_child(l)
+		var nums: Array = []
+		for w in e.m.works:
+			for n in issued_numbers(e, w["id"]):
+				if not nums.has(n):
+					nums.append(n)
+		var cr := copy_row(ui, nums, "copy_issued_")
+		if cr != null:
+			body.add_child(cr)
 
 
 func _order_form(e) -> void:
@@ -671,12 +754,15 @@ func _order_form(e) -> void:
 	order_qty.custom_minimum_size = Vector2(0, 52 * W.scale)
 	order_qty.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
 	order_qty.text_changed.connect(func(t: String) -> void: _draft_order = t)
-	_field(order_qty, "Quantity")
+	_field(order_qty, "Quantity", _qty_row(order_qty))
 	var pid := part
 	var b := W.button("Order (as the %s)" % role_words(e, "order_parts"), func():
 		var q := order_qty.text.strip_edges()
 		if not q.is_valid_int():
 			_error("order_qty", "Write the quantity as a whole number")
+			return
+		if q.to_int() < 1 or q.to_int() > 9999:
+			_error("order_qty", "Write a quantity from 1 to 9,999")
 			return
 		_field_err = ["", ""]
 		_draft_order = ""

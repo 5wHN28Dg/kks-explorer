@@ -585,6 +585,8 @@ func _lookalike(tree: SceneTree, ui, x: Dictionary) -> String:
 	w.refresh()
 	w.last_text = ""
 	var b = w.actions.find_child("act_fit_tx", true, false)
+	if w.actions.find_child("copy_part_WDP-PT-UNIT-A3", true, false) == null:
+		return "the fitting's part cannot be copied in the work view"
 	if b == null:
 		return "no button for fit_tx: %s" % App.texts(w.actions).left(200)
 	b.pressed.emit()

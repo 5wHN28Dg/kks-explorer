@@ -11,6 +11,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 const W = preload("res://ui/widgets.gd")
 const Debrief = preload("res://ui/debrief.gd")
 const Diagnosis = preload("res://ui/diagnosis.gd")
+const StoresPanel = preload("res://ui/stores_panel.gd")   # (the parts the summary names, copied)
 const DEV_COLOUR := Color(1.0, 0.8, 0.4)
 
 var ui
@@ -21,6 +22,8 @@ var diagnosis: Array = []       # the diagnosis tab's reviews (ui/diagnosis.gd, 
 var _diag_sig := ""             # what the tab last showed (rebuilt only when it changes)
 var data := {}                  # the last Debrief.collect
 var _summary: Label
+var _copies: Control
+var _copies_sig := ""
 var _list: VBoxContainer
 var _shown := 0                 # entries of the tab shown so far
 var _events := -1               # the event list's length when last collected
@@ -51,6 +54,9 @@ func setup(u) -> void:
 		_tabs[t[0]] = b
 	_summary = W.label("", 18)
 	body.add_child(_summary)
+	_copies = HBoxContainer.new()       # the part numbers the summary names, copied (UI-UX-POLICY C1)
+	_copies.name = "copies"
+	body.add_child(_copies)
 	_list = VBoxContainer.new()
 	_list.add_theme_constant_override("separation", int(2 * W.scale))
 	body.add_child(_list)
@@ -120,6 +126,14 @@ func refresh(full := false) -> void:
 	data = Debrief.collect(e, ui.info, tr, ui.inputs.slot, ui.task_given, ui.bus_drive.log if ui.bus_drive != null else [])
 	title.text = data.title
 	_summary.text = "\n".join(Debrief.summary_lines(data))
+	var nums: Array = StoresPanel.debrief_numbers(e, e.events.size() if tr == null or tr.ev_to == -1 else tr.ev_to)
+	if str(nums) != _copies_sig:
+		_copies_sig = str(nums)
+		W.clear(_copies)
+		var cr := StoresPanel.copy_row(ui, nums, "copy_part_")
+		if cr != null:
+			cr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			_copies.add_child(cr)
 	if tab == "diagnosis":
 		_show_diagnosis(e)
 		return

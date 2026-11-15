@@ -241,6 +241,25 @@ func _panel(tree: SceneTree) -> Array:
 		_fresh(sp)
 	# a number not in the catalogue, a quantity that is not a number: refused on the form, nothing sent
 	var n0: int = e.inputs.size()
+	# (F5, F2) no number, a quantity out of range: said at the field, nothing sent; (A1) − and + change the quantity
+	sp.number_edit.text = ""
+	_press(sp.body, "issue_send")
+	await tree.process_frame
+	var ne = sp.body.find_child("issue_number_error", true, false)
+	if ne == null or not String(ne.text).begins_with("Write the part number"):
+		p.append("an empty part number: %s" % (ne.text if ne != null else sp.last_text))
+	sp.number_edit.text = "wdp-pt-ferrules"
+	sp.qty_edit.text = "0"
+	_press(sp.body, "issue_send")
+	await tree.process_frame
+	var qz = sp.body.find_child("issue_qty_error", true, false)
+	if qz == null or not String(qz.text).begins_with("Write a quantity from 1 to 9,999"):
+		p.append("a quantity of 0 was not refused at its field: %s" % sp.last_text)
+	_press(sp.body, "issue_qty_plus")
+	_press(sp.body, "issue_qty_plus")
+	_press(sp.body, "issue_qty_minus")
+	if sp.qty_edit.text != "1":
+		p.append("− and + beside the quantity: %s after + + − from 0, wanted 1 (1, 2, 1)" % sp.qty_edit.text)
 	sp.number_edit.text = "WDP-NOTHING-9"
 	_press(sp.body, "issue_send")
 	if not sp.last_text.begins_with("No part numbered WDP-NOTHING-9"):
@@ -298,6 +317,8 @@ func _panel(tree: SceneTree) -> Array:
 	il = wp.body.find_child("issued", true, false)
 	if il == null or not il.text.contains("10 × WDP-PT-FERRULES"):
 		p.append("the order's form does not list its issued parts: %s" % (il.text if il != null else "(no line)"))
+	if not _press(wp.body, "copy_issued_WDP-PT-FERRULES") or sp.last_copied != "WDP-PT-FERRULES":
+		p.append("the order's issued part cannot be copied (%s)" % sp.last_copied)
 	# the catalogue: the look-alikes side by side, a part's levels
 	ui.open_stores()
 	await tree.process_frame
@@ -346,6 +367,15 @@ func _panel(tree: SceneTree) -> Array:
 		if not ovr.encloses(sp.get_global_rect()) or oc == null or not ovr.encloses((oc as Control).get_global_rect()):
 			p.append("the order form leaves the screen (panel %s)" % str(sp.get_global_rect()))
 		sp.order_qty.text = "2"
+		# (D3) to the catalogue and back to the same part: the quantity as typed
+		_press(sp.body, "to_list")
+		await tree.process_frame
+		_press(sp.body, "order_pt_unit_a3")
+		await tree.process_frame
+		if sp.order_qty == null or sp.order_qty.text != "2":
+			p.append("the order form's quantity was lost on the way to the catalogue and back: %s" % (
+					sp.order_qty.text if sp.order_qty != null else "no form"))
+			sp.order_qty.text = "2"
 		var c0: int = e.clock()
 		_press(sp.body, "order_send")
 		ui.clock.run_steps(2)
@@ -396,6 +426,11 @@ func _panel(tree: SceneTree) -> Array:
 	var lines := "\n".join(Debrief.summary_lines(d))
 	if not lines.contains("Parts drawn for") or not lines.contains("10 × WDP-PT-FERRULES"):
 		p.append("the debrief has no parts drawn: %s" % lines.right(400))
+	ui.open_debrief()
+	await tree.process_frame
+	if not _press(ui.debrief, "copy_part_WDP-PT-FERRULES") or sp.last_copied != "WDP-PT-FERRULES":
+		p.append("the debrief's parts drawn cannot be copied (%s)" % sp.last_copied)
+	ui.close_debrief()
 	# a jump with days through the input path
 	var cj: int = e.clock()
 	ui.inputs.jump("07:00", 2)
