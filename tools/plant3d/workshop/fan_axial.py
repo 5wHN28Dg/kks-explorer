@@ -22,6 +22,20 @@ from workshop import motor
 HUDSON = 'hudson_6000'
 AMARILLO = 'amarillo_drr'
 SHAFT = 'amarillo_omds'
+def _motors(x):
+    """The motor kind's words inside the cooling tower fan: its own fan is "the motor's fan", never "the fan" (the big
+    fan is this kind's hub and blades)."""
+    if isinstance(x, str):
+        return x.replace('the fan', 'the motor\'s fan').replace('The fan', 'The motor\'s fan')
+    if isinstance(x, list):
+        return [_motors(v) for v in x]
+    if isinstance(x, tuple):
+        return tuple(_motors(v) for v in x)
+    if isinstance(x, dict):
+        return {k: (v if k in ('place', 'sources') else _motors(v)) for k, v in x.items()}
+    return x
+
+
 REVERSED = ('Hudson gives the installation order only: taking the fan apart is its reverse, not a maker\'s removal '
             'procedure.')
 
@@ -118,7 +132,7 @@ def components():
                     'the stator in its finned frame, cooled from outside by its own fan (IC 411).',
                     'Cast iron frame, laminated electrical steel core, copper winding', [motor.SIMOTICS, motor.WEG]),
     }
-    mc = motor.components('motor')
+    mc = _motors(motor.components('motor'))
     mc.pop('motor')
     mc['fan'] = dict(mc['fan'], name='Motor\'s cooling fan')
     return dict(own, **mc)
@@ -267,7 +281,7 @@ ASSEMBLY = [
          [('seal_disc', 'The nuts hold the seal disc: put it on first.', 'Take the six nuts off first.')]),
     _step('motor', 'The motor stands on the deck outside the stack, on its shims.',
           why='Its own parts come apart as the motor kind\'s do. ' + motor.DERIVED, sources=(motor.SIMOTICS,)),
-] + motor.assembly('motor', first=False) + [
+] + _motors(motor.assembly('motor', first=False)) + [
     _step('drive_shaft', 'Fit a hub on the motor\'s shaft and one on the gear drive\'s input shaft, put the spacer '
           'tube between them, bolt the flex discs to its end flanges, then check the alignment.',
           [('gb_oil_seal', 'The drive shaft\'s hub goes on the input shaft outside its oil seal plate: fit the plate '

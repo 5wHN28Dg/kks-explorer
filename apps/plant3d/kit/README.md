@@ -557,14 +557,14 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
 - **generator** (the air-cooled turbo-generator, K6: kit/parts_machines.gd `_gen_*`; the plant's first generator, the
   gas turbine's, built with its shaft line: the coupling at the drive end): the stator in its frame (core, end
   windings), the end shields in halves at both ends, a fan shield round each of the rotor's fans, the bearing pedestals
-  with their top halves, the rotor (body, retaining rings, two fans of straight blades), the coolers on top
+  with their upper halves, the rotor (body, retaining rings, two fans of straight blades), the coolers on top
   and their pipes, the terminal box, the brushless exciter (its stator and rotor) under its hood; the coupling's bolts.
   **The order** is BHEL's overhaul tender's (the user's decision, 2026-11-14: a contract scope for a hydrogen-cooled
   250 MW machine, **not a maker's manual**, which the data file and every step say), with WEG's S line manual (§8.1,
-  §8.2) as the second source: the bushings, the bearings' top halves and the coupling, the exciter's hood and the
-  exciter off its bed, the pipes and the coolers, the end shields' top halves, the bottom end shields and the
+  §8.2) as the second source: the bushings, the bearings' upper halves and the coupling, the exciter's hood and the
+  exciter off its bed, the pipes and the coolers, the end shields' upper halves, the lower end shields and the
   bearings moved aside, the fan shields slid out along the shaft (BHEL takes them out with the end shields: drawn
-  sliding out, they wait for the bottom halves), the rotor threaded out. The hydrogen seals and their seal oil are left out (this machine is
+  sliding out, they wait for the lower halves), the rotor threaded out. The hydrogen seals and their seal oil are left out (this machine is
   air-cooled: the steps say so). **Simplified:** the plant's frame, bearing pedestals and exciter hood are one stand-in
   (all its identify-class paint), split into the frame's walls (closed by a wall inside and a ring at each end), the end
   shields' halves (slabs whose outer faces are the plant's ends), the pedestals and their caps (cut at the shaft line)
@@ -577,8 +577,8 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   plinth) and its coupling to the rotor is not drawn; the exciter's hood is the plant's closed drum, lifted over the
   exciter (listed in `PASSES`), and its end grille is the plant's disc 10 mm off the hood across the shaft's end (in
   `RUBS`); the coolers are two bundles in the plant's housing (its lifting lug on it), the pipes
-  thin. **The explode:** the coolers, the hood and the exciter under it lift, the pipes move off, the end shields' top
-  halves lift and their bottom halves and the pedestals move aside (the bearings' top halves then lift off them), then
+  thin. **The explode:** the coolers, the hood and the exciter under it lift, the pipes move off, the end shields' upper
+  halves lift and their lower halves and the pedestals move aside (the bearings' upper halves then lift off them), then
   the fan shields slide out along the shaft and the rotor is threaded out through the drive end. **Known limits:** a
   hydrogen-cooled generator has no tree; built and tested for the plant's first generator only.
 

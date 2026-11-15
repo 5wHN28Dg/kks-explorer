@@ -55,27 +55,27 @@ def components():
                      [WEG, BHEL]),
         'cw_pipes': _c('Cooling water pipes', 'Bring the cooling water to the coolers and take it away.',
                        'Galvanised steel', [WEG, BHEL]),
-        'es_te_up': _c('Drive-end shield, top half', 'Closes the frame at the turbine end above the shaft line; its '
-                       'bottom half is bolted to it.', 'Fabricated steel', [BHEL]),
-        'es_te_lo': _c('Drive-end shield, bottom half', 'Closes the frame at the turbine end below the shaft line.',
+        'es_te_up': _c('Drive-end shield, upper half', 'Closes the frame at the turbine end above the shaft line; its '
+                       'lower half is bolted to it.', 'Fabricated steel', [BHEL]),
+        'es_te_lo': _c('Drive-end shield, lower half', 'Closes the frame at the turbine end below the shaft line.',
                        'Fabricated steel', [BHEL]),
-        'es_ee_up': _c('Exciter-end shield, top half', 'Closes the frame at the exciter end above the shaft line.',
+        'es_ee_up': _c('Exciter-end shield, upper half', 'Closes the frame at the exciter end above the shaft line.',
                        'Fabricated steel', [BHEL]),
-        'es_ee_lo': _c('Exciter-end shield, bottom half', 'Closes the frame at the exciter end below the shaft line.',
+        'es_ee_lo': _c('Exciter-end shield, lower half', 'Closes the frame at the exciter end below the shaft line.',
                        'Fabricated steel', [BHEL]),
         'fan_shield_te': _c('Drive-end fan shield', 'The air guide round the rotor\'s fan at the turbine end.',
                             'Steel or insulating sheet', [BHEL]),
         'fan_shield_ee': _c('Exciter-end fan shield', 'The air guide round the rotor\'s fan at the exciter end.',
                             'Steel or insulating sheet', [BHEL]),
         'ped_te': _c('Drive-end bearing pedestal', 'Carries the rotor\'s journal at the turbine end in the bearing\'s '
-                     'bottom half.',
+                     'lower half.',
                      'Cast steel, white-metal lined bearing shell', [BHEL, WEG]),
         'ped_ee': _c('Exciter-end bearing pedestal', 'Carries the rotor\'s journal at the exciter end in the bearing\'s '
-                     'bottom half; insulated from its foundation against shaft currents.',
+                     'lower half; insulated from its foundation against shaft currents.',
                      'Cast steel, white-metal lined bearing shell', [BHEL, WEG]),
-        'brg_cap_te': _c('Drive-end bearing top half', 'The bearing\'s top half and its cap with the outer oil catcher; '
+        'brg_cap_te': _c('Drive-end bearing upper half', 'The bearing\'s upper half and its cap with the outer oil catcher; '
                          'its temperature sensor comes out first.', 'Cast steel, white-metal lined shell', [BHEL, WEG]),
-        'brg_cap_ee': _c('Exciter-end bearing top half', 'The bearing\'s top half and its cap with the outer oil '
+        'brg_cap_ee': _c('Exciter-end bearing upper half', 'The bearing\'s upper half and its cap with the outer oil '
                          'catcher.', 'Cast steel, white-metal lined shell', [BHEL, WEG]),
         'rotor': _c('Rotor', 'One forging: its body carries the field winding in slots, held at the ends by retaining '
                     'rings; a fan at each end drives the cooling air. Turned by the turbine through the coupling.',
@@ -117,33 +117,33 @@ def assembly(coupled):
               [('rotor', 'The fan shield goes round the rotor\'s fan: thread the rotor in first.',
                 'Take the fan shield out before the rotor is threaded out.')],
               why='BHEL takes the fan shields out with the end shields; drawn sliding out along the shaft, they come '
-                  'out here once the bottom halves and the bearings are aside.'),
+                  'out here once the lower halves and the bearings are aside.'),
         _step('fan_shield_ee', 'Fit the exciter-end fan shield the same way.',
               [('rotor', 'The fan shield goes round the rotor\'s fan: thread the rotor in first.',
                 'Take the fan shield out before the rotor is threaded out.')]),
-        _step('es_te_lo', 'Raise the drive-end shield\'s bottom half into place under the shaft.',
-              [('rotor', 'The bottom half closes under the rotor\'s shaft: thread the rotor in first.',
-                'Take the bottom half away before the rotor is threaded out.'),
-               ('fan_shield_te', 'The bottom half closes the end the fan shield goes in by: fit the fan shield first.',
-                'Take the bottom half away before the fan shield slides out.')],
-              why='BHEL fits the bottom halves with the rotor (f.1) and lowers them just before it comes out (a.7). '
+        _step('es_te_lo', 'Raise the drive-end shield\'s lower half into place under the shaft.',
+              [('rotor', 'The lower half closes under the rotor\'s shaft: thread the rotor in first.',
+                'Take the lower half away before the rotor is threaded out.'),
+               ('fan_shield_te', 'The lower half closes the end the fan shield goes in by: fit the fan shield first.',
+                'Take the lower half away before the fan shield slides out.')],
+              why='BHEL fits the lower halves with the rotor (f.1) and lowers them just before it comes out (a.7). '
                   'Its hydrogen seals and their seal oil are a hydrogen-cooled machine\'s: this one is air-cooled.'),
-        _step('es_ee_lo', 'Raise the exciter-end shield\'s bottom half into place.',
-              [('rotor', 'The bottom half closes under the rotor\'s shaft: thread the rotor in first.',
-                'Take the bottom half away before the rotor is threaded out.'),
-               ('fan_shield_ee', 'The bottom half closes the end the fan shield goes in by: fit the fan shield first.',
-                'Take the bottom half away before the fan shield slides out.')]),
-        _step('ped_te', 'Set the drive-end bearing\'s bottom half in its pedestal under the journal and lower the rotor '
+        _step('es_ee_lo', 'Raise the exciter-end shield\'s lower half into place.',
+              [('rotor', 'The lower half closes under the rotor\'s shaft: thread the rotor in first.',
+                'Take the lower half away before the rotor is threaded out.'),
+               ('fan_shield_ee', 'The lower half closes the end the fan shield goes in by: fit the fan shield first.',
+                'Take the lower half away before the fan shield slides out.')]),
+        _step('ped_te', 'Set the drive-end bearing\'s lower half in its pedestal under the journal and lower the rotor '
               'onto it.', [('rotor', 'The bearing carries the rotor\'s journal: thread the rotor in first.',
-                            'Move the pedestal with the bearing\'s bottom half aside, the rotor held, before the rotor '
+                            'Move the pedestal with the bearing\'s lower half aside, the rotor held, before the rotor '
                             'is threaded out.'),
                            ('fan_shield_te', 'The fan shield slides in past the pedestal: fit it first.',
                             'Move the pedestal aside before the fan shield slides out.')],
               why='Its clearances are recorded as it comes out and checked as it goes back (a.7, f.3, f.5).',
               sources=(BHEL, WEG)),
-        _step('ped_ee', 'Set the exciter-end bearing\'s bottom half in its pedestal the same way.',
+        _step('ped_ee', 'Set the exciter-end bearing\'s lower half in its pedestal the same way.',
               [('rotor', 'The bearing carries the rotor\'s journal: thread the rotor in first.',
-                'Move the pedestal with the bearing\'s bottom half aside, the rotor held, before the rotor is '
+                'Move the pedestal with the bearing\'s lower half aside, the rotor held, before the rotor is '
                 'threaded out.'),
                ('fan_shield_ee', 'The fan shield slides in past the pedestal: fit it first.',
                 'Move the pedestal aside before the fan shield slides out.')],
@@ -154,30 +154,30 @@ def assembly(coupled):
         steps.append(_step('coupling_bolts', 'Align the rotor to the turbine\'s and fit the coupling bolts with the '
                            'bolt stretcher; check the coupled run-out.',
                            [('ped_te', 'The rotor is aligned on its bearings: they are in first.',
-                             'Take the coupling bolts out before the bearings\' bottom halves are touched.')],
+                             'Take the coupling bolts out before the bearings\' lower halves are touched.')],
                            why='The coupling\'s run-out is recorded before it is parted (a.2).'))
     steps += [
-        _step('es_te_up', 'Lower the drive-end shield\'s top half onto the bottom half, sealed.',
-              [('es_te_lo', 'The top half bolts onto the bottom half: fit that first.',
-                'Lift the top half off before the bottom half is taken away.'),
+        _step('es_te_up', 'Lower the drive-end shield\'s upper half onto the lower half, sealed.',
+              [('es_te_lo', 'The upper half bolts onto the lower half: fit that first.',
+                'Lift the upper half off before the lower half is taken away.'),
                ('fan_shield_te', 'The end shield closes over the fan shield: fit it first.',
                 'Lift the end shield off before the fan shield comes out.')]),
-        _step('es_ee_up', 'Lower the exciter-end shield\'s top half onto its bottom half, sealed.',
-              [('es_ee_lo', 'The top half bolts onto the bottom half: fit that first.',
-                'Lift the top half off before the bottom half is taken away.'),
+        _step('es_ee_up', 'Lower the exciter-end shield\'s upper half onto its lower half, sealed.',
+              [('es_ee_lo', 'The upper half bolts onto the lower half: fit that first.',
+                'Lift the upper half off before the lower half is taken away.'),
                ('fan_shield_ee', 'The end shield closes over the fan shield: fit it first.',
                 'Lift the end shield off before the fan shield comes out.')]),
-        _step('brg_cap_te', 'Fit the drive-end bearing\'s top half and cap with its outer oil catcher; refit its '
-              'temperature sensor.', [('ped_te', 'The top half closes over the journal in the bottom half: fit that '
-                                       'first.', 'Lift the bearing\'s top half off first.')],
+        _step('brg_cap_te', 'Fit the drive-end bearing\'s upper half and cap with its outer oil catcher; refit its '
+              'temperature sensor.', [('ped_te', 'The upper half closes over the journal in the lower half: fit that '
+                                       'first.', 'Lift the bearing\'s upper half off first.')],
               why='WEG takes the bearing sensors and the grounding brush off before the bearings.',
               sources=(BHEL, WEG)),
-        _step('brg_cap_ee', 'Fit the exciter-end bearing\'s top half and cap the same way.',
-              [('ped_ee', 'The top half closes over the journal in the bottom half: fit that first.',
-                'Lift the bearing\'s top half off first.')], sources=(BHEL, WEG)),
+        _step('brg_cap_ee', 'Fit the exciter-end bearing\'s upper half and cap the same way.',
+              [('ped_ee', 'The upper half closes over the journal in the lower half: fit that first.',
+                'Lift the bearing\'s upper half off first.')], sources=(BHEL, WEG)),
         _step('exciter', 'Set the exciter on its bed, align it to the generator\'s rotor and couple it.',
               [('ped_ee', 'The exciter is coupled to the rotor on its bearings: they are in first.',
-                'Uncouple the exciter and take it off its bed before the exciter-end bearing\'s bottom half is touched.')],
+                'Uncouple the exciter and take it off its bed before the exciter-end bearing\'s lower half is touched.')],
               why='Its swing and run-out are recorded before it is uncoupled (a.3, g.3).'),
         _step('exc_rotor', 'The exciter\'s rotor comes with it, coupled to the generator\'s.'),
         _step('exc_cover', 'Fit the exciter\'s hood.',
@@ -198,7 +198,7 @@ def assembly(coupled):
               why='Each bushing is pressure-tested on its own while it is out (a.1). WEG disconnects the electrical '
                   'connections before the generator is opened.', sources=(BHEL, WEG)),
     ]
-    # the reverse of BHEL's take-apart (a.1 the bushings, a.2 the bearings' top halves and the coupling, a.3 the
+    # the reverse of BHEL's take-apart (a.1 the bushings, a.2 the bearings' upper halves and the coupling, a.3 the
     # exciter's hood and the exciter, a.5 the pipes, the coolers, the end shields and fan shields, a.7 the bearings and
     # the bottom end shields, a.8 the rotor)
     order = ['plinth', 'stator', 'rotor', 'fan_shield_te', 'fan_shield_ee', 'es_te_lo', 'es_ee_lo', 'ped_te', 'ped_ee',

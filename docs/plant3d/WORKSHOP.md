@@ -1063,7 +1063,7 @@ addition (both engines, vectors) made in K6.
 - **The generator** (`kit/parts_machines.gd generator`, `_gen_*`; the plant's first generator, the gas turbine's, an
   air-cooled machine built with its shaft line): the plinth, the stator (frame, core, end windings), the terminal box,
   the coolers and their pipes, the end shields in halves and the fan shields at both ends, the bearing pedestals and
-  their top halves, the rotor (body, retaining rings, two fans), the coupling's 12 bolts (the plant's bolt ring), the
+  their upper halves, the rotor (body, retaining rings, two fans), the coupling's 12 bolts (the plant's bolt ring), the
   exciter's hood with its grille and the brushless exciter with its rotor. 20 components, 1 fastener group, 21 guided
   steps, 4,832 triangles (the plant's 1,364). **The order is BHEL's overhaul tender's, a contract scope and not a
   maker's manual** (the user, 2026-11-14; the data file and every step say so), with WEG's S line manual (§8) as the
@@ -1094,8 +1094,9 @@ addition (both engines, vectors) made in K6.
   The APK is 148.7 MB (the third pull request's was 148.5 MB).
 - **UI/UX audit** (docs/UI-UX-POLICY.md, two passes on the PR): the change adds words to the Workshop's existing panels
   only. The audit found the Workshop's panels collapsed on the phone (their root control has no size: the parts tree a
-  sliver, the tools off screen) for every kind, and their text not fitting at 150 %: on main before this pull request,
-  filed as issues.
+  sliver, the tools off screen) for every kind, and their text not fitting at 150 %, the step line without a panel behind it and the titles
+  made from the kinds' ids: on main before this pull request, filed as #388-#391 (and #392: the policy's frame rule
+  against §8's for the Workshop).
 
 ## 7. Shaders and cut faces
 
