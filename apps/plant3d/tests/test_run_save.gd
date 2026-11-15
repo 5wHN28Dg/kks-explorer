@@ -462,7 +462,8 @@ func _round_trip_stores(p: Array) -> void:
 			t[k] = c[1][k]
 		if Autosave._engine_contents(f2s[c[0]], t) == "":
 			p.append("realism stores: a save with %s was taken" % str(c[1]))
-	for c in [{"npc_queue": [["order", "packing", null, "keeper"]]}, {"st_kept": [[["order", 3, "packing"]]] + c8["st_kept"].slice(1)},
+	for c in [{"npc_queue": [["order", "packing", null, "keeper"]]}, {"npc_queue": [["issue", "packing", 1, null, "keeper"]]},
+			{"st_kept": [[["order", 3, "packing"]]] + c8["st_kept"].slice(1)},
 			{"queue": [["jump", "08:00", 1]]}]:
 		var t: Dictionary = c8.duplicate(true)
 		for k in c:

@@ -98,7 +98,7 @@ def check(s, workshop, tools, rel):
                  and a['range'][0] <= a['range'][1], 'bad_number', f'{w}: range')
         for x in a.get('sources', []):
             need(x in srcs, 'bad_ref', f'{w}: source {x}')
-        if 'part' in a:     # REALISM.md §2.23: the stores' part it fits (the model's check looks it up in stores.json)
+        if 'part' in a:     # REALISM.md §2.23: the stores' part it fits (check_files looks it up in stores.json)
             ident(a['part'], f'{w}: part')
     ids = set()
     for mt in s['meters']:

@@ -122,6 +122,13 @@ def check_scenario(s, b, rel):
         num(v, f'{rel}.stock.{k}', 0, st['parts'][st['ix'][k]]['max'], integer=True)
 
 
+def check_service_part(b, part, w):
+    """A service file's action's `part` (§2.23): a part of stores.json; without the file, bad_ref."""
+    st = getattr(b, 'stores', None)
+    need(st is not None, 'bad_ref', f'{w}: part: the plant has no stores.json (REALISM.md §2.23)')
+    need(part in st['ix'], 'bad_ref', f'{w}: part: no part {part!r} in stores.json')
+
+
 def check_hand_part(m, x, w):
     """A hand action's `part` (§2.23): a part of stores.json."""
     st = getattr(m.b, 'stores', None)
@@ -228,7 +235,7 @@ def order_qty(e, part):
     """An NPC's order step without a qty (§2.23): up to the part's max, max - stock - due, when the input is made."""
     st = e.stores
     k = st['ix'][part]
-    return st['parts'][k]['max'] - e.stock[k] - e.due[k]
+    return int(st['parts'][k]['max']) - e.stock[k] - e.due[k]      # (a whole number written 16.0 too: stores.gd)
 
 
 def order(e, item, npc=False):
@@ -256,7 +263,7 @@ def order(e, item, npc=False):
     e.po_count += 1
     no = f'PO-{e.po_count:04d}'
     c = e.clock()
-    e.orders.append([no, part, q, person, c, c + st['parts'][k]['lead_days'] * DAY])
+    e.orders.append([no, part, q, person, c, c + int(st['parts'][k]['lead_days']) * DAY])
     e.due[k] += q
     _write(e, k, part)
     e.ev('order', part, qty, person, 'done', [], no)

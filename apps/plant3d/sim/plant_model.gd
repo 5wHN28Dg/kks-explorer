@@ -266,6 +266,11 @@ func _load(files: Dictionary) -> void:
 		if staff.error != "":
 			_fail(staff.error)
 			return
+		if stores != null:      # a store's place is a staff place (REALISM.md §2.23: an issue walks there)
+			for st in stores["stores"]:
+				if not staff.pix.has(st["place"]):
+					_fail("stores.json: store %s: no staff place %s" % [st["id"], st["place"]])
+					return
 		for r in sd.get("reactions", []):       # a staff reaction on a value (§16.7) reads it in step 9
 			var on = r.get("on") if typeof(r) == TYPE_DICTIONARY else null
 			if typeof(on) == TYPE_DICTIONARY and (on.get("value") == "world_hour" or on.get("value") == "world_day"):

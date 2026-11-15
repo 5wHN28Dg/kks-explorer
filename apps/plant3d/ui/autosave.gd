@@ -254,13 +254,14 @@ static func _hands_contents(fresh, d: Dictionary) -> String:
 						return "a damaged NPC input"
 					who = q[3]
 				"issue", "order":
-					# the stores (REALISM.md §2.23): a part of the content, an issue's whole qty and work of the model,
-					# an order's qty whole or null (up to the part's max, worked out in step 1)
+					# the stores (REALISM.md §2.23): a part of the content, an issue's whole qty and work of the model
+					# or null (a "$" step of a task given without a work: the engine answers it `unknown`), an order's
+					# qty whole or null (up to the part's max, worked out in step 1)
 					var sr = fresh._sr
 					var iss: bool = q[0] == "issue"
 					if q.size() != (5 if iss else 4) or sr == null or typeof(q[1]) != TYPE_STRING \
 							or not sr["ix"].has(q[1]) or not (typeof(q[2]) == TYPE_INT or (not iss and q[2] == null)) \
-							or (iss and (typeof(q[3]) != TYPE_STRING or not fresh.m.work_ix.has(q[3]))):
+							or (iss and q[3] != null and (typeof(q[3]) != TYPE_STRING or not fresh.m.work_ix.has(q[3]))):
 						return "a damaged NPC input"
 					who = q[q.size() - 1]
 				"wo":

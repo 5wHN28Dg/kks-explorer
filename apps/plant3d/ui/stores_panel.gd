@@ -36,6 +36,7 @@ var body: VBoxContainer
 var title: Label
 var view := "list"              # "list", "issue" or "order"
 var work := ""                  # the issue form's work
+var _picked := ""               # the issue form's chosen work, by id (kept across rebuilds while the list changes)
 var part := ""                  # the order form's part
 var feedback: Label             # the last action's result (tests read it)
 var last_text := ""
@@ -77,6 +78,7 @@ func is_open() -> bool:
 func open(v := "list", id := "") -> void:
 	view = v
 	work = id if v == "issue" else ""
+	_picked = work
 	part = id if v == "order" else ""
 	visible = true
 	last_text = ""
@@ -392,7 +394,7 @@ func refresh() -> void:
 	# (the issue form's fields keep what was typed across a rebuild)
 	var keep := [number_edit.text if number_edit != null and is_instance_valid(number_edit) else "",
 			qty_edit.text if qty_edit != null and is_instance_valid(qty_edit) else "",
-			work_pick.selected if work_pick != null and is_instance_valid(work_pick) else -1,
+			null,   # (the work chosen is _picked, by id)
 			order_qty.text if order_qty != null and is_instance_valid(order_qty) else ""]
 	_sig = sig
 	W.clear(body)
@@ -543,9 +545,15 @@ func _issue_form(e, keep: Array) -> void:
 	for w in ws:
 		work_pick.add_item(_work_words(e, w["id"]))
 		_work_ids.append(w["id"])
-	var sel: int = _work_ids.find(work) if work != "" else int(keep[2])
-	if sel >= 0 and sel < _work_ids.size():
-		work_pick.select(sel)
+	# the work chosen, by its id: a rebuild while works enter or leave the list keeps it, or chooses none when it has
+	# left (never another work at its place in the list); the first build takes the order's work, else the first
+	if _picked == "" and not _work_ids.is_empty():
+		_picked = _work_ids[0]
+	if not _work_ids.is_empty():
+		work_pick.select(_work_ids.find(_picked))
+	work_pick.item_selected.connect(func(i: int) -> void:
+		if i >= 0 and i < _work_ids.size():
+			_picked = _work_ids[i])
 	body.add_child(work_pick)
 	var b := W.button("Hand in the request", func():
 		var q := qty_edit.text.strip_edges()

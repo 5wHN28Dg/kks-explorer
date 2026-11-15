@@ -391,7 +391,11 @@ def check_files(files):
         if rel.startswith('service/'):
             part = rel[len('service/'):-len('.json')]
             need(part in b.workshop, 'bad_ref', f'{rel}: no Workshop data file workshop/{part}.json')
-            SV.check(parse(files, rel), parse(files, f'workshop/{part}.json'), tool_ids, rel)
+            sv = SV.check(parse(files, rel), parse(files, f'workshop/{part}.json'), tool_ids, rel)
+            from ref import plant3d_stores as SR    # an action's part is a part of stores.json (REALISM.md §2.23)
+            for a in sv['actions']:
+                if 'part' in a:
+                    SR.check_service_part(b, a['part'], f'{rel}: action {a["action"]}')
     if b.model.hands:
         from ref import plant3d_hands as H      # a hand action's component is in its part kind's tree (REALISM.md §2.4)
         H.check_components(b)

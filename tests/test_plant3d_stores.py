@@ -125,6 +125,31 @@ class StorekeeperReorders(unittest.TestCase):
         self.assertEqual(e.v('pt_flange_orings_low'), 0.0)
         self.assertEqual(e.v('pt_flange_orings_due'), 10.0)
 
+    def test_whole_numbers_written_as_floats(self):
+        """A stores.json may write a whole number as 16.0 (the validator takes it); the order's quantity and its due
+        clock are then whole numbers still, as in the app's engine (stores.gd: int()), so events, snapshots and the
+        digest stay the same in both."""
+        b = P.check_dir(DATA)
+        sc = copy.deepcopy(b.scenarios['shift_cold'])
+        sc['start'] = {'day': 1, 'time': '07:30'}
+        e = P.Engine(b, sc)
+        p = e.stores['parts'][e.stores['ix']['pt_flange_orings']]
+        p['max'] = float(p['max'])
+        p['lead_days'] = float(p['lead_days'])
+        w = 'wo_cond_p2_fix'
+        e.work_order(w, 'notify', None, ['reading'])
+        e.step(2)
+        e.work_order(w, 'plan', None, [2])
+        e.step()
+        e.issue('pt_flange_orings', 6, w, None)
+        e.step()
+        while e.step_no < 2000 and not any(x[1] == 'order' for x in e.events[e.ev_mark:]):
+            e.step()
+        o = next(x for x in e.events[e.ev_mark:] if x[1] == 'order')
+        self.assertIs(type(o[3]), int)
+        self.assertIs(type(e.orders[0][2]), int)
+        self.assertIs(type(e.orders[0][5]), int)
+
 
 class ServiceFilePart(unittest.TestCase):
     """A service file's action may name the stores' part it fits (§2.23): an identifier, looked up by the model."""
@@ -139,6 +164,17 @@ class ServiceFilePart(unittest.TestCase):
         s2['actions'][0]['part'] = 'PT unit'
         with self.assertRaises(P.FormatError):
             SV.check(s2, w, tools, 'service/pressure_transmitter.json')
+
+    def test_part_in_the_stores(self):
+        """The plant's check looks a service action's part up in stores.json (§2.23: a part not there is bad_ref)."""
+        files = P.load_dir(DATA)
+        rel = 'service/pressure_transmitter.json'
+        self.assertIn(b'"part": "pt_unit_a3"', files[rel])
+        files[rel] = files[rel].replace(b'"part": "pt_unit_a3"', b'"part": "pt_nothing"')
+        with self.assertRaises(P.FormatError) as cm:
+            P.check_files(files)
+        self.assertEqual(cm.exception.code, 'bad_ref', str(cm.exception))
+        self.assertIn('pt_nothing', str(cm.exception))
 
 
 if __name__ == '__main__':

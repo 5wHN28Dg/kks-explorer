@@ -29,6 +29,7 @@ const DAY := 864000
 func run(tree: SceneTree) -> Array:
 	var p: Array = _jumps()
 	p += _fitting()
+	p += _store_place()
 	p += await _panel(tree)
 	return p
 
@@ -107,6 +108,24 @@ func _fitting() -> Array:
 	return p
 
 
+## A store at a place the staff don't have: refused when the plant loads (not at the first issue's walk).
+func _store_place() -> Array:
+	var path := ProjectSettings.globalize_path("res://").path_join("../../ref/vectors/plant3d-realism.json").simplify_path()
+	var S: Dictionary = JsonStrict.parse(FileAccess.get_file_as_bytes(path), 1000).value["stores"]
+	var run: Dictionary = S["runs"][7]
+	var files: Dictionary = S["files"].duplicate(true)
+	files["scenarios/s1.json"] = run["scenario"]
+	if run["staff"] != null:
+		files["staff.json"] = run["staff"]
+	if PlantModel.from_files(files).error != "" or not String(files["stores.json"]).contains('"place": "counter"'):
+		return ["the realism stores plant did not load, or its store is not at the counter"]
+	files["stores.json"] = String(files["stores.json"]).replace('"place": "counter"', '"place": "no_such_place"')
+	var err: String = PlantModel.from_files(files).error
+	if not err.contains("no staff place no_such_place"):
+		return ["a store at a place the staff don't have was taken: %s" % (err if err != "" else "(no error)")]
+	return []
+
+
 static func _press(n: Node, name: String) -> bool:
 	var b = n.find_child(name, true, false)
 	if b == null or not b is Button or (b as Button).disabled:
@@ -175,6 +194,43 @@ func _panel(tree: SceneTree) -> Array:
 		p.append("Draw parts did not open the counter's form (stores %s, view %s)" % [str(sp.visible), sp.view])
 	if sp.work_pick == null or sp.work_pick.selected < 0 or sp._work_ids[sp.work_pick.selected] != wid:
 		p.append("the counter's form is not on the order's work")
+	# the work chosen is kept by its id across rebuilds, never by its place in the list: another work order entering
+	# the list before it (planned by someone else) leaves the form on the order's work, a work the trainee chose stays
+	# chosen when the form is rebuilt (the form opened from the order must not take its work back), and a chosen work
+	# that leaves the list leaves none chosen
+	var other := ""
+	for w in e.m.works:
+		if w["id"] == wid:
+			break
+		if other == "" and not int(e.wo.get(w["id"], 0)) in Stores.WO_OPEN:
+			other = w["id"]
+	if other == "":
+		p.append("no work before %s to plan in the test" % wid)
+	else:
+		var had: bool = e.wo.has(other)
+		var was = e.wo.get(other)
+		e.wo[other] = 2
+		_fresh(sp)
+		if sp.work_pick.selected < 0 or sp._work_ids[sp.work_pick.selected] != wid:
+			p.append("a work entering the list moved the form off the order's work (on %s)"
+					% (sp._work_ids[sp.work_pick.selected] if sp.work_pick.selected >= 0 else "none"))
+		var oi: int = sp._work_ids.find(other)
+		sp.work_pick.select(oi)
+		sp.work_pick.item_selected.emit(oi)
+		_fresh(sp)
+		if sp.work_pick.selected < 0 or sp._work_ids[sp.work_pick.selected] != other:
+			p.append("a rebuild took the trainee's choice of work back to the order's")
+		if had:
+			e.wo[other] = was
+		else:
+			e.wo.erase(other)
+		_fresh(sp)
+		if sp.work_pick.selected != -1:
+			p.append("the chosen work left the list but another stayed chosen: %s" % sp._work_ids[sp.work_pick.selected])
+		var wi: int = sp._work_ids.find(wid)
+		sp.work_pick.select(wi)
+		sp.work_pick.item_selected.emit(wi)
+		_fresh(sp)
 	# a number not in the catalogue, a quantity that is not a number: refused on the form, nothing sent
 	var n0: int = e.inputs.size()
 	sp.number_edit.text = "WDP-NOTHING-9"
@@ -254,10 +310,18 @@ func _panel(tree: SceneTree) -> Array:
 	if not lines.contains("Parts drawn for") or not lines.contains("10 × WDP-PT-FERRULES"):
 		p.append("the debrief has no parts drawn: %s" % lines.right(400))
 	# a jump with days through the input path
+	var cj: int = e.clock()
 	ui.inputs.jump("07:00", 2)
 	if e.queue.is_empty() or e.queue[-1] != ["jump", "07:00", 2]:
 		p.append("a jump with days was queued as %s" % str(e.queue.slice(-1)))
 	ui.clock.run_steps(1)
+	var want: int = int(cj / DAY) * DAY + 7 * 36000          # the next 07:00, then two days on
+	if want <= cj:
+		want += DAY
+	want += 2 * DAY
+	if absi(e.clock() - want) > 600:
+		p.append("the jump with days did not land at %s: from %s to %s (%s)" % [Stores.clock_words(want),
+				Stores.clock_words(cj), Stores.clock_words(e.clock()), str(e.events.slice(-3))])
 	# a person played away from the counter: the form sends them there (a person is taken at a run's first step:
 	# the shift again)
 	ui.start_shift("test_stores")
@@ -275,7 +339,9 @@ func _panel(tree: SceneTree) -> Array:
 	await tree.process_frame
 	if ui.my_person() == -1:
 		p.append("%s was not taken" % who)
-	elif e.t_at(ui.inputs.slot) != Stores.counter(e)["at"]:
+	elif e.t_at(ui.inputs.slot) == Stores.counter(e)["at"]:
+		p.append("%s starts at the counter: the form away from it is not tested" % who)
+	else:
 		ui.open_stores("issue", "")
 		await tree.process_frame
 		if sp.at_counter() or sp.body.find_child("go_counter", true, false) == null \

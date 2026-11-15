@@ -1300,7 +1300,8 @@ parts). Lead times are clock days (§2.1).
 - **Tests (part 2):** `tests/test_plant3d_sim.py`'s Godot checks run the realism file's `stores` (`run_vectors.gd`
   `REALISM_PARTS`: 85 of 85 realism items pass, with the straight-line program and the interpreter) and v1 and v2 with
   the train's stores. `tests/test_run_save.gd` `_round_trip_stores`: run 7 saved mid-fitting and run 8 with an order
-  pending, each continued bit for bit to its end after the save; 28 damaged saves refused, 3 good variants taken.
+  pending, each continued bit for bit to its end after the save; 28 damaged saves refused, 4 good variants taken (one an NPC's issue with no work: a `"$"` step of a task given
+  without one, which the engine answers `unknown`).
   `apps/plant3d/tests/test_ui_stores.gd` (app shard 2): the shelves and the number as written, the jump to a clock,
   the fitting's words and the debrief's lines in the realism plant, and in the aged plant the order's form, the
   counter's refusals on the form and in words, an issue, the catalogue's look-alikes and levels, an order and its
@@ -1333,6 +1334,15 @@ parts). Lead times are clock days (§2.1).
     in the catalogue is refused on the form, nothing sent: the storekeeper hands over what is written, so the
     look-alike's lesson is a number copied wrong, not a number that does not exist.
   - A jump vote in a session carries its days only when they are not 0; votes agree when time and days do.
+  - A jump's days written as `null` are the same as none (0 days), in both engines (`["jump", "06:00", null]`); only
+    the vectors and the API can write it (a session's form is `["s", "i"]`).
+  - A whole number of stores.json written as `16.0` (the validator takes it) is a whole number to both engines: an
+    order's quantity up to the max and its due clock are whole numbers (`tests/test_plant3d_stores.py`).
+  - A service file's action's `part` is looked up in stores.json by the plant's check (`check_files`), `bad_ref`
+    when it is not there or the plant has none; the app's engine refuses a store whose place is not a staff place
+    when the plant loads (`plant_model.gd`), not at the first walk to it.
+  - The counter's issue form keeps the work chosen by its id across rebuilds (works entering or leaving the list
+    while it is open), and a work the trainee chose stays chosen; a chosen work that leaves the list leaves none.
 - **Replacing a transmitter (part 3, HW3's leftover; 2026-11-14):**
   - **The sixth cause, `failed`** (`train_hands.FAULT`): the sensor module failed. The output goes to NAMUR NE 43's
     low alarm current, 3.6 mA (`cpt2_ma_f`, after the 3.8–20.5 mA clamp, before the loop test's select: the
