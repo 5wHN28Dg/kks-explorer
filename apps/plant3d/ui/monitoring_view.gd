@@ -4,8 +4,8 @@
 ## - the vibration data collector's screen: the overall velocity its meter shows, the ISO 20816-3 zone it falls in (the
 ##   point's group and zone limits), and the point's spectrum drawn from the model values the file names (the 1×, the
 ##   2×, the bearing's defect tones or the gear mesh, a noise floor), the lines' energy adding up to the overall;
-## - the thermal camera's spot reading at the bearing housing, against its alert and alarm limits (the false-colour
-##   picture waits for the pumps' and motors' Workshop kinds, K6: §2.19);
+## - the thermal camera's spot reading at the bearing housing, against its alert and alarm limits, and its false-colour
+##   picture: the pump's Workshop tree with each component at its model value's temperature (ui/thermal_picture.gd);
 ## - the oil sample: a hand action at the equipment's work place with the sampling kit (`samples`), the lab's results
 ##   arriving after the lab's turnaround (the engine's `lab` events), against their alert and alarm limits.
 ## A reading is recorded as S1's `read` with the meter named (ui/inputs.gd); the point's readings are listed from the
@@ -16,6 +16,7 @@ const W = preload("res://ui/widgets.gd")
 const JsonStrict = preload("res://sim/json_strict.gd")
 const Hands = preload("res://sim/hands.gd")
 const WorkView = preload("res://ui/work_view.gd")
+const ThermalPicture = preload("res://ui/thermal_picture.gd")
 
 const FILE := "res://built/content/monitoring.json"
 const ZONE_NAMES := ["A", "B", "C", "D"]
@@ -522,6 +523,11 @@ func _build_ir(e, i: int, p: Dictionary, box: VBoxContainer, row: Dictionary) ->
 		line.add_child(rb)
 		box.add_child(line)
 		row["value"] = val
+		if p.has("picture"):
+			var tp := ThermalPicture.new()
+			tp.setup(p["picture"])
+			box.add_child(tp)
+			row["picture"] = tp
 	_history(e, p, box, row)
 
 
@@ -628,6 +634,8 @@ func _write(e, pid) -> void:
 				var lv := 2 if v >= float(lim[1]) else (1 if v >= float(lim[0]) else 0)
 				(row["value"] as Label).text = "%.1f °C  %s" % [v, LEVEL_WORDS[lv]]
 				(row["value"] as Label).add_theme_color_override("font_color", LEVEL_COLOURS[lv])
+				if row.has("picture"):
+					row["picture"].update(e)
 		if p["kind"] == "oil":
 			var b = e.busy.get(pid) if pid != null else null
 			var busy: bool = b != null and b[0] == p["code"] and b[1] == p["action"]

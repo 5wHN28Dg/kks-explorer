@@ -73,7 +73,7 @@ type
     w*, h*, n*: int           ## n = 3 (RGB) or 4 (RGBA, straight alpha)
     pixels*: seq[byte]
 proc kks_drawings_images(d: Doc, out0: ptr ptr UncheckedArray[RawPath], unrotate: cint,
-                         imgs: ptr ptr UncheckedArray[RawImage], nimg: ptr cint): cint {.importc, cdecl.}
+                         imgs: ptr ptr UncheckedArray[RawImage], nimg: ptr cint, text: cint): cint {.importc, cdecl.}
 proc kks_free_images(p: ptr UncheckedArray[RawImage], n: cint) {.importc, cdecl.}
 proc kks_display_geom(d: Doc, extra: cint, m, r: ptr cdouble): cint {.importc, cdecl.}
 proc kks_page_rotation(d: Doc): cint {.importc, cdecl.}
@@ -128,12 +128,13 @@ proc drawings*(d: Doc, unrotate = false): seq[Path] =
   result = convert(raw, n)
   kks_free_paths(raw, n)
 
-proc drawingsAndImages*(d: Doc): (seq[Path], seq[PageImage]) =
-  ## The unrotated page's paths and its images as MuPDF draws them (decoded, masks as alpha, sRGB).
+proc drawingsAndImages*(d: Doc, text = false): (seq[Path], seq[PageImage]) =
+  ## The unrotated page's paths and its images as MuPDF draws them (decoded, masks as alpha, sRGB). text: its text as
+  ## glyph outlines too (filled paths, a stroked text's stroked), for a drawing whose tags were read from its text.
   var raw: ptr UncheckedArray[RawPath]
   var imgs: ptr UncheckedArray[RawImage]
   var ni: cint
-  let n = kks_drawings_images(d, addr raw, 1, addr imgs, addr ni)
+  let n = kks_drawings_images(d, addr raw, 1, addr imgs, addr ni, cint(text))
   if n < 0: fail()
   result[0] = convert(raw, n)
   kks_free_paths(raw, n)

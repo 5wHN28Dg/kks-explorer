@@ -146,6 +146,11 @@ func run(tree: SceneTree) -> Array:
 		main.free()
 		return p
 	check(ws.entry_ms > 0.0, "the entry is measured (%.0f ms)" % ws.entry_ms)
+	# the card opens the transmitter's mirror, powered as in the plant (K6, §6.5): the free bench is a tap away
+	check(ws.mirror_code == code, "the card opened %s's mirror" % code)
+	ws.leave_mirror()
+	check(ws.mirror_code == "" and not ws.bench.mirrored() and not ws.bench_running(),
+			"leaving the mirror gives the bench back at rest")
 	var w: Dictionary = ws.words
 	# the tree: every component and fastener group, selection both ways
 	var n_items := 0

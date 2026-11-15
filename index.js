@@ -1,7 +1,7 @@
 // The drawings page (index.html). A file of its own, not an inline script, so the Content-Security-Policy can
 // allow scripts from this site only (#8).
 const $=s=>document.querySelector(s);
-let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC={},DESC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
+let SHEETS=[],BASE_TAGS=[],TAGS=[],PROCS=[],KKS={},LOC=Object.create(null),PTS=Object.create(null),DESC={},LOCSRC='location list',STATE={equipment:{},reviews:{},photos:[],links:[],mine:[]};
 let cur=null, view={s:1,x:0,y:0}, selId=null, linkTarget=null, activeProc=null, floor='', PDV='';
 const api=u=>K.api(u);
 // Views are built as elements (K.h: text as text nodes, handlers as functions), never as markup.
@@ -32,7 +32,19 @@ const bodyOf=t=>(t.kks||'').slice(2);
 const floorOf=t=>(eq(full(t)).floor||'').trim();
 const floorName=f=>/^\d+$/.test(f)?'Floor '+f:f;
 const elevOf=t=>(eq(full(t)).elev||'').trim()||refLoc(bodyOf(t)).elev;
-function locSec(b,sfx){
+// an instrument point (core model.pointText / pointSource): "33 m · grid K16 F08", "<document>, page 5"
+const ptElev=r=>{ if(typeof r.elev_m!=='number'||!Number.isFinite(r.elev_m)||Math.abs(r.elev_m)>1e6) return '';
+  let t=r.elev_m.toFixed(3).replace(/0+$/,'').replace(/\.$/,''); if(t==='-0') t='0'; return t+' m' };
+const ptText=r=>[ptElev(r),typeof r.grid==='string'&&r.grid?'grid '+r.grid:''].filter(Boolean).join(' · ');
+const ptSource=r=>[typeof r.source==='string'?r.source:'',Number.isInteger(r.page)&&r.page>=1&&r.page<=100000?'page '+r.page:''].filter(Boolean).join(', ');
+function pointSec(b){
+  const P=PTS[b]||[]; if(!P.length) return null;
+  return h('div',{class:'sec'},h('h3',null,'Instrument point'),
+    P.map(r=>h('dl',{style:'margin-bottom:6px'},typeof r.desc==='string'&&r.desc?[h('dt',null,'Description'),h('dd',null,r.desc)]:null,
+      h('dt',null,'Where'),h('dd',null,ptText(r)||'—'),ptSource(r)?[h('dt',null,'Source'),h('dd',{class:'sub'},ptSource(r))]:null)));
+}
+function locSec(b,sfx){ return [locRows(b,sfx),pointSec(b)] }
+function locRows(b,sfx){
   const L=LOC[b]||[]; if(!L.length) return null;
   const conflict=new Set(L.map(r=>[r.level,r.cabinet,r.desc,r.direction].join('|'))).size>1;
   return h('div',{class:'sec'},h('h3',null,'Location list',sfx?[' ',h('span',{style:'font-weight:400'},`(listed as ${b}, without suffix ${sfx})`)]:null),
@@ -46,7 +58,7 @@ function selectLoc(b){
   selId=null; selTag=null; drawTags();
   put($('#panelBody'),h('div',{class:'phead'},h('div',{style:'flex:1'},h('div',{class:'kks',tabindex:'-1',role:'heading','aria-level':'2'},b),
       h('div',{class:'sub'},KKS.components[b.slice(5,7)]||'')),closeX()),
-    h('div',{class:'sec'},h('div',{class:'warn'},'In the location list but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.')),
+    h('div',{class:'sec'},h('div',{class:'warn'},((LOC[b]||[]).length?'In the location list':'In a list of instrument points')+' but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.')),
     locSec(b));
   $('#panel').classList.add('open'); $('#panel').scrollTop=0;
   if(focusPanel){ focusPanel=false; $('#panelBody .phead .kks')?.focus() }
@@ -78,7 +90,16 @@ async function load(){
   // drafted descriptions (optional plant data; core model.parseDescriptions): code -> {text, basis}
   DESC=await fetch('data/descriptions.json').then(r=>r.ok?r.json():{}).catch(()=>({})); DESC=parseDesc(DESC);
   const lj=await fetch('data/locations.json').then(r=>r.ok?r.json():{entries:[]}).catch(()=>({entries:[]}));
-  for(const e of lj.entries)(LOC[e.kks]??=[]).push(e); if(lj.source) LOCSRC=lj.source;
+  // location rows by KKS body; instrument points ("kind":"point") apart, never a conflict; other kinds left out (PROTOCOL-v2 §19)
+  // (maps without a prototype: a code is never taken for an inherited member; the bare list as core reads it)
+  // Each entry is copied field by field, strings and numbers only (core reads them the same way), so no odd value in
+  // the file can reach the views or the search text.
+  const str=v=>typeof v==='string'?v:'', num=v=>typeof v==='number'?v:undefined;
+  for(const e of Array.isArray(lj)?lj:Array.isArray(lj?.entries)?lj.entries:[]){ if(!e||typeof e!=='object'||Array.isArray(e))continue;
+    const kk=str(e.kks);
+    if(e.kind==null)(LOC[kk]??=[]).push({kks:kk,level:str(e.level),cabinet:str(e.cabinet),desc:str(e.desc),direction:str(e.direction),page:num(e.page)});
+    else if(e.kind==='point')(PTS[kk]??=[]).push({kks:kk,elev_m:num(e.elev_m),grid:str(e.grid),desc:str(e.desc),source:str(e.source),page:num(e.page)}) }
+  if(typeof lj?.source==='string'&&lj.source) LOCSRC=lj.source;
   K.onChange(why=>{
     if(why==='plantdata'){   // new drawings/tag lists published: load them, unless the person is typing in the panel
       const P=$('#panel'); if(P.contains(document.activeElement)||P.querySelector('.editing')) toast('New drawings arrived: they load the next time you open this page'); else location.reload();
@@ -193,10 +214,10 @@ async function cacheSheets(){ if(!navigator.serviceWorker?.controller) return;
 
 // ---------- viewer ----------
 function openSheet(id,then){
-  cur=SHEETS.find(s=>s.id===id); linkSel=null; $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
-  const img=$('#sheetimg'); let first=true;
-  img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); then&&then(); };
-  const s=cur, g=dark.gen;
+  const was=cur; cur=SHEETS.find(s=>s.id===id); linkSel=null; $('#sheetSel').value=id; try{localStorage.setItem('sheet',id)}catch(e){}
+  if(cur!==was) clearLayer();   // the old sheet's tags and connectors go now, not when the new image loads (#356: a click meanwhile followed them)
+  const img=$('#sheetimg'), s=cur, g=dark.gen; let first=true;
+  img.onload=()=>{ if(!first) return; first=false; fit(); drawTags(); if(cur===s) $('#layer').dataset.sheet=s.id; then&&then(); };
   // nosemgrep: web-10-dynamic-url-sink -- an <img> source (the sheet overview) can't run script
   const show=u=>{ if(cur===s&&dark.gen===g) img.src=u };   // only if neither the sheet nor dark drawings changed meanwhile
   if(cur.levels){ const k=startLevel(); img.dataset.level=k; if(dark.on) levelSrc(k).then(show); else show(levelUrl(k)) }
@@ -374,6 +395,9 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
 // a photo of the tag plate is a photo whose caption starts with "Tag plate" (PROTOCOL-v2 §9; core model.photoCover)
 const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
+// empties the tag layer (all but the select and mark boxes); data-sheet names the sheet whose image has loaded and
+// whose tags were drawn over it
+function clearLayer(){ const L=$('#layer'); delete L.dataset.sheet; for(const x of [...L.children]) if(x.id!=='selbox'&&x.id!=='markbox') x.remove() }
 function drawTags(){
   // a sync redraws the tags at any moment, so their buttons are updated in place (by tag id), never replaced: a button
   // replaced between the press and the release lost the click. A box being dragged (select mode, or marking a missed
@@ -940,19 +964,22 @@ $('#q').addEventListener('input',()=>{
   const seen=new Set(); hits=[];
   for(const t0 of TAGS){ const t=eff(t0); if(!t)continue; const k=full(t); const e=eq(k);
     const text=[e.area,e.floor,e.loc,e.near,e.notes,...(e.custom||[]).map(c=>c.k+' '+c.v),
-      ...(LOC[bodyOf(t)]||[]).map(r=>[r.cabinet,r.desc,r.direction,lvlName(r.level)].join(' '))].join(' ').toLowerCase();
+      ...(LOC[bodyOf(t)]||[]).map(r=>[r.cabinet,r.desc,r.direction,lvlName(r.level)].join(' ')),
+      ...(PTS[bodyOf(t)]||[]).map(r=>[r.desc,r.grid].join(' '))].join(' ').toLowerCase();
     let score=0;
     if(k&&k===q)score=100; else if(k&&k.startsWith(q))score=80; else if(k&&k.includes(q))score=60; else if(t.isa&&t.isa===q)score=30; else if(qr.length>2&&text.includes(qr))score=40;
     if(!score&&t.status==='review'&&(t.read.join('').includes(q)))score=10;
     if(score){ hits.push({t,score,k}) } }
   const drawn=new Set(TAGS.map(eff).filter(Boolean).map(bodyOf)), qb=q.replace(/^\d{2}(?=[A-Z])/,'');
-  for(const b in LOC){ if(drawn.has(b))continue; const text=LOC[b].map(r=>[r.cabinet,r.desc,r.direction].join(' ')).join(' ').toLowerCase();
+  for(const b of new Set([...Object.keys(LOC),...Object.keys(PTS)])){ if(drawn.has(b))continue;
+    const text=[...(LOC[b]||[]).map(r=>[r.cabinet,r.desc,r.direction].join(' ')),...(PTS[b]||[]).map(r=>[r.desc,r.grid].join(' '))].join(' ').toLowerCase();
     const score=b===qb?90:b.startsWith(qb)?70:b.includes(qb)?50:qr.length>2&&text.includes(qr)?35:0; if(score)hits.push({loc:b,score,k:b}) }
   hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
   const sn=id=>SHEETS.find(s=>s.id===id).name;
   put(R,hits.length?hits.map((x,i)=>{ const opt={class:'res'+(i===0?' on':''),role:'option',id:'res-'+i,'aria-selected':String(i===0),onclick:()=>pick(i)};
-    if(x.loc){const r=refLoc(x.loc);return h('div',opt,h('div',{class:'k'},x.loc+' ',h('span',{class:'m',style:'color:var(--review)'},'location list only')),
-      h('div',{class:'m'},(r.elev||'level varies')+(r.cabinet?' · '+r.cabinet:'')+(r.rows[0].desc?' · '+r.rows[0].desc:'')))}
+    if(x.loc){const r=refLoc(x.loc);return h('div',opt,h('div',{class:'k'},x.loc+' ',h('span',{class:'m',style:'color:var(--review)'},r.rows.length?'location list only':'instrument point only')),
+      h('div',{class:'m'},r.rows.length?(r.elev||'level varies')+(r.cabinet?' · '+r.cabinet:'')+(r.rows[0].desc?' · '+r.rows[0].desc:''):
+        'instrument point'+((PTS[x.loc]||[])[0]?.desc?' · '+PTS[x.loc][0].desc:'')))}
     const e=eq(x.k), fl=floorOf(x.t), cab=refLoc(bodyOf(x.t)).cabinet;
     return h('div',opt,h('div',{class:'k'},x.k||x.t.read.join(' / '),x.t.isa?[' ',h('span',{class:'m'},x.t.isa)]:null,x.t.status==='review'?[' ',h('span',{class:'m',style:'color:var(--review)'},'unverified')]:null),
       h('div',{class:'m'},`${sn(x.t.sheet)} · ${kindName(x.t)??''}`+(fl?' · '+floorName(fl):'')+(cab?' · '+cab:'')+(e.area?' · '+e.area:'')))})
@@ -1079,7 +1106,7 @@ function covBar(p,wide){
 let covStale=false;
 function renderCoverage(){
   covStale=false;
-  const v=KSys.coverageView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:LOC,equipment:STATE.equipment,photos:STATE.photos});
+  const v=KSys.coverageView({tags:TAGS.map(eff).filter(Boolean),sheets:SHEETS,kks:KKS,loc:Object.assign(Object.create(null),PTS,LOC),equipment:STATE.equipment,photos:STATE.photos});
   const t=v.total, p=t.photos;
   const sheetSub=s=>[plural(s.codes,'code','codes'),pct(s.verified,s.tags)+' of tags checked',pct(s.located,s.codes)+' placed',
     s.review?s.review+' to review':null,s.marked?s.marked+' marked':null].filter(Boolean).join(' · ');

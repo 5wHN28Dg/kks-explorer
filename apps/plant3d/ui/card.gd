@@ -73,10 +73,11 @@ func open(c: String, note := "") -> void:
 	if ui.index.has(c):
 		row.add_child(W.button("Show me", func(): ui.show_me(code)))
 		row.add_child(W.button("Go there", func(): ui.fly_to(code)))
-		# the part kind alone in the Workshop (docs/plant3d/WORKSHOP.md §2), for a kind with Workshop data
+		# the part kind alone in the Workshop (docs/plant3d/WORKSHOP.md §2), for a kind with Workshop data: the live
+		# plant's equipment mirrored on its bench, read only, where the kind's bench mirrors it (§6.5)
 		var kind := String(ui.index.nodes[c].get_meta("part", ""))
 		if ui.workshop_has(kind):
-			var wb := W.button("Workshop", func(): ui.open_workshop(kind, code))
+			var wb := W.button("Workshop", func(): ui.open_workshop(kind, code, true))
 			wb.name = "workshop"
 			row.add_child(wb)
 	if ui.manual_of(c) != "":
