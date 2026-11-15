@@ -54,7 +54,8 @@ What the evidence-first-engineering skill needs to know here:
 **UI and UX audit (the user, 2026-11-15):** every change that touches either app's UI (Walkdown's web, GNOME, Windows
 and Android clients, or Walkdown Plant's UI; the paths are listed in `docs/UI-UX-POLICY.md` §3.1) passes the UI/UX
 audit before it merges: two passes by fresh subagents (a blind one, then an adversarial one) against
-`docs/UI-UX-POLICY.md`, on synthetic data only, with the results in the PR. A failing audit blocks the merge (§4 there
+`docs/UI-UX-POLICY.md`, on synthetic data only, with each pass's table as a comment on the PR. "UI" includes any text a user sees, such
+as the core's error messages. A failing audit blocks the merge (§4 there
 says which fails block). This comes on top of the two code reviews.
 
 **CI** (`.github/workflows/`):

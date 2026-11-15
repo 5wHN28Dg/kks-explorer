@@ -1,6 +1,6 @@
 # UI and UX policy
 
-Status: adopted 2026-11-15 (the user asked for it; reviewed in two passes before first use).
+Status: draft, 2026-11-15 (the user asked for it; in review, two passes, before first use).
 
 This policy says what the user interface of both apps must do, and how a change is checked against it. It covers:
 
@@ -39,7 +39,9 @@ Each rule has a level:
 
 Units: **dp** is Android's density-independent pixel (1 dp = 1/160 inch); on the web 1 CSS px at a phone viewport
 counts as 1 dp; on a desktop, sizes are in the platform's logical pixels at 100 % scaling. For Plant, convert screen
-pixels to dp with the screen's density: dp = px × 160 / dpi (`DisplayServer.screen_get_dpi()`).
+pixels to dp with the screen's density: dp = px × 160 / dpi. On a phone use `DisplayServer.screen_get_dpi()`; for
+the phone layout rendered on a desktop (`--resolution 2960x1440`) use the Note 9's 516 dpi, since the desktop reports
+its own.
 
 "Phone" means Android, the web client at a viewport narrower than 600 CSS px, and Plant on Android.
 
@@ -50,7 +52,8 @@ https://developer.android.com/guide/topics/ui/accessibility/apps); WCAG 2.2 2.5.
 (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html); Windows "Targeting" (7.5 mm, 40 × 40 epx,
 larger for frequent or risky targets, https://learn.microsoft.com/en-us/windows/apps/develop/input/guidelines-for-targeting);
 Apple HIG (44 × 44 pt, https://developer.apple.com/design/human-interface-guidelines/accessibility); GNOME HIG
-"Pointer and touch" (https://developer.gnome.org/hig/guidelines/pointer-touch.html).
+"Pointer and touch" (https://developer.gnome.org/hig/guidelines/pointer-touch.html; it gives no size, so the numbers
+come from the others).
 
 - **T1 (Block) Phone targets are at least 48 × 48 dp.** Every button, link outside running text, list row, checkbox,
   switch, tab and field on a phone has a hit area of at least 48 × 48 dp (the visible shape may be smaller if the hit
@@ -60,14 +63,14 @@ Apple HIG (44 × 44 pt, https://developer.apple.com/design/human-interface-guide
   - Check: Android, the bounds of every clickable node in `uiautomator dump`, divided by the density; web, every
     focusable or clickable element's `getBoundingClientRect()` at a 412 × 915 viewport; Plant, every `Control` that
     takes input, in the phone layout (`--resolution 2960x1440`, the phone scale), converted to dp.
-- **T2 (Block) Targets don't overlap, and a destructive target is never next to a frequent one.** Two hit areas never
-  overlap. A button that deletes, discards, removes or signs out has at least 8 dp of empty space (phone) or 8 px
-  (desktop) between it and any other target.
+- **T2 (Block) Targets don't overlap, and destructive ones keep their distance.** Two hit areas never overlap. A
+  button that deletes, discards, removes or signs out has at least 8 dp of empty space (phone) or 8 px (desktop)
+  between its hit area and any other target's.
   - Why: a gloved tap that lands between two buttons must not do the destructive one.
   - Check: the same bounds as T1.
 - **T3 (Block) Desktop targets are at least 24 × 24 px.** On GNOME, Windows, the web at desktop width and Plant on a
-  desktop, every target is at least 24 × 24 logical px, or has 24 px of space around its centre clear of other targets
-  (WCAG 2.5.8).
+  desktop, every target is at least 24 × 24 logical px, or, as WCAG 2.5.8's spacing exception says, a 24 px circle
+  centred on it does not intersect another target or another such circle.
   - Check: AT-SPI extents (GNOME), UIA BoundingRectangle (Windows), `getBoundingClientRect()` at 1280 × 800 (web),
     `Control` rects (Plant).
 - **T4 (Advice) Things tapped on the drawing or in the 3D view.** A tap within 24 dp of a tag on the drawing, or of a
@@ -83,7 +86,7 @@ Apple HIG (44 × 44 pt, https://developer.apple.com/design/human-interface-guide
 
 ### 2.2 Controls that stay reachable
 
-Sources: Material 3 top app bars (https://m3.material.io/components/top-app-bar/guidelines); GNOME HIG header bars
+Sources: Material 3 top app bars (https://m3.material.io/components/app-bars/guidelines); GNOME HIG header bars
 (https://developer.gnome.org/hig/patterns/containers/header-bars.html); WCAG 2.4.11 Focus Not Obscured
 (https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html).
 
@@ -95,15 +98,17 @@ Sources: Material 3 top app bars (https://m3.material.io/components/top-app-bar/
     and where it was (screenshot before and after; the control's bounds in the accessibility tree are unchanged).
 - **R2 (Block) Back and Escape close the top layer.** Android's system Back (and its back gesture), Escape on
   desktops and the web, and B on a gamepad (Plant) close the topmost panel or dialog first. They never leave the app,
-  or drop typed input, without asking (see D3).
+  or drop typed input, without asking (see D3). The web client opened from an iPhone's home screen has no browser Back
+  button, so every web panel has its own Back or Close control.
   - Check: press Back or Escape on each panel in the e2e harness; the panel under it, not the app, is shown next.
 - **R3 (Block) Nothing hides under bars, cut-outs, the keyboard or the touch sticks.** No control or text is covered by
   the status bar, the navigation bar, a display cut-out, the on-screen keyboard (the field being typed in stays
-  visible) or, in Plant, the touch sticks.
+  visible) or, in Plant, the touch sticks. On the web this means honouring the safe areas
+  (`viewport-fit=cover` with `env(safe-area-inset-*)` padding, or not using `viewport-fit=cover`).
   - Check: screenshots on the emulator in both orientations with the keyboard open on each form; Plant's phone layout
     with touch controls shown.
-- **R4 (Advice) The main action is reachable without hunting.** A form's Save or Send is in a bar that stays visible,
-  or directly after the last field (never after an unbounded list).
+- **R4 (Advice) A form's Save or Send is in a bar that stays visible, or directly after the last field** (never after
+  an unbounded list).
 
 ### 2.3 Identifiers can be copied
 
@@ -117,9 +122,11 @@ Sources: Material 3 top app bars (https://m3.material.io/components/top-app-bar/
   - Plant: a Copy button (Godot labels are not selectable by touch).
   - Why: an engineer pastes codes into work orders, the CMMS and messages; retyping `11LAB70AA501` is where mistakes
     come from.
-  - Check: on each platform, copy each kind of identifier and read the clipboard (`wl-paste` in the headless GNOME
-    session, `Get-Clipboard` in the VM, `navigator.clipboard.readText()` with the permission in Playwright,
-    `cmd clipboard` or a paste into a field on Android).
+  - Check: on each platform, copy each kind of identifier and paste it into a text field of the same app (search),
+    then read that field through the accessibility tree; on the web `navigator.clipboard.readText()` with the
+    permission granted in Playwright. (Android 10 and later let only the foreground app read the clipboard, and the
+    headless GNOME session and an SSH session in the Windows VM may not share the desktop's clipboard: pasting
+    inside the app avoids both.)
 - **C2 (Block) What is copied is exactly the identifier.** No label ("KKS: "), no surrounding spaces, no zero-width
   or direction marks, no thin spaces inside the code.
   - Check: the clipboard's bytes, as in C1.
@@ -151,8 +158,8 @@ Windows contrast themes (https://learn.microsoft.com/en-us/windows/apps/design/a
 - **K1 (Block) Text contrast at least 4.5:1** (3:1 for text at least 18.66 px bold or 24 px regular) against what is
   behind it, in the light theme, the dark theme and the platform's high-contrast mode.
   - Check: sample the text and background colours from screenshots (or computed styles on the web) and compute the
-    WCAG ratio; `tools/ui_audit/` scripts where present.
-- **K2 (Block) On phones, codes, values and body text reach 7:1.** In the theme the system is in, KKS codes,
+    WCAG ratio (the audit's helper scripts, once added, are listed in §3.3).
+- **K2 (Block) On phones, codes, values and body text reach 7:1.** In both the light and the dark theme, KKS codes,
   measured values and the main text of cards and lists on a phone have at least 7:1 (WCAG 1.4.6, the AAA level).
   Secondary text (hints, timestamps) keeps 4.5:1.
   - Why: direct sun on a phone screen washes out anything weaker; 7:1 is what survives glare.
@@ -174,17 +181,19 @@ Windows contrast themes (https://learn.microsoft.com/en-us/windows/apps/design/a
 
 ### 2.6 Text size and scaling
 
-Sources: WCAG 2.2 1.4.4 Resize Text, 1.4.10 Reflow, 1.4.12 Text Spacing (https://www.w3.org/TR/WCAG22/#distinguishable);
+Sources: WCAG 2.2 1.4.4 Resize Text, 1.4.10 Reflow (https://www.w3.org/TR/WCAG22/#distinguishable);
 Material 3 type scale (https://m3.material.io/styles/typography/type-scale-tokens); Windows text scaling
-(https://learn.microsoft.com/en-us/windows/apps/design/input/text-scaling).
+(https://learn.microsoft.com/en-us/windows/apps/develop/input/text-scaling).
 
 - **S1 (Block) Minimum text sizes.** On phones, body text, list rows and codes are at least 14 sp, and no text is
   under 12 sp. On desktops, body text uses the platform's default UI font size (GNOME's interface font, Windows'
-  message font, the browser's default 16 px on the web) and nothing is smaller than one step below it. In Plant, the
-  same limits in dp on phones, measured on screen.
+  message font, the browser's default 16 px on the web) and nothing is under 11 px (web and GNOME, at 100 % scaling)
+  or 8 pt Segoe UI (Windows). In Plant, the phone limits apply in dp, measured on screen; on desktops nothing is under
+  14 px at 1600 × 900. Text fields on the web are at least 16 px, or iOS Safari zooms the page when one is focused.
 - **S2 (Block) The system's text size is followed.**
-  - Android: at the largest font scale the phone offers (1.3 on the Note 9's Android 10; 2.0 on Android 14 and later)
-    every screen still shows all its text and controls, with no clipped words and no overlap.
+  - Android: at font scale 1.3 (the largest stock Android 10 offers; `adb shell settings put system font_scale 1.3`)
+    every screen still shows all its text and controls, with no clipped words and no overlap; at 2.0 (Android 14 and
+    later, the emulator's image) text may need scrolling, but nothing is clipped or overlapping.
   - Web: at 200 % browser zoom and at 320 CSS px width, nothing is lost and nothing needs scrolling in two directions
     except the drawing and wide tables (WCAG 1.4.4, 1.4.10).
   - GNOME: with Large Text on (text scaling 1.25), and Windows with "Text size" at 150 %, the same holds.
@@ -212,8 +221,10 @@ Sources: WCAG 2.2 3.3.1 Error Identification, 3.3.3 Error Suggestion, 4.1.3 Stat
   works offline working, and shows how many changes wait to be sent. No blank screen and no spinner that never ends.
   - Check: the e2e harnesses' offline tests (web test_web_offline; the apps with the server stopped).
 - **F4 (Block) Status messages reach screen readers without moving the focus** (WCAG 4.1.3): web `role="status"` or
-  `aria-live`; Android a live region or `announceForAccessibility`; GNOME `gtk_accessible_announce`; Windows a UIA
-  notification or LiveRegionChanged event; Plant `DisplayServer.accessibility_*` where Godot offers it.
+  `aria-live`; Android Compose `semantics { liveRegion = LiveRegionMode.Polite }` (`announceForAccessibility` is
+  deprecated from Android 16); GNOME `gtk_accessible_announce`; Windows a UIA notification or LiveRegionChanged event.
+  Plant on desktops: a live-region status line through Godot's accessibility API (A5); Plant on Android is exempt
+  while Godot has no screen-reader support there.
 - **F5 (Block) A field error is shown at the field and keeps what was typed.** The message names the field, the input
   is not cleared, and the focus goes to the first field in error.
 - **F6 (Advice) Empty screens say why and what to do** ("No photos yet. Take one with the camera button.").
@@ -225,8 +236,9 @@ https://m3.material.io/components/snackbar/guidelines); GNOME HIG dialogs
 (https://developer.gnome.org/hig/patterns/feedback/dialogs.html); WCAG 3.3.4 Error Prevention.
 
 - **D1 (Block) Losing data is either undoable or confirmed.** Deleting or discarding anything the user made (a note, a
-  photo, a mark, a link, a draft) offers Undo for at least 5 s, or asks first in a dialog that names the thing and
-  the consequence. Actions that can't be undone at all (removing a device, which wipes it; signing out with unsent
+  photo, a mark, a link, a draft) offers Undo for at least 5 s (longer when the system's accessibility timeout asks
+  for it, and until dismissed while a screen reader is on, as Material's snackbar with an action does on Android), or
+  asks first in a dialog that names the thing and the consequence. Actions that can't be undone at all (removing a device, which wipes it; signing out with unsent
   changes; resetting a password; anything with the root key) always ask first; Undo alone is not enough for them.
 - **D2 (Block) The safe choice is the default.** In such a dialog the confirming button names the action ("Remove
   photo", never "OK" or "Yes"), is styled as destructive (GNOME `destructive-action`, Material's error colour, the
@@ -250,10 +262,11 @@ https://m3.material.io/components/snackbar/guidelines); GNOME HIG dialogs
 - **X2 (Block) A feature is on every Walkdown client or tracked.** A change that adds or changes a user-visible
   feature on one Walkdown client does the same on the others, or the PR links an issue for each one left out and
   docs/m6/CAPABILITIES.md says so.
-- **X3 (Block) Each platform's own conventions are followed.** GNOME: libadwaita widgets and the HIG's patterns.
-  Windows: standard Win32 controls, keyboard accelerators and the system's colours in contrast themes. Android:
-  Material 3 components and system Back. Web: native HTML controls before custom ones. Plant: the same control on
-  touch, gamepad and keyboard (README "Controls").
+- **X3 (Block) Each platform's own conventions are followed,** checked as these points. GNOME: a header bar with the
+  window's actions, libadwaita dialogs and toasts, destructive and suggested button styles. Windows: standard Win32
+  controls, Alt-key accelerators on menus and buttons, the system's colours in contrast themes. Android: Material 3
+  components, system Back, edge-to-edge insets handled. Web: native HTML controls (`button`, `input`, `select`, `a`)
+  before custom ones. Plant: every action of a panel works by touch, gamepad and keyboard (README "Controls").
 
 ### 2.10 Keyboard and screen-reader access
 
@@ -281,21 +294,26 @@ https://learn.microsoft.com/en-us/windows/win32/winauto/entry-uiauto-win32); And
   `gtk-enable-animations` off, Windows "Animation effects" off, Android "Remove animations"; Plant's own "Reduced
   motion"), nothing slides, zooms or sways that isn't needed to understand the change. Nothing flashes more than 3
   times a second (WCAG 2.3.1).
-- **A5 (Block) Plant's panels reach screen readers.** Godot 4.7 exposes `Control`s through AccessKit; every Plant
-  button, card and menu item has an accessible name. The 3D world is exempt (it has no text a reader could use beyond
-  what the cards show).
+- **A5 (Block) Plant's panels reach screen readers on desktops.** Godot (since 4.5) exposes `Control`s through
+  AccessKit on Windows and Linux; every Plant button, card and menu item has an accessible name (its text, or
+  `Control.accessibility_name` for an icon). The 3D world is exempt (it has no text a reader could use beyond what the
+  cards show). Plant on Android is exempt while Godot has no screen-reader support there.
+  - Check: the AT-SPI tree of Plant run in the GNOME headless session (`atspi.walk`).
 
 ### 2.11 Layouts that survive other text
 
 The UI is English only, but user content may be Arabic or mixed (REQUIREMENTS.md N7).
 
 - **L1 (Block) Mixed right-to-left and left-to-right text shows in the right order.** User text is shown with
-  automatic direction (web `dir="auto"` or `<bdi>`; GTK, Windows and Compose paragraph direction from the first strong
-  character), and a KKS code inside Arabic text keeps its characters in order.
+  automatic direction, and a KKS code inside Arabic text keeps its characters in order. Web: `dir="auto"` or `<bdi>`.
+  GTK (Pango) finds the direction from the first strong character itself, and Compose's default text direction
+  (`ContentOrLtr`) does too. Win32 edit controls and DirectWrite do not: the Windows app sets the reading direction
+  from the text's first strong character (`WS_EX_RTLREADING`, `DWRITE_READING_DIRECTION_RIGHT_TO_LEFT`).
   - Check: the synthetic fixture note `مضخة التغذية 11LAB70AA501 تعمل` (and a name in Arabic) on each platform's
     screenshot.
-- **L2 (Block) Labels can grow.** No control or label has a width that only fits today's English: with text 30 %
-  longer (the S2 settings test this too) labels wrap or their container grows; nothing is clipped or overlaps.
+- **L2 (Block) Labels can grow.** No control or label has a width that only fits today's English: at the S2 text
+  sizes (1.3 on Android, 200 % on the web, Large Text on GNOME, 150 % on Windows and in Plant), which make every label
+  at least 25 % wider, labels wrap or their container grows; nothing is clipped or overlaps.
 - **L3 (Block) Every value has its unit,** and a value and its unit stay on one line.
 - **L4 (Advice) Dates and times are unambiguous:** 2026-11-15 14:05 or "15 Nov 2026", 24-hour; never 11/12/26.
 - **L5 (Advice) Counts are grammatical:** "1 tag", "2 tags".
@@ -356,7 +374,8 @@ An audit is due for every change that touches what either app shows or how it is
 Changes to tests, docs, the core, the server's API, the importer or the relay need no audit unless they change
 text or behaviour that a user sees (an error message from the core is UI).
 
-A **full audit** (every rule, every platform, both apps) is done once now (docs/ui-audit/2026-11.md), and again
+A **full audit** (every rule, every platform, both apps) is done once after this policy is adopted (its results go
+in `docs/ui-audit/2026-11.md`), and again
 before each release that changed UI on more than one platform.
 
 ### 3.2 Who
@@ -373,16 +392,20 @@ allow it they may run the evidence scripts themselves (one at a time, through th
 
 ### 3.3 The evidence pack
 
-Made by the author from synthetic data only (Z1), for each platform the change touches, before and after the change:
+Made by the author from synthetic data only (Z1), before and after the change, for the screens the change touches on
+each platform whose code it changes (a change to `apps/common/` touches GNOME and Windows). A change that only rewords
+text needs screenshots of the changed screens on one platform and the list of the changed strings on every platform
+where they show (for X1, F2 and S3); no trees or sizes.
+
 
 | Platform | How | Screenshots | Accessibility tree | Sizes and colours |
 |---|---|---|---|---|
 | Web (Chromium, WebKit, Firefox) | Playwright with `KKS_SERVER` (the web e2e's setup) | 412 × 915 and 1280 × 800, light and dark, 200 % zoom, 320 px width | `locator.ariaSnapshot()` | `getBoundingClientRect()` of every target; computed colours |
-| GNOME | `apps/gnome/e2e/headless.sh` (never the user's desktop), under the GNOME e2e lock | `KKS_SHOT_ON_SIGNAL`, light, dark, Large Text | `atspi.walk` dump | AT-SPI extents |
+| GNOME | `apps/gnome/e2e/headless.sh` (never the user's desktop), one run at a time machine-wide (the local agent rules' GNOME e2e lock) | `KKS_SHOT_ON_SIGNAL`, light, dark, Large Text | `atspi.walk` dump | AT-SPI extents |
 | Windows | `apps/windows/e2e/test_windows.py` in kks-win10 or kks-win11, one VM at a time under `vm.lock` | `virsh screenshot`, light, dark, a contrast theme, 150 % text | the UIA driver's tree | UIA BoundingRectangle |
 | Android | the emulator under `vm.lock` (never with a VM); the e2e harness's `adbui` | `screencap`, demo-mode status bar, light, dark, largest font scale, landscape | `uiautomator dump` | node bounds ÷ density |
-| Plant desktop | `tools/plant3d/bench/offscreen.sh` with `tests/ui_shots.gd`, `tests/mimic_shots.gd` | 1600 × 900 and the phone layout (`--resolution 2960x1440`) | Godot's accessibility names (A5) | `Control` rects |
-| Plant Android | the emulator under `vm.lock`; the Note 9 only inside `phone-window` | `screencap` | — | P1's frame walk |
+| Plant desktop | `tools/plant3d/bench/offscreen.sh` with `tests/ui_shots.gd`, `tests/mimic_shots.gd` | 1600 × 900 and the phone layout (`--resolution 2960x1440`) | AT-SPI dump of Plant run in the headless session (A5) | `Control` rects |
+| Plant Android | the emulator under `vm.lock`; the Note 9 only when the user's phone time window allows (local agent rules) | `screencap` | — | P1's frame walk |
 
 What can't be checked on an emulator or headless (real TalkBack speech, sunlight, gloves) is checked on a real phone
 when the change is about it, and otherwise recorded as "not checked: needs a real phone". Never on the user's Honor
@@ -407,7 +430,8 @@ beside it (synthetic data only) and an issue for each group of fails.
 A change that touches UI (3.1) merges only when both audit passes are done and:
 
 - no **Block** rule fails because of the change, on any platform it touches;
-- a fail that was already on main does not block, if it has an open issue and the change does not make it worse;
+- a fail that was already on main does not block, if it has an open issue and the change does not make it worse (an
+  audit that finds such a fail with no issue yet files one, and it then counts as already on main);
 - a **Block** rule marked "Not checked" on a touched platform blocks, unless the reason is in the list of limits below
   or the user accepts it for that change;
 - **Advice** fails never block; they are recorded.
@@ -415,7 +439,9 @@ A change that touches UI (3.1) merges only when both audit passes are done and:
 Limits accepted for "Not checked" (until a tool for them is added):
 
 - TalkBack's spoken output, sunlight and gloves: need a real phone; the accessibility tree and sizes stand in.
-- The Note 9's frame walk (P1) outside `phone-window`: the change waits for the window when it touches Plant's
+- Safari on an iPhone and VoiceOver: no iPhone here; Playwright's WebKit stands in for Safari and the ARIA snapshot
+  for VoiceOver.
+- The Note 9's frame walk (P1) outside the user's phone time window: the change waits for the window when it touches Plant's
   per-frame UI, otherwise the desktop's frame probe stands in.
 - Windows on ARM64: not audited separately (the same code as x86-64).
 
