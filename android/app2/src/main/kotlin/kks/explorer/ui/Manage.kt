@@ -229,7 +229,8 @@ internal fun historyTitle(x: JSONObject): String {
     val rev = if (x.has("rev") && !x.isNull("rev")) "#" + x.optLong("rev") + " " else ""
     val note = x.str("note")
     val showNote = note.isNotEmpty() && x.str("entity") !in setOf("user", "sheet")
-    return (rev + x.str("summary") + if (showNote) " ($note)" else "").trim()
+    // the note isolated for direction (U+2068 … U+2069), as the core isolates the values in the summary
+    return (rev + x.str("summary") + if (showNote) " (\u2068${note.replace('\n', ' ')}\u2069)" else "").trim()
 }
 
 internal fun historyBy(x: JSONObject): String {
@@ -260,7 +261,7 @@ private fun History(rev: Int, say: (String) -> Unit) {
         if (revs.isEmpty()) item { Dim("No changes yet.") }
         items(revs) { x ->
             val hid = x.opt("hid")
-            ListItem(headlineContent = { Text(historyTitle(x)) },
+            ListItem(headlineContent = { SelectionContainer { Text(historyTitle(x)) } },   // the line holds the code
                 supportingContent = { Text(historyBy(x)) },
                 trailingContent = {
                     if (historyUndoable(x)) Row {

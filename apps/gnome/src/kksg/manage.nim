@@ -305,8 +305,6 @@ proc history(w: Win, box: W) =
               w.toast("Reverted")
               w.refreshPage(box, proc (b: W) = w.history(b))
             except ApiError as e: w.toast(e.msg)))
-        gtk_widget_set_valign(rev, GTK_ALIGN_CENTER)
-        adw_action_row_add_suffix(rw, rev)
         let rest = button("Restore", "flat", proc () =
           confirm(w.window, "Restore to just after this change?", "Every later change is undone by new changes.", "Restore", true, proc () =
             try:
@@ -314,8 +312,12 @@ proc history(w: Win, box: W) =
               w.toast("Restored")
               w.refreshPage(box, proc (b: W) = w.history(b))
             except ApiError as e: w.toast(e.msg)))
-        gtk_widget_set_valign(rest, GTK_ALIGN_CENTER)
-        adw_action_row_add_suffix(rw, rest)
+        # one above the other, 8 px apart: side by side they left the line about 55 px in the sidebar, and every
+        # code broke inside itself (UI audit 2026-11, GNOME-3)
+        let acts = vbox(8)
+        acts.add(rev, rest)
+        gtk_widget_set_valign(acts, GTK_ALIGN_CENTER)
+        adw_action_row_add_suffix(rw, acts)
       adw_preferences_group_add(g, rw)
   box.add g
 

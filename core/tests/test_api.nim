@@ -272,7 +272,7 @@ suite "plant API":
     for row in h.elems:
       if row["entity"].s == "equipment" and row["after"].s.contains("fixed"): noteRow = row
     # every row carries the line the apps show (they read rev, ts, full_name and summary)
-    check noteRow["summary"].s.startsWith("11LAB70AA501: ") and noteRow["summary"].s.contains("notes leaks → fixed")
+    check noteRow["summary"].s.startsWith("11LAB70AA501: ") and noteRow["summary"].s.contains("notes \u2068leaks\u2069 → \u2068fixed\u2069")
     for row in h.elems:
       check row["summary"].isStr and row["summary"].s.len > 0 and row["rev"].isInt and row["ts"].isInt
     let rv = mgrApi.call(mgr, "POST", "/api/revisions/" & noteRow["hid"].s & "/revert")
@@ -908,7 +908,7 @@ suite "bundles":
 suite "History lines (historySummary)":
   test "each kind of change in admin.html's words":
     check historySummary("user", newNull(), newNull(), newNull(), "boss joined") == "boss joined"
-    check historySummary("sheet", newStr("lp"), newNull(), newNull(), "imported") == "lp imported"
+    check historySummary("sheet", newStr("lp"), newNull(), newNull(), "imported") == "lp \u2068imported\u2069"
     check historySummary("link", newStr("[\"P1\",2,\"11LAB70AA501\"]"), newNull(), newBool(true), "") ==
       "linked 11LAB70AA501 · proc P1 step 2"
     check historySummary("link", newStr("[\"P1\",2,\"11LAB70AA501\"]"), newBool(true), newNull(), "") ==
@@ -920,15 +920,22 @@ suite "History lines (historySummary)":
     check historySummary("photo", newStr("p1"), newNull(), ph, "") == "photo added 11LAB70AA501"
     check historySummary("photo", newStr("p1"), ph, newNull(), "") == "photo removed 11LAB70AA501"
     check historySummary("equipment", newStr("11LAB70AA501"), parseStrict("""{"notes":"leaks","floor":"3"}"""),
-      parseStrict("""{"notes":"fixed","floor":"3","location":""}"""), "") == "11LAB70AA501: notes leaks → fixed"
+      parseStrict("""{"notes":"fixed","floor":"3","location":""}"""), "") == "11LAB70AA501: notes \u2068leaks\u2069 → \u2068fixed\u2069"
     check historySummary("review", newStr("lp:4"), newNull(), parseStrict("""{"state":"ok"}"""), "") ==
-      "review lp:4: (empty) → {\"state\":\"ok\"}"
+      "review lp:4: (empty) → \u2068{\"state\":\"ok\"}\u2069"
   test "long values are cut, and a row whose fields read the same says it was updated":
     let long = "x".repeat(150) & " 11LAB70AA501 " & "y".repeat(100)
     let line = historySummary("equipment", newStr("11LAB70AA501"), newNull(), newObj(@[("notes", newStr(long))]), "")
-    check line == "11LAB70AA501: notes (empty) → " & "x".repeat(150) & " …"     # cut before the code, not inside it
+    check line == "11LAB70AA501: notes (empty) → \u2068" & "x".repeat(150) & " …\u2069"     # cut before the code, not inside it
     let word = "z".repeat(300)    # one long word: kept whole
     check historySummary("equipment", newStr("A"), newNull(), newObj(@[("notes", newStr(word))]), "") ==
-      "A: notes (empty) → " & word
+      "A: notes (empty) → \u2068" & word & "\u2069"
     check historySummary("equipment", newStr("11LAB70AA501"), parseStrict("""{"custom":[]}"""),
       parseStrict("""{"loc":""}"""), "") == "11LAB70AA501: updated"
+  test "Arabic values are isolated, line breaks flattened, and a change past the cut still shows":
+    let ar = "مضخة التغذية 11LAB70AA501 تعمل"
+    check historySummary("equipment", newStr("11LAB70AA501"), newNull(), newObj(@[("notes", newStr(ar & "\nsecond line"))]), "") ==
+      "11LAB70AA501: notes (empty) → \u2068" & ar & " second line\u2069"
+    let base = "w ".repeat(100)
+    check historySummary("equipment", newStr("A"), newObj(@[("notes", newStr(base & "one"))]),
+      newObj(@[("notes", newStr(base & "two"))]), "").startsWith("A: notes \u2068")

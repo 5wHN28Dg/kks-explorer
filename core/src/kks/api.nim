@@ -1082,16 +1082,22 @@ proc histValFull(v: JNode): string =
     if parts.len == 0: "(none)" else: parts.join("; ")
   else: toText(v)
 
-proc histVal(v: JNode): string =
-  ## One value of a History line, as admin.html's `val` shows it, cut at 160 characters (the line is a summary: the
-  ## row's before and after carry the whole value).
-  if v.isNull or (v.kind in {jStr, jArr} and v.len == 0): return "(empty)"
-  result = histValFull(v)
+const Fsi = "\u2068"   # first-strong isolate: a value written in Arabic keeps its own direction, and the line
+const Pdi = "\u2069"   # around it (the code, the field) keeps its order on every client
+
+proc histCut(t: string): string =
+  ## one line, cut at the last space before 160 characters (never inside a word: a KKS code is never cut short)
+  result = t.multiReplace(("\r\n", " "), ("\n", " "), ("\r", " "))
   if result.runeLen > 160:
-    # cut at the last space before 160 characters, never inside a word (a KKS code is never cut short)
     let head = result.runeSubStr(0, 160)
     let sp = head.rfind(' ')
     if sp > 0: result = head[0 ..< sp] & " …"
+
+proc histVal(v: JNode): string =
+  ## One value of a History line, as admin.html's `val` shows it, in one line and cut (the row's before and after
+  ## carry the whole value), isolated for direction.
+  if v.isNull or (v.kind in {jStr, jArr} and v.len == 0): return "(empty)"
+  Fsi & histCut(histValFull(v)) & Pdi
 
 proc historySummary*(entity: string, key, before, after: JNode, note: string): string =
   ## What a change did, in the words admin.html's History uses, for the apps' History lists (the same line on every
@@ -1099,8 +1105,8 @@ proc historySummary*(entity: string, key, before, after: JNode, note: string): s
   let a = after
   let b = before
   case entity
-  of "user": note
-  of "sheet": histStr(key) & (if note.len > 0: " " & note else: "")
+  of "user": histCut(note)
+  of "sheet": histStr(key) & (if note.len > 0: " " & Fsi & histCut(note) & Pdi else: "")
   of "link":
     var k = key
     if key.isStr:
@@ -1126,8 +1132,10 @@ proc historySummary*(entity: string, key, before, after: JNode, note: string): s
     for k in keys:
       let av = if a != nil and a.kind == jObj: a.get(k) else: nil
       let bv = if b != nil and b.kind == jObj: b.get(k) else: nil
-      let (was, now) = (histVal(bv), histVal(av))
-      if was != now: parts.add k & " " & was & " → " & now   # absent and empty read the same
+      let empty = proc (v: JNode): bool = v.isNull or (v.kind in {jStr, jArr} and v.len == 0)
+      if (empty(av) and empty(bv)) or (not empty(av) and not empty(bv) and histValFull(av) == histValFull(bv)):
+        continue   # absent and empty read the same; compared whole, so a change past the cut still shows
+      parts.add k & " " & histVal(bv) & " → " & histVal(av)
     histStr(key) & ": " & (if parts.len > 0: parts.join(" · ") else: "updated")
   else: entity & " " & histStr(key) & ": " & histVal(b) & " → " & histVal(a)
 
