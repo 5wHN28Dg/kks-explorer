@@ -198,7 +198,7 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, say: (Str
     if (askReject) AlertDialog(onDismissRequest = { askReject = false },
         title = { Text("Reject ${if (n == 1) "1 proposal" else "$n proposals"}?") },
         text = { Text("Each one is rejected as its own Reject button does. The submitters see that it was rejected.") },
-        confirmButton = { TextButton(onClick = { askReject = false; run("reject") }) { Text("Reject") } },
+        confirmButton = { TextButton(onClick = { askReject = false; run("reject") }) { Text(if (n == 1) "Reject it" else "Reject all $n") } },
         dismissButton = { TextButton(onClick = { askReject = false }) { Text("Cancel") } })
 }
 

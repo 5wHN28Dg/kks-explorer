@@ -537,7 +537,7 @@ async function decideMany(action){
   try{
     for(const id of ids){
       const s=OPEN_SUBS.get(id);
-      if(action==='approve'&&s?.conflicts?.length){ held.push(id); continue }
+      if(action==='approve'&&(s?.conflicts?.length||s?.status==='conflict')){ held.push(id); continue }
       const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);
       const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
       $('#pickN').textContent=`${action==='approve'?'Approving':'Rejecting'} ${done+failedL.length+1} of ${n}…`;

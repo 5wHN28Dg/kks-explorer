@@ -146,8 +146,8 @@ proc fillPickBar(w: Win, again: proc ()) =
     let n = picked.len
     if n == 0: return
     ask(w.window, "Reject " & (if n == 1: "1 proposal" else: $n & " proposals") & "?",
-        "Each one is rejected as its own Reject button does. The submitters see that it was rejected.", "Reject",
-        "Cancel", proc (yes: bool) =
+        "Each one is rejected as its own Reject button does. The submitters see that it was rejected.",
+        (if n == 1: "Reject it" else: "Reject all " & $n), "Cancel", proc (yes: bool) =
           if yes: w.decideMany("reject", again)))
   pickBar.add pickAll, pickCount, pickOk, pickNo
   pickShow()

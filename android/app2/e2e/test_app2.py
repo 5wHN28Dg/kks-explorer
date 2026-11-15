@@ -1723,6 +1723,70 @@ class Phone(unittest.TestCase):
         ui.tap('Open on the drawing', exact=True)
         ui.find('Feed water piping system', timeout=15)
 
+    def test_copy_close_batch(self):
+        """the user's requests of 2026-11-15: Copy beside the code in the tag panel (it says "Copied"); the panel's
+        heading with Close stays in view while the panel scrolls (it scrolled away with the content before); in
+        Approvals, Select all and Approve selected, and ticked ones rejected with one question"""
+        # enough in the panel that it scrolls far
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'base': {}, 'changes': {
+            'custom': [{'k': 'Field %02d' % i, 'v': 'value %d' % i} for i in range(30)]}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        omar = self.member('omar', 'Omar Fullname', 'omar password 1')
+        for f in ('near', 'area', 'loc'):
+            r = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {f: 'by omar ' + f}, 'base': {}}})
+            self.assertEqual(r.get('status'), 'pending', r)
+        self.join()
+        self.open_tag()
+        ui.tap('Copy', exact=True)
+        ui.find('Copied', exact=True, timeout=5)
+        ui.find('Copied 11LAB70AA501', exact=True, timeout=5)        # the snackbar
+        clip = ui.sh('cmd', 'clipboard', 'get-primary-clip') if 'get-primary-clip' in ui.sh('cmd', 'clipboard', 'help') else ''
+        if clip: self.assertIn('11LAB70AA501', clip)
+        # scrolled to the last field, the heading is still there: the code, Copy and Close
+        ui.scroll_to('Field 29', exact=True, tries=20)
+        self.assertFalse(ui.present('Plant unit', exact=True), 'the panel did not scroll')
+        for t in ('11LAB70AA501', 'Close'):
+            self.assertTrue(ui.present(t, exact=True), t + ' scrolled out of view')
+        ui.tap('Close', exact=True)
+        time.sleep(1)
+        self.assertFalse(ui.present('Field 29', exact=True), 'Close did not close the panel')
+        # Approvals: all three at once
+        ui.tap('Manage', exact=True)
+        ui.tap('Approvals', exact=True)
+        ui.find('None selected', exact=True, timeout=20)
+        ui.tap('Select all (3)', exact=True)
+        ui.find('3 selected', exact=True)
+        ui.tap('Approve selected (3)', exact=True)
+
+        def all_approved():
+            st = [x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']]
+            return st if st and all(x == 'approved' for x in st) else None
+        self.assertEqual(len(self.wait_server(all_approved, 'Approve selected never reached the server')), 3)
+        ui.find('Nothing waits for approval.', timeout=20)
+        # two more: tick one, Reject selected asks once, the other stays
+        ids = []
+        for f in ('near', 'area'):
+            ids.append(omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {f: 'again ' + f}, 'base': {}}})['id'])
+        ui.sh('input', 'keyevent', '4')
+        ui.tap('Drawings', exact=True)
+        ui.tap('Sync', exact=True)
+        time.sleep(3)
+        ui.tap('Manage', exact=True)
+        ui.tap('Approvals', exact=True)
+        ui.find('Select all (2)', exact=True, timeout=20)
+        tick = [n for n in ui.nodes() if (n.get('content-desc') or '').startswith(f'Select #{ids[0]},')]
+        self.assertEqual(len(tick), 1, 'one tick per proposal, named by it')
+        x, y = ui.center(tick[0])
+        ui.sh('input', 'tap', str(x), str(y))
+        ui.find('1 selected', exact=True)
+        ui.tap('Reject selected (1)', exact=True)
+        ui.find('Reject 1 proposal?', exact=True)
+        ui.tap('Reject it', exact=True)
+        st = self.wait_server(lambda: (lambda d: d if d[ids[0]] == 'rejected' else None)(
+            {x['id']: x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}), 'Reject selected never reached the server')
+        self.assertEqual(st[ids[1]], 'pending')
+        ui.find('Select all (1)', exact=True, timeout=20)
+
     def test_position_required(self):
         """request 7: a new member's join forms need a position; an admin's Add a person too"""
         ui.tap('Join with a file', exact=True)
@@ -1967,7 +2031,7 @@ class Phone(unittest.TestCase):
 # test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 3: at the
 # end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'copy_close_batch'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures', 'app_links'))
 

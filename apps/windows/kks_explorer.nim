@@ -49,15 +49,7 @@ proc layoutMain() =
   MoveWindow(w.v.hwnd, int32(side), 0, int32(max(10, W - side - panelW)), int32(H - st), 1)
   # the tag's heading (code, Copy, Close) above the panel, which scrolls under it (the user, 2026-11-15: "Close button
   # shouldn't be hidden or move away when I scroll down"); as tall as what it holds
-  var headH = 0
-  let headOn = panelW > 0 and not w.picking and not w.panelHead.isEmpty
-  if headOn:
-    MoveWindow(w.panelHead.hwnd, int32(W - panelW), 0, int32(panelW), int32(H - st), 0)
-    w.panelHead.layout()
-    headH = min(w.panelHead.contentHeight, (H - st) div 2)
-    MoveWindow(w.panelHead.hwnd, int32(W - panelW), 0, int32(panelW), int32(headH), 1)
-  ShowWindow(w.panelHead.hwnd, if headOn: SW_SHOW else: SW_HIDE)
-  MoveWindow(w.panel.hwnd, int32(W - panelW), int32(headH), int32(panelW), int32(H - st - headH), 1)
+  discard placeColumn(w.panelHead, w.panel, W - panelW, panelW, H - st, headOn = panelW > 0 and not w.picking)
   ShowWindow(w.panel.hwnd, if panelW > 0: SW_SHOW else: SW_HIDE)
   # the bottom row: the status line, then the photo queue's line and "Photos not sent (n)…" while there are any
   var right = W - int(px(8))
