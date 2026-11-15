@@ -237,8 +237,8 @@ static func clock_words(c: int) -> String:
 ## occurrence of HH:MM after now, then days on), or [] when it is more than 30 days on or not after now.
 static func jump_to(e, c: int) -> Array:
 	var now: int = e.clock()
-	if c <= now:
-		return []
+	if c <= now + MINUTE:
+		return []           # (the step's own minute: it comes on its own, and a jump to it would land a day late)
 	var mins: int = int(ceil(float(c % DAY) / MINUTE))
 	var t: int = (c / DAY) * DAY + mins * MINUTE
 	if mins >= 1440:
@@ -498,7 +498,12 @@ func _deliveries(e) -> void:
 	body.add_child(l)
 	var j := jump_to(e, first)
 	if not j.is_empty():
-		var b := W.button("Jump to the next delivery (%s)" % clock_words(first), func(): ui.inputs.jump(j[0], j[1]))
+		# (worked out again when pressed: the list is not rebuilt as the clock goes on within the day)
+		var b := W.button("Jump to the next delivery (%s)" % clock_words(first), func():
+			var now = ui.clock.engine
+			var jj := jump_to(now, first) if now != null else []
+			if not jj.is_empty():
+				ui.inputs.jump(jj[0], jj[1]))
 		b.name = "jump_delivery"
 		var why := jump_blocked(e)
 		b.disabled = why != "" or not e.fast_forward()

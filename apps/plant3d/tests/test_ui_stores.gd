@@ -304,6 +304,32 @@ func _panel(tree: SceneTree) -> Array:
 		# (42 days on: past a jump's 30, so no jump to it is offered)
 		if sp.body.find_child("jump_delivery", true, false) != null:
 			p.append("a jump 42 days on was offered")
+		# an order due in 7 days: the jump to it is offered, and worked out when pressed (the list is not rebuilt as
+		# the clock goes past the delivery's time of day: the jump built with the list would land a day late)
+		sp.order("cp_oil", 1)
+		ui.clock.run_steps(2)
+		await tree.process_frame
+		var due := -1
+		for o in e.sr_orders:
+			if o[1] == "cp_oil":
+				due = int(o[5])
+		ui.open_stores()
+		await tree.process_frame
+		var j0: Array = Stores.jump_to(e, due)
+		var n_run := 0
+		while due >= 0 and (e.clock() % DAY) <= (due % DAY) + 600 and n_run < 400:
+			ui.clock.run_steps(5)
+			n_run += 1
+		var j1: Array = Stores.jump_to(e, due)
+		if due < 0 or j0.size() != 2 or j1.size() != 2 or int(j1[1]) != int(j0[1]) - 1:
+			p.append("the delivery's jump test did not set up: due %d, %s then %s" % [due, str(j0), str(j1)])
+		elif not _press(sp.body, "jump_delivery"):
+			p.append("no jump to a delivery 7 days on was offered: %s" % Stores.jump_blocked(e))
+		elif e.queue.is_empty() or e.queue[-1] != ["jump", j1[0], j1[1]]:
+			p.append("the jump to the delivery was %s, wanted %s (the one worked out when the list was built: %s)"
+					% [str(e.queue.slice(-1)), str(["jump"] + j1), str(j0)])
+		if not e.queue.is_empty() and e.queue[-1][0] == "jump":
+			e.queue.pop_back()      # (not taken: the rest of the test runs on this day)
 	# the debrief's parts
 	var d := Debrief.collect(e, ui.info, null)
 	var lines := "\n".join(Debrief.summary_lines(d))

@@ -392,7 +392,7 @@ static func _stores_contents(fresh, d: Dictionary) -> String:
 				if d.has("cur") and d["cur"][fresh._sr_slot[2 * i + (0 if k == "sr_stock" else 1)]] != float(x):
 					return "a stock of parts whose value doesn't agree"
 	var po = d.get("sr_po", 0)
-	if typeof(po) != TYPE_INT or po < 0 or po > 9999:
+	if typeof(po) != TYPE_INT or po < 0 or po > 99999999:     # (no cap in the engines: PO-10000 follows PO-9999)
 		return "a damaged purchase order count"
 	if d.has("sr_orders"):
 		if typeof(d["sr_orders"]) != TYPE_ARRAY:

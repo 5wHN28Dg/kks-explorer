@@ -1276,7 +1276,7 @@ parts). Lead times are clock days (§2.1).
   by item: `about`'s sentence; `hands` run 3 (its jump, made before with a hand action under way, is now refused
   under §7.4's rule: its why, events, states and digests). `plant3d-v1.json` and `plant3d-v2.json` made again with the
   train's stores (and again after main's HW3, §2.22, compared item by item with HW3's files): every input, event,
-  expectation and earlier value unchanged; the snapshots gain the 172 new values (v1's `train` and `hot`, v2's `wtp`,
+  expectation and earlier value unchanged (in part 1; part 3, below, adds two events to HW3's five forks); the snapshots gain the 172 new values (v1's `train` and `hot`, v2's `wtp`,
   `wtp_cip`, `wtp_regen`) and the `stores` part, as do v2's `day` states (the part only) and every fork's end (the
   part only); v2's `day` digests moved, the day's own and every fork's (the digest's stores part and the new slots),
   HW3's forks `npc_hands`, `npc_hands_drift`, `npc_hands_blocked`, `npc_hands_passing` and `npc_hands_wet` among
@@ -1341,6 +1341,11 @@ parts). Lead times are clock days (§2.1).
   - A service file's action's `part` is looked up in stores.json by the plant's check (`check_files`), `bad_ref`
     when it is not there or the plant has none; the app's engine refuses a store whose place is not a staff place
     when the plant loads (`plant_model.gd`), not at the first walk to it.
+  - "Jump to the next delivery" works its jump out when pressed (the list is not rebuilt as the clock goes on within
+    the day), and is not offered for a delivery within the next minute (it comes on its own).
+  - A save's purchase order count has no cap of 9,999 (the engines have none: PO-10000 follows PO-9999).
+  - In a session, a jump vote whose days are not a whole number 0 to 30 is refused (`session.gd` `jump_days`: -1),
+    as the engine refuses such a jump, never committed as a plain jump.
   - The counter's issue form keeps the work chosen by its id across rebuilds (works entering or leaving the list
     while it is open), and a work the trainee chose stays chosen; a chosen work that leaves the list leaves none.
 - **Replacing a transmitter (part 3, HW3's leftover; 2026-11-14):**

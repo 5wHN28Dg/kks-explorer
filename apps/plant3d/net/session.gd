@@ -1459,8 +1459,10 @@ func _on_control(p, c: Dictionary) -> void:
 		_roster_changed()
 		_check_fast()
 	if c.has("jump") and typeof(c["jump"]) == TYPE_STRING and c["jump"].length() <= 5:
-		_jump_votes[p.slot] = [c["jump"], jump_days(c.get("days", 0))]
-		_check_jump()
+		var jd := jump_days(c.get("days"))
+		if jd >= 0:             # (bad days: the vote is refused)
+			_jump_votes[p.slot] = [c["jump"], jd]
+			_check_jump()
 	if c.has("away") and typeof(c["away"]) == TYPE_BOOL:
 		p.away = c["away"]
 		p.away_t = _now
@@ -2056,7 +2058,8 @@ func send_input(item: Array) -> void:
 		if not (state == State.RUN or state == State.LOBBY) or not InputCheck.form_ok(item):
 			return
 		if item[0] == "jump":
-			vote_jump(item[1], jump_days(item[2] if item.size() > 2 else 0))
+			if jump_days(item[2] if item.size() > 2 else null) >= 0:
+				vote_jump(item[1], jump_days(item[2] if item.size() > 2 else null))
 			return
 		_own_number += 1
 		_inbox.append([HOST_SLOT, _own_number, InputCheck.text(item)])
@@ -2064,7 +2067,8 @@ func send_input(item: Array) -> void:
 	if observer or not InputCheck.form_ok(item):
 		return
 	if item[0] == "jump":
-		vote_jump(item[1], jump_days(item[2] if item.size() > 2 else 0))
+		if jump_days(item[2] if item.size() > 2 else null) >= 0:
+			vote_jump(item[1], jump_days(item[2] if item.size() > 2 else null))
 		return
 	if _send_p == null:
 		_unsent.append(item)
@@ -2153,14 +2157,16 @@ func vote_jump(hhmm: String, days := 0) -> void:
 		_send_control({"jump": hhmm, "days": days})
 
 
-## A jump's days as a vote carries them (REALISM.md §2.23): a whole number 0 to 30, anything else 0 (the engine
-## refuses a bad one itself; a vote only has to agree with the others').
+## A jump's days as a vote carries them (REALISM.md §2.23): a whole number 0 to 30, none (null) 0, anything else -1:
+## the vote is refused, as the engine refuses such a jump (never a plain jump in its place).
 static func jump_days(x) -> int:
 	var t := typeof(x)
+	if x == null:
+		return 0
 	if (t == TYPE_INT or t == TYPE_FLOAT) and is_finite(float(x)) and float(x) == floorf(float(x)) \
 			and float(x) >= 0.0 and float(x) <= 30.0:
 		return int(x)
-	return 0
+	return -1
 
 
 ## Android's lifecycle (§7.5): the app goes to the background or comes back.
