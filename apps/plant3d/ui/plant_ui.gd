@@ -1296,7 +1296,8 @@ func show_me(code: String) -> void:
 		route.guide(player, index.box(code))
 
 
-## Puts the trainee beside the equipment, facing it: a short flight, then on the floor below when there is one.
+## Puts the trainee beside the equipment, facing it: a short flight (with Reduced motion on, at once), then on the floor
+## below when there is one.
 func fly_to(code: String, done: Callable = Callable()) -> void:
 	if not index.has(code):
 		toast("%s is not drawn in the plant." % code)
@@ -1320,6 +1321,18 @@ func fly_to(code: String, done: Callable = Callable()) -> void:
 		main.toggle_map()
 	if _flight:
 		_flight.kill()
+		_flight = null
+	if bindings.reduced_motion:
+		# the settings' Reduced motion: placed there at once, no flight (UI-UX-POLICY A4)
+		player.scripted = false
+		player.drive = Vector2.ZERO
+		player.set_mode(player.Mode.FLY)
+		player.global_position = to
+		player.set_heading(yaw, pitch)
+		player.set_mode(player.Mode.WALK)     # on the floor below when there is one, as after a flight
+		if done.is_valid():
+			done.call()
+		return
 	player.set_mode(player.Mode.FLY)
 	player.scripted = true
 	player.drive = Vector2.ZERO
