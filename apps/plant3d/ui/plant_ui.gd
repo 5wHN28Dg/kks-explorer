@@ -424,7 +424,7 @@ func _layout_toast() -> void:
 	# between the side panels when they are open (on a phone it may reach over them: it has its own background)
 	var side := 0.0
 	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible
-			or permits.visible):
+			or permits.visible or (work_orders != null and work_orders.visible) or (stores != null and stores.visible)):
 		side = card.size.x + 32.0
 	_toast_beside_card = card != null and card.visible
 	var w := clampf(vs.x - 2.0 * side, 360.0, minf(vs.x * 0.5, 900.0))

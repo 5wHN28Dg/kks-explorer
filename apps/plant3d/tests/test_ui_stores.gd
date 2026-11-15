@@ -330,6 +330,11 @@ func _panel(tree: SceneTree) -> Array:
 		var lv: Label = a3.find_child("levels", true, false)
 		if lv == null or not lv.text.begins_with("Stock 2 · min 1, reorder at 1, max 3"):
 			p.append("the range 3 transmitter's levels: %s" % (lv.text if lv != null else "(none)"))
+	# a notice (a toast) keeps clear of the stores panel, as of the card (it covered the rows' buttons)
+	ui.toast("Copied WDP-PT-UNIT-A3")
+	await tree.process_frame
+	if ui._toast.get_global_rect().intersects(sp.get_global_rect()):
+		p.append("a notice covers the stores panel: %s over %s" % [str(ui._toast.get_global_rect()), str(sp.get_global_rect())])
 	# (C1–C3, A1) a part's number copied, or written on the request by a press; (K4) the levels say the state in words
 	_press(sp.body, "copy_pt_unit_a3")
 	if sp.last_copied != "WDP-PT-UNIT-A3":
