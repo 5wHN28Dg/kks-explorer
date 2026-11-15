@@ -470,6 +470,9 @@ func _panel(tree: SceneTree) -> Array:
 		p.append("the debrief has no parts drawn: %s" % lines.right(400))
 	var raw: Array = d.entries.filter(func(x): return String(x.text).begins_with("issue ") or String(x.text).begins_with("order "))
 	var said_issue: Array = d.entries.filter(func(x): return String(x.text).begins_with("Issued: 10 × WDP-PT-FERRULES"))
+	var said_stock: Array = d.entries.filter(func(x): return String(x.text).begins_with("Issue of WDP-PT-SENSOR-MODULE"))
+	if said_stock.is_empty() or not String(said_stock[0].text).ends_with("refused: not enough on the shelf"):
+		p.append("the debrief says a past refusal from today's stock: %s" % str(said_stock.map(func(x): return x.text)))
 	if not raw.is_empty() or said_issue.is_empty():
 		p.append("the debrief lists the stores' events as records, not words: %s" % str(raw.map(func(x): return x.text)))
 	ui.open_debrief()

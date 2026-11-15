@@ -419,7 +419,8 @@ func _show(text: String, ok := false) -> void:
 		feedback.add_theme_color_override("font_color", W.OK_COLOUR if ok else W.BAD_COLOUR)
 
 
-static func event_text(e, ev: Array) -> String:
+## past: said later (the debrief), so nothing from the plant as it is now (its stock, an order's due day) is said.
+static func event_text(e, ev: Array, past := false) -> String:
 	if ev[1] == "delivery":         # [n, "delivery", number, part, qty]
 		var dp := part_of(e, str(ev[3]))
 		return "Delivered: %d × %s %s (%s)" % [int(ev[4]), dp.get("number", ""), dp.get("title", str(ev[3])), ev[2]]
@@ -434,13 +435,17 @@ static func event_text(e, ev: Array) -> String:
 			return "Issued: %s × %s against %s" % [str(ev[3]), name, _work_words(e, str(ev[4]))]
 		var ws := PackedStringArray()
 		for r in why:
-			if r == "stock":
+			if r == "stock" and past:
+				ws.append("not enough on the shelf")
+			elif r == "stock":
 				var n := stock_of(e, str(ev[2]))
 				ws.append(("only %d on the shelf: ask for %d or fewer, or order more (Order, in the catalogue)" % [n, n])
 						if n > 0 else "none on the shelf: order it (Order, in the catalogue) or wait for a delivery")
 			else:
 				ws.append(ISSUE_WHY.get(r, r))
 		return "Issue of %s refused: %s" % [name, "; ".join(ws)]
+	if res == "done" and past:
+		return "Ordered: %s × %s (%s)" % [str(ev[3]), name, ev[7]]
 	if res == "done":
 		return "Ordered: %s × %s (%s, due %s)" % [str(ev[3]), name, ev[7], _due_words(e, str(ev[7]))]
 	var os := PackedStringArray()
