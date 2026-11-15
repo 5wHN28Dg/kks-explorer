@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "plate_hx",
+ "title": "Plate heat exchanger",
  "params": {"plates": 300, "height": 2.5},
  "sources": [
   {"id": "alfa_phe", "cite": "Alfa Laval, Grundfos by Alfa Laval plate heat exchangers, maintenance manual 200019583-2-EN-GB (2026-07): main components pp. 16-18, bolt configuration p. 35, opening (steps 1-15) pp. 45-48, torque p. 49, closing (steps 1-17) pp. 50-52, plates out and in p. 55", "url": "https://assets.alfalaval.com/documents/p99dbc05b/alfa-laval-grundfos-maintenance-manual-phe-en-gb.pdf"}

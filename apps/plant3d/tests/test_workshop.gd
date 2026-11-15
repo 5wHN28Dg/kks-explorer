@@ -16,6 +16,7 @@ extends RefCounted
 const Kit = preload("res://kit/kit.gd")
 const WB = preload("res://builder/workshop_build.gd")
 const Explode = preload("res://workshop/explode.gd")
+const Workshop = preload("res://workshop/workshop.gd")
 ## The way the working fluid flows along the shaft, per kind with blade rows (Godot's axes: the generator's +y is -z):
 ## the steam turbine's steam from its inlet end to its exhaust end (generator -y), the gas turbine's air and gas from
 ## the compressor to the exhaust (generator +y). Every kind whose drawn faces lean about a shaft is listed here.
@@ -122,6 +123,9 @@ func run(_tree: SceneTree) -> Array:
 			bs.free()
 		_kind(part, data, params, ctx)
 		_built(part, data)
+		# its title in the Workshop's lists and title bar is its data file's (UI-UX-POLICY X1: the kind's name, not its id)
+		check(data.get("title") is String and Workshop.title_of(part) == data.title, "%s: the Workshop's title is the data file's %s (got %s)" % [
+			part, str(data.get("title")), Workshop.title_of(part)])
 	check(kinds >= 1, "a kind with Workshop data (the pressure transmitter)")
 	_fixture()
 	_misuse()

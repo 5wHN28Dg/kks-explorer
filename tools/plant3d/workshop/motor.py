@@ -145,7 +145,7 @@ def assembly(root, first=True):
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'motor',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'motor', 'title': 'Electric motor',
         'sources': SOURCES,
         'components': dict(components('stator'),
                            baseplate=_c('Baseplate', 'The steel frame the motor\'s feet are bolted to, grouted to '

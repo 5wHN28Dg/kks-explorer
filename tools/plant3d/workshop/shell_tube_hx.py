@@ -135,7 +135,7 @@ ASSEMBLY = [
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'shell_tube_hx',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'shell_tube_hx', 'title': 'Shell-and-tube heat exchanger',
         'params': PARAMS,
         'sources': SOURCES,
         'components': components(),

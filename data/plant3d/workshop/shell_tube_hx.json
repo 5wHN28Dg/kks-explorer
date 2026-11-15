@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "shell_tube_hx",
+ "title": "Shell-and-tube heat exchanger",
  "params": {"d": 1.2, "length": 5, "orientation": "horizontal"},
  "sources": [
   {"id": "xylem_cpk", "cite": "Xylem, Standard Xchange CPK shell and tube heat exchangers, IOM manual 0120-1 (January 2020), printed pages (the PDF's are one more): construction Fig. 1 p. 7; maintenance items 1-15 pp. 15-18; packing rings a-h p. 19; torque and the 16-bolt pattern p. 20", "url": "https://prod.xylem.com/siteassets/brand/standard-xchange/resources/manual/cpk-shell-tube-iom_0120-1-rev-0.pdf"},

@@ -114,7 +114,7 @@ ASSEMBLY = [
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'plate_hx',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'plate_hx', 'title': 'Plate heat exchanger',
         'params': PARAMS,
         'sources': SOURCES,
         'components': components(),

@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "motor",
+ "title": "Electric motor",
  "sources": [
   {"id": "abb_lv", "cite": "ABB, Low voltage motors manual: installation, operation, maintenance and safety manual, 3GZF500730-85 rev. D (2009): §3.9 direction of rotation (clockwise seen at the drive end with L1-L2-L3 on U-V-W), §6.1 bearings replaced when worn, §7.3 bearings pulled with pullers and fitted hot", "url": "https://library.e.abb.com/public/e20ddd6a89ed4815821e8163f569bf63/Standard_LV_Motors_Manual_EN_01_2009%20Rev%20D.pdf"},
   {"id": "weg_iom", "cite": "WEG, Installation, operation and maintenance manual, electric motors, 50033244 rev. 43 (2026): §8.3 disassembly precautions (a fan fitted with interference replaced), §8.3.1 the terminal box, §8.4 the parts removed to dry a stator (end shields, rotor with shaft, fan cover, fan, terminal box)", "url": "https://static.weg.net/medias/downloadcenter/ha6/h39/WEG-WMO-safe-area-50033244-manual-pt-en-es.pdf"},

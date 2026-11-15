@@ -132,9 +132,18 @@ static func kinds() -> Array:
 static func has_kind(p: String) -> bool:
 	return p != "" and ResourceLoader.exists(DIR.path_join(p + ".scn"))
 
-## "some_part_kind" -> "Some part kind" (the list's words; the scene's own words come with it).
+## A kind's title: its data file's `title` (the build keeps the kinds' titles beside their scenes), else made from
+## its id ("some_part_kind" -> "Some part kind").
 static func title_of(p: String) -> String:
+	if _titles.is_empty() and ResourceLoader.exists(DIR.path_join("titles.res")):
+		var r: Resource = load(DIR.path_join("titles.res"))
+		_titles = r.get_meta("titles", {}) if r != null else {}
+		_titles[""] = ""   # (loaded: not looked for again; no kind's id is empty)
+	if _titles.has(p) and String(_titles[p]) != "":
+		return _titles[p]
 	return p.replace("_", " ").capitalize().substr(0, 1) + p.replace("_", " ").substr(1)
+
+static var _titles := {}
 
 var force_session := false      # (tests: the plant behaves as in a session, without a network)
 

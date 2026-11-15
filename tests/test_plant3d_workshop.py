@@ -267,6 +267,18 @@ class WorkshopData(unittest.TestCase):
         for st in g['assembly']:
             self.assertIn('not a maker\'s manual', ' '.join(st['why']), st['place'])
 
+    def test_every_kind_has_a_title(self):
+        # the kind's name in the Workshop's title bar and lists (UI-UX-POLICY X1), not one made from its id
+        for f, text in self.files.items():
+            if f.startswith('workshop/') and f.count('/') == 1:
+                t = json.loads(text).get('title')
+                self.assertTrue(isinstance(t, str) and 1 <= len(t) <= 60, f)
+        self.assertEqual(json.loads(self.files['workshop/shell_tube_hx.json'])['title'], 'Shell-and-tube heat exchanger')
+        w = copy.deepcopy(self.fixture)
+        w['title'] = ''
+        with self.assertRaises(FormatError):
+            W.check(w, None, 'w', parts={'test_gadget'})
+
     def test_context(self):
         w = copy.deepcopy(self.fixture)
         w.pop('params', None)

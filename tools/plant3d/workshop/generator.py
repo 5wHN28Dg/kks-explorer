@@ -210,7 +210,7 @@ def assembly(coupled):
 
 def data(coupled=True):
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'generator',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'generator', 'title': 'Generator',
         # its parameters and shaft line are the plant's first generator's (WORKSHOP.md §5)
         'context': ['axis_z', 'shaft_lo', 'shaft_hi'],
         'sources': SOURCES,

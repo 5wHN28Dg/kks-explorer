@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "generator",
+ "title": "Generator",
  "context": [
   "axis_z",
   "shaft_lo",

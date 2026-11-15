@@ -40,6 +40,7 @@ static func build_all(out_dir: String, data_dir: String, equipment: Dictionary, 
 	out.errors.append_array(build_ui(out_dir.get_base_dir()))
 	var files := Array(DirAccess.get_files_at(dir))
 	files.sort()
+	var titles := {}
 	for f in files:
 		if not f.ends_with(".json"):
 			continue
@@ -63,7 +64,17 @@ static func build_all(out_dir: String, data_dir: String, equipment: Dictionary, 
 			continue
 		out.built.append(part)
 		out.tris[part] = r.tris
+		if data.get("title") is String:
+			titles[part] = data.title
+	# the kinds' titles, for the lists that name a kind before its scene is loaded (Workshop.title_of)
+	var tr := Resource.new()
+	tr.set_meta("titles", titles)
+	var te := ResourceSaver.save(tr, out_dir.path_join(TITLES))
+	if te != OK:
+		out.errors.append("workshop: save %s: error %d" % [TITLES, te])
 	return out
+
+const TITLES := "titles.res"
 
 ## The Workshop space's own pieces (WORKSHOP.md §3, milestone K1), built here as the kinds are, in the plant's one
 ## vertex format and its materials (no new pipeline): `built/workshop_ui/space.scn` with `floor` (a matt disc) and
