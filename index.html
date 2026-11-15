@@ -167,7 +167,9 @@ dt{color:var(--muted)} dd{margin:0}
   .brand small{display:none}
   header{gap:6px}
   #panel{top:auto;bottom:0;left:0;right:0;width:auto;max-height:72%;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
-  .grip{display:block;width:44px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 0}
+  /* the grip stays at the top with the heading under it: nothing above Close moves while the panel scrolls */
+  .grip{display:block;position:sticky;top:0;z-index:3;height:13px;margin:0;background:linear-gradient(var(--line),var(--line)) center 8px/44px 5px no-repeat,var(--chrome2)}
+  .phead{top:13px}
   .phead .x,.drawer .head .x,.copy{min-width:48px;min-height:48px}
   .drawer{width:100%}
 }

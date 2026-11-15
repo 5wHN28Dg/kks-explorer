@@ -105,31 +105,42 @@ proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) 
     return
   pickBusy = true
   pickShow()
-  for sub in chosen:
-    let id = sub["id"].i
-    if action == "approve" and sub["status"].s == "conflict":
-      held.add "#" & $id
-      continue
-    if action == "approve" and id in pickCompeting:
-      competing.add "#" & $id
-      continue
-    try:
-      discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
-      inc done
-      picked.keepItIf(it != id)
-    except ApiError as e:
-      failed.add "#" & $id & ": " & e.msg
-  pickBusy = false
-  var msg = (if action == "approve": "Approved " else: "Rejected ") & $done & " of " & $chosen.len & "."
-  if held.len > 0:
-    msg.add " Not approved: " & held.join(", ") & (if held.len == 1: " clashes" else: " clash") &
-            " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
-  if competing.len > 0:
-    msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
-            (if competing.len == 1: "its" else: "their") & " code; choose with “Pick this photo”."
-  if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
-  w.toast(msg)
-  idle(again)      # (the bar's own button ran this: the page and the bar are made again after it returned)
+  # one proposal per turn of the main loop, saying how far it got: the window stays live during a long batch
+  var i = 0
+  var step: proc ()
+  step = proc () =
+    if i < chosen.len:
+      let sub = chosen[i]
+      inc i
+      let id = sub["id"].i
+      if action == "approve" and sub["status"].s == "conflict":
+        held.add "#" & $id
+      elif action == "approve" and id in pickCompeting:
+        competing.add "#" & $id
+      else:
+        if pickCount != nil and gtk_widget_get_root(pickCount) != nil:
+          gtk_label_set_text(pickCount, ((if action == "approve": "Approving " else: "Rejecting ") & $i & " of " &
+                                         $chosen.len & "…").cstring)
+        try:
+          discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
+          inc done
+          picked.keepItIf(it != id)
+        except ApiError as e:
+          failed.add "#" & $id & ": " & e.msg
+      idle(step)
+      return
+    pickBusy = false
+    var msg = (if action == "approve": "Approved " else: "Rejected ") & $done & " of " & $chosen.len & "."
+    if held.len > 0:
+      msg.add " Not approved: " & held.join(", ") & (if held.len == 1: " clashes" else: " clash") &
+              " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
+    if competing.len > 0:
+      msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
+              (if competing.len == 1: "its" else: "their") & " code; choose with “Pick this photo”."
+    if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
+    w.toast(msg)
+    again()
+  idle(step)      # (the bar's own button ran this: the page and the bar are made again after it returned)
 
 proc fillPickBar(w: Win, again: proc ()) =
   if pickBar == nil: return

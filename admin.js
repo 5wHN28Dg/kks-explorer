@@ -182,7 +182,7 @@ const VIEWS={
       h('button',{class:'primary',id:'pickOk',onclick:()=>decideMany('approve')},'Approve selected'),
       h('button',{class:'danger',id:'pickNo',onclick:()=>decideMany('reject')},'Reject selected')));
     put(mainFor(g),out);
-    pickedBar();
+    pickedBar(); padForBar();
   },
   async mine(g){
     // filtered by the server (/api/submissions: status, kind, field, mine), grouped here by code
@@ -257,7 +257,7 @@ const VIEWS={
     const code=h('input',{name:'code','aria-label':'Sign-up code',placeholder:S?.enabled?'a new code':'a code, 6+ characters',autocomplete:'off',autocapitalize:'none',spellcheck:'false',minlength:6,maxlength:64,required:true});
     const SU=S?[h('div',{class:'card',id:'signups'},h('h3',null,`Account requests (${S.requests.length})`),
         S.requests.length?table(head(many?h('label',{class:'pick'},h('input',{type:'checkbox',id:'suAll',onchange:e=>{ const on=e.currentTarget.checked;
-            document.querySelectorAll('#signups input.supick').forEach(c=>{ c.checked=on; on?SU_PICKED.add(c.dataset.id):SU_PICKED.delete(c.dataset.id) }); suBar() }}),h('span',null,'All')):null,'Name','Username','Asked',''),
+            document.querySelectorAll('#signups input.supick').forEach(c=>{ c.checked=on; on?SU_PICKED.add(c.dataset.id):SU_PICKED.delete(c.dataset.id) }); suBar() }}),h('span',null,`Select all (${S.requests.length})`)):null,'Name','Username','Asked',''),
           S.requests.map(r=>h('tr',{'data-user':r.username},
           many?h('td',null,h('label',{class:'pick'},h('input',{type:'checkbox',class:'supick','data-id':r.id,checked:SU_PICKED.has(String(r.id)),
             onchange:e=>{ e.currentTarget.checked?SU_PICKED.add(String(r.id)):SU_PICKED.delete(String(r.id)); suBar() }}),h('span',{class:'vh'},`Select ${r.full_name} (${r.username})`))):null,
@@ -532,6 +532,12 @@ function askDanger(title,text,action,reason){
     document.body.appendChild(d); d.showModal(); $('#askNo').focus();
   });
 }
+// the bar sticks to the bottom of the window: a control the keyboard moves to stays above it (scroll-padding for the
+// browser's own scrolling; a nudge for what lands under it anyway)
+document.addEventListener('focusin',e=>{ const bar=$('#pickbar'); if(!bar||bar.contains(e.target)) return;
+  const b=bar.getBoundingClientRect(), r=e.target.getBoundingClientRect();
+  if(r.bottom>b.top-8&&r.top<b.bottom) scrollBy(0,r.bottom-b.top+16) });
+function padForBar(){ const bar=$('#pickbar'); document.documentElement.style.scrollPaddingBottom=bar?bar.offsetHeight+16+'px':'' }
 // the bar under Approvals: how many are ticked; its buttons only with something ticked; "Select all" ticked when all are
 function pickedBar(){
   const n=PICKED.size, N=OPEN_SUBS.size, all=$('#pickAll'); if(!all) return;
@@ -553,7 +559,7 @@ async function decideMany(action){
     if(!a) return; note=a.note }
   deciding=true;
   const btns=[$('#pickOk'),$('#pickNo')]; btns.forEach(b=>{ if(b) b.disabled=true });
-  let done=0; const held=[], competing=[], failedL=[];
+  let done=0, offline=[]; const held=[], competing=[], failedL=[];
   try{
     for(const id of ids){
       const s=OPEN_SUBS.get(id);
@@ -563,13 +569,14 @@ async function decideMany(action){
       const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
       $('#pickN').textContent=`${action==='approve'?'Approving':'Rejecting'} ${done+failedL.length+1} of ${n}…`;
       try{ await K.api(`/api/submissions/${id}/${action}`,{force:false,note,edit}); done++; PICKED.delete(id) }
-      catch(e){ if(e.status===401) return failed(e); failedL.push(`#${id}: ${K.isNetErr(e)?'offline':e.message}`); if(K.isNetErr(e)) break }
+      catch(e){ if(e.status===401) return failed(e); if(K.isNetErr(e)){ offline=ids.slice(ids.indexOf(id)); break } failedL.push(`#${id}: ${e.message}`) }
     }
   }finally{ deciding=false }
   const L=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${n}.`];
   if(held.length) L.push(`Not approved: ${held.map(i=>'#'+i).join(', ')} clash${held.length===1?'es':''} with the value as it is now; decide ${held.length===1?'it':'them'} on ${held.length===1?'its':'their'} own.`);
   if(competing.length) L.push(`Not approved: ${competing.map(i=>'#'+i).join(', ')}: several photos of one kind compete for ${competing.length===1?'its':'their'} code; choose with “Use this one”.`);
   if(failedL.length) L.push('Not done: '+failedL.join('; ')+'.');
+  if(offline.length) L.push(`Couldn't reach the server: ${offline.length} not decided (${offline.map(i=>'#'+i).join(', ')}). They stay ticked; try again when you're back online.`);
   toast(L.join(' '));
   await rebuild();
 }
@@ -615,18 +622,19 @@ async function decideSignups(reqs,action){
   const of=L.length===1?'1 request':L.length+' requests';
   if(action==='reject'&&!await askDanger(`Reject ${of}?`,`${L.length===1?'It is':'They are'} deleted; the ${L.length===1?'person has':'people have'} to ask again.`,`Reject ${of}`,false)) return;
   const plain=r=>!r.person&&!r.taken&&!(r.same>1), skip=action==='approve'?L.filter(r=>!plain(r)):[];
-  let done=0; const bad=[];
+  let done=0, off=[]; const bad=[];
   decidingSu=true; for(const b of [$('#suOk'),$('#suNo')]) if(b) b.disabled=true;
   try{
   for(const r of L){
     if(skip.includes(r)) continue;
     try{ await K.api(`/api/signups/${r.id}/${action}`,{}); done++; SU_PICKED.delete(String(r.id)) }
-    catch(e){ if(e.status===401) return failed(e); bad.push(`${r.username}: ${K.isNetErr(e)?'offline':e.message}`); if(K.isNetErr(e)) break }
+    catch(e){ if(e.status===401) return failed(e); if(K.isNetErr(e)){ off=L.slice(L.indexOf(r)).filter(x=>!skip.includes(x)); break } bad.push(`${r.username}: ${e.message}`) }
   }
   }finally{ decidingSu=false }
   const out=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${L.length}.`];
   if(skip.length) out.push(`Not approved: ${skip.map(r=>r.username).join(', ')} (the username is taken or asked for more than once): use ${skip.length===1?'its':'their'} own button.`);
   if(bad.length) out.push('Not done: '+bad.join('; ')+'.');
+  if(off.length) out.push(`Couldn't reach the server: ${off.length} not decided (${off.map(r=>r.username).join(', ')}). They stay ticked; try again when you're back online.`);
   toast(out.join(' '));
   await rebuild();
 }

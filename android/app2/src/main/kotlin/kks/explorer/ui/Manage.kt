@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.triStateToggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -187,8 +188,11 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, competing
     }
     Surface(tonalElevation = 3.dp, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = all, role = androidx.compose.ui.semantics.Role.Checkbox, enabled = busy.isEmpty()) { on ->
-                    picked.clear(); if (on) picked.addAll(subs.map { it.optLong("id") }) },
+            // (tri-state: TalkBack says "partly checked" when some are ticked, as the box shows)
+            val state = if (all) androidx.compose.ui.state.ToggleableState.On else if (n > 0) androidx.compose.ui.state.ToggleableState.Indeterminate
+                else androidx.compose.ui.state.ToggleableState.Off
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).triStateToggleable(state = state, role = androidx.compose.ui.semantics.Role.Checkbox, enabled = busy.isEmpty()) {
+                    val on = !all; picked.clear(); if (on) picked.addAll(subs.map { it.optLong("id") }) },
                 verticalAlignment = Alignment.CenterVertically) {
                 TriStateCheckbox(state = if (all) androidx.compose.ui.state.ToggleableState.On else if (n > 0) androidx.compose.ui.state.ToggleableState.Indeterminate
                     else androidx.compose.ui.state.ToggleableState.Off, onClick = null)
@@ -197,8 +201,11 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, competing
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 4.dp)) {
-                Button(onClick = { run("approve") }, enabled = n > 0 && busy.isEmpty()) { Text("Approve selected" + if (n > 0) " ($n)" else "") }
-                OutlinedButton(onClick = { askReject = true }, enabled = n > 0 && busy.isEmpty()) { Text("Reject selected" + if (n > 0) " ($n)" else "") }
+                // (half the width each, the label wrapping inside: large text never pushes one off the screen)
+                Button(onClick = { run("approve") }, enabled = n > 0 && busy.isEmpty(), modifier = Modifier.weight(1f)) {
+                    Text("Approve selected" + if (n > 0) " ($n)" else "", textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+                OutlinedButton(onClick = { askReject = true }, enabled = n > 0 && busy.isEmpty(), modifier = Modifier.weight(1f)) {
+                    Text("Reject selected" + if (n > 0) " ($n)" else "", textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
             }
         }
     }

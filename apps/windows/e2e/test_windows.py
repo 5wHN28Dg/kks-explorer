@@ -1203,7 +1203,7 @@ class Windows(unittest.TestCase):
         ids = [nora.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'again ' + f}, 'base': {}}})['id']
                for f in ('near', 'area')]
         self.check('sel1.uia', ['click\t‹ Manage', 'click\tAccount', 'click\tSync now', 'sleep\t3000', 'click\t‹ Manage', 'click\tApprovals', 'wait\tSelect all (2)\t30',
-                                'toggle\tSelect', 'wait\t1 selected\t10', 'click\tReject selected (1)',
+                                'toggle\t~Select #', 'wait\t1 selected\t10', 'click\tReject selected (1)',
                                 'wait\tReject 1 proposal?\t10', 'click\tReject 1 proposal', 'wait\t~Rejected 1 of 1.\t30'])
         st = self.wait_server(lambda: (lambda d: d if 'rejected' in (d[ids[0]], d[ids[1]]) else None)(
             {s['id']: s['status'] for s in nora.req('GET', '/api/submissions?status=all')['submissions']}),

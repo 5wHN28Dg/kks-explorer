@@ -75,6 +75,7 @@ var
   pickSubs: seq[JNode]              ## the waiting proposals as last drawn, oldest first
   pickChecks: seq[(int64, HWND)]    ## each one's tick
   pickAll, pickCount, pickOk, pickNo: HWND
+  pickBusy = false                  ## a batch is running (one proposal per turn of the message loop)
 
 proc pickShow() =
   let n = picked.len
@@ -83,8 +84,8 @@ proc pickShow() =
   pickCount.setText(if n > 0: $n & " selected" else: "None selected")
   pickOk.setText("Approve selected" & (if n > 0: " (" & $n & ")" else: ""))
   pickNo.setText("Reject selected" & (if n > 0: " (" & $n & ")" else: ""))
-  EnableWindow(pickOk, BOOL(n > 0))
-  EnableWindow(pickNo, BOOL(n > 0))
+  EnableWindow(pickOk, BOOL(n > 0 and not pickBusy))
+  EnableWindow(pickNo, BOOL(n > 0 and not pickBusy))
 
 proc decideMany(w: Win, action: string) =
   ## every ticked proposal, oldest first, each as its own button sends it (approve without force, reject). A held one
@@ -100,32 +101,46 @@ proc decideMany(w: Win, action: string) =
                                           "Each one is rejected as its own Reject button does. The submitters see that it was rejected.",
                                           "Reject " & what):
     return
-  var done = 0
+  if pickBusy: return
+  pickBusy = true
+  EnableWindow(pickOk, 0)
+  EnableWindow(pickNo, 0)
+  # one proposal per turn of the message loop, saying how far it got: the window stays live during a long batch
+  var done, i = 0
   var held, competing, failed: seq[string]
-  for sub in chosen:
-    let id = sub["id"].i
-    if action == "approve" and sub["status"].s == "conflict":
-      held.add "#" & $id
-      continue
-    if action == "approve" and id in pickCompeting:
-      competing.add "#" & $id
-      continue
-    try:
-      discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
-      inc done
-      picked.keepItIf(it != id)
-    except ApiError as e:
-      failed.add "#" & $id & ": " & e.msg
-  var msg = (if action == "approve": "Approved " else: "Rejected ") & $done & " of " & $chosen.len & "."
-  if held.len > 0:
-    msg.add " Not approved: " & held.join(", ") & (if held.len == 1: " clashes" else: " clash") &
-            " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
-  if competing.len > 0:
-    msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
-            (if competing.len == 1: "its" else: "their") & " code; choose with “Use this one”."
-  if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
-  w.toast(msg)
-  w.rebuildSide()
+  var step: proc ()
+  step = proc () =
+    if i < chosen.len:
+      let sub = chosen[i]
+      inc i
+      let id = sub["id"].i
+      if action == "approve" and sub["status"].s == "conflict":
+        held.add "#" & $id
+      elif action == "approve" and id in pickCompeting:
+        competing.add "#" & $id
+      else:
+        if pickCount != nil and IsWindow(pickCount) != 0:
+          pickCount.setText((if action == "approve": "Approving " else: "Rejecting ") & $i & " of " & $chosen.len & "…")
+        try:
+          discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
+          inc done
+          picked.keepItIf(it != id)
+        except ApiError as e:
+          failed.add "#" & $id & ": " & e.msg
+      later(step)
+      return
+    pickBusy = false
+    var msg = (if action == "approve": "Approved " else: "Rejected ") & $done & " of " & $chosen.len & "."
+    if held.len > 0:
+      msg.add " Not approved: " & held.join(", ") & (if held.len == 1: " clashes" else: " clash") &
+              " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
+    if competing.len > 0:
+      msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
+              (if competing.len == 1: "its" else: "their") & " code; choose with “Use this one”."
+    if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
+    w.toast(msg)
+    w.rebuildSide()
+  later(step)
 
 proc approvals(w: Win, p: Page) =
   ## the user's "Approvals page clean-up" (2026-10-08): one card per code (or per tag without one), the proposals in it
@@ -194,13 +209,13 @@ proc approvals(w: Win, p: Page) =
               let votes = if sub.get("votes") != nil and sub["votes"].kind == jInt: sub["votes"].i else: 0
               let who = if s(sub, "by_name").len > 0: s(sub, "by_name") else: s(sub, "by")
               p.label(proposalTitle(sub))
-              p.dim("by " & who & " · " & sub.at("created") &
+              p.dim("#" & $id & " · by " & who & " · " & sub.at("created") &
                     (if pick: " · " & $votes & (if votes == 1: " vote" else: " votes") else: "") &
                     (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: ""))
               for (lab2, v) in proposalRows(sub): p.field(lab2, v, readonly = true)
               if conflict: p.field("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), readonly = true)
               if w.isAdmin:
-                let cb = p.check("Select", id in picked, proc (on: bool) =
+                let cb = p.check("Select #" & $id, id in picked, proc (on: bool) =
                   if on:
                     if id notin picked: picked.add id
                   else: picked.keepItIf(it != id)
