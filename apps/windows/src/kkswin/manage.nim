@@ -94,8 +94,10 @@ proc decideMany(w: Win, action: string) =
   if chosen.len == 0:
     w.toast("Nothing selected")
     return
-  if action == "reject" and not ask(w.hwnd, "Reject " & (if chosen.len == 1: "1 proposal" else: $chosen.len & " proposals") & "?",
-                                    "Each one is rejected as its own Reject button does. The submitters see that it was rejected."):
+  let what = if chosen.len == 1: "1 proposal" else: $chosen.len & " proposals"
+  if action == "reject" and not askAction(w.hwnd, "Reject " & what & "?",
+                                          "Each one is rejected as its own Reject button does. The submitters see that it was rejected.",
+                                          "Reject " & what):
     return
   var done = 0
   var held, failed: seq[string]
@@ -188,7 +190,7 @@ proc approvals(w: Win, p: Page) =
               for (lab2, v) in proposalRows(sub): p.field(lab2, v, readonly = true)
               if conflict: p.field("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), readonly = true)
               if w.isAdmin:
-                let cb = p.check("Select #" & $id, id in picked, proc (on: bool) =
+                let cb = p.check("Select", id in picked, proc (on: bool) =
                   if on:
                     if id notin picked: picked.add id
                   else: picked.keepItIf(it != id)

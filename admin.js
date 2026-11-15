@@ -513,6 +513,20 @@ async function decide(id,action,force){
   const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
   await act(()=>K.api(`/api/submissions/${id}/${action}`,{force:!!force,note,edit}),{approve:'Approved',pick:'Photo chosen, the others of its kind rejected',reject:'Rejected'}[action]);
 }
+// A question before something that can't be taken back (several rejections at once): the page's own dialog, so the
+// confirming button names the action and is styled as dangerous, and the focus starts on Cancel (Enter or Escape
+// cancel). With `reason`: an optional reason, shown to the submitters. -> Promise of {note} (confirmed) or null.
+function askDanger(title,text,action,reason){
+  return new Promise(done=>{
+    const note=reason?h('input',{id:'askNote',maxlength:500,placeholder:'Reason (optional, shown to the submitters)'}):null;
+    const d=h('dialog',{class:'ask','aria-labelledby':'askT','aria-describedby':'askX'},h('h2',{id:'askT'},title),h('p',{id:'askX',class:'sub'},text),
+      note?h('label',{for:'askNote',class:'sub'},'Reason'):null,note,
+      h('div',{class:'btns'},h('button',{type:'button',class:'ghost',id:'askNo',onclick:()=>d.close('no')},'Cancel'),
+        h('button',{type:'button',class:'danger',id:'askYes',onclick:()=>d.close('yes')},action)));
+    d.addEventListener('close',()=>{ const yes=d.returnValue==='yes', v=note?.value.trim()||''; d.remove(); done(yes?{note:v}:null) });
+    document.body.appendChild(d); d.showModal(); $('#askNo').focus();
+  });
+}
 // the bar under Approvals: how many are ticked; its buttons only with something ticked; "Select all" ticked when all are
 function pickedBar(){
   const n=PICKED.size, N=OPEN_SUBS.size, all=$('#pickAll'); if(!all) return;
@@ -530,7 +544,8 @@ async function decideMany(action){
   if(!ids.length){ toast('Nothing selected'); return }
   const n=ids.length, of=n===1?'1 proposal':`${n} proposals`;
   let note='';
-  if(action==='reject'){ note=prompt(`Reject ${of}? Reason (optional, shown to the submitters):`,''); if(note===null) return }
+  if(action==='reject'){ const a=await askDanger(`Reject ${of}?`,'Each one is rejected as its own Reject button does. The submitters see that it was rejected, and the reason if you give one.',`Reject ${of}`,true);
+    if(!a) return; note=a.note }
   deciding=true;
   const btns=[$('#pickOk'),$('#pickNo')]; btns.forEach(b=>{ if(b) b.disabled=true });
   let done=0; const held=[], failedL=[];
@@ -588,7 +603,8 @@ function suBar(){
 async function decideSignups(reqs,action){
   const ids=new Set([...document.querySelectorAll('#signups input.supick:checked')].map(c=>c.dataset.id));
   const L=reqs.filter(r=>ids.has(String(r.id))); if(!L.length){ toast('Nothing selected'); return }
-  if(action==='reject'&&!confirm(`Reject ${L.length===1?'1 request':L.length+' requests'}? ${L.length===1?'It is':'They are'} deleted.`)) return;
+  const of=L.length===1?'1 request':L.length+' requests';
+  if(action==='reject'&&!await askDanger(`Reject ${of}?`,`${L.length===1?'It is':'They are'} deleted; the ${L.length===1?'person has':'people have'} to ask again.`,`Reject ${of}`,false)) return;
   const plain=r=>!r.person&&!r.taken&&!(r.same>1), skip=action==='approve'?L.filter(r=>!plain(r)):[];
   let done=0; const bad=[];
   for(const r of L){

@@ -1739,9 +1739,9 @@ class Phone(unittest.TestCase):
         self.open_tag()
         ui.tap('Copy', exact=True)
         ui.find('Copied', exact=True, timeout=5)
-        ui.find('Copied 11LAB70AA501', exact=True, timeout=5)        # the snackbar
-        clip = ui.sh('cmd', 'clipboard', 'get-primary-clip') if 'get-primary-clip' in ui.sh('cmd', 'clipboard', 'help') else ''
-        if clip: self.assertIn('11LAB70AA501', clip)
+        # (no snackbar of our own on Android 13 and later, which show their own preview of the clipboard)
+        if int(ui.sh('getprop', 'ro.build.version.sdk').strip() or 0) < 33:
+            ui.find('Copied 11LAB70AA501', exact=True, timeout=5)
         # scrolled to the last field, the heading is still there: the code, Copy and Close
         ui.scroll_to('Field 29', exact=True, tries=20)
         self.assertFalse(ui.present('Plant unit', exact=True), 'the panel did not scroll')
@@ -1750,6 +1750,15 @@ class Phone(unittest.TestCase):
         ui.tap('Close', exact=True)
         time.sleep(1)
         self.assertFalse(ui.present('Field 29', exact=True), 'Close did not close the panel')
+        # what was copied, pasted into the app's own search field: exactly the code
+        ui.tap('Search KKS or description', exact=True)
+        time.sleep(0.3)
+        ui.sh('input', 'keycombination', '113', '29')     # Ctrl+A
+        ui.sh('input', 'keyevent', '279')                 # Paste
+        time.sleep(0.5)
+        field = [n for n in ui.nodes() if n.get('focused') == 'true' and n.get('class', '').endswith('EditText')]
+        self.assertEqual([n.get('text') for n in field], ['11LAB70AA501'])
+        ui.hide_keyboard()
         # Approvals: all three at once
         ui.tap('Manage', exact=True)
         ui.tap('Approvals', exact=True)
@@ -1782,7 +1791,7 @@ class Phone(unittest.TestCase):
         ui.find('1 selected', exact=True)
         ui.tap('Reject selected (1)', exact=True)
         ui.find('Reject 1 proposal?', exact=True)
-        ui.tap('Reject it', exact=True)
+        ui.tap('Reject 1 proposal', exact=True)
         st = self.wait_server(lambda: (lambda d: d if 'rejected' in (d[ids[0]], d[ids[1]]) else None)(
             {x['id']: x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}), 'Reject selected never reached the server')
         self.assertEqual(sorted(('waiting' if x in ('pending', 'conflict') else x) for x in (st[ids[0]], st[ids[1]])), ['rejected', 'waiting'])

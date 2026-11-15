@@ -199,7 +199,7 @@ private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: 
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     var copied by remember(code) { mutableStateOf(false) }
-    LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(1500); copied = false } }
+    LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(2500); copied = false } }
     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             if (code.isNotEmpty()) androidx.compose.foundation.text.selection.SelectionContainer {
@@ -210,7 +210,9 @@ private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: 
         if (code.isNotEmpty()) TextButton(onClick = {
             clip.setText(androidx.compose.ui.text.AnnotatedString(code))
             copied = true
-            scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("Copied $code") }
+            // Android 13 and later show their own preview of what was copied: then no second message (the button
+            // still says "Copied")
+            if (android.os.Build.VERSION.SDK_INT < 33) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("Copied $code") }
         }, modifier = Modifier.semantics { contentDescription = if (copied) "Copied $code" else "Copy $code" }) { Text(if (copied) "Copied" else "Copy") }
         TextButton(onClick = onClose) { Text("Close") }
     }

@@ -1461,6 +1461,13 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name=code))
         atspi.click(atspi.find(a, 'button', name='Copy ' + code, timeout=10))
         atspi.find(a, 'label', name='Copied ' + code, timeout=10)
+        # what was copied, pasted into the search field: exactly the code
+        atspi.set_text(q, '')
+        q.get_editable_text_iface().paste_text(0)
+        for _ in range(20):
+            if q.get_text_iface().get_text(0, -1) == code: break
+            time.sleep(0.2)
+        self.assertEqual(q.get_text_iface().get_text(0, -1), code)
         atspi.find(a, 'button', name='Close the panel', timeout=5)
         # Approvals: the bar under the list
         atspi.click(atspi.find(a, 'button', name='Manage'))
@@ -1507,7 +1514,7 @@ class Gnome(Plant):
         tick({'contains': f'{code} by Nadia Batch'}, '1 selected')
         atspi.click(atspi.find(a, 'button', name='Reject selected (1)', timeout=10))
         atspi.find(a, None, name='Reject 1 proposal?', timeout=10)
-        atspi.click(atspi.find(a, 'button', name='Reject it', timeout=10))
+        atspi.click(atspi.find(a, 'button', name='Reject 1 proposal', timeout=10))
         for _ in range(40):
             st = {x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}
             if 'rejected' in (st.get(ids[0]), st.get(ids[1])):

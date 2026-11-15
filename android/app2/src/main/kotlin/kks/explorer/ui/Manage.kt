@@ -180,7 +180,7 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, say: (Str
     }
     Surface(tonalElevation = 3.dp, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-            Row(Modifier.fillMaxWidth().toggleable(value = all, role = androidx.compose.ui.semantics.Role.Checkbox, enabled = busy.isEmpty()) { on ->
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = all, role = androidx.compose.ui.semantics.Role.Checkbox, enabled = busy.isEmpty()) { on ->
                     picked.clear(); if (on) picked.addAll(subs.map { it.optLong("id") }) },
                 verticalAlignment = Alignment.CenterVertically) {
                 TriStateCheckbox(state = if (all) androidx.compose.ui.state.ToggleableState.On else if (n > 0) androidx.compose.ui.state.ToggleableState.Indeterminate
@@ -198,7 +198,9 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, say: (Str
     if (askReject) AlertDialog(onDismissRequest = { askReject = false },
         title = { Text("Reject ${if (n == 1) "1 proposal" else "$n proposals"}?") },
         text = { Text("Each one is rejected as its own Reject button does. The submitters see that it was rejected.") },
-        confirmButton = { TextButton(onClick = { askReject = false; run("reject") }) { Text(if (n == 1) "Reject it" else "Reject all $n") } },
+        // the button names the action, in the error colour; Cancel first in reading order
+        confirmButton = { TextButton(onClick = { askReject = false; run("reject") },
+            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Reject " + if (n == 1) "1 proposal" else "$n proposals") } },
         dismissButton = { TextButton(onClick = { askReject = false }) { Text("Cancel") } })
 }
 
@@ -207,7 +209,7 @@ private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (S
     val id = sub.optLong("id")
     val conflict = sub.str("status") == "conflict"
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (admin) Row(Modifier.toggleable(value = id in picked, role = androidx.compose.ui.semantics.Role.Checkbox) { on ->
+        if (admin) Row(Modifier.heightIn(min = 48.dp).toggleable(value = id in picked, role = androidx.compose.ui.semantics.Role.Checkbox) { on ->
                 if (on) picked.add(id) else picked.remove(id) }
             .semantics { contentDescription = "Select #$id, " + proposalTitle(sub) }.padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
