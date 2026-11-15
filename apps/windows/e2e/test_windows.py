@@ -1175,6 +1175,44 @@ class Windows(unittest.TestCase):
                                  'wait\t~Equipment photos: 1 approved of 2, 1 rejected\t10'])
         self.leave()
 
+    def test_copy_close_select(self):
+        """the user's requests of 2026-11-15: Copy beside the code in the tag panel's heading (the code on the clipboard,
+        the status line says so), the heading with Close in a page of its own above the panel (unit test:
+        test_panel_head); in Approvals, Select all, Approve selected, then a ticked one rejected after one question
+        whose button names the action"""
+        code = '11LAC40AP001'
+        self.add_tag(code, [600, 1100, 720, 1160])
+        nora = self.member('nora', 'Nora Batch')
+        mine = []
+        for f in ('near', 'area', 'loc'):
+            r = nora.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'by nora ' + f}, 'base': {}}})
+            self.assertEqual(r.get('status'), 'pending', r)
+            mine.append(r['id'])
+        waiting = len(self.boss.req('GET', '/api/submissions?status=open')['submissions'])
+        self.join('cjoin.uia')
+        self.check('copy.uia', self.show(code) + ['wait\tCopy\t20'])
+        self.screenshot('win-panel')
+        self.check('copy1.uia', ['click\tCopy', 'clipboard\t' + code, 'wait\t~Copied %s\t10' % code, 'click\tClose', 'gone\tCopy'])
+        self.check('sel0.uia', ['click\tManage', 'click\tApprovals', 'wait\tNone selected\t30',
+                                'toggle\tSelect all (%d)' % waiting, 'wait\t%d selected\t10' % waiting])
+        self.screenshot('win-approvals-selected')
+        self.check('sel0b.uia', ['click\tApprove selected (%d)' % waiting, 'wait\t~Approved %d of %d.\t30' % (waiting, waiting),
+                                'wait\tNothing waits for approval.\t30'])
+        self.wait_server(lambda: all(s['status'] == 'approved' for s in nora.req('GET', '/api/submissions?status=all')['submissions']),
+                         'Approve selected never reached the server', tries=80)
+        ids = [nora.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'again ' + f}, 'base': {}}})['id']
+               for f in ('near', 'area')]
+        self.check('sel1.uia', ['click\t‹ Manage', 'click\tAccount', 'click\tSync now', 'sleep\t3000', 'click\t‹ Manage', 'click\tApprovals', 'wait\tSelect all (2)\t30',
+                                'toggle\tSelect', 'wait\t1 selected\t10', 'click\tReject selected (1)',
+                                'wait\tReject 1 proposal?\t10', 'click\tReject 1 proposal', 'wait\t~Rejected 1 of 1.\t30'])
+        st = self.wait_server(lambda: (lambda d: d if 'rejected' in (d[ids[0]], d[ids[1]]) else None)(
+            {s['id']: s['status'] for s in nora.req('GET', '/api/submissions?status=all')['submissions']}),
+            'Reject selected never reached the server', tries=80)
+        self.assertEqual(sorted(('waiting' if x in ('pending', 'conflict') else x) for x in (st[ids[0]], st[ids[1]])), ['rejected', 'waiting'])
+        for i in ids:
+            if st[i] in ('pending', 'conflict'): self.boss.req('POST', f'/api/submissions/{i}/reject', {})
+        self.leave()
+
     def test_position(self):
         """every new member needs a position (job title): the join form refuses without one and sends it with the join
         request (the admin sees it); a new plant needs the manager's too"""
