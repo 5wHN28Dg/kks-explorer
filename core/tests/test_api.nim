@@ -271,6 +271,10 @@ suite "plant API":
     var noteRow: JNode
     for row in h.elems:
       if row["entity"].s == "equipment" and row["after"].s.contains("fixed"): noteRow = row
+    # every row carries the line the apps show (they read rev, ts, full_name and summary)
+    check noteRow["summary"].s.startsWith("11LAB70AA501: ") and noteRow["summary"].s.contains("notes leaks → fixed")
+    for row in h.elems:
+      check row["summary"].isStr and row["summary"].s.len > 0 and row["rev"].isInt and row["ts"].isInt
     let rv = mgrApi.call(mgr, "POST", "/api/revisions/" & noteRow["hid"].s & "/revert")
     check rv.status == 200 and rv.json["changed"].i == 1
     check mgrApi.call(mgr, "GET", "/api/state").json["equipment"]["11LAB70AA501"]["notes"].s == "leaks"
@@ -900,3 +904,22 @@ suite "bundles":
     check b.file("sheets/lp.kkp")[1] == "KKP1 bytes"
     expect ValueError: discard b.importBundle("not gzip", now())
 
+
+suite "History lines (historySummary)":
+  test "each kind of change in admin.html's words":
+    check historySummary("user", newNull(), newNull(), newNull(), "boss joined") == "boss joined"
+    check historySummary("sheet", newStr("lp"), newNull(), newNull(), "imported") == "lp imported"
+    check historySummary("link", newStr("[\"P1\",2,\"11LAB70AA501\"]"), newNull(), newBool(true), "") ==
+      "linked 11LAB70AA501 · proc P1 step 2"
+    check historySummary("link", newStr("[\"P1\",2,\"11LAB70AA501\"]"), newBool(true), newNull(), "") ==
+      "unlinked 11LAB70AA501 · proc P1 step 2"
+    let tag = parseStrict("""{"kks":"11LAB70CT101","suffix":"R","isa":"TI","sheet":"lp"}""")
+    check historySummary("added_tag", newStr("t1"), newNull(), tag, "") == "tag marked TI 11LAB70CT101R on lp"
+    check historySummary("added_tag", newStr("t1"), tag, newNull(), "") == "marked tag removed TI 11LAB70CT101R on lp"
+    let ph = parseStrict("""{"kks":"11LAB70AA501","file":"a.jxl","caption":""}""")
+    check historySummary("photo", newStr("p1"), newNull(), ph, "") == "photo added 11LAB70AA501"
+    check historySummary("photo", newStr("p1"), ph, newNull(), "") == "photo removed 11LAB70AA501"
+    check historySummary("equipment", newStr("11LAB70AA501"), parseStrict("""{"notes":"leaks","floor":"3"}"""),
+      parseStrict("""{"notes":"fixed","floor":"3","location":""}"""), "") == "11LAB70AA501: notes leaks → fixed"
+    check historySummary("review", newStr("lp:4"), newNull(), parseStrict("""{"state":"ok"}"""), "") ==
+      "review lp:4: (empty) → {\"state\":\"ok\"}"

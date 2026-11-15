@@ -5,7 +5,7 @@ import std/[strutils, tables, times, sequtils, asyncdispatch, math]
 import kks/[json, api, node, extras, util]
 import kksl/[dbstore, privfile, passphrase]
 import kks/model
-import proposals
+import proposals, histline
 import gtk, ui, appstate, win, photos, join
 
 proc s(n: JNode, k: string): string =
@@ -295,10 +295,8 @@ proc history(w: Win, box: W) =
     closureScope:
       let r = revs[i]
       let hid = r.get("hid")
-      let title = "#" & (if r.get("n") != nil: toText(r["n"]) else: "") & " " & s(r, "summary") & s(r, "note")
-      let sub = s(r, "by_name") & " · " & r.at("at") & (if s(r, "entity").len > 0: " · " & s(r, "entity") & " " & s(r, "key") else: "")
-      let rw = row(title.strip, sub, selectable = true)
-      if hid != nil and not hid.isNull:
+      let rw = row(historyTitle(r), historyBy(r), selectable = true)
+      if historyUndoable(r):
         let rev = button("Revert", "flat", proc () =
           confirm(w.window, "Revert this change?", "This writes a new change that undoes it; History keeps both.", "Revert", true, proc () =
             try:

@@ -1071,6 +1071,57 @@ proc history*(a: Api): seq[(int64, Item)] =
 
 proc textOrNull(v: JNode): JNode = (if v.isNull: newNull() else: newStr(toText(v)))
 
+proc histStr(v: JNode): string = (if v.isNull: "" elif v.isStr: v.s else: toText(v))
+
+proc histVal(v: JNode): string =
+  ## One value of a History line, as admin.html's `val` shows it.
+  if v.isNull or (v.kind == jStr and v.s.len == 0): return "(empty)"
+  case v.kind
+  of jStr: v.s
+  of jArr:
+    var parts: seq[string]
+    for c in v.elems: parts.add histStr(c.get("k")) & ": " & histStr(c.get("v"))
+    if parts.len == 0: "(none)" else: parts.join("; ")
+  else: toText(v)
+
+proc historySummary*(entity: string, key, before, after: JNode, note: string): string =
+  ## What a change did, in the words admin.html's History uses, for the apps' History lists (the same line on every
+  ## client; before and after are valueOut's values, key as historyOut sends it).
+  let a = after
+  let b = before
+  case entity
+  of "user": note
+  of "sheet": histStr(key) & (if note.len > 0: " " & note else: "")
+  of "link":
+    var k = key
+    if key.isStr:
+      try: k = parseStrict(key.s) except CatchableError: k = newNull()
+    if k != nil and k.kind == jArr and k.elems.len == 3:
+      (if a.isNull: "unlinked " else: "linked ") & histStr(k[2]) & " · proc " & histStr(k[0]) & " step " & histStr(k[1])
+    else: (if a.isNull: "unlinked " else: "linked ") & histStr(key)
+  of "added_tag":
+    let t = if a.isNull: b else: a
+    let code = if t.isNull: "" else: (let c = histStr(t.get("kks")); (if c.len > 0: c else: "(no code)") & histStr(t.get("suffix")))
+    (if a.isNull: "marked tag removed " else: "tag marked ") &
+      (if t.isNull: "" else: (let i = histStr(t.get("isa")); (if i.len > 0: i & " " else: "")) & code & " on " & histStr(t.get("sheet")))
+  of "photo":
+    if not a.isNull: "photo added " & histStr(a.get("kks"))
+    else: "photo removed " & (if b.isNull: "" else: histStr(b.get("kks")))
+  of "equipment":
+    var keys: seq[string]
+    for o in [a, b]:
+      if o != nil and o.kind == jObj:
+        for (k, _) in o.fields:
+          if k notin keys: keys.add k
+    var parts: seq[string]
+    for k in keys:
+      let av = if a != nil and a.kind == jObj: a.get(k) else: nil
+      let bv = if b != nil and b.kind == jObj: b.get(k) else: nil
+      let (was, now) = (histVal(bv), histVal(av))
+      if was != now: parts.add k & " " & was & " → " & now   # absent and empty read the same
+    histStr(key) & ": " & parts.join(" · ")
+  else: entity & " " & histStr(key) & ": " & histVal(b) & " → " & histVal(a)
+
 proc historyOut(a: Api, rows: seq[(int64, Item)], meDevicePerson: string): JNode =
   result = newArr()
   for (rev, it) in rows:
@@ -1081,7 +1132,9 @@ proc historyOut(a: Api, rows: seq[(int64, Item)], meDevicePerson: string): JNode
       ("entity", S(it.entity)), ("key", if it.entity == "link": S(toText(it.key)) else: it.key),
       ("before", textOrNull(a.valueOut(it.entity, it.key, it.before))),
       ("after", textOrNull(a.valueOut(it.entity, it.key, it.after))),
-      ("submission_id", it.sub), ("note", S(it.note)))
+      ("submission_id", it.sub), ("note", S(it.note)),
+      ("summary", S(historySummary(it.entity, (if it.entity == "link": S(toText(it.key)) else: it.key),
+        a.valueOut(it.entity, it.key, it.before), a.valueOut(it.entity, it.key, it.after), it.note))))
 
 proc findRow(rows: seq[(int64, Item)], ref0: JNode): int =
   for i, (rev, it) in rows:

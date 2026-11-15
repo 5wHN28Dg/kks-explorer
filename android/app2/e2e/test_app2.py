@@ -1722,6 +1722,16 @@ class Phone(unittest.TestCase):
         # the code opens its tag on the drawing
         ui.tap('Open on the drawing', exact=True)
         ui.find('Feed water piping system', timeout=15)
+        # History: the approved photo in words, with who and when (before 2026-11-15 the rows read fields
+        # /api/revisions never sent: "#" and "added_tag <id>")
+        ui.tap('Manage', exact=True)
+        if not ui.present('History', exact=True):
+            ui.sh('input', 'keyevent', '4')
+        ui.scroll_to('History', exact=True)
+        ui.tap('History', exact=True)
+        ui.find('photo added 11LAB70AA501', timeout=20)
+        self.assertTrue(ui.present(' · 20'), 'who and when under each change')
+        self.assertFalse(ui.present('#', exact=True), 'a row with no number and no words')
 
     def test_position_required(self):
         """request 7: a new member's join forms need a position; an admin's Add a person too"""
