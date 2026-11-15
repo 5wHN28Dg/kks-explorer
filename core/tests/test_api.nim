@@ -923,3 +923,9 @@ suite "History lines (historySummary)":
       parseStrict("""{"notes":"fixed","floor":"3","location":""}"""), "") == "11LAB70AA501: notes leaks → fixed"
     check historySummary("review", newStr("lp:4"), newNull(), parseStrict("""{"state":"ok"}"""), "") ==
       "review lp:4: (empty) → {\"state\":\"ok\"}"
+  test "long values are cut, and a row whose fields read the same says it was updated":
+    let long = "x".repeat(300)
+    let line = historySummary("equipment", newStr("11LAB70AA501"), newNull(), newObj(@[("notes", newStr(long))]), "")
+    check line == "11LAB70AA501: notes (empty) → " & "x".repeat(160) & "…"
+    check historySummary("equipment", newStr("11LAB70AA501"), parseStrict("""{"custom":[]}"""),
+      parseStrict("""{"loc":""}"""), "") == "11LAB70AA501: updated"

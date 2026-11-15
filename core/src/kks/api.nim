@@ -1073,9 +1073,7 @@ proc textOrNull(v: JNode): JNode = (if v.isNull: newNull() else: newStr(toText(v
 
 proc histStr(v: JNode): string = (if v.isNull: "" elif v.isStr: v.s else: toText(v))
 
-proc histVal(v: JNode): string =
-  ## One value of a History line, as admin.html's `val` shows it.
-  if v.isNull or (v.kind == jStr and v.s.len == 0): return "(empty)"
+proc histValFull(v: JNode): string =
   case v.kind
   of jStr: v.s
   of jArr:
@@ -1083,6 +1081,13 @@ proc histVal(v: JNode): string =
     for c in v.elems: parts.add histStr(c.get("k")) & ": " & histStr(c.get("v"))
     if parts.len == 0: "(none)" else: parts.join("; ")
   else: toText(v)
+
+proc histVal(v: JNode): string =
+  ## One value of a History line, as admin.html's `val` shows it, cut at 160 characters (the line is a summary: the
+  ## row's before and after carry the whole value).
+  if v.isNull or (v.kind in {jStr, jArr} and v.len == 0): return "(empty)"
+  result = histValFull(v)
+  if result.runeLen > 160: result = result.runeSubStr(0, 160) & "…"
 
 proc historySummary*(entity: string, key, before, after: JNode, note: string): string =
   ## What a change did, in the words admin.html's History uses, for the apps' History lists (the same line on every
@@ -1119,22 +1124,23 @@ proc historySummary*(entity: string, key, before, after: JNode, note: string): s
       let bv = if b != nil and b.kind == jObj: b.get(k) else: nil
       let (was, now) = (histVal(bv), histVal(av))
       if was != now: parts.add k & " " & was & " → " & now   # absent and empty read the same
-    histStr(key) & ": " & parts.join(" · ")
+    histStr(key) & ": " & (if parts.len > 0: parts.join(" · ") else: "updated")
   else: entity & " " & histStr(key) & ": " & histVal(b) & " → " & histVal(a)
 
 proc historyOut(a: Api, rows: seq[(int64, Item)], meDevicePerson: string): JNode =
   result = newArr()
   for (rev, it) in rows:
     let who = a.n.run.persons.getOrDefault(it.person)
+    # once per side: a photo's valueOut reads its blob for the file name
+    let (wasV, nowV) = (a.valueOut(it.entity, it.key, it.before), a.valueOut(it.entity, it.key, it.after))
     result.elems.add O(("rev", I(rev)), ("hid", S(it.hid)), ("ts", I(it.ts)),
       ("actor", if it.person == meDevicePerson: I(1) else: newNull()),
       ("username", if who == nil: newNull() else: who["username"]), ("full_name", if who == nil: newNull() else: who["full_name"]),
       ("entity", S(it.entity)), ("key", if it.entity == "link": S(toText(it.key)) else: it.key),
-      ("before", textOrNull(a.valueOut(it.entity, it.key, it.before))),
-      ("after", textOrNull(a.valueOut(it.entity, it.key, it.after))),
+      ("before", textOrNull(wasV)), ("after", textOrNull(nowV)),
       ("submission_id", it.sub), ("note", S(it.note)),
       ("summary", S(historySummary(it.entity, (if it.entity == "link": S(toText(it.key)) else: it.key),
-        a.valueOut(it.entity, it.key, it.before), a.valueOut(it.entity, it.key, it.after), it.note))))
+        wasV, nowV, it.note))))
 
 proc findRow(rows: seq[(int64, Item)], ref0: JNode): int =
   for i, (rev, it) in rows:
