@@ -201,6 +201,8 @@ class Audit(test_gnome.Plant):
                 'hcdark': {'ADW_DEBUG_COLOR_SCHEME': 'prefer-dark', 'ADW_DEBUG_HIGH_CONTRAST': '1'},
                 'large': {'ADW_DEBUG_COLOR_SCHEME': 'prefer-light'},
                 'noanim': {'ADW_DEBUG_COLOR_SCHEME': 'prefer-light'}}
+        # gsettings below must reach headless.sh's private settings, never the desktop's
+        assert os.environ.get('XDG_CONFIG_HOME', '').endswith('/home/config'), 'run under apps/gnome/e2e/headless.sh'
         for mode in MODES:
             if mode == 'large':
                 subprocess.run(['gsettings', 'set', 'org.gnome.desktop.interface', 'text-scaling-factor', '1.25'])

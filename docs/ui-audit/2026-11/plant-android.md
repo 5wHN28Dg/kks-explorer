@@ -6,7 +6,7 @@
   `vm.lock`. `adb install -t ~/kks-work/build/plant-w2-debug.apk` (a test-key debug build; its only native library is
   `lib/arm64-v8a/libgodot_android.so`) failed: `INSTALL_FAILED_NO_MATCHING_ABIS: Failed to extract native libraries,
   res=-113`. The arm64 build can't run on this emulator.
-- Note 9: not used. `~/kks-work/bin/phone-window` said "user unavailable until Sun 15:42" when checked (12:32) and the
+- Note 9: not used. The phone window was closed when checked, and the
   emulator and Windows work ended at 13:27, before the window opened. The Honor was not touched.
 - So nothing of Plant on Android was run. Plant's phone layout on the desktop (`tests/mimic_shots.gd --phone`) is the
   stand-in the policy names (§4 limits); that is the desktop helper's part, not repeated here.

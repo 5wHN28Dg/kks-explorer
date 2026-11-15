@@ -10,6 +10,7 @@ sys.argv = ['x', VMIP]
 sys.path.insert(0, REPO + '/apps/windows/e2e')
 import test_windows as tw  # noqa
 OUT = os.environ.get('KKS_AUDIT_OUT', os.path.join(os.environ.get('TMPDIR', '/tmp'), 'ui-audit-windows'))
+os.makedirs(OUT, exist_ok=True)
 DESTRUCTIVE = re.compile(r'^(Delete|Remove|Discard|Sign out|Leave|Reject|Revert|Restore|Withdraw|Refuse|Not a tag|Clear removed)\b', re.I)
 vm = tw.vm
 

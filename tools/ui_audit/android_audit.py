@@ -6,6 +6,7 @@ import os, re, subprocess, sys, time, json
 REPO = os.environ.get('KKS_REPO') or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, REPO + '/android/app2/e2e')
 import adbui as ui  # noqa
+assert os.environ.get('ANDROID_SERIAL', '').startswith('emulator-'), 'set ANDROID_SERIAL=emulator-…: never a real phone'
 OUT = os.environ.get('KKS_AUDIT_OUT', os.path.join(os.environ.get('TMPDIR', '/tmp'), 'ui-audit-android'))
 os.makedirs(OUT, exist_ok=True)
 DESTRUCTIVE = re.compile(r'^(Delete|Remove|Discard|Sign out|Leave|Reject|Revert|Restore|Withdraw|Refuse|Not a tag|Clear removed)\b', re.I)

@@ -151,3 +151,4 @@ finally:
     try: server.wait(10)
     except Exception: server.kill()
     print('server stopped', server.pid)
+    shutil.rmtree(d, ignore_errors=True)
