@@ -163,6 +163,10 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 		ev.pressed = true
 		_press(tree, ev)
 		await tree.process_frame
+		var fo2: Control = hud.get_viewport().gui_get_focus_owner()
+		if not hud.panel.visible and ui.alarms.visible and (fo2 == null or not ui.alarms.is_ancestor_of(fo2)):
+			p.append("%s %sclosed the settings but the alarm list under them has no focus (%s)" % [how, at,
+				fo2.get_path() if fo2 else "none"])
 		if hud.panel.visible or not ui.alarms.visible:
 			var fo: Control = hud.get_viewport().gui_get_focus_owner()
 			p.append("%s %swith the settings over the alarm list: settings %s, alarm list %s (focus %s)" % [how, at,

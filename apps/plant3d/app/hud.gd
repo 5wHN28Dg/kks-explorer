@@ -373,7 +373,12 @@ func show_settings(on: bool) -> void:
 		_queue_fit()                         # again once the body's wrapped text has its width
 	refresh()
 	if not on and main.ui != null and main.ui.mimic != null:
-		main.ui.mimic.take_focus()          # the screens' canvas again, when they are open
+		# the focus back to the top panel under the settings (a side panel, the drawings, the screens' canvas): the
+		# About button that had it is hidden now
+		if main.ui.wants_focus():
+			main.ui.focus_top()
+		else:
+			main.ui.mimic.take_focus()      # the screens' canvas again, when they are open
 	if on:
 		if not about.visible:
 			about_btn.grab_focus()
