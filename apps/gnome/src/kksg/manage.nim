@@ -79,11 +79,13 @@ proc setText(b: W, t: string) =
   ## a button's text, in the wrapping label that is its child
   let l = gtk_button_get_child(b)
   if l != nil: gtk_label_set_text(l, t.cstring)
+  setAccessibleLabel(b, t)      # (a child label doesn't name the button for assistive technologies)
 
 proc wrapButton(t, css: string): W =
   ## a button whose label wraps (the side column is narrow, the counts grow)
   result = gtk_button_new()
   gtk_button_set_child(result, label(t, wrap = true, xalign = 0.5))
+  setAccessibleLabel(result, t)
   for c in css.splitWhitespace: gtk_widget_add_css_class(result, c.cstring)
 
 proc pickShow() =
@@ -167,6 +169,7 @@ proc fillPickBar(w: Win, again: proc ()) =
   # toggle buttons, not check buttons: GTK 4 gives a check button no accessible action (AT-SPI can't press it)
   pickAll = gtk_toggle_button_new()
   gtk_button_set_child(pickAll, label("Select all (" & $pickSubs.len & ")", wrap = true, xalign = 0.5))
+  setAccessibleLabel(pickAll, "Select all (" & $pickSubs.len & ")")
   pickAll.on("toggled", proc () =
     if pickSetting: return
     let on = gtk_toggle_button_get_active(pickAll) != 0
