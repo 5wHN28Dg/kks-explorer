@@ -147,22 +147,25 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
 }
 
 /** the ticked proposals of Approvals, kept while the app runs (a sync reloads the list under the person's ticks) */
-private object Picked { val ids = mutableStateListOf<Long>() }
+private object Picked { val ids = mutableStateListOf<Long>(); val busy = mutableStateOf("") }
 
 /** Above the approvals: Select all, how many are ticked, Approve selected and Reject selected (Reject asks once). Each
  *  goes as its own approve or reject, oldest first, exactly as its own button sends it; a held one (it clashes with the
  *  value as it is now) is not approved here: it needs its own "Approve anyway". */
 @Composable
 private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, competing: Set<Long>, say: (String) -> Unit) {
-    val scope = rememberCoroutineScope()
-    var busy by remember { mutableStateOf("") }
+    // the batch runs in a scope of its own, not the screen's: leaving Approvals, or the list reloading after the last
+    // decision (which can remove this bar), neither stops it half-way nor loses what it says at the end
+    var busy by Picked.busy
     var askReject by remember { mutableStateOf(false) }
     val n = picked.size
     val all = subs.isNotEmpty() && subs.all { it.optLong("id") in picked }
     fun run(action: String) {
         val chosen = subs.filter { it.optLong("id") in picked }
         if (chosen.isEmpty()) { say("Nothing selected"); return }
-        scope.launch {
+        if (busy.isNotEmpty()) return            // (a second tap before the first run started)
+        busy = (if (action == "approve") "Approving" else "Rejecting") + "…"
+        kotlinx.coroutines.MainScope().launch {
             var done = 0; val held = mutableListOf<Long>(); val rivals = mutableListOf<Long>(); val failed = mutableListOf<String>()
             for ((i, sub) in chosen.withIndex()) {
                 val id = sub.optLong("id")

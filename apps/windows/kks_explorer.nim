@@ -443,6 +443,9 @@ proc main() =
     else:
       let (ok, t) = w.m.tagById(w.selected)
       if ok: w.buildPanel(t)
+      elif not w.panelHead.isEmpty:      # the tag went underneath: no heading with its code and a live Copy
+        w.panelHead.clear()
+        layoutMain()
   w.relayout = layoutMain
   # tests only (#162): while the file named by KKS_TEST_STALE_CLICK exists, the panel is rebuilt between a button's
   # click and its handler. Without the variable nothing changes.

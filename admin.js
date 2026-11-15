@@ -534,10 +534,10 @@ function askDanger(title,text,action,reason){
 }
 // the bar under Approvals: how many are ticked; its buttons only with something ticked; "Select all" ticked when all are
 function pickedBar(){
-  const n=PICKED.size, N=OPEN_SUBS.size, all=$('#pickAll'); if(!all||deciding) return;
+  const n=PICKED.size, N=OPEN_SUBS.size, all=$('#pickAll'); if(!all) return;
   all.checked=N>0&&n===N; all.indeterminate=n>0&&n<N;
   $('#pickN').textContent=n?`${n} selected`:'None selected';
-  for(const b of [$('#pickOk'),$('#pickNo')]){ b.disabled=!n; b.textContent=(b.id==='pickOk'?'Approve':'Reject')+' selected'+(n?` (${n})`:'') }
+  for(const b of [$('#pickOk'),$('#pickNo')]){ b.disabled=!n||deciding; b.textContent=(b.id==='pickOk'?'Approve':'Reject')+' selected'+(n?` (${n})`:'') }
 }
 // Approve or reject every ticked proposal, oldest first, each with its own request (as its own button sends it: a marked
 // tag with the code in its fields). Reject asks once, with one reason for all. A held one (it clashes with the value as
@@ -607,18 +607,23 @@ function suBar(){
   const N=$('#suN'); if(N) N.textContent=n?`${n} selected`:'None selected';
   for(const b of [$('#suOk'),$('#suNo')]) if(b){ b.disabled=!n; b.textContent=(b.id==='suOk'?'Approve':'Reject')+' selected'+(n?` (${n})`:'') }
 }
+let decidingSu=false;
 async function decideSignups(reqs,action){
+  if(decidingSu) return;
   const ids=new Set([...document.querySelectorAll('#signups input.supick:checked')].map(c=>c.dataset.id));
   const L=reqs.filter(r=>ids.has(String(r.id))); if(!L.length){ toast('Nothing selected'); return }
   const of=L.length===1?'1 request':L.length+' requests';
   if(action==='reject'&&!await askDanger(`Reject ${of}?`,`${L.length===1?'It is':'They are'} deleted; the ${L.length===1?'person has':'people have'} to ask again.`,`Reject ${of}`,false)) return;
   const plain=r=>!r.person&&!r.taken&&!(r.same>1), skip=action==='approve'?L.filter(r=>!plain(r)):[];
   let done=0; const bad=[];
+  decidingSu=true; for(const b of [$('#suOk'),$('#suNo')]) if(b) b.disabled=true;
+  try{
   for(const r of L){
     if(skip.includes(r)) continue;
     try{ await K.api(`/api/signups/${r.id}/${action}`,{}); done++; SU_PICKED.delete(String(r.id)) }
     catch(e){ if(e.status===401) return failed(e); bad.push(`${r.username}: ${K.isNetErr(e)?'offline':e.message}`); if(K.isNetErr(e)) break }
   }
+  }finally{ decidingSu=false }
   const out=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${L.length}.`];
   if(skip.length) out.push(`Not approved: ${skip.map(r=>r.username).join(', ')} (the username is taken or asked for more than once): use ${skip.length===1?'its':'their'} own button.`);
   if(bad.length) out.push('Not done: '+bad.join('; ')+'.');
