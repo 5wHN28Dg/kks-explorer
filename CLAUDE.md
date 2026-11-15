@@ -51,6 +51,12 @@ What the evidence-first-engineering skill needs to know here:
 - **Merging main into a PR branch** only when it conflicts or main changed code the PR builds on: every push restarts
   CI, and branch protection doesn't require an up-to-date branch.
 
+**UI and UX audit (the user, 2026-11-15):** every change that touches either app's UI (Walkdown's web, GNOME, Windows
+and Android clients, or Walkdown Plant's UI; the paths are listed in `docs/UI-UX-POLICY.md` §3.1) passes the UI/UX
+audit before it merges: two passes by fresh subagents (a blind one, then an adversarial one) against
+`docs/UI-UX-POLICY.md`, on synthetic data only, with the results in the PR. A failing audit blocks the merge (§4 there
+says which fails block). This comes on top of the two code reviews.
+
 **CI** (`.github/workflows/`):
 - `policy.yml`: the secrets scan (gitleaks), dependency vulnerabilities and licenses (osv-scanner,
   `license-allowlist.txt`, `osv-scanner.toml`) and static analysis (Semgrep with HTML/URL-sink rules), pinned to a commit
