@@ -312,6 +312,9 @@ static func collect(engine, info, tracker, slot: int = 0, given: Dictionary = {}
 					if k >= 0:
 						say = m.machines[mi]["states"][k].get("say", "")
 				e.text = say if say != "" else "%s: %s" % [str(ev[2]).replace("_", " "), str(ev[4]).replace("_", " ")]
+			"issue", "order", "delivery":
+				# the stores (REALISM.md §2.23) in words, as the stores panel says them (never the engine's record)
+				e.text = StoresPanel.event_text(engine, ev)
 			_:
 				e.text = " ".join(ev.slice(1).map(func(x): return str(x)))
 		out.append(e)

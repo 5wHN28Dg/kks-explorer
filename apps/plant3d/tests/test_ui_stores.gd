@@ -103,6 +103,21 @@ func _fitting() -> Array:
 		if l.begins_with("A look-alike offered") and l.contains("WDP-PT-UNIT-A4 offered for WDP-PT-UNIT-A3") \
 				and l.contains(want):
 			offered += 1
+	# (C1) the part a look-alike was offered for is copyable in the debrief even before it was drawn
+	var first_wrong := -1
+	var a3_drawn := false
+	for k in e.events.size():
+		var ev: Array = e.events[k]
+		if ev[1] == "issue" and ev[2] == "tx_r3" and ev.size() > 6 and ev[6] == "done":
+			a3_drawn = true
+		if ev[1] == "hand" and ev.size() > 7 and ev[6] == "refused" and (ev[7] as Array).has("wrong_part"):
+			first_wrong = k
+			break
+	if first_wrong == -1 or a3_drawn:
+		p.append("run 7 has no look-alike offered before its part was drawn (%d, %s)" % [first_wrong, str(a3_drawn)])
+	elif not Stores.debrief_numbers(e, first_wrong + 1).has("WDP-PT-UNIT-A3"):
+		p.append("the part a look-alike was offered for has no Copy in the debrief: %s" % str(Stores.debrief_numbers(e,
+				first_wrong + 1)))
 	if offered != 2:        # (twice: before the range 3 was drawn, and again with only the look-alike left)
 		p.append("the debrief's look-alikes offered (%d, wanted 2): %s" % [offered, all])
 	return p
@@ -319,6 +334,12 @@ func _panel(tree: SceneTree) -> Array:
 		p.append("the order's form does not list its issued parts: %s" % (il.text if il != null else "(no line)"))
 	if not _press(wp.body, "copy_issued_WDP-PT-FERRULES") or sp.last_copied != "WDP-PT-FERRULES":
 		p.append("the order's issued part cannot be copied (%s)" % sp.last_copied)
+	for i in 3:
+		await tree.process_frame
+	var wclose = wp.find_child("close", true, false)
+	if not wp.get_viewport_rect().encloses(wp.get_global_rect()) or wclose == null \
+			or not wp.get_viewport_rect().encloses((wclose as Control).get_global_rect()):
+		p.append("the work order's form leaves the screen (panel %s)" % str(wp.get_global_rect()))
 	# the catalogue: the look-alikes side by side, a part's levels
 	ui.open_stores()
 	await tree.process_frame
@@ -330,11 +351,18 @@ func _panel(tree: SceneTree) -> Array:
 		var lv: Label = a3.find_child("levels", true, false)
 		if lv == null or not lv.text.begins_with("Stock 2 · min 1, reorder at 1, max 3"):
 			p.append("the range 3 transmitter's levels: %s" % (lv.text if lv != null else "(none)"))
-	# a notice (a toast) keeps clear of the stores panel, as of the card (it covered the rows' buttons)
-	ui.toast("Copied WDP-PT-UNIT-A3")
+	# a notice (a toast) keeps clear of the stores panel, as of the card (it covered the rows' buttons), also one shown
+	# before the panel opened, and a long one stays on the screen
+	ui.close_stores()
+	ui.toast("Issue of WDP-PT-SENSOR-MODULE Sensor module, absolute, range 3 refused: only 1 on the shelf: ask for 1 or "
+			+ "fewer, or order more (Order, in the catalogue)")
 	await tree.process_frame
-	if ui._toast.get_global_rect().intersects(sp.get_global_rect()):
-		p.append("a notice covers the stores panel: %s over %s" % [str(ui._toast.get_global_rect()), str(sp.get_global_rect())])
+	ui.open_stores()
+	for i in 3:
+		await tree.process_frame
+	var tr: Rect2 = ui._toast.get_global_rect()
+	if tr.intersects(sp.get_global_rect()) or tr.end.y > sp.get_viewport_rect().end.y:
+		p.append("a notice covers the stores panel or leaves the screen: %s, panel %s" % [str(tr), str(sp.get_global_rect())])
 	# (C1–C3, A1) a part's number copied, or written on the request by a press; (K4) the levels say the state in words
 	_press(sp.body, "copy_pt_unit_a3")
 	if sp.last_copied != "WDP-PT-UNIT-A3":
@@ -379,6 +407,15 @@ func _panel(tree: SceneTree) -> Array:
 		await tree.process_frame
 		if sp.order_qty == null or sp.order_qty.text != "2":
 			p.append("the order form's quantity was lost on the way to the catalogue and back: %s" % (
+					sp.order_qty.text if sp.order_qty != null else "no form"))
+			sp.order_qty.text = "2"
+		# another part's order form between: each part keeps its own
+		ui.open_stores("order", "pt_unit_a4")
+		await tree.process_frame
+		ui.open_stores("order", "pt_unit_a3")
+		await tree.process_frame
+		if sp.order_qty == null or sp.order_qty.text != "2":
+			p.append("another part's order form dropped this one's quantity: %s" % (
 					sp.order_qty.text if sp.order_qty != null else "no form"))
 			sp.order_qty.text = "2"
 		var c0: int = e.clock()
@@ -431,6 +468,10 @@ func _panel(tree: SceneTree) -> Array:
 	var lines := "\n".join(Debrief.summary_lines(d))
 	if not lines.contains("Parts drawn for") or not lines.contains("10 × WDP-PT-FERRULES"):
 		p.append("the debrief has no parts drawn: %s" % lines.right(400))
+	var raw: Array = d.entries.filter(func(x): return String(x.text).begins_with("issue ") or String(x.text).begins_with("order "))
+	var said_issue: Array = d.entries.filter(func(x): return String(x.text).begins_with("Issued: 10 × WDP-PT-FERRULES"))
+	if not raw.is_empty() or said_issue.is_empty():
+		p.append("the debrief lists the stores' events as records, not words: %s" % str(raw.map(func(x): return x.text)))
 	ui.open_debrief()
 	await tree.process_frame
 	if not _press(ui.debrief, "copy_part_WDP-PT-FERRULES") or sp.last_copied != "WDP-PT-FERRULES":

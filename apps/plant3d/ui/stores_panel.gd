@@ -47,8 +47,7 @@ var order_qty: LineEdit
 var _work_ids: Array = []       # the issue form's works, in the pick's order
 var _draft_number := ""         # the issue form's part number and quantity as typed, kept while the panel goes to the
 var _draft_qty := ""            # catalogue and back (UI-UX-POLICY D3)
-var _draft_order := ""          # the order form's quantity as typed, for the part _draft_order_for
-var _draft_order_for := ""
+var _draft_orders := {}         # each part's order quantity as typed (part -> text), kept until ordered
 var _field_err := ["", ""]      # [field name, message]: a form's error shown at its field (UI-UX-POLICY F5)
 var last_copied := ""           # the last number copied (tests read it: a headless clipboard keeps nothing)
 var _pending: Array = []        # [kind, part, step it takes effect]
@@ -86,9 +85,6 @@ func open(v := "list", id := "") -> void:
 	work = id if v == "issue" else ""
 	if work != "":
 		_picked = work          # (opened for an order: its work; else the work chosen before, kept: UI-UX-POLICY D3)
-	if v == "order" and id != _draft_order_for:
-		_draft_order = ""
-		_draft_order_for = id
 	part = id if v == "order" else ""
 	_field_err = ["", ""]
 	visible = true
@@ -385,6 +381,10 @@ static func debrief_numbers(e, to: int) -> Array:
 		var ev: Array = evs[i]
 		if ev[1] == "issue" and ev.size() > 6 and ev[6] == "done":
 			seen[ev[2]] = true
+		elif ev[1] == "hand" and ev.size() > 7 and ev[6] == "refused" and (ev[7] as Array).has("wrong_part"):
+			var x = e.m.hands_ix.get("%s|%s" % [ev[2], ev[3]])     # (the part the look-alike was offered for)
+			if x != null and x.has("part"):
+				seen[x["part"]] = true
 	for p in e._sr["parts"]:
 		if seen.has(p["id"]):
 			out.append(p["number"])
@@ -511,7 +511,7 @@ func refresh() -> void:
 	if qty_edit != null and is_instance_valid(qty_edit):
 		_draft_qty = qty_edit.text
 	if order_qty != null and is_instance_valid(order_qty):
-		_draft_order = order_qty.text
+		_draft_orders[String(order_qty.get_meta("part", ""))] = order_qty.text
 	_sig = sig
 	W.clear(body)
 	number_edit = null
@@ -750,10 +750,13 @@ func _order_form(e) -> void:
 	order_qty = LineEdit.new()
 	order_qty.name = "order_qty"
 	order_qty.placeholder_text = "Quantity"
-	order_qty.text = _draft_order if _draft_order != "" else str(maxi(1, int(p["max"]) - stock - due))
+	var dq: String = _draft_orders.get(part, "")
+	order_qty.text = dq if dq != "" else str(maxi(1, int(p["max"]) - stock - due))
+	order_qty.set_meta("part", part)
 	order_qty.custom_minimum_size = Vector2(0, 52 * W.scale)
 	order_qty.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
-	order_qty.text_changed.connect(func(t: String) -> void: _draft_order = t)
+	var dp := part
+	order_qty.text_changed.connect(func(t: String) -> void: _draft_orders[dp] = t)
 	_field(order_qty, "Quantity", _qty_row(order_qty))
 	var pid := part
 	var b := W.button("Order (as the %s)" % role_words(e, "order_parts"), func():
@@ -765,7 +768,7 @@ func _order_form(e) -> void:
 			_error("order_qty", "Write a quantity from 1 to 9,999")
 			return
 		_field_err = ["", ""]
-		_draft_order = ""
+		_draft_orders.erase(pid)
 		order(pid, q.to_int()))
 	b.name = "order_send"
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART      # (the roles' names must not widen the panel: UI-UX-POLICY L2)

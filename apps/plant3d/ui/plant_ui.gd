@@ -138,6 +138,7 @@ var _hint: Label
 var _toast: Label
 var _toast_t := 0.0
 var _toast_beside_card := false
+var _toast_side := false        # a side panel was open when the notice was laid out
 var _alarm_btn: Button
 var _time: Label
 var _ff_btn: Button
@@ -423,10 +424,10 @@ func _layout_toast() -> void:
 	var vs: Vector2 = root.get_viewport_rect().size
 	# between the side panels when they are open (on a phone it may reach over them: it has its own background)
 	var side := 0.0
-	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible
-			or permits.visible or (work_orders != null and work_orders.visible) or (stores != null and stores.visible)):
+	if _side_open():
 		side = card.size.x + 32.0
 	_toast_beside_card = card != null and card.visible
+	_toast_side = _side_open()
 	var w := clampf(vs.x - 2.0 * side, 360.0, minf(vs.x * 0.5, 900.0))
 	var x := (vs.x - w) * 0.5
 	if screens_open():
@@ -437,7 +438,14 @@ func _layout_toast() -> void:
 	_toast.position = Vector2(x, 0.0)
 	_toast.size = Vector2(w, 0)
 	var h := _toast.get_combined_minimum_size().y
-	_toast.position.y = (vs.y - h - 16.0) if screens_open() else vs.y - 200.0 * W.scale
+	# (its bottom never below the screen's: a narrow notice between panels grows taller, and moves up)
+	_toast.position.y = (vs.y - h - 16.0) if screens_open() else minf(vs.y - 200.0 * W.scale, vs.y - h - 16.0)
+
+
+## A panel open at the card's place (the notice keeps clear of it).
+func _side_open() -> bool:
+	return card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible
+			or permits.visible or (work_orders != null and work_orders.visible) or (stores != null and stores.visible))
 
 
 ## The layer's rows in the settings panel (app/hud.gd), kept in the app's settings file.
@@ -2061,9 +2069,8 @@ func _fit() -> void:
 
 func _toast_tick(delta: float) -> void:
 	if _toast_t > 0.0:
-		if card != null and card.visible != _toast_beside_card:
-			_toast_beside_card = card.visible
-			_layout_toast()                  # a card opened under the word: the word moves clear of it
+		if (card != null and card.visible != _toast_beside_card) or _side_open() != _toast_side:
+			_layout_toast()                  # a card or panel opened under the word: the word moves clear of it
 		_toast_t -= delta
 		if _toast_t <= 0.0:
 			_toast.text = ""

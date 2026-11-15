@@ -501,6 +501,7 @@ func _form(e, w: Dictionary) -> void:
 				_completion(e, w, who)
 			"close", "cancel":
 				var b := W.button("%s the work order (as the %s)" % [ACTION_WORDS[a], who], send.bind(wid, a, []))
+				b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART     # (the roles' names must not widen the panel past the screen)
 				b.name = a
 				body.add_child(b)
 
