@@ -1,7 +1,7 @@
 ## Manage (R10–R14; admin.html): approvals, my proposals, history with revert and restore, people, devices (join
 ## requests, revoke), and the account. Everything goes through the core's local API, like admin.html.
 
-import std/[strutils, tables, times, sequtils, asyncdispatch, math]
+import std/[strutils, tables, times, sequtils, asyncdispatch, math, algorithm]
 import kks/[json, api, node, extras, util]
 import kksl/[dbstore, privfile, passphrase]
 import kks/model
@@ -61,18 +61,120 @@ proc photoButton(w: Win, g: W, sub: JNode) =
       let cap = s(sub["payload"], "caption")
       adw_preferences_group_add(g, button("Show the photo", "flat", proc () = w.showPhoto(data, cap)))
 
+# Approvals, several at once (the user, 2026-11-15: "accept/deny multiple requests at once"): a tick per proposal, and
+# under the page a bar with Select all, how many are ticked, Approve selected and Reject selected. The ticks are kept
+# by id over the page's rebuilds (a sync rebuilds it under the person); the ones no longer waiting are dropped.
+var
+  picked: seq[int64]             ## the ticked proposals' ids
+  pickSubs: seq[JNode]           ## the waiting proposals as last drawn, oldest first
+  pickChecks: seq[(int64, W)]    ## each one's tick (in the page: not held)
+  pickBar: W                     ## the bar under the Approvals page (its toolbar's bottom bar; not held)
+  pickAll, pickCount, pickOk, pickNo: W
+  pickSetting = false            ## Select all is setting the ticks: their own "toggled" leaves the bar alone meanwhile
+  pickBusy = false
+
+proc pickShow() =
+  ## the bar as the ticks are now
+  if pickBar == nil or pickAll == nil: return
+  let n = picked.len
+  pickSetting = true
+  gtk_check_button_set_active(pickAll, cint(n > 0 and n == pickSubs.len))
+  gtk_check_button_set_inconsistent(pickAll, cint(n > 0 and n < pickSubs.len))
+  pickSetting = false
+  gtk_label_set_text(pickCount, (if n > 0: $n & " selected" else: "None selected").cstring)
+  gtk_button_set_label(pickOk, ("Approve selected" & (if n > 0: " (" & $n & ")" else: "")).cstring)
+  gtk_button_set_label(pickNo, ("Reject selected" & (if n > 0: " (" & $n & ")" else: "")).cstring)
+  for b in [pickOk, pickNo]: gtk_widget_set_sensitive(b, cint(n > 0 and not pickBusy))
+
+proc decideMany(w: Win, action: string, again: proc ()) =
+  ## every ticked proposal, oldest first, each as its own button sends it (approve without force, reject). A held one
+  ## (it clashes with the value as it is now) is not approved here: its own "Approve anyway" does that.
+  if pickBusy: return
+  var done = 0
+  var held, failed: seq[string]
+  var chosen: seq[JNode]
+  for sub in pickSubs:
+    if sub["id"].i in picked: chosen.add sub
+  if chosen.len == 0:
+    w.toast("Nothing selected")
+    return
+  pickBusy = true
+  pickShow()
+  for sub in chosen:
+    let id = sub["id"].i
+    if action == "approve" and sub["status"].s == "conflict":
+      held.add "#" & $id
+      continue
+    try:
+      discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
+      inc done
+      picked.keepItIf(it != id)
+    except ApiError as e:
+      failed.add "#" & $id & ": " & e.msg
+  pickBusy = false
+  var msg = (if action == "approve": "Approved " else: "Rejected ") & $done & " of " & $chosen.len & "."
+  if held.len > 0:
+    msg.add " Not approved: " & held.join(", ") & (if held.len == 1: " clashes" else: " clash") &
+            " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
+  if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
+  w.toast(msg)
+  idle(again)      # (the bar's own button ran this: the page and the bar are made again after it returned)
+
+proc fillPickBar(w: Win, again: proc ()) =
+  if pickBar == nil: return
+  pickBar.clear()
+  pickAll = nil
+  if pickSubs.len == 0:
+    gtk_widget_set_visible(pickBar, 0)
+    return
+  gtk_widget_set_visible(pickBar, 1)
+  pickAll = gtk_check_button_new_with_label(("Select all (" & $pickSubs.len & ")").cstring)
+  pickAll.on("toggled", proc () =
+    if pickSetting: return
+    let on = gtk_check_button_get_active(pickAll) != 0
+    picked.setLen(0)
+    if on:
+      for sub in pickSubs: picked.add sub["id"].i
+    pickSetting = true
+    for (_, cb) in pickChecks: gtk_check_button_set_active(cb, cint(on))
+    pickSetting = false
+    pickShow())
+  pickCount = label("None selected", "dim-label")
+  gtk_widget_set_hexpand(pickCount, 1)
+  pickOk = button("Approve selected", "suggested-action", proc () = w.decideMany("approve", again))
+  pickNo = button("Reject selected", "destructive-action", proc () =
+    let n = picked.len
+    if n == 0: return
+    ask(w.window, "Reject " & (if n == 1: "1 proposal" else: $n & " proposals") & "?",
+        "Each one is rejected as its own Reject button does. The submitters see that it was rejected.", "Reject",
+        "Cancel", proc (yes: bool) =
+          if yes: w.decideMany("reject", again)))
+  pickBar.add pickAll, pickCount, pickOk, pickNo
+  pickShow()
+
 proc approvals(w: Win, box: W) =
   ## the user's "Approvals page clean-up": per code, then per kind (an equipment photo and a tag plate photo don't
   ## compete). Pick and votes only where several photos of one kind wait; Approve/Reject otherwise. Names in full.
   var groups: seq[JNode]
+  pickChecks.setLen(0)
+  pickSubs.setLen(0)
+  let again = proc () = w.refreshPage(box, proc (b: W) = w.approvals(b))
   try: groups = w.a.call("GET", "/api/submissions", nil, {"status": "open", "group": "code", "limit": "1000"}.toTable)["groups"].elems
   except ApiError as e:
     box.add label(e.msg, "dim-label")
+    w.fillPickBar(again)
     return
+  for grp in groups:
+    for k in grp["kinds"].elems:
+      for sub in k["items"].elems: pickSubs.add sub
+  pickSubs.sort(proc (a, b: JNode): int = cmp(a["created"].i, b["created"].i))
+  var open: seq[int64]
+  for sub in pickSubs: open.add sub["id"].i
+  picked.keepItIf(it in open)
+  w.fillPickBar(again)
   if groups.len == 0:
     box.add label("Nothing waits for approval.", "dim-label")
     return
-  let again = proc () = w.refreshPage(box, proc (b: W) = w.approvals(b))
   for gi in 0 ..< groups.len:
     closureScope:
       let grp = groups[gi]
@@ -102,6 +204,18 @@ proc approvals(w: Win, box: W) =
               let btns = hbox(8)
               gtk_widget_set_margin_top(btns, 6)
               gtk_widget_set_margin_bottom(btns, 10)
+              if w.isAdmin:
+                let cb = gtk_check_button_new_with_label("Select")
+                setAccessibleLabel(cb, "Select #" & $id & ", " & what)
+                gtk_check_button_set_active(cb, cint(id in picked))
+                cb.on("toggled", proc () =
+                  if pickSetting: return
+                  if gtk_check_button_get_active(cb) != 0:
+                    if id notin picked: picked.add id
+                  else: picked.keepItIf(it != id)
+                  pickShow())
+                pickChecks.add (id, cb)
+                btns.add cb
               if pick:
                 let votes = if sub.get("votes") != nil and sub["votes"].kind == jInt: sub["votes"].i else: 0
                 let pb = button("Pick this photo", "suggested-action", proc () =
@@ -641,9 +755,15 @@ proc managePage*(w: Win): W =
         return
       let b = vbox(12)
       margins(b, 8)
+      var bar: W = nil
+      if tag == "approvals":         # Select all, Approve selected, Reject selected: under the list, always in view
+        bar = hbox(8)
+        margins(bar, 8)
+        pickBar = bar
       build(b)
       w.setLive(if live: b else: nil, build)
       let tv = toolbarView(headerBar(adw_window_title_new(title.cstring, "")), scrolled(b))
+      if bar != nil: adw_toolbar_view_add_bottom_bar(tv, bar)
       adw_navigation_view_push(w.sideNav, adw_navigation_page_new_with_tag(tv, title.cstring, tag.cstring))))
   if w.isAdmin: sub("Approvals", "Proposals waiting for a decision", "approvals", proc (b: W) = w.approvals(b), live = true)
   sub("My proposals", "What you proposed, filtered and by code; photos to vote on", "mine", proc (b: W) = w.myProposals(b), live = true)

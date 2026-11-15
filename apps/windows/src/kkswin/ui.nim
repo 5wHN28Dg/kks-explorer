@@ -447,6 +447,12 @@ proc layout*(p: Page) =
                       nPage: UINT(r.bottom), nPos: int32(p.scroll))
   SetScrollInfo(p.hwnd, SB_VERT, addr si, 1)
 
+proc contentHeight*(p: Page): int =
+  ## the height its items took at the last layout, margins included (px)
+  p.contentH
+
+proc isEmpty*(p: Page): bool = p == nil or p.items.len == 0
+
 proc relayoutIfWanted(p: Page) =
   if relayoutWanted:
     relayoutWanted = false

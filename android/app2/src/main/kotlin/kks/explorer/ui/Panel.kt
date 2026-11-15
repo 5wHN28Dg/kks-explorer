@@ -95,15 +95,11 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
             .padding(vertical = 10.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Box(Modifier.size(width = 40.dp, height = 4.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), MaterialTheme.shapes.small))
         }
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(t.optString("code").ifEmpty { "Unread tag" }, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace)
-                    Text((if (t.optString("isa").isNotEmpty()) t.optString("isa") + " · " else "") + t.optString("kind"),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                TextButton(onClick = onClose) { Text("Close") }
-            }
+        // the heading stays above what scrolls (the user, 2026-11-15: "Close button shouldn't be hidden or move away
+        // when I scroll down"): the code (selectable), Copy, Close
+        PanelHeading(t.optString("code"), (if (t.optString("isa").isNotEmpty()) t.optString("isa") + " · " else "") + t.optString("kind"),
+            onClose, snack)
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (t.optString("status") == "review") ReviewSection(t, snack)
             t.optJSONObject("decoded")?.let { d ->
                 Heading("From the drawing")
@@ -194,6 +190,31 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
         }
         }
     }
+}
+
+/** The panel's heading, outside its scrolling part: the code (selectable: a long press copies part of it), a Copy
+ *  button that puts the whole code on the clipboard and says "Copied", and Close. */
+@Composable
+private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: SnackbarHostState) {
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    var copied by remember(code) { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(1500); copied = false } }
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            if (code.isNotEmpty()) androidx.compose.foundation.text.selection.SelectionContainer {
+                Text(code, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace)
+            } else Text("Unread tag", style = MaterialTheme.typography.headlineSmall)
+            Text(sub, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (code.isNotEmpty()) TextButton(onClick = {
+            clip.setText(androidx.compose.ui.text.AnnotatedString(code))
+            copied = true
+            scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("Copied $code") }
+        }, modifier = Modifier.semantics { contentDescription = if (copied) "Copied $code" else "Copy $code" }) { Text(if (copied) "Copied" else "Copy") }
+        TextButton(onClick = onClose) { Text("Close") }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable

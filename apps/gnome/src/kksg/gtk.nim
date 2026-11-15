@@ -455,6 +455,7 @@ proc gtk_switch_get_active*(s: W): cint {.importc, header: HA.}
 proc gtk_switch_set_active*(s: W, v: cint) {.importc, header: HA.}
 proc gtk_check_button_get_active*(b: W): cint {.importc, header: HA.}
 proc gtk_check_button_set_active*(b: W, v: cint) {.importc, header: HA.}
+proc gtk_check_button_set_inconsistent*(b: W, v: cint) {.importc, header: HA.}
 proc gtk_accessible_announce*(a: W, message: cstring, priority: cint) {.importc, header: HA.}
 proc gtk_action_bar_new*(): W {.importc, header: HA.}
 proc gtk_action_bar_pack_start*(b, w: W) {.importc, header: HA.}

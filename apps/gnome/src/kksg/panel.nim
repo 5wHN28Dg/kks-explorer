@@ -424,9 +424,20 @@ proc buildPanel*(w: Win, t: Tag) =
   let k = t.full
   w.panelCode = k
   let head = vbox(2)
+  gtk_widget_set_hexpand(head, 1)
   head.add label(if k.len > 0: k else: "Unread tag", "title-2", selectable = true)
   head.add label((if t.isa.len > 0: t.isa & " · " else: "") & m.kindName(t), "dim-label")
-  w.panelBox.add head
+  let headRow = hbox(8)
+  headRow.add head
+  if k.len > 0:       # the code to the clipboard (the user, 2026-11-15: "copy kks code from the sheet that shows tag info")
+    let copy = button("Copy", "", proc () =
+      gdk_clipboard_set_text(gtk_widget_get_clipboard(w.window), k.cstring)
+      w.toast("Copied " & k))
+    gtk_widget_set_valign(copy, GTK_ALIGN_START)
+    gtk_widget_set_tooltip_text(copy, ("Copy " & k).cstring)
+    setAccessibleLabel(copy, "Copy " & k)
+    headRow.add copy
+  w.panelBox.add headRow
   # my own open proposals for this tag/code
   var mine: seq[string]
   for sub in w.myOpen():

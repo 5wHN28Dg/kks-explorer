@@ -25,7 +25,10 @@ const MINE_KINDS=[['all','Everything'],['equipment_photo','Equipment photos','eq
   ['custom','Custom fields','equipment','custom'],['link','Procedure links','link'],['review','Tag readings','review'],['tag_add','Marked tags','tag_add'],
   ['removals','Removals','tag_remove,photo_delete']];
 const MINE_F={status:'all',kind:'all'};
-let SHOW_HIDDEN=false;   // Users and Devices: removed ones an admin hid, shown anyway
+let SHOW_HIDDEN=false;
+// Approvals: the proposals ticked for "Approve selected" / "Reject selected" (ids; kept over the page's rebuilds, the
+// ones no longer waiting dropped when it is drawn), and each waiting proposal by id as last drawn
+const PICKED=new Set(); let OPEN_SUBS=new Map();   // Users and Devices: removed ones an admin hid, shown anyway
 // v2 crops (approving a marked tag): level 0 of the sheet's pyramid, decoded by K.jxl where the browser can't
 const cropBg={};
 new MutationObserver(()=>document.querySelectorAll('[data-crop]:not([data-bg])').forEach(el=>{
@@ -132,9 +135,14 @@ const VIEWS={
     // and a tag plate photo never compete; Pick and votes only where several of the same kind wait ("pick")
     const R=await K.api('/api/submissions?status=open&group=code'), groups=R.groups||[];
     const qn=$('#qn'); if(qn){qn.textContent=R.submissions.length; qn.style.display=R.submissions.length?'':'none'}
+    OPEN_SUBS=new Map(R.submissions.map(s=>[s.id,s]));
+    for(const id of [...PICKED]) if(!OPEN_SUBS.has(id)) PICKED.delete(id);
     if(!groups.length){ put(mainFor(g),h('p',{class:'sub'},'Nothing waiting for approval.')); return }
-    const out=[h('p',{class:'sub'},'Grouped by code, oldest first. Approving applies the change and records it in History, where it can be reverted.')];
+    const out=[h('p',{class:'sub'},'Grouped by code, oldest first. Approving applies the change and records it in History, where it can be reverted. Tick several to approve or reject them at once.')];
     const button=(cls,label,onclick)=>h('button',{class:cls,onclick},label);
+    const tick=s=>h('label',{class:'pick'},h('input',{type:'checkbox','data-id':s.id,checked:PICKED.has(s.id),
+      onchange:e=>{ e.currentTarget.checked?PICKED.add(s.id):PICKED.delete(s.id); pickedBar() }}),h('span',null,'Select'),
+      h('span',{class:'vh'},` #${s.id}, ${K.describe(s.kind,s.payload)}`));
     const oldest=g=>Math.min(...g.kinds.flatMap(k=>k.items.map(s=>s.created||0)));
     for(const g of [...groups].sort((a,b)=>oldest(a)-oldest(b))){
       // the code opens its tag on the drawing; a change without a code (a review) opens its tag by id
@@ -146,13 +154,13 @@ const VIEWS={
         const L=[...kd.items].sort((a,b)=>(a.created||0)-(b.created||0));
         if(kd.kind.endsWith('_photo')) return h('div',{class:'kind','data-kind':kd.kind},h('h4',null,`${kd.label} (${L.length})`),
           kd.pick?h('div',{class:'sub'},`Several ${kd.label.toLowerCase()}s proposed. “Use this one” approves it and rejects the other ${kd.label.toLowerCase()}s of this code. Votes are only a hint.`):null,
-          h('div',{class:'photos'},L.map(s=>h('figure',null,photoImg(s.payload.file),
+          h('div',{class:'photos'},L.map(s=>h('figure',null,tick(s),photoImg(s.payload.file),
             h('div',{class:'sub'},who(s),` · ${when(s.created)}`,kd.pick?` · ${s.votes} vote${s.votes===1?'':'s'}`:''),s.payload.caption?h('div',null,s.payload.caption):null,rnote(s),
             h('div',{class:'row',style:'margin-top:6px'},
               kd.pick?[button('primary','Use this one',()=>decide(s.id,'pick')),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
               button('danger','Reject',()=>decide(s.id,'reject')))))));
         return h('div',{class:'kind','data-kind':kd.kind},h('h4',null,`${kd.label} (${L.length})`),L.map(s=>h('div',{class:'item',style:'margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)'},
-          h('div',{class:'row'},badge(s),h('span',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`)),rnote(s),
+          h('div',{class:'row'},tick(s),badge(s),h('span',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`)),rnote(s),
           s.conflicts?.length?h('div',{class:'warn bad'},`Conflict: ${s.kind==='equipment'?'highlighted field(s) changed after this was submitted':'this changed after it was submitted'}. Approving overwrites the current value.`):null,
           detail(s),
           h('div',{class:'row',style:'margin-top:6px'},
@@ -160,7 +168,19 @@ const VIEWS={
             button('danger','Reject',()=>decide(s.id,'reject'))))));
       })));
     }
+    // several at once: tick them (or all), then one Approve or one Reject (Reject asks once); each goes as its own
+    // approve or reject, exactly as its own buttons send it
+    const all=h('input',{type:'checkbox',id:'pickAll',onchange:e=>{ const on=e.currentTarget.checked;
+      for(const id of OPEN_SUBS.keys()) on?PICKED.add(id):PICKED.delete(id);
+      document.querySelectorAll('#main label.pick input').forEach(c=>{ c.checked=on }); pickedBar() }});
+    out.push(h('div',{class:'pickbar',id:'pickbar',role:'region','aria-label':'Decide several at once'},
+      h('label',{class:'pick'},all,h('span',null,`Select all (${OPEN_SUBS.size})`)),
+      h('span',{id:'pickN',class:'sub','aria-live':'polite'}),
+      h('span',{style:'flex:1'}),
+      h('button',{class:'primary',id:'pickOk',onclick:()=>decideMany('approve')},'Approve selected'),
+      h('button',{class:'danger',id:'pickNo',onclick:()=>decideMany('reject')},'Reject selected')));
     put(mainFor(g),out);
+    pickedBar();
   },
   async mine(g){
     // filtered by the server (/api/submissions: status, kind, field, mine), grouped here by code
@@ -233,7 +253,10 @@ const VIEWS={
     const S=await signups(); signupBadge(S);
     const code=h('input',{name:'code','aria-label':'Sign-up code',placeholder:S?.enabled?'a new code':'a code, 6+ characters',autocomplete:'off',autocapitalize:'none',spellcheck:'false',minlength:6,maxlength:64,required:true});
     const SU=S?[h('div',{class:'card',id:'signups'},h('h3',null,`Account requests (${S.requests.length})`),
-        S.requests.length?table(head('Name','Username','Asked',''),S.requests.map(r=>h('tr',{'data-user':r.username},
+        S.requests.length?table(head(h('label',{class:'pick'},h('input',{type:'checkbox',id:'suAll',onchange:e=>{ const on=e.currentTarget.checked;
+            document.querySelectorAll('#signups input.supick').forEach(c=>{ c.checked=on }); suBar() }}),h('span',null,'All')),'Name','Username','Asked',''),
+          S.requests.map(r=>h('tr',{'data-user':r.username},
+          h('td',null,h('label',{class:'pick'},h('input',{type:'checkbox',class:'supick','data-id':r.id,onchange:()=>suBar()}),h('span',{class:'vh'},`Select ${r.full_name} (${r.username})`))),
           h('td',null,r.full_name,r.position?h('div',{class:'sub'},r.position):null),
           h('td',{class:'mono'},r.username,r.person?h('div',{class:'del'},`this is the username of ${whoIs(r.person)}, who uses the app and has no web sign-in`,
               canEdit(r.person)?null:' (only the manager can approve an admin as the same person)')
@@ -244,6 +267,9 @@ const VIEWS={
               h('button',{class:'ghost',onclick:()=>decideSignup(r,'approve')},'Approve with another username')]
             :h('button',{class:'primary',onclick:()=>decideSignup(r,'approve')},'Approve'),h('button',{class:'danger',onclick:()=>decideSignup(r,'reject')},'Reject')))))
           :h('div',{class:'sub'},S.enabled?'Nobody is waiting.':'Nobody is waiting, and sign-up is off.'),
+        S.requests.length>1?h('div',{class:'row',style:'margin-top:8px'},h('span',{id:'suN',class:'sub','aria-live':'polite'},'None selected'),
+          h('button',{class:'primary',id:'suOk',disabled:true,onclick:()=>decideSignups(S.requests,'approve')},'Approve selected'),
+          h('button',{class:'danger',id:'suNo',disabled:true,onclick:()=>decideSignups(S.requests,'reject')},'Reject selected')):null,
         h('div',{class:'sub',style:'margin-top:6px'},`Approving makes the account (role user) with the password the person chose; they can sign in at once. Rejecting deletes the request. A request nobody decides is dropped after ${S.days} days.`)),
       h('div',{class:'card',id:'signupCode'},h('h3',null,'Sign-up code'),
         h('div',{id:'signupState'},S.enabled?['Sign-up is ',h('b',null,'on'),` (code set ${when(S.set)}). The sign-in screen offers “Request an account” to whoever has the code.`]
@@ -487,6 +513,44 @@ async function decide(id,action,force){
   const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
   await act(()=>K.api(`/api/submissions/${id}/${action}`,{force:!!force,note,edit}),{approve:'Approved',pick:'Photo chosen, the others of its kind rejected',reject:'Rejected'}[action]);
 }
+// the bar under Approvals: how many are ticked; its buttons only with something ticked; "Select all" ticked when all are
+function pickedBar(){
+  const n=PICKED.size, N=OPEN_SUBS.size, all=$('#pickAll'); if(!all) return;
+  all.checked=N>0&&n===N; all.indeterminate=n>0&&n<N;
+  $('#pickN').textContent=n?`${n} selected`:'None selected';
+  for(const b of [$('#pickOk'),$('#pickNo')]){ b.disabled=!n; b.textContent=(b.id==='pickOk'?'Approve':'Reject')+' selected'+(n?` (${n})`:'') }
+}
+// Approve or reject every ticked proposal, oldest first, each with its own request (as its own button sends it: a marked
+// tag with the code in its fields). Reject asks once, with one reason for all. A held one (it clashes with the value as
+// it is now) is not approved here: it needs its own "Overwrite with proposal". Says how many went and why others didn't.
+let deciding=false;
+async function decideMany(action){
+  if(deciding) return;
+  const ids=[...document.querySelectorAll('#main label.pick input:checked')].map(c=>+c.dataset.id).filter(id=>PICKED.has(id)&&OPEN_SUBS.has(id));
+  if(!ids.length){ toast('Nothing selected'); return }
+  const n=ids.length, of=n===1?'1 proposal':`${n} proposals`;
+  let note='';
+  if(action==='reject'){ note=prompt(`Reject ${of}? Reason (optional, shown to the submitters):`,''); if(note===null) return }
+  deciding=true;
+  const btns=[$('#pickOk'),$('#pickNo')]; btns.forEach(b=>{ if(b) b.disabled=true });
+  let done=0; const held=[], failedL=[];
+  try{
+    for(const id of ids){
+      const s=OPEN_SUBS.get(id);
+      if(action==='approve'&&s?.conflicts?.length){ held.push(id); continue }
+      const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);
+      const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
+      $('#pickN').textContent=`${action==='approve'?'Approving':'Rejecting'} ${done+failedL.length+1} of ${n}…`;
+      try{ await K.api(`/api/submissions/${id}/${action}`,{force:false,note,edit}); done++; PICKED.delete(id) }
+      catch(e){ if(e.status===401) return failed(e); failedL.push(`#${id}: ${K.isNetErr(e)?'offline':e.message}`); if(K.isNetErr(e)) break }
+    }
+  }finally{ deciding=false }
+  const L=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${n}.`];
+  if(held.length) L.push(`Not approved: ${held.map(i=>'#'+i).join(', ')} clash${held.length===1?'es':''} with the value as it is now; decide ${held.length===1?'it':'them'} on ${held.length===1?'its':'their'} own.`);
+  if(failedL.length) L.push('Not done: '+failedL.join('; ')+'.');
+  toast(L.join(' '));
+  await rebuild();
+}
 // removed devices and people: hidden from the lists (display only: the log, History and the leaderboard keep them)
 const setHidden=(ids,hide)=>act(()=>K.api('/api/hidden',{ids,hide}),hide?'Hidden':'Shown again');
 const clearRemoved=()=>act(()=>K.api('/api/hidden',{clear_removed:true}),'Removed devices and people cleared from the lists');
@@ -512,6 +576,31 @@ function decideSignup(r,action){
   let username=r.username;
   if(r.taken){ username=prompt(`The username ${r.username} exists already. Approve ${r.full_name} with which username? (Tell them: they sign in with it.)`,''); if(!username) return }
   return act(()=>K.api(`/api/signups/${r.id}/approve`,{username}),`Approved: ${username} can sign in now`);
+}
+// Account requests, several at once. Approve selected approves only the plain ones (the username is free and asked for
+// once): the others need their own button, which asks the admin what to do. Reject selected asks once.
+function suBar(){
+  const all=[...document.querySelectorAll('#signups input.supick')], n=all.filter(c=>c.checked).length, a=$('#suAll');
+  if(a){ a.checked=all.length>0&&n===all.length; a.indeterminate=n>0&&n<all.length }
+  const N=$('#suN'); if(N) N.textContent=n?`${n} selected`:'None selected';
+  for(const b of [$('#suOk'),$('#suNo')]) if(b){ b.disabled=!n; b.textContent=(b.id==='suOk'?'Approve':'Reject')+' selected'+(n?` (${n})`:'') }
+}
+async function decideSignups(reqs,action){
+  const ids=new Set([...document.querySelectorAll('#signups input.supick:checked')].map(c=>c.dataset.id));
+  const L=reqs.filter(r=>ids.has(String(r.id))); if(!L.length){ toast('Nothing selected'); return }
+  if(action==='reject'&&!confirm(`Reject ${L.length===1?'1 request':L.length+' requests'}? ${L.length===1?'It is':'They are'} deleted.`)) return;
+  const plain=r=>!r.person&&!r.taken&&!(r.same>1), skip=action==='approve'?L.filter(r=>!plain(r)):[];
+  let done=0; const bad=[];
+  for(const r of L){
+    if(skip.includes(r)) continue;
+    try{ await K.api(`/api/signups/${r.id}/${action}`,{}); done++ }
+    catch(e){ if(e.status===401) return failed(e); bad.push(`${r.username}: ${K.isNetErr(e)?'offline':e.message}`); if(K.isNetErr(e)) break }
+  }
+  const out=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${L.length}.`];
+  if(skip.length) out.push(`Not approved: ${skip.map(r=>r.username).join(', ')} (the username is taken or asked for more than once): use ${skip.length===1?'its':'their'} own button.`);
+  if(bad.length) out.push('Not done: '+bad.join('; ')+'.');
+  toast(out.join(' '));
+  await rebuild();
 }
 const exportBundle=photos=>{ if(!K.native) return true; K.native.saveApi('plant.kksbundle','/api/bundle'+(photos?'?photos=1':'')); return false };
 const setPerson=(pid,d)=>act(()=>K.api(`/api/persons/${pid}`,d),'Updated');

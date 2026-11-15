@@ -51,6 +51,12 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chrome3);padding:8px 14px;border-radius:6px;display:none;z-index:40;max-width:92%}
 .peer .server-only{display:none}
 .app header{display:none}
+.pick{display:inline-flex;gap:6px;align-items:center;cursor:pointer;min-height:32px;padding:0 4px}
+.pick input{width:18px;height:18px;margin:0;cursor:pointer}
+.photos figure .pick{margin-bottom:4px}
+.pickbar{position:sticky;bottom:0;z-index:4;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--chrome2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:10px 0;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 18px rgba(0,0,0,.3)}
+.pickbar button:disabled{opacity:.45;cursor:default}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .rnote{margin:4px 0;padding:4px 8px;border-left:3px solid var(--ok);background:rgba(79,156,255,.08);border-radius:0 4px 4px 0;font-style:italic}
 </style>
 </head>
@@ -64,7 +70,7 @@ form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 </header>
 <nav id="tabs"></nav>
 <main id="main"></main>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script src="common.js"></script>
 <script src="admin.js"></script>

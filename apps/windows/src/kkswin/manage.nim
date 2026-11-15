@@ -2,7 +2,7 @@
 ## devices (join requests, invites with a QR code, request files, bundles, removal), and the account (details, sync,
 ## the root key backup). Everything goes through the core's local API, like admin.html.
 
-import std/[strutils, tables, times, sequtils, asyncdispatch, math]
+import std/[strutils, tables, times, sequtils, asyncdispatch, math, algorithm]
 import kks/[json, api, node, extras, util]
 import kksl/[dbstore, passphrase]
 import kks/model
@@ -66,6 +66,58 @@ proc photoButton(w: Win, sub: JNode, specs: var seq[(string, proc ())]) =
       let cap = s(sub["payload"], "caption")
       specs.add ("Show the photo", proc () = w.showPhoto(data, cap))
 
+# Approvals, several at once (the user, 2026-11-15: "accept/deny multiple requests at once"): a tick per proposal and,
+# at the top, Select all, how many are ticked, Approve selected and Reject selected (Reject asks once). The ticks are
+# kept by id over the page's rebuilds (a sync rebuilds it); the ones no longer waiting are dropped.
+var
+  picked: seq[int64]                ## the ticked proposals' ids
+  pickSubs: seq[JNode]              ## the waiting proposals as last drawn, oldest first
+  pickChecks: seq[(int64, HWND)]    ## each one's tick
+  pickAll, pickCount, pickOk, pickNo: HWND
+
+proc pickShow() =
+  let n = picked.len
+  if pickAll == nil: return
+  SendMessageW(pickAll, BM_SETCHECK, WPARAM(ord(n > 0 and n == pickSubs.len)), 0)
+  pickCount.setText(if n > 0: $n & " selected" else: "None selected")
+  pickOk.setText("Approve selected" & (if n > 0: " (" & $n & ")" else: ""))
+  pickNo.setText("Reject selected" & (if n > 0: " (" & $n & ")" else: ""))
+  EnableWindow(pickOk, BOOL(n > 0))
+  EnableWindow(pickNo, BOOL(n > 0))
+
+proc decideMany(w: Win, action: string) =
+  ## every ticked proposal, oldest first, each as its own button sends it (approve without force, reject). A held one
+  ## (it clashes with the value as it is now) is not approved here: its own "Approve anyway" does that.
+  var chosen: seq[JNode]
+  for sub in pickSubs:
+    if sub["id"].i in picked: chosen.add sub
+  if chosen.len == 0:
+    w.toast("Nothing selected")
+    return
+  if action == "reject" and not ask(w.hwnd, "Reject " & (if chosen.len == 1: "1 proposal" else: $chosen.len & " proposals") & "?",
+                                    "Each one is rejected as its own Reject button does. The submitters see that it was rejected."):
+    return
+  var done = 0
+  var held, failed: seq[string]
+  for sub in chosen:
+    let id = sub["id"].i
+    if action == "approve" and sub["status"].s == "conflict":
+      held.add "#" & $id
+      continue
+    try:
+      discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
+      inc done
+      picked.keepItIf(it != id)
+    except ApiError as e:
+      failed.add "#" & $id & ": " & e.msg
+  var msg = (if action == "approve": "Approved " else: "Rejected ") & $done & " of " & $chosen.len & "."
+  if held.len > 0:
+    msg.add " Not approved: " & held.join(", ") & (if held.len == 1: " clashes" else: " clash") &
+            " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
+  if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
+  w.toast(msg)
+  w.rebuildSide()
+
 proc approvals(w: Win, p: Page) =
   ## the user's "Approvals page clean-up" (2026-10-08): one card per code (or per tag without one), the proposals in it
   ## by kind (/api/submissions?group=code); "Use this one" and votes only where several photos of one kind compete
@@ -76,10 +128,34 @@ proc approvals(w: Win, p: Page) =
   except ApiError as e:
     p.dim(e.msg)
     return
+  pickChecks.setLen(0)
+  pickSubs.setLen(0)
+  pickAll = nil
+  for grp in groups:
+    for k in grp["kinds"].elems:
+      for sub in k["items"].elems: pickSubs.add sub
+  pickSubs.sort(proc (a, b: JNode): int = cmp(a["created"].i, b["created"].i))
+  var open: seq[int64]
+  for sub in pickSubs: open.add sub["id"].i
+  picked.keepItIf(it in open)
   if groups.len == 0:
     p.dim("Nothing waits for approval.")
     return
-  p.dim("One card per tag. Approving applies the change and records it in History, where it can be reverted.")
+  p.dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. " &
+        "Tick several to approve or reject them at once.")
+  if w.isAdmin:
+    pickAll = p.check("Select all (" & $pickSubs.len & ")", false, proc (on: bool) =
+      picked.setLen(0)
+      if on:
+        for sub in pickSubs: picked.add sub["id"].i
+      for (_, cb) in pickChecks: SendMessageW(cb, BM_SETCHECK, WPARAM(ord(on)), 0)
+      pickShow())
+    pickCount = p.dim("None selected")
+    let bs = p.buttons(("Approve selected", proc () = w.decideMany("approve")),
+                       ("Reject selected", proc () = w.decideMany("reject")))
+    pickOk = bs[0]
+    pickNo = bs[1]
+    pickShow()
   for gi in 0 ..< groups.len:
     closureScope:
       let grp = groups[gi]
@@ -111,6 +187,13 @@ proc approvals(w: Win, p: Page) =
                     (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: ""))
               for (lab2, v) in proposalRows(sub): p.field(lab2, v, readonly = true)
               if conflict: p.field("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), readonly = true)
+              if w.isAdmin:
+                let cb = p.check("Select #" & $id, id in picked, proc (on: bool) =
+                  if on:
+                    if id notin picked: picked.add id
+                  else: picked.keepItIf(it != id)
+                  pickShow())
+                pickChecks.add (id, cb)
               var specs: seq[(string, proc ())]
               w.photoButton(sub, specs)
               if w.isAdmin:
