@@ -344,6 +344,11 @@ The UI is English only, but user content may be Arabic or mixed (REQUIREMENTS.md
   at 30 fps or better by Android's present times (decision 0041); a change to a panel, the HUD or the control room
   screens (anything drawn while the plant is shown) is measured with the walk that shows it (apps/plant3d/README.md, `phone/frames.sh`). Fast-forward may drop
   frames on a phone (docs/PLANT3D.md §7.9).
+  - Exception, the Workshop (the user, 2026-11-15, #392): inside the Workshop, Plant keeps the Workshop's own rule
+    instead: no frame over 100 ms that the app causes, and at least 95 % of frames at 30 fps or better over the
+    Workshop walk ([docs/plant3d/WORKSHOP.md §8](plant3d/WORKSHOP.md#8-frame-memory-and-size-rules)). Why: the Workshop
+    shows one machine up close (orbiting, exploding, cutting), a different load from walking the plant, and its rule
+    was set and measured for that (WORKSHOP.md §6.8 to §6.11). The 99.9 % above applies everywhere else in Plant.
 - **P2 (Block) Walkdown keeps its measured budgets:** startup, memory and size within the regression rules of
   docs/m6/MEASUREMENTS.md; the web client's download within `web-size.json` (CI's `web-size` job).
 - **P3 (Block) Nothing freezes the UI for over 1 s.** No interaction blocks the UI thread for more than 1 s; longer
@@ -488,4 +493,5 @@ in without its audit is fixed before the release.
 
 A rule is added, changed or waived only by the user. Waivers are listed here with the date and the reason.
 
-- (none yet)
+- 2026-11-15, the user (#392): P1's 99.9 % does not apply inside Plant's Workshop, which keeps its own rule
+  (WORKSHOP.md §8: no frame over 100 ms, at least 95 % at 30 fps); see P1.
