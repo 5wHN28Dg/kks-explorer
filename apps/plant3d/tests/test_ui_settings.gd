@@ -146,6 +146,31 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 	ui.toggle_alarms()
 	await tree.process_frame
 	p += await _click_close(tree, hud, at + "over the alarm list")
+	# Esc, the gamepad's B and Start close the settings, which are on top, not the alarm list under them
+	for how in ["Esc", "B", "Start"]:
+		hud.show_settings(true)
+		await tree.process_frame
+		var ev: InputEvent
+		if how == "Esc":
+			var k := InputEventKey.new()
+			k.keycode = KEY_ESCAPE
+			k.physical_keycode = KEY_ESCAPE
+			ev = k
+		else:
+			var j := InputEventJoypadButton.new()
+			j.button_index = JOY_BUTTON_B if how == "B" else JOY_BUTTON_START
+			ev = j
+		ev.pressed = true
+		_press(tree, ev)
+		await tree.process_frame
+		if hud.panel.visible or not ui.alarms.visible:
+			var fo: Control = hud.get_viewport().gui_get_focus_owner()
+			p.append("%s %swith the settings over the alarm list: settings %s, alarm list %s (focus %s)" % [how, at,
+				"open" if hud.panel.visible else "closed", "open" if ui.alarms.visible else "closed",
+				fo.get_path() if fo else "none"])
+		hud.show_settings(false)
+		if not ui.alarms.visible:
+			ui.toggle_alarms()
 	ui.close_alarms()
 	ui.go_control_room(false)
 	ui.open_screens()

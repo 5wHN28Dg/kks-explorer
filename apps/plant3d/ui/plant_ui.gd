@@ -2184,6 +2184,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 	if clock == null or player.scripted or main.workshop_open() or manual_open():
 		return
 	if ev.is_action_pressed("menu") or ev.is_action_pressed("ui_cancel"):
+		if main.hud != null and main.hud.panel.visible:
+			# the settings are on top of every panel here (app/hud.gd's own layer): they close first
+			main.hud.show_settings(false)
+			get_viewport().set_input_as_handled()
+			return
 		if close_top():
 			get_viewport().set_input_as_handled()
 		return

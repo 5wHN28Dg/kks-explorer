@@ -313,10 +313,18 @@ func _fit_settings() -> void:
 	panel.offset_top = y
 	panel.offset_bottom = y + h
 
-## Gamepad A acts as ui_accept on the focused control of the settings panel (Godot's ui_accept has no gamepad button;
+## Gamepad B closes the settings (Godot's ui_cancel has no gamepad button). Gamepad A acts as ui_accept on the
+## focused control of the settings panel (Godot's ui_accept has no gamepad button;
 ## the walker's "use" is off while the panel shows): a button is pressed, a check box toggled, a disabled one left.
 func _input(e: InputEvent) -> void:
-	if panel == null or not panel.visible or not (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A):
+	if panel == null or not panel.visible or not e is InputEventJoypadButton:
+		return
+	# gamepad B closes the settings, the top layer (About, inside them, takes it first to go back: app/about.gd)
+	if e.button_index == JOY_BUTTON_B and e.pressed and not about.visible:
+		get_viewport().set_input_as_handled()
+		show_settings(false)
+		return
+	if e.button_index != JOY_BUTTON_A:
 		return
 	var fo := panel.get_viewport().gui_get_focus_owner()
 	if fo == null or not panel.is_ancestor_of(fo) or not fo.is_visible_in_tree():
