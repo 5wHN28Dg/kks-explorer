@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -78,11 +79,13 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
     val screen = LocalConfiguration.current.screenHeightDp.toFloat()
     // resizable (the user, 2026-10-05: it took most of the screen): drag the handle, or tap it to go between a low
     // panel (the code and Close, the drawing above free to move around) and the usual height
-    val low = 104f; val high = screen * 0.85f; val usual = screen * 0.45f
+    // low: the grip and the heading as tall as they are (a long code wraps, large text grows): never cut short
+    var headDp by remember { mutableFloatStateOf(80f) }
+    val low = maxOf(104f, 44f + headDp); val high = screen * 0.85f; val usual = maxOf(screen * 0.45f, low)
     var height by remember { mutableFloatStateOf(if (PanelSize.dp > 0) PanelSize.dp else usual) }
     val dens = androidx.compose.ui.platform.LocalDensity.current.density
     var editing by remember(id) { mutableStateOf(false) }
-    Surface(modifier.fillMaxWidth().height(height.dp), tonalElevation = 6.dp, shadowElevation = 8.dp,
+    Surface(modifier.fillMaxWidth().height(maxOf(height, low).dp), tonalElevation = 6.dp, shadowElevation = 8.dp,
         shape = MaterialTheme.shapes.large) {
         Column {
         Box(Modifier.fillMaxWidth()
@@ -98,7 +101,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
         // the heading stays above what scrolls (the user, 2026-11-15: "Close button shouldn't be hidden or move away
         // when I scroll down"): the code (selectable), Copy, Close
         PanelHeading(t.optString("code"), (if (t.optString("isa").isNotEmpty()) t.optString("isa") + " · " else "") + t.optString("kind"),
-            onClose, snack)
+            onClose, snack, Modifier.onSizeChanged { headDp = it.height / dens })
         Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (t.optString("status") == "review") ReviewSection(t, snack)
             t.optJSONObject("decoded")?.let { d ->
@@ -195,12 +198,12 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
 /** The panel's heading, outside its scrolling part: the code (selectable: a long press copies part of it), a Copy
  *  button that puts the whole code on the clipboard and says "Copied", and Close. */
 @Composable
-private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: SnackbarHostState) {
+private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: SnackbarHostState, modifier: Modifier = Modifier) {
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     var copied by remember(code) { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(2500); copied = false } }
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             if (code.isNotEmpty()) androidx.compose.foundation.text.selection.SelectionContainer {
                 Text(code, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace)

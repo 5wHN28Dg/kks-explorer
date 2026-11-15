@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -119,9 +120,15 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
     LaunchedEffect(subs) { val open = subs.map { it.optLong("id") }.toSet(); picked.retainAll(open) }
     if (groups.isEmpty()) { Dim("Nothing waits for approval."); return }
     Column {
-    if (admin) PickBar(subs, picked, competing, say)
+    // the bar above the list, in view; with little height (landscape, large text) it is the list's first item, so the
+    // list keeps room
+    val cfg = LocalConfiguration.current
+    val roomy = cfg.screenHeightDp >= 520 && cfg.fontScale < 1.5f
+    if (admin && roomy) PickBar(subs, picked, competing, say)
     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (admin && !roomy) item { PickBar(subs, picked, competing, say) }
         item { Dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. Tick several to approve or reject them at once.") }
+        if (Picked.said.value.isNotEmpty()) item { Text(Picked.said.value, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(groups) { g ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -148,7 +155,7 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
 }
 
 /** the ticked proposals of Approvals, kept while the app runs (a sync reloads the list under the person's ticks) */
-private object Picked { val ids = mutableStateListOf<Long>(); val busy = mutableStateOf("") }
+private object Picked { val ids = mutableStateListOf<Long>(); val busy = mutableStateOf(""); val said = mutableStateOf("") }
 
 /** Above the approvals: Select all, how many are ticked, Approve selected and Reject selected (Reject asks once). Each
  *  goes as its own approve or reject, oldest first, exactly as its own button sends it; a held one (it clashes with the
@@ -178,12 +185,13 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, competing
                 kotlinx.coroutines.yield()
             }
             busy = ""
-            say(buildString {
+            Picked.said.value = buildString {
                 append(if (action == "approve") "Approved" else "Rejected").append(" $done of ${chosen.size}.")
                 if (held.isNotEmpty()) append(" Not approved: ${held.joinToString { "#$it" }} clash${if (held.size == 1) "es" else ""} with the value as it is now; decide ${if (held.size == 1) "it" else "them"} on ${if (held.size == 1) "its" else "their"} own.")
                 if (rivals.isNotEmpty()) append(" Not approved: ${rivals.joinToString { "#$it" }}: several photos of one kind compete for ${if (rivals.size == 1) "its" else "their"} code; choose with “Use this one”.")
                 if (failed.isNotEmpty()) append(" Not done: ${failed.joinToString("; ")}.")
-            })
+            }
+            say(Picked.said.value)     // (and it stays above the list until the next batch)
         }
     }
     Surface(tonalElevation = 3.dp, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
@@ -231,7 +239,7 @@ private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (S
             Text("Select", Modifier.padding(start = 4.dp))
         }
         if (sub.str("kind") == "link") Text(proposalTitle(sub).substringBefore(" · "), style = MaterialTheme.typography.bodyMedium)
-        Dim("by " + sub.str("by_name").ifEmpty { sub.str("by") } + " · " + whenText(sub.optLong("created")) +
+        Dim("#$id · by " + sub.str("by_name").ifEmpty { sub.str("by") } + " · " + whenText(sub.optLong("created")) +
             if (pick) " · ${sub.optInt("votes")} vote${if (sub.optInt("votes") == 1) "" else "s"}" else "")
         sub.str("request_note").let { if (it.isNotEmpty()) Text("“$it”", fontStyle = androidx.compose.ui.text.font.FontStyle.Italic) }
         if (conflict) Text("Held: it clashes with the current value or another proposal. " + sub.str("note"), color = MaterialTheme.colorScheme.error)
