@@ -194,6 +194,14 @@ func _panel(tree: SceneTree) -> Array:
 		p.append("Draw parts did not open the counter's form (stores %s, view %s)" % [str(sp.visible), sp.view])
 	if sp.work_pick == null or sp.work_pick.selected < 0 or sp._work_ids[sp.work_pick.selected] != wid:
 		p.append("the counter's form is not on the order's work")
+	# the panel stays on the screen, its Close with it, whatever the work order's name (UI-UX-POLICY R1)
+	for i in 3:
+		await tree.process_frame
+	var vr: Rect2 = sp.get_viewport_rect()
+	var close = sp.find_child("close", true, false)
+	if not vr.encloses(sp.get_global_rect()) or close == null or not vr.encloses((close as Control).get_global_rect()):
+		p.append("the counter's form leaves the screen (panel %s, Close %s, screen %s)" % [str(sp.get_global_rect()),
+				str((close as Control).get_global_rect()) if close != null else "none", str(vr)])
 	# the work chosen is kept by its id across rebuilds, never by its place in the list: another work order entering
 	# the list before it (planned by someone else) leaves the form on the order's work, a work the trainee chose stays
 	# chosen when the form is rebuilt (the form opened from the order must not take its work back), and a chosen work

@@ -541,6 +541,13 @@ func _issue_form(e, keep: Array) -> void:
 	body.add_child(qty_edit)
 	work_pick = OptionButton.new()
 	work_pick.name = "issue_work"
+	# (a work order's long name must not widen the panel past the screen, taking its Close with it: the choice shows
+	# the start of the name, its number first, and the list it opens shows every name whole)
+	work_pick.fit_to_longest_item = false
+	work_pick.clip_text = true
+	work_pick.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	work_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	work_pick.custom_minimum_size.x = 0
 	work_pick.custom_minimum_size = Vector2(0, 52 * W.scale)
 	_work_ids = []
 	var ws := issue_works(e)
