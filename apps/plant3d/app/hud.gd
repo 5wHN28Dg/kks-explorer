@@ -42,8 +42,10 @@ var settings_scroll: ScrollContainer   # the settings' body, under the title row
 var controls_btn: Button       # "Controls": folds the keyboard and gamepad help (controls_help) open and shut
 var controls_help: Label
 var _fit_queued := false
+var settings_layer: CanvasLayer
 const SETTINGS_W := 700.0      # the settings panel's width (less on a narrower canvas)
 const SETTINGS_MARGIN := 16.0  # the least room left round the settings panel (as the layer's panels)
+const SETTINGS_LAYER := 8      # the settings' canvas layer (_settings)
 const SETTINGS_TOP := 160.0    # where it may begin without the interaction layer (below the HUD's buttons)
 
 func setup(m) -> void:
@@ -147,7 +149,18 @@ func _button(parent: Control, text: String, f: Callable) -> Button:
 ## scrolls when they don't fit (on a short canvas, or the phone's larger text): Close is always on screen, and the
 ## keyboard's and gamepad's focus reaches every control (the body follows it). The long keyboard and gamepad help is
 ## folded under its own button ("Controls"). Sized to its content, at most the canvas less a margin (_fit_settings).
-func _settings(root: Control) -> void:
+func _settings(_hud_root: Control) -> void:
+	# on a layer of its own above the interaction layer's (ui/plant_ui.gd, 2): its side panels and the control room's
+	# screens never cover the settings' Close (below the save offer, 10, and the Workshop, 60)
+	settings_layer = CanvasLayer.new()
+	settings_layer.name = "settings_layer"
+	settings_layer.layer = SETTINGS_LAYER
+	add_child(settings_layer)
+	visibility_changed.connect(func(): settings_layer.visible = visible)   # hidden with the HUD (the Workshop)
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	settings_layer.add_child(root)
 	panel = PanelContainer.new()
 	panel.name = "settings"
 	panel.visible = false
@@ -262,7 +275,7 @@ func _queue_fit() -> void:
 		_fit_queued = true
 		_fit_settings.call_deferred()
 
-## The settings panel centred below the bars (the HUD's buttons and the interaction layer's: ui/plant_ui.gd
+## The settings panel centred across, just below the bars (the HUD's buttons and the interaction layer's: ui/plant_ui.gd
 ## panels_top), as tall as its content but at most the room there less a margin: the title row with Close stays on
 ## screen and the body scrolls under it. (About has the whole canvas less a margin: show_about.)
 func _fit_settings() -> void:
@@ -281,7 +294,7 @@ func _fit_settings() -> void:
 	var want := settings_head.get_combined_minimum_size().y + float(settings_box.get_theme_constant("separation")) \
 		+ body.get_combined_minimum_size().y + pad.y
 	var h := minf(want, room)
-	var y := top + (room - h) * 0.5
+	var y := top                  # from the top: opening the Controls help doesn't move Close or the button pressed
 	panel.anchor_left = 0.5
 	panel.anchor_right = 0.5
 	panel.anchor_top = 0.0
@@ -324,11 +337,16 @@ func _about_closed() -> void:
 func show_settings(on: bool) -> void:
 	if not on and about.visible:
 		about.close()
+	var was_on := panel.visible
 	panel.visible = on
 	if on:
 		# the Controls button as the layer's buttons at its UI scale (W.scale is chosen after the HUD is made)
 		controls_btn.custom_minimum_size = Vector2(0, 52 * W.scale)
 		controls_btn.add_theme_font_size_override("font_size", int(20 * W.scale))
+		if not was_on:                       # each opening as the first: the help folded, the body at its top
+			controls_btn.set_pressed_no_signal(false)
+			controls_help.visible = false
+			settings_scroll.scroll_vertical = 0
 		_fit_settings()
 		_queue_fit()                         # again once the body's wrapped text has its width
 	refresh()

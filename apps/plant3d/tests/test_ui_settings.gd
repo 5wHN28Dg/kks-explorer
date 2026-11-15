@@ -8,6 +8,8 @@ extends RefCounted
 const UiApp = preload("res://tests/ui_app.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const W = preload("res://ui/widgets.gd")
+const Autosave = preload("res://ui/autosave.gd")
+const RunSave = preload("res://ui/run_save.gd")
 
 
 func run(tree: SceneTree) -> Array:
@@ -25,6 +27,7 @@ func run(tree: SceneTree) -> Array:
 
 
 func _start(tree: SceneTree, ui_scale: String) -> Node:
+	RunSave.remove(Autosave.default_path)      # the run the app before saved: no offer to go on with it (a modal layer)
 	var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
 	if ui_scale != "":
 		main.opts["ui_scale"] = ui_scale       # the phone's scale (as tests/mimic_shots.gd --phone)
@@ -135,6 +138,29 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 		p.append("the D-pad or Tab %sclosed the settings" % at)
 	cb.button_pressed = false
 	hud.show_settings(false)
+	# over the layer's side panel and over the control room's screens: Close is on top, a click on it closes
+	var ui = main.ui
+	ui.toggle_alarms()
+	await tree.process_frame
+	p += await _click_close(tree, hud, at + "over the alarm list")
+	ui.close_alarms()
+	ui.go_control_room(false)
+	ui.open_screens()
+	for i in 3:
+		await tree.process_frame
+	if not ui.screens_open():
+		p.append("the screens did not open in the control room (test setup)")
+	else:
+		p += await _click_close(tree, hud, at + "over the screens")
+		ui.close_screens()
+	# opened again: the help folded as at first
+	hud.show_settings(true)
+	cb.button_pressed = true
+	hud.show_settings(false)
+	hud.show_settings(true)
+	if cb.button_pressed or hud.controls_help.visible:
+		p.append("the settings %sopened again keep the Controls help open" % at)
+	hud.show_settings(false)
 	main.free()
 	await tree.process_frame
 	return p
@@ -200,6 +226,32 @@ func _reached(how: String, want: Array, seen: Dictionary, out_of_view: Array) ->
 	if not out_of_view.is_empty():
 		p.append("focused by %s, not scrolled into view: %s" % [how, ", ".join(out_of_view)])
 	return p
+
+
+## Opens the settings, clicks the middle of Close with the mouse (into the window's input, as a device would): true when the
+## settings closed (nothing above the panel took the click).
+func _click_close(tree: SceneTree, hud, where: String) -> Array:
+	hud.show_settings(true)
+	for i in 3:
+		await tree.process_frame
+	var c: Vector2 = hud.close_btn.get_global_rect().get_center()
+	var hovered = null
+	for down in [true, false]:
+		var m := InputEventMouseButton.new()
+		m.button_index = MOUSE_BUTTON_LEFT
+		m.pressed = down
+		m.position = c
+		m.global_position = c
+		tree.root.push_input(m, true)          # (in the canvas's coordinates)
+		if down:
+			hovered = tree.root.gui_get_hovered_control()
+		await tree.process_frame
+	await tree.process_frame
+	if hud.panel.visible:
+		hud.show_settings(false)
+		return ["a click on the settings' Close %s did not close them: at %s it reached %s" % [where, str(c),
+			hovered.get_path() if hovered else "nothing"]]
+	return []
 
 
 func _press(tree: SceneTree, e: InputEvent) -> void:
