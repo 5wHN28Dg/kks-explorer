@@ -12,8 +12,13 @@ const W = preload("res://ui/widgets.gd")
 
 func run(tree: SceneTree) -> Array:
 	var p: Array = []
-	for sc in ["", "1.35"]:
-		p += await _settings(tree, sc)
+	var size0: Vector2i = tree.root.size
+	# the window as a laptop's (a 1600 × 900 canvas) and a phone's (wider: 2000 × 900), at their UI scales
+	# (the headless window is 64 px: the canvas would be square)
+	for w in [[Vector2i(1600, 900), ""], [Vector2i(2400, 1080), "1.35"]]:
+		tree.root.size = w[0]
+		p += await _settings(tree, w[1])
+	tree.root.size = size0
 	p += await _go_there(tree)
 	return p
 
@@ -43,6 +48,9 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 		var pr: Rect2 = hud.panel.get_global_rect()
 		if not canvas.encloses(pr):
 			p.append("the settings panel %s(%s) is not inside the %s canvas: %s" % [at, when, str(canvas.size), str(pr)])
+		if pr.position.y < main.ui.panels_top() - 0.5:
+			p.append("the settings panel %s(%s) reaches up over the bars (from %.0f, the bars end at %.0f)" % [at, when,
+				pr.position.y, main.ui.panels_top()])
 		var close: Button = UiApp.find_button(hud.panel, "Close")
 		if close == null or not close.is_visible_in_tree() or not canvas.encloses(close.get_global_rect()) \
 				or not pr.encloses(close.get_global_rect()):
@@ -51,6 +59,12 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 			p.append("the settings' Close takes no keyboard and gamepad focus")
 	check.call("folded")
 	# the controls' help: folded under its button; opened, it shows (scrolled into view) and the panel still fits
+	if hud.get("controls_btn") == null or hud.get("settings_scroll") == null:
+		p.append("the settings %shave no scrolling body or no folded Controls help" % at)
+		hud.show_settings(false)
+		main.free()
+		await tree.process_frame
+		return p
 	var cb: Button = hud.controls_btn
 	if hud.controls_help.is_visible_in_tree():
 		p.append("the keyboard and gamepad help is not folded at first")

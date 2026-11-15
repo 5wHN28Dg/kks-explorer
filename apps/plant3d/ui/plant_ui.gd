@@ -374,9 +374,14 @@ func _bar_button(bar: Control, text: String, f: Callable) -> Button:
 	return b
 
 
+## Where the panels may begin: below the HUD's buttons and the layer's bar (app/hud.gd's settings panel too).
+func panels_top() -> float:
+	return 88.0 + 56.0 * W.scale + 16.0
+
+
 func _layout() -> void:
 	var vs: Vector2 = root.get_viewport_rect().size
-	var top0 := 88.0 + 56.0 * W.scale + 16.0
+	var top0 := panels_top()
 	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach
 	var top := maxf(top0, mimic.canvas_top() + 8.0) if screens_open() else top0
 	if drawings_open():
@@ -492,7 +497,7 @@ func _workshop_settings(box: VBoxContainer) -> void:
 	var kinds: Array = main.workshop.kinds() if main.workshop != null else load("res://workshop/workshop.gd").kinds()
 	if kinds.is_empty():
 		return
-	var row := HBoxContainer.new()
+	var row := HFlowContainer.new()         # wraps in the settings' width (the kinds don't fit in one row)
 	row.name = "workshop_kinds"
 	box.add_child(row)
 	row.add_child(W.label("Workshop  ", 20, Color.WHITE, false))

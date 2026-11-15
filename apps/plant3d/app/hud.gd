@@ -42,7 +42,8 @@ var controls_btn: Button       # "Controls": folds the keyboard and gamepad help
 var controls_help: Label
 var _fit_queued := false
 const SETTINGS_W := 700.0      # the settings panel's width (less on a narrower canvas)
-const SETTINGS_MARGIN := 24.0  # the least room left round the settings panel
+const SETTINGS_MARGIN := 16.0  # the least room left round the settings panel (as the layer's panels)
+const SETTINGS_TOP := 160.0    # where it may begin without the interaction layer (below the HUD's buttons)
 
 func setup(m) -> void:
 	main = m
@@ -259,8 +260,9 @@ func _queue_fit() -> void:
 		_fit_queued = true
 		_fit_settings.call_deferred()
 
-## The settings panel centred, as tall as its content but at most the canvas less a margin: the title row with Close
-## stays on screen and the body scrolls under it. (About has the whole canvas less a margin: show_about.)
+## The settings panel centred below the bars (the HUD's buttons and the interaction layer's: ui/plant_ui.gd
+## panels_top), as tall as its content but at most the room there less a margin: the title row with Close stays on
+## screen and the body scrolls under it. (About has the whole canvas less a margin: show_about.)
 func _fit_settings() -> void:
 	_fit_queued = false
 	if panel == null or about.visible:
@@ -268,17 +270,24 @@ func _fit_settings() -> void:
 	var vs: Vector2 = (panel.get_parent() as Control).size
 	if vs.x <= 0.0 or vs.y <= 0.0:
 		return
+	var top: float = main.ui.panels_top() if main != null and main.ui != null and main.ui.has_method("panels_top") \
+		else SETTINGS_TOP
+	var room := maxf(vs.y - top - SETTINGS_MARGIN, 200.0)
 	var pad := panel.get_theme_stylebox("panel").get_minimum_size()
 	var w := minf(SETTINGS_W, vs.x - 2.0 * SETTINGS_MARGIN)
 	var body: Control = settings_scroll.get_child(0)
 	var want := settings_head.get_combined_minimum_size().y + float(settings_box.get_theme_constant("separation")) \
 		+ body.get_combined_minimum_size().y + pad.y
-	var h := minf(want, vs.y - 2.0 * SETTINGS_MARGIN)
-	panel.set_anchors_preset(Control.PRESET_CENTER)
+	var h := minf(want, room)
+	var y := top + (room - h) * 0.5
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.0
+	panel.anchor_bottom = 0.0
 	panel.offset_left = -w * 0.5
 	panel.offset_right = w * 0.5
-	panel.offset_top = -h * 0.5
-	panel.offset_bottom = h * 0.5
+	panel.offset_top = y
+	panel.offset_bottom = y + h
 
 ## Gamepad A acts as ui_accept on the focused control of the settings panel (Godot's ui_accept has no gamepad button;
 ## the walker's "use" is off while the panel shows): a button is pressed, a check box toggled, a disabled one left.
