@@ -69,10 +69,31 @@ K.build = (el, props, kids) => {
     if (v == null || v === false) continue;
     el.setAttribute(k, v === true ? '' : String(v));
   }
+  // a text field takes its direction from what is typed in it (an Arabic note reads right to left), unless told
+  if ((tag === 'textarea' || tag === 'input' && (el.type === 'text' || el.type === 'search')) && !el.hasAttribute('dir'))
+    el.setAttribute('dir', 'auto');
   el.append(...kids.flat(Infinity).filter(c => c != null && c !== false).map(c => c instanceof Node ? c : String(c)));
   return el;
 };
 K.h = (tag, props, ...kids) => K.build(document.createElement(tag), props, kids);
+// A short code shown as two groups for reading (123 456): the gap is a margin, not a space, so the code copies as
+// one (123456).
+K.codeGroups = c => { c = String(c ?? ''); return [K.h('span', null, c.slice(0, 3)), K.h('span', {style: 'margin-left:.5em'}, c.slice(3))] };
+// Text someone wrote (a note, a name, a description, a custom field): in its own direction (dir=auto: an Arabic note
+// reads right to left), and each KKS code in it (also written with spaces, 11 LAB70 AA501) isolated left to right, so
+// its digits stay with its letters whatever the text around it. -> a <bdi> (inline), or `tag` with `props` for a block of its own.
+K.userText = (s, tag = 'bdi', props = null) => {
+  s = String(s ?? '');
+  const out = [];
+  let i = 0;
+  for (const m of s.matchAll(/\d{2} ?[A-Z]{3} ?\d{2} ?[A-Z]{2} ?\d{3}[A-Z0-9]*/gi)) {
+    if (m.index > i) out.push(s.slice(i, m.index));
+    out.push(K.h('bdi', {dir: 'ltr'}, m[0]));
+    i = m.index + m[0].length;
+  }
+  if (i < s.length) out.push(s.slice(i));
+  return K.h(tag, {dir: 'auto', ...props}, out);
+};
 K.svg = (tag, props, ...kids) => K.build(document.createElementNS('http://www.w3.org/2000/svg', tag), props, kids);
 // A URL from data, checked before it becomes a link. Allowed: http and https (a relative URL resolves against
 // this page). -> the URL as given, or 'about:blank' for anything else (javascript:, data:, blob:, a URL that doesn't
@@ -459,7 +480,7 @@ K.joinWait = cfg => {
                  confirm: 'The admin accepted. Check the code on their screen first:', syncing: 'Accepted. Getting the plant data…'}[st.state];
     if (st.code) { const c = o.querySelector('.code'); c.style.display = '';
       // as text: the code comes from the local API (#16)
-      c.replaceChildren('Code: ', h('b', {style: 'font-size:22px;letter-spacing:3px'}, String(st.code).slice(0, 3) + ' ' + String(st.code).slice(3)),
+      c.replaceChildren('Code: ', h('b', {style: 'font-size:22px;letter-spacing:3px'}, K.codeGroups(st.code)),
         h('br'), h('span', {style: 'opacity:.7'}, 'The admin sees the same code next to your name. Only continue if it matches.'));
       o.querySelector('.ok').style.display = st.state === 'syncing' ? 'none' : '' }
     if (!msg) { o.querySelector('.st').textContent = st.state === 'cancelled' ? 'Cancelled.' : 'Could not join.';

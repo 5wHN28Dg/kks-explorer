@@ -473,6 +473,9 @@ choose(i, n):
   - range 0–1 in steps of 0.001.
 - **Toggle:** flips its input, sets t = 0 and plays.
 - **Mode:** selects the mode and plays.
+- **Under reduced motion,** a toggle or mode on a paused figure does not play: the figure jumps to the new state
+  (evaluated once with dt = 0 and each `follow` set to its target) and stays paused. The web client does this; the
+  core (GNOME, Windows, Android) still plays (#380).
 
 A static figure has no clock, controls or status line.
 
