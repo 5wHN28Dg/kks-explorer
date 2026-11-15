@@ -341,8 +341,8 @@ proc showMain() =
   w.side = newPage(w.hwnd)
   w.v = newViewer(w.hwnd, hinst)
   trace("viewer")
+  w.panelHead = newPage(w.hwnd)     # (first: the Tab key reaches the code, Copy and Close before the panel's content)
   w.panel = newPage(w.hwnd)
-  w.panelHead = newPage(w.hwnd)
   w.queueLabel = control(w.hwnd, "STATIC", "", SS_LEFT or SS_NOPREFIX)[0]
   let (fb, _) = control(w.hwnd, "BUTTON", "Photos not sent (0)…", WS_TABSTOP or BS_PUSHBUTTON)
   w.failedButton = fb

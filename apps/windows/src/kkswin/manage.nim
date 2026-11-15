@@ -76,6 +76,7 @@ var
   pickChecks: seq[(int64, HWND)]    ## each one's tick
   pickAll, pickCount, pickOk, pickNo: HWND
   pickBusy = false                  ## a batch is running (one proposal per turn of the message loop)
+  lastSaid = ""                     ## the last batch's result, on the page until the next batch (the status line is one line)
 
 proc pickShow() =
   let n = picked.len
@@ -138,6 +139,7 @@ proc decideMany(w: Win, action: string) =
       msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
               (if competing.len == 1: "its" else: "their") & " code; choose with “Use this one”."
     if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
+    lastSaid = msg
     w.toast(msg)
     w.rebuildSide()
   later(step)
@@ -182,6 +184,7 @@ proc approvals(w: Win, p: Page) =
                        ("Reject selected", proc () = w.decideMany("reject")))
     pickOk = bs[0]
     pickNo = bs[1]
+    if lastSaid.len > 0: p.label(lastSaid)
     pickShow()
   for gi in 0 ..< groups.len:
     closureScope:

@@ -28,7 +28,7 @@ const MINE_F={status:'all',kind:'all'};
 let SHOW_HIDDEN=false;   // Users and Devices: removed ones an admin hid, shown anyway
 // Approvals: the proposals ticked for "Approve selected" / "Reject selected" (ids; kept over the page's rebuilds, the
 // ones no longer waiting dropped when it is drawn), and each waiting proposal by id as last drawn
-const PICKED=new Set(); let OPEN_SUBS=new Map(), COMPETING=new Set();   // COMPETING: photos of one kind that compete (Pick)
+const PICKED=new Set(); let OPEN_SUBS=new Map(), COMPETING=new Set(), LAST_SAID='';   // LAST_SAID: the last batch's result   // COMPETING: photos of one kind that compete (Pick)
 const SU_PICKED=new Set();   // account requests ticked (ids), kept over the page's rebuilds
 // v2 crops (approving a marked tag): level 0 of the sheet's pyramid, decoded by K.jxl where the browser can't
 const cropBg={};
@@ -157,7 +157,7 @@ const VIEWS={
         if(kd.kind.endsWith('_photo')) return h('div',{class:'kind','data-kind':kd.kind},h('h4',null,`${kd.label} (${L.length})`),
           kd.pick?h('div',{class:'sub'},`Several ${kd.label.toLowerCase()}s proposed. “Use this one” approves it and rejects the other ${kd.label.toLowerCase()}s of this code. Votes are only a hint.`):null,
           h('div',{class:'photos'},L.map(s=>h('figure',null,tick(s),photoImg(s.payload.file),
-            h('div',{class:'sub'},who(s),` · ${when(s.created)}`,kd.pick?` · ${s.votes} vote${s.votes===1?'':'s'}`:''),s.payload.caption?h('div',null,s.payload.caption):null,rnote(s),
+            h('div',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`,kd.pick?` · ${s.votes} vote${s.votes===1?'':'s'}`:''),s.payload.caption?h('div',null,s.payload.caption):null,rnote(s),
             h('div',{class:'row',style:'margin-top:6px'},
               kd.pick?[button('primary','Use this one',()=>decide(s.id,'pick')),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
               button('danger','Reject',()=>decide(s.id,'reject')))))));
@@ -175,6 +175,7 @@ const VIEWS={
     const all=h('input',{type:'checkbox',id:'pickAll',onchange:e=>{ const on=e.currentTarget.checked;
       for(const id of OPEN_SUBS.keys()) on?PICKED.add(id):PICKED.delete(id);
       document.querySelectorAll('#main label.pick input').forEach(c=>{ c.checked=on }); pickedBar() }});
+    if(LAST_SAID) out.push(h('div',{class:'warn',id:'pickSaid'},LAST_SAID));
     out.push(h('div',{class:'pickbar',id:'pickbar',role:'region','aria-label':'Decide several at once'},
       h('label',{class:'pick'},all,h('span',null,`Select all (${OPEN_SUBS.size})`)),
       h('span',{id:'pickN',class:'sub','aria-live':'polite'}),
@@ -521,14 +522,15 @@ async function decide(id,action,force){
 // A question before something that can't be taken back (several rejections at once): the page's own dialog, so the
 // confirming button names the action and is styled as dangerous, and the focus starts on Cancel (Enter or Escape
 // cancel). With `reason`: an optional reason, shown to the submitters. -> Promise of {note} (confirmed) or null.
+let REASON_DRAFT='';   // a reason typed and then cancelled: offered again next time, not lost
 function askDanger(title,text,action,reason){
   return new Promise(done=>{
-    const note=reason?h('input',{id:'askNote',maxlength:500,placeholder:'Reason (optional, shown to the submitters)'}):null;
+    const note=reason?h('input',{id:'askNote',maxlength:500,placeholder:'Reason (optional, shown to the submitters)',value:REASON_DRAFT||null}):null;
     const d=h('dialog',{class:'ask','aria-labelledby':'askT','aria-describedby':'askX'},h('h2',{id:'askT'},title),h('p',{id:'askX',class:'sub'},text),
       note?h('label',{for:'askNote',class:'sub'},'Reason'):null,note,
       h('div',{class:'btns'},h('button',{type:'button',class:'ghost',id:'askNo',onclick:()=>d.close('no')},'Cancel'),
         h('button',{type:'button',class:'danger',id:'askYes',onclick:()=>d.close('yes')},action)));
-    d.addEventListener('close',()=>{ const yes=d.returnValue==='yes', v=note?.value.trim()||''; d.remove(); done(yes?{note:v}:null) });
+    d.addEventListener('close',()=>{ const yes=d.returnValue==='yes', v=note?.value.trim()||''; if(note) REASON_DRAFT=yes?'':v; d.remove(); done(yes?{note:v}:null) });
     document.body.appendChild(d); d.showModal(); $('#askNo').focus();
   });
 }
@@ -577,7 +579,7 @@ async function decideMany(action){
   if(competing.length) L.push(`Not approved: ${competing.map(i=>'#'+i).join(', ')}: several photos of one kind compete for ${competing.length===1?'its':'their'} code; choose with “Use this one”.`);
   if(failedL.length) L.push('Not done: '+failedL.join('; ')+'.');
   if(offline.length) L.push(`Couldn't reach the server: ${offline.length} not decided (${offline.map(i=>'#'+i).join(', ')}). They stay ticked; try again when you're back online.`);
-  toast(L.join(' '));
+  LAST_SAID=L.join(' '); toast(LAST_SAID);
   await rebuild();
 }
 // removed devices and people: hidden from the lists (display only: the log, History and the leaderboard keep them)

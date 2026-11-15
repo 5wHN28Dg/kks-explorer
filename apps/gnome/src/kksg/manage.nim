@@ -73,10 +73,22 @@ var
   pickAll, pickCount, pickOk, pickNo: W
   pickSetting = false            ## Select all is setting the ticks: their own "toggled" leaves the bar alone meanwhile
   pickBusy = false
+  lastSaid = ""                  ## the last batch's result, under the bar until the next batch
+
+proc setText(b: W, t: string) =
+  ## a button's text, in the wrapping label that is its child
+  let l = gtk_button_get_child(b)
+  if l != nil: gtk_label_set_text(l, t.cstring)
+
+proc wrapButton(t, css: string): W =
+  ## a button whose label wraps (the side column is narrow, the counts grow)
+  result = gtk_button_new()
+  gtk_button_set_child(result, label(t, wrap = true, xalign = 0.5))
+  for c in css.splitWhitespace: gtk_widget_add_css_class(result, c.cstring)
 
 proc pickShow() =
   ## the bar as the ticks are now
-  if pickBar == nil or pickAll == nil: return
+  if pickBar == nil or pickAll == nil or pickOk == nil: return
   let n = picked.len
   pickSetting = true
   gtk_toggle_button_set_active(pickAll, cint(n > 0 and n == pickSubs.len))
@@ -87,8 +99,8 @@ proc pickShow() =
     if l != nil: gtk_label_set_text(l, (if on: "Selected" else: "Select").cstring)
   pickSetting = false
   gtk_label_set_text(pickCount, (if n > 0: $n & " selected" else: "None selected").cstring)
-  gtk_button_set_label(pickOk, ("Approve selected" & (if n > 0: " (" & $n & ")" else: "")).cstring)
-  gtk_button_set_label(pickNo, ("Reject selected" & (if n > 0: " (" & $n & ")" else: "")).cstring)
+  pickOk.setText("Approve selected" & (if n > 0: " (" & $n & ")" else: ""))
+  pickNo.setText("Reject selected" & (if n > 0: " (" & $n & ")" else: ""))
   for b in [pickOk, pickNo]: gtk_widget_set_sensitive(b, cint(n > 0 and not pickBusy))
 
 proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) =
@@ -118,7 +130,7 @@ proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) 
       elif action == "approve" and id in pickCompeting:
         competing.add "#" & $id
       else:
-        if pickCount != nil and gtk_widget_get_root(pickCount) != nil:
+        if pickCount != nil:
           gtk_label_set_text(pickCount, ((if action == "approve": "Approving " else: "Rejecting ") & $i & " of " &
                                          $chosen.len & "…").cstring)
         try:
@@ -138,8 +150,10 @@ proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) 
       msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
               (if competing.len == 1: "its" else: "their") & " code; choose with “Pick this photo”."
     if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
+    lastSaid = msg
     w.toast(msg)
-    again()
+    if pickBar != nil: again()     # (only while the page is still open; its next opening shows the result)
+    else: pickShow()
   idle(step)      # (the bar's own button ran this: the page and the bar are made again after it returned)
 
 proc fillPickBar(w: Win, again: proc ()) =
@@ -151,7 +165,8 @@ proc fillPickBar(w: Win, again: proc ()) =
     return
   gtk_widget_set_visible(pickBar, 1)
   # toggle buttons, not check buttons: GTK 4 gives a check button no accessible action (AT-SPI can't press it)
-  pickAll = gtk_toggle_button_new_with_label(("Select all (" & $pickSubs.len & ")").cstring)
+  pickAll = gtk_toggle_button_new()
+  gtk_button_set_child(pickAll, label("Select all (" & $pickSubs.len & ")", wrap = true, xalign = 0.5))
   pickAll.on("toggled", proc () =
     if pickSetting: return
     let on = gtk_toggle_button_get_active(pickAll) != 0
@@ -159,10 +174,12 @@ proc fillPickBar(w: Win, again: proc ()) =
     if on:
       for sub in pickSubs: picked.add sub["id"].i
     pickShow())
-  pickCount = label("None selected", "dim-label", wrap = false)
+  pickCount = label("None selected", "dim-label")
   gtk_widget_set_hexpand(pickCount, 1)
-  pickOk = button("Approve selected", "suggested-action", proc () = w.decideMany("approve", again))
-  pickNo = button("Reject selected", "destructive-action", proc () =
+  pickOk = wrapButton("Approve selected", "suggested-action")
+  pickOk.onClick(proc () = w.decideMany("approve", again))
+  pickNo = wrapButton("Reject selected", "destructive-action")
+  pickNo.onClick(proc () =
     let n = picked.len
     if n == 0: return
     let asked = picked
@@ -177,6 +194,7 @@ proc fillPickBar(w: Win, again: proc ()) =
   gtk_box_set_homogeneous(acts, 1)
   acts.add pickOk, pickNo
   pickBar.add top, acts
+  if lastSaid.len > 0: pickBar.add label(lastSaid, "dim-label", selectable = true)
   pickShow()
 
 proc approvals(w: Win, box: W) =
@@ -223,7 +241,7 @@ proc approvals(w: Win, box: W) =
             closureScope:
               let sub = items[ii]
               let id = sub["id"].i
-              let who = "by " & s(sub, "by_name") & " · " & sub.at("created") &
+              let who = "#" & $id & " · by " & s(sub, "by_name") & " · " & sub.at("created") &
                         (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: "")
               adw_preferences_group_add(kg, row(proposalTitle(sub), who, selectable = true))
               for (lab, v) in proposalRows(sub): adw_preferences_group_add(kg, row(lab, v, selectable = true))
@@ -793,6 +811,15 @@ proc managePage*(w: Win): W =
         bar = vbox(8)
         margins(bar, 8)
         pickBar = bar
+        let mine = bar
+        bar.on("destroy", proc () =    # (the page was closed: nothing may use its widgets any more)
+          if pickBar == mine:
+            pickBar = nil
+            pickAll = nil
+            pickCount = nil
+            pickOk = nil
+            pickNo = nil
+            pickChecks.setLen(0))
       build(b)
       w.setLive(if live: b else: nil, build)
       let tv = toolbarView(headerBar(adw_window_title_new(title.cstring, "")), scrolled(b))
