@@ -1,0 +1,14 @@
+--- a/apps/windows/e2e/uiadrive.cpp
++++ b/apps/windows/e2e/uiadrive.cpp
+@@ -216,7 +216,10 @@
+                             vp->Release();
+                         }
+                     }
+-                    say("  " + type_name(t) + " '" + utf8(nm.c_str()) + "'" + val);
++                    RECT rc{}; e->get_CurrentBoundingRectangle(&rc); BOOL kf = 0, off = 0; e->get_CurrentIsKeyboardFocusable(&kf); e->get_CurrentIsOffscreen(&off);
++                    BSTR ak = nullptr; e->get_CurrentAccessKey(&ak);
++                    say("RECT\t" + type_name(t) + "\t" + utf8(nm.c_str()) + "\t" + std::to_string(rc.left) + "," + std::to_string(rc.top) + "," + std::to_string(rc.right - rc.left) + "," + std::to_string(rc.bottom - rc.top) + "\t" + (kf ? "True" : "False") + "\t" + (off ? "True" : "False") + "\t" + (ak ? utf8(ak) : std::string()) + val);
++                    if (ak) SysFreeString(ak);
+                 }
+                 CONTROLTYPEID ct = 0;
+                 if (only) e->get_CurrentControlType(&ct);

@@ -32,6 +32,11 @@ SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/shee
 TAGS = [tag('a:1', 'a', '11LAB70AA501', 40), tag('b:1', 'b', '11LAB70AA502', 40)]
 
 
+# the open sheet's image has loaded and its tags are drawn over it (index.js: openSheet clears data-sheet at once,
+# the image's onload sets it after fit and drawTags)
+DRAWN = "id => cur && cur.id === id && document.getElementById('layer').dataset.sheet === id"
+
+
 class WebLinks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -81,6 +86,7 @@ class WebLinks(unittest.TestCase):
             conn = '#layer .conn[data-label="%s"]'
             sheet = lambda: page.evaluate('cur.id')
             toast = lambda: page.text_content('#toast')
+            drawn = lambda sid: page.wait_for_function(DRAWN, arg=sid)
             # the circles: in level-0 px (points × 2), 3 px around like the tags; named for screen readers
             self.assertEqual(page.locator('#layer .conn').count(), 5)
             self.assertEqual(page.evaluate("(() => { const s = document.querySelector('#layer .conn[data-label=\"C16\"]').style; return [s.left, s.top, s.width, s.height] })()"),
@@ -104,7 +110,7 @@ class WebLinks(unittest.TestCase):
             page.select_option('#sheetSel', 'c')
             page.wait_for_function("() => cur.id === 'c'")
             page.select_option('#sheetSel', 'b')
-            page.wait_for_function("() => cur.id === 'b' && document.querySelector('#layer .conn')")
+            drawn('b')
             self.assertEqual(page.locator('#layer .conn.sel').count(), 0)
             page.click(conn % 'C16')                                     # back to a's C16, then to b's again
             page.wait_for_function("() => cur.id === 'a' && document.querySelector('#layer .conn.sel')")
@@ -115,7 +121,7 @@ class WebLinks(unittest.TestCase):
             self.assertAlmostEqual(mid[0], (mid[1] - 430) / 2, delta=3)
             # several: asked which, numbered when one sheet has the code twice
             page.select_option('#sheetSel', 'a')
-            page.wait_for_function("() => cur.id === 'a' && document.querySelector('#layer .conn')")
+            drawn('a')
             page.click(conn % 'D2')
             page.wait_for_selector('dialog[open]')
             self.assertEqual(page.text_content('dialog[open] h2'), 'Where does D2 continue?')
@@ -130,7 +136,7 @@ class WebLinks(unittest.TestCase):
             self.assertEqual(toast(), 'Connector D2 on Sheet B')
             # the list: "Connectors on this sheet", the same choices; elsewhere on the same sheet
             page.select_option('#sheetSel', 'a')
-            page.wait_for_function("() => cur.id === 'a' && document.querySelector('#layer .conn')")
+            drawn('a')
             page.click('#linksBtn')
             self.assertEqual(page.locator('#linksBody .connrow').count(), 5)
             self.assertEqual(page.locator('#linksBody .connrow >> nth=0').text_content(), 'Connector C16continues on Sheet B')
@@ -144,13 +150,13 @@ class WebLinks(unittest.TestCase):
             page.wait_for_function("() => document.activeElement?.classList.contains('connrow')")   # focus back in the rebuilt list
             self.assertEqual(page.locator('#linksBody .connrow').count(), 3, 'the list follows the open sheet')
             page.select_option('#sheetSel', 'c')
-            page.wait_for_function("() => cur.id === 'c'")
+            drawn('c')
             self.assertEqual(page.text_content('#linksBody'), 'No connectors to other drawings on this sheet.')
             self.assertEqual(page.locator('#layer .conn').count(), 0)
             page.click('#linksDrawer [data-close]')
             # selecting tags: a click on a circle doesn't follow it
             page.select_option('#sheetSel', 'a')
-            page.wait_for_function("() => cur.id === 'a' && document.querySelector('#layer .conn')")
+            drawn('a')
             page.click('#zpick')
             page.evaluate("document.getElementById('toast').textContent = ''")
             b = page.locator(conn % 'C16').bounding_box()
@@ -161,9 +167,55 @@ class WebLinks(unittest.TestCase):
             browser.close()
             self.assertEqual(errors, [], name)
 
+    def run_slow(self, name):
+        """#356: while a newly opened sheet's image is still loading, the old sheet's circles and tags are gone at once:
+        none to count, and a click where one was follows nothing"""
+        with sync_playwright() as p:
+            browser = getattr(p, name).launch()
+            # no service worker: its fetches would pass by the route that holds sheet c's image back
+            ctx = browser.new_context(viewport={'width': 1200, 'height': 800}, service_workers='block')
+            ctx.add_init_script(CSP_WATCH)
+            r = ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
+                                 headers={'Origin': self.base})
+            self.assertTrue(r.ok, r.text())
+            page = ctx.new_page()
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            held = []
+            page.route(re.compile(r'/data/sheets/c\.png(\?|$)'), lambda route: held.append(route))
+            page.goto(self.base + '/')
+            page.wait_for_function(DRAWN, arg='a', timeout=30000)
+            page.select_option('#sheetSel', 'b')
+            page.wait_for_function(DRAWN, arg='b')
+            self.assertEqual(page.locator('#layer .conn').count(), 3)
+            b = page.locator('#layer .conn[data-label="C16"]').bounding_box()
+            # the switch and the look in one task: a sync's redraw (K.onChange, at any moment) can't come between them
+            at = [b['x'] + b['width'] / 2, b['y'] + b['height'] / 2]          # where b's C16 is
+            seen = page.evaluate("""([x, y]) => { const s = document.getElementById('sheetSel'); s.value = 'c';
+                s.dispatchEvent(new Event('change', {bubbles: true}));
+                const L = document.getElementById('layer'), e = document.elementFromPoint(x, y);
+                return {cur: cur.id, conn: L.querySelectorAll('.conn').length, hs: L.querySelectorAll('.hs').length,
+                        under: e?.closest('#layer button')?.className ?? ''} }""", at)
+            self.assertEqual(seen, {'cur': 'c', 'conn': 0, 'hs': 0, 'under': ''},
+                             "sheet b's connectors and tags are gone at once, before c's image has loaded")
+            page.mouse.click(*at)
+            page.wait_for_timeout(500)
+            self.assertEqual(page.evaluate('cur.id'), 'c', "a click where b's C16 was doesn't follow it")
+            self.assertEqual(page.locator('#layer .conn').count(), 0)
+            self.assertEqual(len(held), 1, "sheet c's image is held back")
+            self.assertEqual(page.evaluate("document.getElementById('layer').dataset.sheet"), None, "c's image hasn't loaded")
+            held[0].continue_()
+            page.wait_for_function(DRAWN, arg='c')
+            self.assertEqual(page.locator('#layer .conn').count(), 0)
+            browser.close()
+            self.assertEqual(errors, [], name)
+
     def test_chromium(self): self.run_engine('chromium')
     def test_firefox(self): self.run_engine('firefox')
     def test_webkit(self): self.run_engine('webkit')
+    def test_slow_image_chromium(self): self.run_slow('chromium')
+    def test_slow_image_firefox(self): self.run_slow('firefox')
+    def test_slow_image_webkit(self): self.run_slow('webkit')
 
 
 if __name__ == '__main__':
