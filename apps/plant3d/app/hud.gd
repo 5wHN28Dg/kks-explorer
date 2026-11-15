@@ -164,6 +164,14 @@ func _settings(_hud_root: Control) -> void:
 	panel = PanelContainer.new()
 	panel.name = "settings"
 	panel.visible = false
+	# opaque: it lies over the view and over the layer's panels, whose text would show through a translucent one (K5)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.08, 0.09, 0.11, 1.0)
+	sb.border_color = Color(0.3, 0.33, 0.38)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(14)
+	panel.add_theme_stylebox_override("panel", sb)
 	root.add_child(panel)
 	root.resized.connect(_queue_fit)
 	var v := VBoxContainer.new()

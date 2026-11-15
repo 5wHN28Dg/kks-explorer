@@ -64,6 +64,9 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 		if close != null and close.focus_mode != Control.FOCUS_ALL:
 			p.append("the settings' Close takes no keyboard and gamepad focus")
 	check.call("folded")
+	var psb = hud.panel.get_theme_stylebox("panel")
+	if not (psb is StyleBoxFlat and psb.bg_color.a >= 0.999):
+		p.append("the settings panel is not opaque: the panels under it show through (K5)")
 	# the controls' help: folded under its button; opened, it shows (scrolled into view) and the panel still fits
 	if hud.get("controls_btn") == null or hud.get("settings_scroll") == null:
 		p.append("the settings %shave no scrolling body or no folded Controls help" % at)
