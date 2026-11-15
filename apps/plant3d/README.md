@@ -160,8 +160,8 @@ treatment plant's model, 9–13× with it (W2: 1.9–2.7 ms a step), and about 3
 generated straight-line code (0.8 ms a step, the same results bit for bit: apps/plant3d/sim/README.md).
 
 - **Cards:** the code with its meaning from the plant's key table, where it is (and "Go there": a short flight, or
-  at once with "Reduced motion" on), its state and values, its alarms and its operations. An operation is offered where the content's `where` says: within 6 m of the
-  equipment for `local`, in the control room for `screen`. Permissives that fail are listed in the content's words;
+  at once with "Reduced motion" on), its state and values, its alarms and its operations. An operation is offered
+  where the content's `where` says: within 6 m of the equipment for `local`, in the control room for `screen`. Permissives that fail are listed in the content's words;
   a refused operation says why (a failed permissive, the sequence's state, a trip whose cause is still there, a
   value out of range). A 0–1 command is typed in per cent.
 - **Drawings** (`ui/drawings.gd`, `ui/drawing_view.gd`; docs/plant3d/REALISM.md §6.1.1): the P&IDs of the generic
