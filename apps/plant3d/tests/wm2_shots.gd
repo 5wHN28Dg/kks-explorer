@@ -18,6 +18,7 @@ const Stores = preload("res://ui/stores_panel.gd")
 const PT2 := "30MAG10CP002"
 const MOTOR := "00PGC10AP001"
 const FAULT := "cond_p2_low"
+const WORK := "wo_cond_p2_fix"
 const DP := 0.457           # dp per canvas px on the Note 9 (docs/UI-UX-POLICY.md §2)
 
 var out := ""
@@ -172,14 +173,41 @@ func _run() -> void:
 	ui.work.pick_tool("spanner_17")
 	ui.work.refresh()
 	await shot("work_fitting", ui.work)
+	# the look-alike issued against the job's order, its permit accepted (written in for the picture): the refusal's
+	# sentence is the look-alike's, with what to do next
+	e.sr_issued[WORK] = {"pt_unit_a4": 1}
+	e.pstate[e.m.work_ix[WORK]] = 5
 	var x: Dictionary = e.m.hands_ix[PT2 + "|fit_tx"]
 	ui.work._show(Stores.fit_reason(e, x, "wrong_part"), "process_flange")
 	await shot("work_wrong_part", ui.work)
 	ui.work.close()
+	ui.open_stores("issue")
+	await shot("counter_walk_first", ui.stores)
+	ui.close_stores()
+	ui.open_work_orders(WORK)
+	await shot("wo_issued_parts", ui.work_orders)
+	ui.close_work_orders()
 	ui.open_debrief()
 	ui.debrief._tab("diagnosis")
 	await shot("debrief_diagnosis", ui.debrief)
-	ui.close_debrief()
+	ui.inputs.repair(FAULT)
+	ui.clock.run_steps(3)
+	ui.debrief._diag_sig = ""
+	ui.debrief._tab("diagnosis")
+	await shot("debrief_diagnosis_put_right", ui.debrief)
+	var fb = ui.debrief.find_child("failed_part", true, false)
+	if fb is BaseButton:
+		(fb as BaseButton).pressed.emit()
+		var ws = ui.main.workshop
+		for i in 600:
+			if ws.is_open and ws.machine != null and ws.selected != "":
+				break
+			await process_frame
+		await shot("workshop_failed_part", ws)
+		ws.close()
+	else:
+		print("wm2_shots: no failed_part button")
+		ui.close_debrief()
 	if ui.has_method("open_crew"):
 		ui.open_crew()
 	else:

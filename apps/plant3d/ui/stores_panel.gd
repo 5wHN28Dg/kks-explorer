@@ -22,9 +22,9 @@ const WO_OPEN := [2, 3, 4]      # the work order states parts are issued against
 const ISSUE_WHY := {
 	"authority": "it is not yours to ask for: write the request as the person you play",
 	"where": "parts are drawn at the store's counter: walk there first",
-	"storekeeper": "nobody is at the counter to hand it over: the storekeeper is not on duty there",
+	"storekeeper": "nobody is at the counter to hand it over: come back when the storekeeper is on duty there",
 	"qty": "the quantity is a whole number from 1 to 9,999",
-	"work": "its work order is not planned, scheduled or in progress",
+	"work": "its work order is not planned, scheduled or in progress: plan it first (Work orders)",
 }
 const ORDER_WHY := {
 	"qty": "the quantity is a whole number from 1 to 9,999",
@@ -45,6 +45,11 @@ var qty_edit: LineEdit
 var work_pick: OptionButton
 var order_qty: LineEdit
 var _work_ids: Array = []       # the issue form's works, in the pick's order
+var _draft_number := ""         # the issue form's part number and quantity as typed, kept while the panel goes to the
+var _draft_qty := ""            # catalogue and back (UI-UX-POLICY D3)
+var _draft_order := ""          # the order form's quantity as typed, for the part `part`
+var _field_err := ["", ""]      # [field name, message]: a form's error shown at its field (UI-UX-POLICY F5)
+var last_copied := ""           # the last number copied (tests read it: a headless clipboard keeps nothing)
 var _pending: Array = []        # [kind, part, step it takes effect]
 var _sig := ""
 var _t := 0.0
@@ -78,8 +83,12 @@ func is_open() -> bool:
 func open(v := "list", id := "") -> void:
 	view = v
 	work = id if v == "issue" else ""
-	_picked = work
+	if work != "":
+		_picked = work          # (opened for an order: its work; else the work chosen before, kept: UI-UX-POLICY D3)
+	if v == "order" and id != part:
+		_draft_order = ""
 	part = id if v == "order" else ""
+	_field_err = ["", ""]
 	visible = true
 	last_text = ""
 	_sig = ""
@@ -281,7 +290,7 @@ func issue(number: String, qty: int, wid: String) -> void:
 	var e = ui.clock.engine
 	var pid := part_by_number(e, number)
 	if pid == "":
-		_show("No part numbered %s in the catalogue: copy the number from the catalogue or the data sheet" %
+		_error("issue_number", "No part numbered %s in the catalogue: copy the number from the catalogue or the data sheet" %
 				number.strip_edges())
 		return
 	ui.inputs.issue(pid, qty, wid, ui.me())
@@ -294,6 +303,38 @@ func order(pid: String, qty: int) -> void:
 	ui.inputs.order(pid, qty, ui.me())
 	_pending.append(["order", pid, e.step_no + 1])
 	_sent()
+
+
+## A form's error at its field (UI-UX-POLICY F5): said under the field, the focus moved to it, the typing kept; also
+## the panel's last line, as every result.
+func _error(field: String, text: String) -> void:
+	_field_err = [field, text]
+	_show(text)
+	_sig = ""
+	refresh()
+	var f = body.find_child(field, true, false)
+	if f is Control:
+		(f as Control).grab_focus.call_deferred()     # (after the rebuild's own focus restore, which is deferred too)
+
+
+## A form field with its label above it (seen and named for screen readers, UI-UX-POLICY A5) and its error under it.
+func _field(f: Control, words: String) -> void:
+	var l := W.label(words, 17, Color.WHITE)
+	l.name = f.name + "_label"
+	body.add_child(l)
+	f.accessibility_name = words
+	body.add_child(f)
+	if _field_err[0] == String(f.name):
+		var er := W.label(_field_err[1], 17, W.BAD_COLOUR)
+		er.name = f.name + "_error"
+		body.add_child(er)
+
+
+## Copies a number (a part's, a purchase order's) and says so (UI-UX-POLICY C1–C3).
+func copy(number: String) -> void:
+	last_copied = number
+	DisplayServer.clipboard_set(number)
+	ui.toast("Copied " + number)
 
 
 func _sent() -> void:
@@ -391,11 +432,14 @@ func refresh() -> void:
 		return
 	var had := get_viewport().gui_get_focus_owner()
 	var had_name: String = String(had.name) if had != null and is_ancestor_of(had) else ""
-	# (the issue form's fields keep what was typed across a rebuild)
-	var keep := [number_edit.text if number_edit != null and is_instance_valid(number_edit) else "",
-			qty_edit.text if qty_edit != null and is_instance_valid(qty_edit) else "",
-			null,   # (the work chosen is _picked, by id)
-			order_qty.text if order_qty != null and is_instance_valid(order_qty) else ""]
+	# (the forms' fields keep what was typed across a rebuild and a visit to the catalogue: the drafts; the work chosen
+	# is _picked, by id)
+	if number_edit != null and is_instance_valid(number_edit):
+		_draft_number = number_edit.text
+	if qty_edit != null and is_instance_valid(qty_edit):
+		_draft_qty = qty_edit.text
+	if order_qty != null and is_instance_valid(order_qty):
+		_draft_order = order_qty.text
 	_sig = sig
 	W.clear(body)
 	number_edit = null
@@ -405,9 +449,9 @@ func refresh() -> void:
 	feedback = W.label(last_text, 17, W.DIM)
 	feedback.name = "feedback"
 	if view == "issue":
-		_issue_form(e, keep)
+		_issue_form(e)
 	elif view == "order" and not part_of(e, part).is_empty():
-		_order_form(e, keep)
+		_order_form(e)
 	else:
 		_list(e)
 	body.add_child(feedback)
@@ -451,18 +495,26 @@ func _list(e) -> void:
 				if x["part"] == prev:
 					like = " (looks like the one above)"
 			row.add_child(W.label("%s  %s%s" % [p["number"], p["title"], like], 17, Color.WHITE))
-			var store: Dictionary = sr["stores"][sr["store_ix"][p["store"]]]
-			var words := "Stock %d%s · min %d, reorder at %d, max %d · %s · %d days' lead time" % [stock,
-					(", %d on order" % due) if due > 0 else "", int(p["min"]), int(p["reorder"]), int(p["max"]),
-					store["title"], int(p["lead_days"])]
-			var l := W.label(words, 15, W.BAD_COLOUR if stock == 0 else (W.PRIO_COLOURS[2] if low else W.DIM))
+			var l := W.label(levels_words(e, pid), 15, W.BAD_COLOUR if stock == 0 else (W.PRIO_COLOURS[2] if low else W.DIM))
 			l.name = "levels"
 			row.add_child(l)
+			# the number copied, or written on the counter's request by a press (a gamepad has no keyboard: UI-UX-POLICY
+			# C1, A1); either way the trainee picks the row, the look-alike beside it
+			var acts := HFlowContainer.new()
+			row.add_child(acts)
+			var num: String = p["number"]
+			var cb := W.button("Copy " + num, copy.bind(num))
+			cb.name = "copy_" + pid
+			acts.add_child(cb)
+			var wb := W.button("Write it on the request", func():
+				_draft_number = num
+				open("issue", ""))
+			wb.name = "write_" + pid
+			acts.add_child(wb)
 			if may_order(e, ui.me()):
 				var ob := W.button("Order", open.bind("order", pid))
 				ob.name = "order_" + pid
-				ob.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-				row.add_child(ob)
+				acts.add_child(ob)
 			prev = pid
 
 
@@ -496,6 +548,12 @@ func _deliveries(e) -> void:
 	var l := W.label("\n".join(lines), 16, W.DIM)
 	l.name = "deliveries"
 	body.add_child(l)
+	var copies := HFlowContainer.new()
+	body.add_child(copies)
+	for o in e.sr_orders:
+		var cb := W.button("Copy " + String(o[0]), copy.bind(String(o[0])))
+		cb.name = "copy_" + String(o[0])
+		copies.add_child(cb)
 	var j := jump_to(e, first)
 	if not j.is_empty():
 		# (worked out again when pressed: the list is not rebuilt as the clock goes on within the day)
@@ -512,7 +570,7 @@ func _deliveries(e) -> void:
 			body.add_child(W.label("(%s)" % why, 15, W.DIM))
 
 
-func _issue_form(e, keep: Array) -> void:
+func _issue_form(e) -> void:
 	var c := counter(e)
 	title.text = "Stores\nAt the counter: %s" % c["title"]
 	var back := W.button("The catalogue", open.bind("list", ""))
@@ -530,15 +588,18 @@ func _issue_form(e, keep: Array) -> void:
 	number_edit = LineEdit.new()
 	number_edit.name = "issue_number"
 	number_edit.placeholder_text = "Part number, WDP-…"
-	number_edit.text = keep[0]
+	number_edit.text = _draft_number
 	number_edit.custom_minimum_size = Vector2(0, 52 * W.scale)
-	body.add_child(number_edit)
+	number_edit.text_changed.connect(func(t: String) -> void: _draft_number = t)
+	_field(number_edit, "Part number")
 	qty_edit = LineEdit.new()
 	qty_edit.name = "issue_qty"
 	qty_edit.placeholder_text = "Quantity"
-	qty_edit.text = keep[1] if keep[1] != "" else "1"
+	qty_edit.text = _draft_qty if _draft_qty != "" else "1"
 	qty_edit.custom_minimum_size = Vector2(0, 52 * W.scale)
-	body.add_child(qty_edit)
+	qty_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+	qty_edit.text_changed.connect(func(t: String) -> void: _draft_qty = t)
+	_field(qty_edit, "Quantity")
 	work_pick = OptionButton.new()
 	work_pick.name = "issue_work"
 	# (a work order's long name must not widen the panel past the screen, taking its Close with it: the choice shows
@@ -566,15 +627,16 @@ func _issue_form(e, keep: Array) -> void:
 	work_pick.item_selected.connect(func(i: int) -> void:
 		if i >= 0 and i < _work_ids.size():
 			_picked = _work_ids[i])
-	body.add_child(work_pick)
+	_field(work_pick, "Work order")
 	var b := W.button("Hand in the request", func():
 		var q := qty_edit.text.strip_edges()
 		if not q.is_valid_int():
-			_show("Write the quantity as a whole number")
+			_error("issue_qty", "Write the quantity as a whole number")
 			return
 		if work_pick.selected < 0 or work_pick.selected >= _work_ids.size():
-			_show("Choose the work order the parts are for")
+			_error("issue_work", "Choose the work order the parts are for")
 			return
+		_field_err = ["", ""]
 		issue(number_edit.text, q.to_int(), _work_ids[work_pick.selected]))
 	b.name = "issue_send"
 	b.disabled = ws.is_empty()
@@ -592,7 +654,7 @@ func _issue_form(e, keep: Array) -> void:
 		body.add_child(l)
 
 
-func _order_form(e, keep: Array) -> void:
+func _order_form(e) -> void:
 	var p := part_of(e, part)
 	title.text = "Stores\nOrder: %s" % p["number"]
 	var back := W.button("The catalogue", open.bind("list", ""))
@@ -600,24 +662,51 @@ func _order_form(e, keep: Array) -> void:
 	body.add_child(back)
 	var stock := stock_of(e, part)
 	var due := due_of(e, part)
-	body.add_child(W.label("%s\nStock %d, on order %d · reorder at %d, max %d · %d days' lead time" % [p["title"],
-			stock, due, int(p["reorder"]), int(p["max"]), int(p["lead_days"])], 17, W.DIM))
+	body.add_child(W.label("%s\nStock %d, on order %d · reorder at %d, max %d · %s" % [p["title"],
+			stock, due, int(p["reorder"]), int(p["max"]), lead_words(int(p["lead_days"]))], 17, W.DIM))
 	order_qty = LineEdit.new()
 	order_qty.name = "order_qty"
 	order_qty.placeholder_text = "Quantity"
-	order_qty.text = keep[3] if keep[3] != "" else str(maxi(1, int(p["max"]) - stock - due))
+	order_qty.text = _draft_order if _draft_order != "" else str(maxi(1, int(p["max"]) - stock - due))
 	order_qty.custom_minimum_size = Vector2(0, 52 * W.scale)
-	body.add_child(order_qty)
+	order_qty.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+	order_qty.text_changed.connect(func(t: String) -> void: _draft_order = t)
+	_field(order_qty, "Quantity")
 	var pid := part
 	var b := W.button("Order (as the %s)" % role_words(e, "order_parts"), func():
 		var q := order_qty.text.strip_edges()
 		if not q.is_valid_int():
-			_show("Write the quantity as a whole number")
+			_error("order_qty", "Write the quantity as a whole number")
 			return
+		_field_err = ["", ""]
+		_draft_order = ""
 		order(pid, q.to_int()))
 	b.name = "order_send"
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART      # (the roles' names must not widen the panel: UI-UX-POLICY L2)
 	b.disabled = not may_order(e, ui.me())
 	body.add_child(b)
+
+
+## A part's levels in words, the state in words as well as in the line's colour (UI-UX-POLICY K4): "Stock 2 · min 1,
+## reorder at 1, max 3 · Main store · 42 days' lead time", with "none on the shelf" or "at or below the reorder point".
+static func levels_words(e, pid: String) -> String:
+	var p := part_of(e, pid)
+	var sr = e._sr
+	var stock := stock_of(e, pid)
+	var due := due_of(e, pid)
+	var store: Dictionary = sr["stores"][sr["store_ix"][p["store"]]]
+	var state := ""
+	if stock == 0:
+		state = " · none on the shelf"
+	elif stock + due <= int(p["reorder"]):
+		state = " · at or below the reorder point"
+	return "Stock %d%s · min %d, reorder at %d, max %d · %s · %s%s" % [stock,
+			(", %d on order" % due) if due > 0 else "", int(p["min"]), int(p["reorder"]), int(p["max"]),
+			store["title"], lead_words(int(p["lead_days"])), state]
+
+
+static func lead_words(days: int) -> String:
+	return "1 day's lead time" if days == 1 else "%d days' lead time" % days
 
 
 ## A work's issued parts in words ("1 × WDP-PT-UNIT-A3 …"), "" when none.
@@ -651,7 +740,10 @@ static func fit_reason(e, x, r: String) -> String:
 				need["number"]]
 	if r == "wrong_part":
 		var s := differs_for(e, x)
-		return s if s != "" else "The part issued is not the one this job needs (%s)" % need["number"]
+		var next := "Draw %s (%s) at the store counter against the job's work order." % [need["number"], need["title"]]
+		if s == "":
+			s = "The part issued is not the one this job needs."
+		return "%s %s" % [s if s.ends_with(".") else s + ".", next]
 	return r
 
 

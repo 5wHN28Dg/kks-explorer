@@ -89,7 +89,7 @@ func _fitting() -> Array:
 	if not said.get("part", "").contains("WDP-PT-UNIT-A3") or not said.get("part", "").contains("store counter"):
 		p.append("the fitting without its part: %s" % said.get("part", "(not said)"))
 	var want: String = m.stores["differs"]["tx_r3|tx_r4"]
-	if said.get("wrong_part", "") != want:
+	if not said.get("wrong_part", "").begins_with(want) or not said.get("wrong_part", "").contains(". Draw WDP-PT-UNIT-A3 ("):
 		p.append("the look-alike offered: %s, wanted its sentence %s" % [said.get("wrong_part", "(not said)"), want])
 	if Stores.fitting_words(e, x) == "" or not Stores.fitting_words(e, x).contains("WDP-PT-UNIT-A3"):
 		p.append("the work view does not name the fitting's part: %s" % Stores.fitting_words(e, x))
@@ -250,6 +250,27 @@ func _panel(tree: SceneTree) -> Array:
 	_press(sp.body, "issue_send")
 	if not sp.last_text.begins_with("Write the quantity"):
 		p.append("a quantity that is not a number: %s" % sp.last_text)
+	# (UI-UX-POLICY F5, A5) the error at its field, the focus there, what was typed kept; each field labelled and named
+	await tree.process_frame
+	var qe = sp.body.find_child("issue_qty_error", true, false)
+	if qe == null or not String(qe.text).begins_with("Write the quantity") or not sp.qty_edit.has_focus() \
+			or sp.qty_edit.text != "ten" or sp.number_edit.text != "wdp-pt-ferrules":
+		p.append("the quantity's error is not at its field with the focus and the typing kept (error %s, focus %s)"
+				% [str(qe.text) if qe != null else "none", str(sp.qty_edit.has_focus())])
+	for f in [["issue_number", "Part number"], ["issue_qty", "Quantity"], ["issue_work", "Work order"]]:
+		var fc = sp.body.find_child(f[0], true, false)
+		var fl = sp.body.find_child(f[0] + "_label", true, false)
+		if fc == null or fc.accessibility_name != f[1] or fl == null or fl.text != f[1]:
+			p.append("the field %s has no label or name \"%s\"" % [f[0], f[1]])
+	# (D3) to the catalogue and back: the number, the quantity and the work as they were
+	_press(sp.body, "to_list")
+	await tree.process_frame
+	_press(sp.body, "to_issue")
+	await tree.process_frame
+	if sp.number_edit == null or sp.number_edit.text != "wdp-pt-ferrules" or sp.qty_edit.text != "ten" \
+			or sp.work_pick.selected < 0 or sp._work_ids[sp.work_pick.selected] != wid:
+		p.append("going to the catalogue and back lost the request: %s, %s" % [
+				sp.number_edit.text if sp.number_edit != null else "no form", sp.qty_edit.text if sp.qty_edit != null else ""])
 	if e.inputs.size() != n0:
 		p.append("a request refused on the form was sent: %s" % str(e.inputs.slice(n0)))
 	# drawn: the shelf down by ten, the order holds them
@@ -288,6 +309,28 @@ func _panel(tree: SceneTree) -> Array:
 		var lv: Label = a3.find_child("levels", true, false)
 		if lv == null or not lv.text.begins_with("Stock 2 · min 1, reorder at 1, max 3"):
 			p.append("the range 3 transmitter's levels: %s" % (lv.text if lv != null else "(none)"))
+	# (C1–C3, A1) a part's number copied, or written on the request by a press; (K4) the levels say the state in words
+	_press(sp.body, "copy_pt_unit_a3")
+	if sp.last_copied != "WDP-PT-UNIT-A3":
+		p.append("Copy did not copy the part's number: %s" % sp.last_copied)
+	_press(sp.body, "write_pt_unit_a4")
+	await tree.process_frame
+	if sp.view != "issue" or sp.number_edit == null or sp.number_edit.text != "WDP-PT-UNIT-A4":
+		p.append("\"Write it on the request\" did not: view %s, %s" % [sp.view,
+				sp.number_edit.text if sp.number_edit != null else "no field"])
+	var k3: int = e._sr["ix"]["pt_unit_a3"]
+	var s3: int = e.sr_stock[k3]
+	e.sr_stock[k3] = 0
+	if not Stores.levels_words(e, "pt_unit_a3").contains("none on the shelf"):
+		p.append("an empty shelf in words: %s" % Stores.levels_words(e, "pt_unit_a3"))
+	e.sr_stock[k3] = 1
+	if not Stores.levels_words(e, "pt_unit_a3").contains("at or below the reorder point"):
+		p.append("stock at the reorder point in words: %s" % Stores.levels_words(e, "pt_unit_a3"))
+	e.sr_stock[k3] = s3
+	if Stores.lead_words(1) != "1 day's lead time":
+		p.append("a lead time of one day: %s" % Stores.lead_words(1))
+	ui.open_stores()
+	await tree.process_frame
 	# an order: from the part's order form, due by its lead time
 	if not _press(sp.body, "order_pt_unit_a3"):
 		p.append("the catalogue offers no Order in free mode")
@@ -295,6 +338,13 @@ func _panel(tree: SceneTree) -> Array:
 		await tree.process_frame
 		if sp.view != "order" or sp.order_qty == null or sp.order_qty.text != "1":
 			p.append("the order form's quantity (up to the max): %s" % (sp.order_qty.text if sp.order_qty != null else "none"))
+		# (L2) the order form's button wraps the roles' names: the panel and its Close stay on the screen
+		for i in 3:
+			await tree.process_frame
+		var ovr: Rect2 = sp.get_viewport_rect()
+		var oc = sp.find_child("close", true, false)
+		if not ovr.encloses(sp.get_global_rect()) or oc == null or not ovr.encloses((oc as Control).get_global_rect()):
+			p.append("the order form leaves the screen (panel %s)" % str(sp.get_global_rect()))
 		sp.order_qty.text = "2"
 		var c0: int = e.clock()
 		_press(sp.body, "order_send")
@@ -309,6 +359,9 @@ func _panel(tree: SceneTree) -> Array:
 		var dl: Label = sp.body.find_child("deliveries", true, false)
 		if dl == null or not dl.text.contains("PO-0001  2 × WDP-PT-UNIT-A3"):
 			p.append("the deliveries do not list the order: %s" % (dl.text if dl != null else "(none)"))
+		_press(sp.body, "copy_PO-0001")
+		if sp.last_copied != "PO-0001":
+			p.append("the purchase order's number was not copied: %s" % sp.last_copied)
 		# (42 days on: past a jump's 30, so no jump to it is offered)
 		if sp.body.find_child("jump_delivery", true, false) != null:
 			p.append("a jump 42 days on was offered")
