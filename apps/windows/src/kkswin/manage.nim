@@ -98,7 +98,9 @@ proc pickShow() =
   pickNo.setText("Reject selected" & (if n > 0: " (" & $n & ")" else: ""))
   EnableWindow(pickOk, BOOL(n > 0 and not pickBusy))
   EnableWindow(pickNo, BOOL(n > 0 and not pickBusy))
-  if pickPage != nil: pickPage.layout()     # (a button is as wide as its label when the page is laid out: "(20)" was cut)
+  if pickPage != nil:       # (a button is as wide as its label when the page is laid out: "(20)" was cut)
+    pickPage.layout()
+    InvalidateRect(pickPage.hwnd, nil, 1)     # (what moved leaves nothing of itself behind, as after a scroll)
 
 proc runBatch(w: Win, action: string, chosen: seq[JNode])
 

@@ -208,7 +208,8 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, competing
                 Text(busy.ifEmpty { if (n > 0) "$n selected" else "None selected" }, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 4.dp)) {
+            // (8 dp above: Reject selected's touch area did not keep off Select all's)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
                 // (half the width each, the label wrapping inside: large text never pushes one off the screen)
                 Button(onClick = { run("approve") }, enabled = n > 0 && busy.isEmpty(), modifier = Modifier.weight(1f)) {
                     Text("Approve selected" + if (n > 0) " ($n)" else "", textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
