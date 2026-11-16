@@ -103,7 +103,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--map=1` | starts on the overview map |
 | `--scenario=ID` | the scenario the plant starts in (default `cold_iron`) |
 | `--procedure=ID` | follows that procedure or tour from the start |
-| `--panels=alarms,procedure,crew,card:CODE,drawings,drawing:CODE` | opens these panels |
+| `--panels=alarms,procedure,crew,card:CODE,drawings,drawing:CODE,settings,toasts` | opens these panels (`toasts`: a notice every 10 s, for a measured walk) |
 | `--speed=fast` | starts the plant in fast-forward |
 | `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line; a start with a link takes none of the options above (a crafted link could add its own) |
 | `--fx_off=fog,lightmap,shadow`, `--fx_on=ssao,sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |

@@ -533,8 +533,9 @@ func _setting(key: String, on: bool) -> void:
 			_alarms_step = -1           # (and looks at the alarms again, paused as well)
 
 
-## Opens a panel by name (the command line's panels=…): alarms, procedure, card:CODE. (Not the instructor's:
-## on Android these options can come from a shared folder.)
+## Opens a panel by name (the command line's panels=…): alarms, procedure, card:CODE, settings; `toasts` shows a
+## notice every 10 s (a measured walk's: what the panels cost on a phone). (Not the instructor's: on Android these
+## options can come from a shared folder.)
 func open_panel(p: String) -> void:
 	if clock == null:
 		return
@@ -552,6 +553,15 @@ func open_panel(p: String) -> void:
 		open_drawing(p.substr(8) if p.begins_with("drawing:") else "")
 	elif p == "screens" or p.begins_with("screens:"):
 		open_screens_at_desk(p.substr(8) if p.begins_with("screens:") else "")
+	elif p == "settings" and main.hud != null and not main.hud.panel.visible:
+		main.hud.show_settings(true)
+	elif p == "toasts" and get_node_or_null("walk_toasts") == null:
+		var t := Timer.new()
+		t.name = "walk_toasts"
+		t.wait_time = 10.0
+		t.timeout.connect(func(): toast("A notice for the measured walk."))
+		add_child(t)
+		t.start()
 
 
 ## The screens at a screen (its id; "" the overview), from wherever the trainee is: at a desk that has it they open

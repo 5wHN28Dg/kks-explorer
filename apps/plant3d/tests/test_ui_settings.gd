@@ -193,6 +193,18 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 		p.append("a toast %sis drawn under the settings (layer %s, the settings' %d)" % [at, str(tl.layer if tl else null),
 			hud.settings_layer.layer])
 	hud.show_settings(false)
+	# the command line's panels=settings,toasts (a measured walk's)
+	ui.open_panel("settings")
+	ui.open_panel("toasts")
+	var wt: Timer = ui.get_node_or_null("walk_toasts")
+	if not hud.panel.visible or wt == null:
+		p.append("panels=settings,toasts %sdid not open the settings or start the toasts" % at)
+	else:
+		wt.timeout.emit()
+		if not ui._toast.visible:
+			p.append("panels=toasts %sshowed no toast" % at)
+		wt.queue_free()
+	hud.show_settings(false)
 	# opened again: the help folded as at first
 	hud.show_settings(true)
 	cb.button_pressed = true
