@@ -1447,6 +1447,19 @@ parts). Lead times are clock days (§2.1).
       one. A fitting is made under
       the code's work whose permit is accepted; the permits of transmitter 2's works share an isolation, so a
       second one is refused while the job's is open (the day's calibration's request is, in the forks).
+    - **Vectors** (made again, compared item by item with 45aae8bd's): `plant3d-v1.json` unchanged;
+      `plant3d-realism.json` gains six rejects of the new wait form (a part not in the file or not a name, no work,
+      no `[part, work]` pair, `"$"` in a task given no work, an unknown key), nothing else; `plant3d-v2.json`: only
+      `npc_hands_failed` (the spare issued, then the swap: cured at step 31,425) and `npc_hands_nospare` (lengthened
+      to 106,000 steps: no fitting refused, held at 16:00, the spare issued after the delivery on the second morning,
+      the swap, cured at 98,875) changed, and `npc_hands_absent` (shift_fail_absent, 67,000 steps: the storekeeper's
+      issue unassigned, held for parts at 16:00, no issue, none of the swap's actions, permit 5 with its lock as a
+      held job's) appended; the day and every other fork as before.
+    - **Tests:** `tests/test_plant3d_wm2_tx.py` (the job's shape: no hand action before the swap, every way into it
+      after the wait for the spare; the issue task's checks; the forks; three calls queued at once issue one spare,
+      the issue task before part 4 issued two; a call after the fitting issues none, the ledger-only check issued a
+      second), the realism rejects, `test_ui_stores.gd` (the crew panel's words for the stores' steps and the wait,
+      the part's Copy).
     - Left as it is (the user, 2026-11-16): after the issue drops the spare to its reorder point, the storekeeper's
       own order in `issue_cond_p2_fix` orders it up to its max, and the reorder reaction offered by the same drop
       then finds nothing missing: its order is refused `qty` (an event, no effect).
