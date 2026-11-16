@@ -1127,25 +1127,26 @@ addition (both engines, vectors) made in K6.
   straight along the bundle's line from the stationary tubesheet's outer face to the floating one's, inside the floating
   tubesheet's rim and the shell's bore). Each made to fail once: a gap of 10 mm before End plate I, the locking bolts
   0.3 m short, the tubes ending 50 mm before the floating tubesheet.
-- **The Note 9** (`lean+vis`, a test-signed release build, a fresh install for each kind, `probe=1`, SAMPLE=1, battery
-  29.1 / 27.0 °C at the start, the kernel reclaiming in 0.99 / 0.98 % of the samples). The plate heat exchanger was
-  walked with the pull request's head (2026-11-15; its first walk, the day before, had the kernel reclaiming memory in
-  13.85 % of its samples and was not judged); the shell-and-tube with the build of 2026-11-14, before its tie rods
-  moved to mid-height (the same triangles):
+- **The Note 9** (`lean+vis`, a test-signed release build of the pull request's head with the title and panel fixes,
+  a fresh install for each kind, `probe=1`, SAMPLE=1, battery 26.3 / 29.0 °C at the start, the kernel reclaiming in
+  0.33 / 0.00 % of the samples; the Workshop's own rule, §8). The panels are drawn now (#388), so the walks before the
+  fix (99.75 / 99.84 % with the panels collapsed) were made again; the first shell-and-tube walk after it had the
+  kernel reclaiming in 1.46 % of its samples and was walked again:
 
   | | plate heat exchanger | shell-and-tube |
   |---|---|---|
-  | first entry (after the plant's warm-up) | 172 ms (load 44 ms) | 123 ms (load 49 ms) |
-  | second entry | 19 ms | 25 ms |
-  | back to the plant | 14–15 ms | 17–18 ms |
+  | first entry (after the plant's warm-up) | 126 ms (load 45 ms) | 128 ms (load 61 ms) |
+  | second entry | 28 ms | 29 ms |
+  | back to the plant | 12–15 ms | 17 ms |
   | guided steps | all walked, 0 loose | all walked, 0 loose |
-  | longest frame / over 100 ms | 41.1 ms / 0 | 48.6 ms / 0 |
-  | frames at ≥ 30 fps | **99.75 %** | **99.84 %** |
-  | median / p95 frame | 17.0 / 36.7 ms | 16.9 / 36.6 ms |
-  | peak PSS | 1,179 MB | 1,152 MB |
+  | longest frame / over 100 ms | 55.1 ms / 0 | 41.9 ms / 0 |
+  | frames at ≥ 30 fps | **99.84 %** | **99.73 %** |
+  | median / p95 frame | 17.0 / 36.7 ms | 16.9 / 36.5 ms |
+  | draw calls in the Workshop (most) | 117 | 125 |
+  | peak PSS | 1,163 MB | 1,167 MB |
   | pipelines after the first 5 s | 0 | 0 |
 
-  The APK is 148.7 MB (the third pull request's was 148.5 MB).
+  The APK is 148.8 MB (the third pull request's was 148.5 MB).
 
 ## 7. Shaders and cut faces
 
