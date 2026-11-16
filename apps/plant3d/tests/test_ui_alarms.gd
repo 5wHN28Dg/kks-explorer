@@ -116,8 +116,23 @@ func run(tree: SceneTree) -> Array:
 	App.find_button(ui.alarms, "Suppressed (…").pressed.emit()
 	if App.find_button(ui.alarms.body, "Ack") == null:
 		p.append("the suppressed list offers no Ack for an unacknowledged alarm")
-	App.find_button(ui.alarms, "Acknowledge all").pressed.emit()
+	# its button says how many it acknowledges (UI-UX-POLICY B1): every unacknowledged alarm not shelved
+	var n_unack := func() -> int:
+		var n := 0
+		for k2 in e._al.size():
+			if e.shelved[k2] == -1 and String(e.astate[k2]).ends_with("_unack"):
+				n += 1
+		return n
+	ui.alarms.refresh()
+	var ack_all: Button = App.find_button(ui.alarms, "Acknowledge all (…")
+	var n0: int = n_unack.call()
+	if ack_all == null or ack_all.text != "Acknowledge all (%d)" % n0 or n0 == 0:
+		p.append("Acknowledge all does not say its count (%d): %s" % [n0, ack_all.text if ack_all else "no button"])
+	App.find_button(ui.alarms, "Acknowledge all (…").pressed.emit()
 	ui.clock.run_steps(1)
+	ui.alarms.refresh()
+	if ack_all != null and ack_all.text != "Acknowledge all (%d)" % n_unack.call():
+		p.append("after Acknowledge all its button says %s, not (%d)" % [ack_all.text, n_unack.call()])
 	if e.astate[ks] != "active_ack":
 		p.append("Acknowledge all left the suppressed alarm %s" % e.astate[ks])
 	main.free()

@@ -362,7 +362,18 @@ func _build_toast() -> void:
 	_toast.add_theme_stylebox_override("normal", bg)
 	_toast.visible = false
 	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(_toast)
+	# on a layer of its own above the settings (app/hud.gd, layer 8), which would hide it; shown with the layer's root
+	# (the Workshop hides that)
+	var tl := CanvasLayer.new()
+	tl.name = "toast_layer"
+	tl.layer = 9
+	add_child(tl)
+	var tr := Control.new()
+	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tl.add_child(tr)
+	tr.add_child(_toast)
+	root.visibility_changed.connect(func(): tl.visible = root.visible)
 	_layout_toast()
 
 
@@ -374,9 +385,14 @@ func _bar_button(bar: Control, text: String, f: Callable) -> Button:
 	return b
 
 
+## Where the panels may begin: below the HUD's buttons and the layer's bar (app/hud.gd's settings panel too).
+func panels_top() -> float:
+	return 88.0 + 56.0 * W.scale + 16.0
+
+
 func _layout() -> void:
 	var vs: Vector2 = root.get_viewport_rect().size
-	var top0 := 88.0 + 56.0 * W.scale + 16.0
+	var top0 := panels_top()
 	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach
 	var top := maxf(top0, mimic.canvas_top() + 8.0) if screens_open() else top0
 	if drawings_open():
@@ -438,11 +454,12 @@ func add_settings(box: VBoxContainer) -> void:
 		return
 	var cf: ConfigFile = main.cf
 	for row in [["instructor", "Instructor mode: scenarios and trainer faults", false],
-			["reduced_motion", "Reduced motion: no camera shake near machines, no head bob", false],
+			["reduced_motion", "Reduced motion: no camera shake or head bob, Go there without flying", false],
 			["mute", "Mute the plant's sounds", false]]:
 		var cb := CheckBox.new()
 		cb.text = row[1]
 		cb.focus_mode = Control.FOCUS_ALL
+		cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # wraps in the settings panel's width
 		var on: bool = cf.get_value("ui", row[0], row[2])
 		cb.button_pressed = on
 		_setting(row[0], on)
@@ -518,8 +535,9 @@ func _setting(key: String, on: bool) -> void:
 			_alarms_step = -1           # (and looks at the alarms again, paused as well)
 
 
-## Opens a panel by name (the command line's panels=…): alarms, procedure, card:CODE. (Not the instructor's:
-## on Android these options can come from a shared folder.)
+## Opens a panel by name (the command line's panels=…): alarms, procedure, card:CODE, settings; `toasts` shows a
+## notice every 10 s (a measured walk's: what the panels cost on a phone). (Not the instructor's: on Android these
+## options can come from a shared folder.)
 func open_panel(p: String) -> void:
 	if clock == null:
 		return
@@ -537,6 +555,15 @@ func open_panel(p: String) -> void:
 		open_drawing(p.substr(8) if p.begins_with("drawing:") else "")
 	elif p == "screens" or p.begins_with("screens:"):
 		open_screens_at_desk(p.substr(8) if p.begins_with("screens:") else "")
+	elif p == "settings" and main.hud != null and not main.hud.panel.visible:
+		main.hud.show_settings(true)
+	elif p == "toasts" and get_node_or_null("walk_toasts") == null:
+		var t := Timer.new()
+		t.name = "walk_toasts"
+		t.wait_time = 10.0
+		t.timeout.connect(func(): toast("A notice for the measured walk."))
+		add_child(t)
+		t.start()
 
 
 ## The screens at a screen (its id; "" the overview), from wherever the trainee is: at a desk that has it they open
@@ -1298,7 +1325,8 @@ func show_me(code: String) -> void:
 		route.guide(player, index.box(code))
 
 
-## Puts the trainee beside the equipment, facing it: a short flight, then on the floor below when there is one.
+## Puts the trainee beside the equipment, facing it: a short flight (with Reduced motion on, at once), then on the floor
+## below when there is one.
 func fly_to(code: String, done: Callable = Callable()) -> void:
 	if not index.has(code):
 		toast("%s is not drawn in the plant." % code)
@@ -1322,6 +1350,18 @@ func fly_to(code: String, done: Callable = Callable()) -> void:
 		main.toggle_map()
 	if _flight:
 		_flight.kill()
+		_flight = null
+	if bindings.reduced_motion:
+		# the settings' Reduced motion: placed there at once, no flight (UI-UX-POLICY A4)
+		player.scripted = false
+		player.drive = Vector2.ZERO
+		player.set_mode(player.Mode.FLY)
+		player.global_position = to
+		player.set_heading(yaw, pitch)
+		player.set_mode(player.Mode.WALK)     # on the floor below when there is one, as after a flight
+		if done.is_valid():
+			done.call()
+		return
 	player.set_mode(player.Mode.FLY)
 	player.scripted = true
 	player.drive = Vector2.ZERO
@@ -2167,6 +2207,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 	if clock == null or player.scripted or main.workshop_open() or manual_open():
 		return
 	if ev.is_action_pressed("menu") or ev.is_action_pressed("ui_cancel"):
+		if main.hud != null and main.hud.panel.visible:
+			# the settings are on top of every panel here (app/hud.gd's own layer): they close first
+			main.hud.show_settings(false)
+			get_viewport().set_input_as_handled()
+			return
 		if close_top():
 			get_viewport().set_input_as_handled()
 		return

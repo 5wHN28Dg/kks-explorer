@@ -1,5 +1,7 @@
 ## Screenshots of the interaction layer in use, to look at (not a test: it needs a display):
 ##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/ui_shots.gd -- --out=DIR
+##     [--phone]      at the phone's UI scale (as tests/mimic_shots.gd --phone)
+##     [--settings]   the settings panel only (folded, with the controls' help open, over the alarm list), then quits
 ## The app as a trainee has it (app/main.tscn, the full tier), driven through the layer: a refused start at the
 ## pump, the cold start's step with its card, an alarm and the trips with their first out, the instructor's faults,
 ## a tour's stop, a link to another plant's code, and the plant at base load.
@@ -12,6 +14,8 @@ const Autosave = preload("res://ui/autosave.gd")
 const RunSave = preload("res://ui/run_save.gd")
 
 var out := ""
+var phone := false
+var settings_only := false
 var main: Node
 var ui
 
@@ -20,6 +24,10 @@ func _init() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
+		elif a == "--phone":
+			phone = true
+		elif a == "--settings":
+			settings_only = true
 	_run.call_deferred()
 
 
@@ -28,7 +36,7 @@ func shot(name: String, frames := 40) -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := root.get_viewport().get_texture().get_image()
-	var p := out.path_join(name + ".png")
+	var p := out.path_join(("phone_" if phone else "") + name + ".png")
 	print("shot %s: %d" % [p, img.save_png(p)])
 
 
@@ -55,6 +63,8 @@ func _run() -> void:
 	RunSave.remove(Autosave.default_path)
 	main = (load("res://app/main.tscn") as PackedScene).instantiate()
 	main.opts["quality"] = "full"
+	if phone:
+		main.opts["ui_scale"] = "1.35"
 	root.add_child(main)
 	# with a display the start draws the sky first and makes the UI after it (decision 0060): wait for its first
 	# walkable frame, or for its failure
@@ -67,6 +77,22 @@ func _run() -> void:
 	ui = main.ui
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
 	await process_frame
+	# 0. the settings panel: as it opens, and with the keyboard and gamepad help open (scrolled to it)
+	main.hud.show_settings(true)
+	await shot("0_settings")
+	main.hud.controls_btn.button_pressed = true
+	await shot("0_settings_controls")
+	main.hud.controls_btn.button_pressed = false
+	main.hud.show_settings(false)
+	ui.toggle_alarms()                                    # over a side panel: the settings stay on top
+	main.hud.show_settings(true)
+	await shot("0_settings_over_alarms")
+	main.hud.show_settings(false)
+	ui.close_alarms()
+	if settings_only:
+		main.free()
+		quit(0)
+		return
 	# 1. at CW pump A: its start refused (the valve is shut), the reason on the card
 	ui.open_card("30PAC10AP001")
 	ui.fly_to("30PAC10AP001")
