@@ -5,7 +5,7 @@ import std/[strutils, tables, times, sequtils, asyncdispatch, math]
 import kks/[json, api, node, extras, util]
 import kksl/[dbstore, privfile, passphrase]
 import kks/model
-import proposals
+import proposals, histline
 import gtk, ui, appstate, win, photos, join
 
 proc s(n: JNode, k: string): string =
@@ -295,10 +295,9 @@ proc history(w: Win, box: W) =
     closureScope:
       let r = revs[i]
       let hid = r.get("hid")
-      let title = "#" & (if r.get("n") != nil: toText(r["n"]) else: "") & " " & s(r, "summary") & s(r, "note")
-      let sub = s(r, "by_name") & " · " & r.at("at") & (if s(r, "entity").len > 0: " · " & s(r, "entity") & " " & s(r, "key") else: "")
-      let rw = row(title.strip, sub, selectable = true)
-      if hid != nil and not hid.isNull:
+      let rw = row(historyTitle(r), historyBy(r), selectable = true)
+      adw_preferences_row_set_title_selectable(rw, 1)    # the line holds the code: it can be copied
+      if historyUndoable(r):
         let rev = button("Revert", "flat", proc () =
           confirm(w.window, "Revert this change?", "This writes a new change that undoes it; History keeps both.", "Revert", true, proc () =
             try:
@@ -306,8 +305,6 @@ proc history(w: Win, box: W) =
               w.toast("Reverted")
               w.refreshPage(box, proc (b: W) = w.history(b))
             except ApiError as e: w.toast(e.msg)))
-        gtk_widget_set_valign(rev, GTK_ALIGN_CENTER)
-        adw_action_row_add_suffix(rw, rev)
         let rest = button("Restore", "flat", proc () =
           confirm(w.window, "Restore to just after this change?", "Every later change is undone by new changes.", "Restore", true, proc () =
             try:
@@ -315,8 +312,12 @@ proc history(w: Win, box: W) =
               w.toast("Restored")
               w.refreshPage(box, proc (b: W) = w.history(b))
             except ApiError as e: w.toast(e.msg)))
-        gtk_widget_set_valign(rest, GTK_ALIGN_CENTER)
-        adw_action_row_add_suffix(rw, rest)
+        # one above the other, 8 px apart: side by side they left the line about 55 px in the sidebar, and every
+        # code broke inside itself (UI audit 2026-11, GNOME-3)
+        let acts = vbox(8)
+        acts.add(rev, rest)
+        gtk_widget_set_valign(acts, GTK_ALIGN_CENTER)
+        adw_action_row_add_suffix(rw, acts)
       adw_preferences_group_add(g, rw)
   box.add g
 

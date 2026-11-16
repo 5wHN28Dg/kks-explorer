@@ -223,6 +223,25 @@ private fun statusText(s: String) = when (s) {
     "pending" -> "Waiting"; "conflict" -> "Held (clashes)"; "approved" -> "Approved"; "rejected" -> "Rejected"; "withdrawn" -> "Withdrawn"; else -> s
 }
 
+/** a History row in words (the same rules as apps/common/histline.nim): the line is the core's `summary`
+ *  (api.historySummary). Before 2026-11-15 this read fields /api/revisions never sent (n, summary, by_name, at). */
+internal fun historyTitle(x: JSONObject): String {
+    val rev = if (x.has("rev") && !x.isNull("rev")) "#" + x.optLong("rev") + " " else ""
+    val note = x.str("note")
+    val showNote = note.isNotEmpty() && x.str("entity") !in setOf("user", "sheet")
+    // the note isolated for direction (U+2068 … U+2069), as the core isolates the values in the summary
+    return (rev + x.str("summary") + if (showNote) " (\u2068${note.replace('\n', ' ')}\u2069)" else "").trim()
+}
+
+internal fun historyBy(x: JSONObject): String {
+    val who = x.str("full_name").ifEmpty { x.str("username") }.ifEmpty { "server console" }
+    val ts = x.optLong("ts")
+    return who + if (ts > 0) " · " + whenText(ts) else ""
+}
+
+internal fun historyUndoable(x: JSONObject): Boolean =
+    x.has("hid") && !x.isNull("hid") && x.str("entity") !in setOf("user", "sheet")
+
 @Composable
 private fun History(rev: Int, say: (String) -> Unit) {
     val r = remember(rev) { call("GET", "/api/revisions", query = mapOf("limit" to "200")) }
@@ -242,10 +261,10 @@ private fun History(rev: Int, say: (String) -> Unit) {
         if (revs.isEmpty()) item { Dim("No changes yet.") }
         items(revs) { x ->
             val hid = x.opt("hid")
-            ListItem(headlineContent = { Text(("#" + x.str("n") + " " + x.str("summary") + x.str("note")).trim()) },
-                supportingContent = { Text(x.str("by_name") + " · " + whenText(x.optLong("at")) + x.str("entity").let { if (it.isNotEmpty()) " · $it " + x.str("key") else "" }) },
+            ListItem(headlineContent = { SelectionContainer { Text(historyTitle(x)) } },   // the line holds the code
+                supportingContent = { Text(historyBy(x)) },
                 trailingContent = {
-                    if (hid != null && hid != JSONObject.NULL) Row {
+                    if (historyUndoable(x)) Row {
                         TextButton(onClick = { ask = "revert" to hid }) { Text("Revert") }
                         TextButton(onClick = { ask = "restore" to hid }) { Text("Restore") }
                     }

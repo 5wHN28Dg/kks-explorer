@@ -6,7 +6,7 @@ import std/[strutils, tables, times, sequtils, asyncdispatch, math]
 import kks/[json, api, node, extras, util]
 import kksl/[dbstore, passphrase]
 import kks/model
-import proposals
+import proposals, histline
 import appstate
 import w32, ui, win, photos, about
 
@@ -280,9 +280,9 @@ proc history(w: Win, p: Page) =
     closureScope:
       let r = lp4[lp4i]
       let hid = r.get("hid")
-      p.label(("#" & (if r.get("n") != nil: toText(r["n"]) else: "") & " " & s(r, "summary") & s(r, "note")).strip)
-      p.dim(s(r, "by_name") & " · " & r.at("at") & (if s(r, "entity").len > 0: " · " & s(r, "entity") & " " & s(r, "key") else: ""))
-      if hid != nil and not hid.isNull:
+      p.label(isolatesAsEmbeddings(historyTitle(r)))   # GDI draws isolates as boxes
+      p.dim(historyBy(r))
+      if historyUndoable(r):
         let h = if hid.kind == jInt: $hid.i else: hid.s
         p.buttons(("Revert", proc () =
           if ask(w.hwnd, "Revert this change?", "This writes a new change that undoes it; History keeps both."):
