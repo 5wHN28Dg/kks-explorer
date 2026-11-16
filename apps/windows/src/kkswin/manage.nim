@@ -219,6 +219,7 @@ proc approvals(w: Win, p: Page) =
   picked.keepItIf(it in open)
   if groups.len == 0:
     p.dim("Nothing waits for approval.")
+    if w.isAdmin and lastSaid.len > 0: p.label(lastSaid)     # (the batch that emptied the list: what it did)
     return
   p.dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. " &
         "Tick several to approve or reject them at once.")

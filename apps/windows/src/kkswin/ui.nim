@@ -457,7 +457,8 @@ proc placeColumn*(head, body: Page, x, w, h: int, headOn: bool): int =
   if headOn and not head.isEmpty and w > 0:
     MoveWindow(head.hwnd, int32(x), 0, int32(w), int32(h), 0)
     head.layout()
-    result = min(head.contentH, h div 2)
+    # (one pixel more than what it holds: at exactly that height Windows still showed the page's scroll bar)
+    result = min(head.contentH + 1, h div 2)
     MoveWindow(head.hwnd, int32(x), 0, int32(w), int32(result), 1)
     head.layout()            # (at its own height: no scroll bar when all of it fits)
   ShowWindow(head.hwnd, if result > 0: SW_SHOW else: SW_HIDE)
