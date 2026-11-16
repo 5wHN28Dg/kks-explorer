@@ -257,8 +257,8 @@ const VIEWS={
     const many=(S?.requests.length||0)>1; for(const id of [...SU_PICKED]) if(!S?.requests.some(r=>String(r.id)===id)) SU_PICKED.delete(id);
     const code=h('input',{name:'code','aria-label':'Sign-up code',placeholder:S?.enabled?'a new code':'a code, 6+ characters',autocomplete:'off',autocapitalize:'none',spellcheck:'false',minlength:6,maxlength:64,required:true});
     const SU=S?[h('div',{class:'card',id:'signups'},h('h3',null,`Account requests (${S.requests.length})`),
-        S.requests.length?table(head(many?h('label',{class:'pick'},h('input',{type:'checkbox',id:'suAll',onchange:e=>{ const on=e.currentTarget.checked;
-            document.querySelectorAll('#signups input.supick').forEach(c=>{ c.checked=on; on?SU_PICKED.add(c.dataset.id):SU_PICKED.delete(c.dataset.id) }); suBar() }}),h('span',null,`Select all (${S.requests.length})`)):null,'Name','Username','Asked',''),
+        S.requests.length?table(head(...(many?[h('label',{class:'pick'},h('input',{type:'checkbox',id:'suAll',onchange:e=>{ const on=e.currentTarget.checked;
+            document.querySelectorAll('#signups input.supick').forEach(c=>{ c.checked=on; on?SU_PICKED.add(c.dataset.id):SU_PICKED.delete(c.dataset.id) }); suBar() }}),h('span',null,`Select all (${S.requests.length})`))]:[]),'Name','Username','Asked',''),
           S.requests.map(r=>h('tr',{'data-user':r.username},
           many?h('td',null,h('label',{class:'pick'},h('input',{type:'checkbox',class:'supick','data-id':r.id,checked:SU_PICKED.has(String(r.id)),
             onchange:e=>{ e.currentTarget.checked?SU_PICKED.add(String(r.id)):SU_PICKED.delete(String(r.id)); suBar() }}),h('span',{class:'vh'},'Select ',K.userText(r.full_name),` (${r.username})`))):null,
@@ -553,33 +553,43 @@ function pickedBar(){
 let deciding=false;
 async function decideMany(action){
   if(deciding) return;
-  const ids=[...document.querySelectorAll('#main label.pick input:checked')].map(c=>+c.dataset.id).filter(id=>PICKED.has(id)&&OPEN_SUBS.has(id));
+  const ids=[...document.querySelectorAll('#main label.pick input:checked')].map(c=>+c.dataset.id).filter(id=>PICKED.has(id)&&OPEN_SUBS.has(id))
+    .sort((a,b)=>((OPEN_SUBS.get(a).created||0)-(OPEN_SUBS.get(b).created||0))||a-b);
   if(!ids.length){ toast('Nothing selected'); return }
   const n=ids.length, of=n===1?'1 proposal':`${n} proposals`;
+  // a marked tag's corrected code, read now: the page is made again while the batch runs (a sync, another tab), and
+  // its fields then hold the code as proposed, or are gone
+  const edits=new Map();
+  if(action==='approve') for(const id of ids){ const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);
+    if(ek) edits.set(id,{kks:ek.value.trim().toUpperCase(),isa:(ei?.value??'').trim().toUpperCase()}) }
   let note='';
   if(action==='reject'){ const a=await askDanger(`Reject ${of}?`,'Each one is rejected as its own Reject button does. The submitters see that it was rejected, and the reason if you give one.',`Reject ${of}`,true);
     if(!a) return; note=a.note }
+  if(deciding) return;      // (a second question answered while the first one's batch runs)
   deciding=true;
   const btns=[$('#pickOk'),$('#pickNo')]; btns.forEach(b=>{ if(b) b.disabled=true });
-  let done=0, offline=[]; const held=[], competing=[], failedL=[];
+  let done=0, offline=[], out=null; const held=[], competing=[], failedL=[], gone=[];
   try{
     for(const id of ids){
       const s=OPEN_SUBS.get(id);
+      if(!s||!PICKED.has(id)){ gone.push(id); continue }     // decided elsewhere or unticked since the button (or the question)
       if(action==='approve'&&(s?.conflicts?.length||s?.status==='conflict')){ held.push(id); continue }
       if(action==='approve'&&COMPETING.has(id)){ competing.push(id); continue }
-      const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);
-      const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
+      const edit=edits.get(id);
       const pn=$('#pickN'); if(pn) pn.textContent=`${action==='approve'?'Approving':'Rejecting'} ${done+failedL.length+1} of ${n}…`;   // (no bar: another tab was opened meanwhile; the batch goes on and its result is said)
       try{ await K.api(`/api/submissions/${id}/${action}`,{force:false,note,edit}); done++; PICKED.delete(id) }
-      catch(e){ if(e.status===401) return failed(e); if(K.isNetErr(e)){ offline=ids.slice(ids.indexOf(id)).filter(i=>!held.includes(i)&&!competing.includes(i)); break } failedL.push(`#${id}: ${e.message}`) }
+      catch(e){ if(e.status===401){ out=e; break } if(K.isNetErr(e)){ offline=ids.slice(ids.indexOf(id)).filter(i=>!held.includes(i)&&!competing.includes(i)&&!gone.includes(i)); break } failedL.push(`#${id}: ${e.message}`) }
     }
   }finally{ deciding=false }
   const L=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${n}.`];
   if(held.length) L.push(`Not approved: ${held.map(i=>'#'+i).join(', ')} clash${held.length===1?'es':''} with the value as it is now; decide ${held.length===1?'it':'them'} on ${held.length===1?'its':'their'} own.`);
   if(competing.length) L.push(`Not approved: ${competing.map(i=>'#'+i).join(', ')}: several photos of one kind compete for ${competing.length===1?'its':'their'} code; choose with “Use this one”.`);
+  if(gone.length) L.push(`No longer waiting or no longer ticked: ${gone.map(i=>'#'+i).join(', ')}.`);
   if(failedL.length) L.push('Not done: '+failedL.join('; ')+'.');
+  if(out) L.push('Stopped there: '+out.message+'.');
   if(offline.length) L.push(`Couldn't reach the server: ${offline.length} not decided (${offline.map(i=>'#'+i).join(', ')}). They stay ticked; try again when you're back online.`);
   LAST_SAID=L.join(' '); toast(LAST_SAID);
+  if(out&&await K.api('/api/me').then(()=>false,x=>x.status===401)){ location.reload(); return }    // signed out meanwhile: the sign-in screen
   await rebuild();
 }
 // removed devices and people: hidden from the lists (display only: the log, History and the leaderboard keep them)
@@ -614,7 +624,7 @@ function suBar(){
   const all=[...document.querySelectorAll('#signups input.supick')], n=all.filter(c=>c.checked).length, a=$('#suAll');
   if(a){ a.checked=all.length>0&&n===all.length; a.indeterminate=n>0&&n<all.length }
   const N=$('#suN'); if(N) N.textContent=n?`${n} selected`:'None selected';
-  for(const b of [$('#suOk'),$('#suNo')]) if(b){ b.disabled=!n; b.textContent=(b.id==='suOk'?'Approve':'Reject')+' selected'+(n?` (${n})`:'') }
+  for(const b of [$('#suOk'),$('#suNo')]) if(b){ b.disabled=!n||decidingSu; b.textContent=(b.id==='suOk'?'Approve':'Reject')+' selected'+(n?` (${n})`:'') }
 }
 let decidingSu=false;
 async function decideSignups(reqs,action){
@@ -624,20 +634,23 @@ async function decideSignups(reqs,action){
   const of=L.length===1?'1 request':L.length+' requests';
   if(action==='reject'&&!await askDanger(`Reject ${of}?`,`${L.length===1?'It is':'They are'} deleted; the ${L.length===1?'person has':'people have'} to ask again.`,`Reject ${of}`,false)) return;
   const plain=r=>!r.person&&!r.taken&&!(r.same>1), skip=action==='approve'?L.filter(r=>!plain(r)):[];
-  let done=0, off=[]; const bad=[];
+  let done=0, off=[], out401=null; const bad=[];
+  if(decidingSu) return;
   decidingSu=true; for(const b of [$('#suOk'),$('#suNo')]) if(b) b.disabled=true;
   try{
   for(const r of L){
     if(skip.includes(r)) continue;
     try{ await K.api(`/api/signups/${r.id}/${action}`,{}); done++; SU_PICKED.delete(String(r.id)) }
-    catch(e){ if(e.status===401) return failed(e); if(K.isNetErr(e)){ off=L.slice(L.indexOf(r)).filter(x=>!skip.includes(x)); break } bad.push(`${r.username}: ${e.message}`) }
+    catch(e){ if(e.status===401){ out401=e; break } if(K.isNetErr(e)){ off=L.slice(L.indexOf(r)).filter(x=>!skip.includes(x)); break } bad.push(`${r.username}: ${e.message}`) }
   }
   }finally{ decidingSu=false }
   const out=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${L.length}.`];
   if(skip.length) out.push(`Not approved: ${skip.map(r=>r.username).join(', ')} (the username is taken or asked for more than once): use ${skip.length===1?'its':'their'} own button.`);
   if(bad.length) out.push('Not done: '+bad.join('; ')+'.');
+  if(out401) out.push('Stopped there: '+out401.message+'.');
   if(off.length) out.push(`Couldn't reach the server: ${off.length} not decided (${off.map(r=>r.username).join(', ')}). They stay ticked; try again when you're back online.`);
   toast(out.join(' '));
+  if(out401&&await K.api('/api/me').then(()=>false,x=>x.status===401)){ location.reload(); return }
   await rebuild();
 }
 const exportBundle=photos=>{ if(!K.native) return true; K.native.saveApi('plant.kksbundle','/api/bundle'+(photos?'?photos=1':'')); return false };

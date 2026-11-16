@@ -1760,6 +1760,11 @@ class Phone(unittest.TestCase):
         for f in ('near', 'area', 'loc'):
             r = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {f: 'by omar ' + f}, 'base': {}}})
             self.assertEqual(r.get('status'), 'pending', r)
+        # a held one (its submitter saw notes "old", which the manager has changed since): the batch never approves it
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'old'}, 'base': {}}})['status'], 'approved')
+        held = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'theirs'}, 'base': {'notes': 'old'}}})['id']
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'newer'}, 'base': {'notes': 'old'}}})['status'], 'approved')
+        self.assertEqual({x['id']: x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
         self.join()
         self.open_tag()
         ui.tap('Copy', exact=True)
@@ -1784,19 +1789,23 @@ class Phone(unittest.TestCase):
         field = [n for n in ui.nodes() if n.get('focused') == 'true' and n.get('class', '').endswith('EditText')]
         self.assertEqual([n.get('text') for n in field], ['11LAB70AA501'])
         ui.hide_keyboard()
-        # Approvals: all three at once
+        # Approvals: all at once; the three plain ones are approved, the held one is not
         ui.tap('Manage', exact=True)
         ui.tap('Approvals', exact=True)
         ui.find('None selected', exact=True, timeout=20)
-        ui.tap('Select all (3)', exact=True)
-        ui.find('3 selected', exact=True)
-        ui.tap('Approve selected (3)', exact=True)
+        ui.tap('Select all (4)', exact=True)
+        ui.find('4 selected', exact=True)
+        ui.tap('Approve selected (4)', exact=True)
 
         def all_approved():
-            st = [x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']]
+            st = [x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions'] if x['id'] != held]
             return st if st and all(x == 'approved' for x in st) else None
         self.assertEqual(len(self.wait_server(all_approved, 'Approve selected never reached the server')), 3)
-        ui.find('Nothing waits for approval.', timeout=20)
+        ui.find('Select all (1)', exact=True, timeout=20)
+        ui.find('Approved 3 of 4.', timeout=20)
+        time.sleep(3)       # (a sync round: had the batch approved the held one too, the server would know by now)
+        self.assertEqual({x['id']: x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
+        self.boss.req('POST', f'/api/submissions/{held}/reject', {})
         # two more: tick one, Reject selected asks once, the other stays
         ids = []
         for f in ('near', 'area'):

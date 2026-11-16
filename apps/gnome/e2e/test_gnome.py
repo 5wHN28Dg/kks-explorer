@@ -1462,6 +1462,11 @@ class Gnome(Plant):
                 for f in ('near', 'area', 'loc')]
         self.assertEqual([x.get('status') for x in mine], ['pending'] * 3, mine)
         mine = [x['id'] for x in mine]
+        # a held one (its submitter saw notes "old", which the manager has changed since): the batch never approves it
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'notes': 'old'}, 'base': {}}})['status'], 'approved')
+        held = nadia.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'notes': 'theirs'}, 'base': {'notes': 'old'}}})['id']
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'notes': 'newer'}, 'base': {'notes': 'old'}}})['status'], 'approved')
+        self.assertEqual({x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
         waiting = len(self.boss.req('GET', '/api/submissions?status=open')['submissions'])
         a = self.start_app('copybatch')
         self.join(a)
@@ -1496,15 +1501,15 @@ class Gnome(Plant):
         tick({'name': f'Select all ({waiting})'}, 'None selected')
         # (named by the app's own number for the proposal, which is not the server's: found by code and person)
         boxes = atspi.find_all(a, 'toggle button', contains=f'{code} by Nadia Batch')
-        self.assertEqual(len(boxes), 3, [b.get_name() for b in boxes])
+        self.assertEqual(len(boxes), 4, [b.get_name() for b in boxes])
         names = [b.get_name() for b in boxes]
         for i, nm in enumerate(names):
             tick({'name': nm}, f'{i + 1} selected')
-        after = 'None selected' if waiting > 3 else 'Nothing waits for approval.'
+        after = '1 selected'        # (the held one is not approved, and stays ticked)
         for _ in range(5):          # (a press while the page is rebuilt after a sync is lost: again)
             try:
-                if atspi.find_all(a, 'button', name='Approve selected (3)'):
-                    atspi.click(atspi.find(a, 'button', name='Approve selected (3)', timeout=2))
+                if atspi.find_all(a, 'button', name='Approve selected (4)'):
+                    atspi.click(atspi.find(a, 'button', name='Approve selected (4)', timeout=2))
                 atspi.find(a, 'label', name=after, timeout=8)
                 break
             except AssertionError:
@@ -1515,6 +1520,10 @@ class Gnome(Plant):
                 break
             time.sleep(0.5)
         self.assertEqual([st[i] for i in mine], ['approved'] * 3)
+        time.sleep(3)       # (a sync round: had the batch approved the held one too, the server would know by now)
+        self.assertEqual({x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
+        atspi.find(a, 'label', contains='Approved 3 of 4.', timeout=10)
+        self.boss.req('POST', f'/api/submissions/{held}/reject', {})
         # two more: one ticked, Reject selected asks once, the other stays
         ids = [nadia.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'again ' + f}, 'base': {}}})['id']
                for f in ('near', 'area')]
@@ -1526,7 +1535,7 @@ class Gnome(Plant):
         time.sleep(3)
         atspi.click(atspi.find(a, 'button', name='Manage'))
         atspi.click(atspi.find(a, 'button', name='Approvals'))
-        atspi.find(a, 'toggle button', name=f'Select all ({waiting + 2 - 3})', timeout=30)
+        atspi.find(a, 'toggle button', name=f'Select all ({waiting + 2 - 4})', timeout=30)
         tick({'contains': f'{code} by Nadia Batch'}, '1 selected')
         atspi.click(atspi.find(a, 'button', name='Reject selected (1)', timeout=10))
         atspi.find(a, None, name='Reject 1 proposal?', timeout=10)

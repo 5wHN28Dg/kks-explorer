@@ -78,8 +78,17 @@ var
   pickBusy = false                  ## a batch is running (one proposal per turn of the message loop)
   lastSaid = ""                     ## the last batch's result, on the page until the next batch (the status line is one line)
 
+proc pickGone() =
+  ## the bar's controls went with their page (another page was opened, or this one is being made again)
+  if pickAll != nil and IsWindow(pickAll) == 0:
+    pickAll = nil
+    pickCount = nil
+    pickOk = nil
+    pickNo = nil
+
 proc pickShow() =
   let n = picked.len
+  pickGone()
   if pickAll == nil: return
   SendMessageW(pickAll, BM_SETCHECK, WPARAM(ord(n > 0 and n == pickSubs.len)), 0)
   pickCount.setText(if n > 0: $n & " selected" else: "None selected")
@@ -103,14 +112,23 @@ proc decideMany(w: Win, action: string) =
     # one question, in a window of the app's own: the button names the action, Cancel has the focus, Escape cancels
     # (standard buttons a screen reader and UI Automation reach as anywhere else in the app)
     let what = if chosen.len == 1: "1 proposal" else: $chosen.len & " proposals"
+    # The app's window takes no input while the question is open (as under any dialog): a second question, or the
+    # page left with the question still open, can't happen.
     var hw: HWND
-    let (h, p) = popup(w.hwnd, "Reject " & what & "?", 460, 220, escape = true)
+    let (h, p) = popup(w.hwnd, "Reject " & what & "?", 460, 220, proc () =
+      EnableWindow(w.hwnd, 1)
+      SetForegroundWindow(w.hwnd), escape = true)
     hw = h
+    EnableWindow(w.hwnd, 0)
     p.title("Reject " & what & "?")
     p.dim("Each one is rejected as its own Reject button does. The submitters see that it was rejected.")
     let ids = chosen.mapIt(it["id"].i)
-    let bs = p.buttons(("Cancel", proc () = DestroyWindow(hw)),
+    # (the app's window is enabled before the question goes: Windows would otherwise activate another app's)
+    let bs = p.buttons(("Cancel", proc () =
+                         EnableWindow(w.hwnd, 1)
+                         DestroyWindow(hw)),
                        ("Reject " & what, proc () =
+                         EnableWindow(w.hwnd, 1)
                          DestroyWindow(hw)
                          w.runBatch("reject", pickSubs.filterIt(it["id"].i in ids and it["id"].i in picked))))
     p.layout()
@@ -123,8 +141,7 @@ proc runBatch(w: Win, action: string, chosen: seq[JNode]) =
   if chosen.len == 0: return
   if pickBusy: return
   pickBusy = true
-  EnableWindow(pickOk, 0)
-  EnableWindow(pickNo, 0)
+  pickShow()       # (both buttons off while it runs; nothing if their page has gone)
   # one proposal per turn of the message loop, saying how far it got: the window stays live during a long batch
   var done, i = 0
   var held, competing, failed: seq[string]
@@ -139,7 +156,8 @@ proc runBatch(w: Win, action: string, chosen: seq[JNode]) =
       elif action == "approve" and id in pickCompeting:
         competing.add "#" & $id
       else:
-        if pickCount != nil and IsWindow(pickCount) != 0:
+        pickGone()
+        if pickCount != nil:
           pickCount.setText((if action == "approve": "Approving " else: "Rejecting ") & $i & " of " & $chosen.len & "…")
         try:
           discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
@@ -160,7 +178,7 @@ proc runBatch(w: Win, action: string, chosen: seq[JNode]) =
     if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
     lastSaid = msg
     w.toast(msg)
-    w.rebuildSide()
+    w.sideChanged()     # (not rebuildSide: the person may be typing on another page by now, #168)
   later(step)
 
 proc approvals(w: Win, p: Page) =
@@ -176,6 +194,9 @@ proc approvals(w: Win, p: Page) =
   pickChecks.setLen(0)
   pickSubs.setLen(0)
   pickAll = nil
+  pickCount = nil
+  pickOk = nil
+  pickNo = nil
   pickCompeting.setLen(0)
   for grp in groups:
     for k in grp["kinds"].elems:

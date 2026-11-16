@@ -218,7 +218,9 @@ class WebBatch(unittest.TestCase):
         self.assertEqual({S[i]['status'] for i in (ids[0], ids[3], held, *rivals)}, {'rejected'})
         self.assertEqual({S[i].get('note') for i in (ids[0], ids[3], held, *rivals)}, {'Not needed'})
         # cancelled: nothing happens
-        r = self.tom.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': codes[1], 'changes': {'near': 'again'}, 'base': {}}})
+        fresh = ['11LAB72AA51%d' % i for i in range(1, 5)]       # (codes nothing was approved for: nothing to clash with)
+        for i, c in enumerate(fresh): self.tag(c, 8 + i)
+        r = self.tom.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': fresh[3], 'changes': {'near': 'again'}, 'base': {}}})
         page.reload()
         page.locator('#pickAll').check()
         no.click()
@@ -230,7 +232,7 @@ class WebBatch(unittest.TestCase):
         # another tab opened while a batch runs (the bar is gone): the batch goes on to its end and says its result
         # (it stopped without a word at the next proposal, its count line being gone)
         more = [self.tom.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': c, 'changes': {'near': 'later'}, 'base': {}}})['id']
-                for c in codes[2:4]]
+                for c in fresh[:2]]
         page.reload()
         page.locator('#pickAll').check()
         expect(ok).to_have_text('Approve selected (3)')
@@ -243,6 +245,28 @@ class WebBatch(unittest.TestCase):
         page.unroute('**/api/submissions/*/approve', slow)
         S = self.subs()
         self.assertEqual({S[i]['status'] for i in (r['id'], *more)}, {'approved'})
+        # a marked tag whose code the admin corrected in its field, approved by a batch during which the page is made
+        # again (a sync does that): it is saved with the corrected code (the field was read when its turn came, by
+        # then holding the code as proposed again)
+        first = self.tom.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': fresh[2], 'changes': {'near': 'once more'}, 'base': {}}})['id']
+        time.sleep(1.1)       # (the marked tag is the newer one: the second one sent, after the page was made again)
+        mark = self.tom.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [900, 700, 930, 720],
+                                                                                 'kks': '11LAB72AA590', 'isa': '', 'note': ''}})['id']
+        page.evaluate("location.hash='#queue'")      # (no reload: WebKit logs a request cut off by one as a page error)
+        expect(page.locator(f'#ek-{mark}')).to_be_visible()
+        page.locator(f'#ek-{mark}').fill('11lab72aa591')
+        page.locator('#pickAll').check()
+        expect(ok).to_have_text('Approve selected (2)')
+        page.route('**/api/submissions/*/approve', slow)
+        # (the page is made again from inside the page, while the first approval is on its way: the handler above
+        # holds this script up meanwhile)
+        page.evaluate("() => { document.querySelector('#pickOk').click(); setTimeout(rebuild, 100) }")
+        expect(page.locator('#toast')).to_contain_text('Approved 2 of 2.', timeout=15000)
+        page.unroute('**/api/submissions/*/approve', slow)
+        S = self.subs()
+        self.assertEqual([S[first]['status'], S[mark]['status']], ['approved', 'approved'])
+        saved = [t['kks'] for t in self.boss.req('GET', '/api/state')['added_tags'] if t['kks'].startswith('11LAB72AA59')]
+        self.assertEqual(saved, ['11LAB72AA591'])
         self.assertEqual(errors, [])
         ctx.close()
 
@@ -283,6 +307,15 @@ class WebBatch(unittest.TestCase):
         expect(page.locator('#signups')).to_contain_text('Nobody is waiting.')
         self.assertEqual(asked, [])
         self.assertEqual(self.boss.req('GET', '/api/signups')['requests'], [])
+        # one request alone has no ticks: its heading has as many columns as its row (an empty first one moved
+        # "Name" over the username)
+        self.assertTrue(anon.req('POST', '/api/signup', {'code': CODE, 'full_name': 'Person dan', 'position': 'Operator', 'username': 'dan',
+                                                         'password': PW + ' dan', 'password2': PW + ' dan'}).get('ok'))
+        page.reload()
+        expect(page.locator('#signups h3')).to_have_text('Account requests (1)')
+        expect(page.locator('#signups input.supick')).to_have_count(0)
+        self.assertEqual(page.locator('#signups table tr').first.locator('th').count(), page.locator('#signups tr[data-user=dan] td').count())
+        expect(page.locator('#signups th').first).to_have_text('Name')
         self.assertEqual(errors, [])
         ctx.close()
 

@@ -1193,6 +1193,11 @@ class Windows(unittest.TestCase):
             r = nora.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'by nora ' + f}, 'base': {}}})
             self.assertEqual(r.get('status'), 'pending', r)
             mine.append(r['id'])
+        # a held one (its submitter saw notes "old", which the manager has changed since): the batch never approves it
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'notes': 'old'}, 'base': {}}})['status'], 'approved')
+        held = nora.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'notes': 'theirs'}, 'base': {'notes': 'old'}}})['id']
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'notes': 'newer'}, 'base': {'notes': 'old'}}})['status'], 'approved')
+        self.assertEqual({x['id']: x['status'] for x in nora.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
         waiting = len(self.boss.req('GET', '/api/submissions?status=open')['submissions'])
         self.join('cjoin.uia')
         self.check('copy.uia', self.show(code) + ['wait\tCopy\t20'])
@@ -1201,10 +1206,13 @@ class Windows(unittest.TestCase):
         self.check('sel0.uia', ['click\tManage', 'click\tApprovals', 'wait\tNone selected\t30',
                                 'toggle\tSelect all (%d)' % waiting, 'wait\t%d selected\t10' % waiting])
         self.screenshot('win-approvals-selected')
-        self.check('sel0b.uia', ['click\tApprove selected (%d)' % waiting, 'wait\t~Approved %d of %d.\t30' % (waiting, waiting),
-                                'wait\tNothing waits for approval.\t30'])
-        self.wait_server(lambda: all(s['status'] == 'approved' for s in nora.req('GET', '/api/submissions?status=all')['submissions']),
+        self.check('sel0b.uia', ['click\tApprove selected (%d)' % waiting, 'wait\t~Approved %d of %d.\t30' % (waiting - 1, waiting),
+                                'wait\tSelect all (1)\t30'])
+        self.wait_server(lambda: all(s['status'] == 'approved' for s in nora.req('GET', '/api/submissions?status=all')['submissions'] if s['id'] != held),
                          'Approve selected never reached the server', tries=80)
+        time.sleep(3)       # (a sync round: had the batch approved the held one too, the server would know by now)
+        self.assertEqual({s['id']: s['status'] for s in nora.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
+        self.boss.req('POST', f'/api/submissions/{held}/reject', {})
         ids = [nora.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'again ' + f}, 'base': {}}})['id']
                for f in ('near', 'area')]
         self.check('sel1.uia', ['click\t‹ Manage', 'click\tAccount', 'click\tSync now', 'sleep\t3000', 'click\t‹ Manage', 'click\tApprovals', 'wait\tSelect all (2)\t30',
