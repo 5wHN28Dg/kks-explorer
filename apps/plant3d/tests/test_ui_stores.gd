@@ -380,8 +380,20 @@ func _panel(tree: SceneTree) -> Array:
 			or ui.crew.describe(e, e._sm, {"work": null}, {"wait": {"until": "cpt2_wo_open"}}) != "Wait for the work order to be open (planned, not closed)" \
 			or ui.crew.describe(e, e._sm, {"work": null}, {"wait": {"until": "some_value"}}) != "Wait: some_value":
 		p.append("the crew panel's wait for a part: %s" % ui.crew.describe(e, e._sm, {"work": null}, wst))
+	if ui.crew.describe(e, e._sm, {"work": null}, {"wo": {"work": "$", "action": "notify"}, "else": 2}) != "Notify the work order":
+		p.append("the crew panel's work order step: %s" % ui.crew.describe(e, e._sm, {"work": null}, {"wo": {"work": "$", "action": "notify"}, "else": 2}))
+	# (A1) the focus goes to the step's own control, not to the copy row above the steps; to a Copy when alone
 	if wrow != null:
-		wrow.free()
+		var fbox := VBoxContainer.new()
+		fbox.add_child(wrow)
+		if ui.crew._first(fbox) == null or not String(ui.crew._first(fbox).name).begins_with("copy_part_"):
+			p.append("a task with only its copy row gives the focus nowhere")
+		var act := Button.new()
+		act.name = "the_step"
+		fbox.add_child(act)
+		if ui.crew._first(fbox) != act:
+			p.append("the focus goes to %s, not to the step's control under the copy row" % str(ui.crew._first(fbox)))
+		fbox.free()
 	# (C1–C3, A1) a part's number copied, or written on the request by a press; (K4) the levels say the state in words
 	_press(sp.body, "copy_pt_unit_a3")
 	if sp.last_copied != "WDP-PT-UNIT-A3":

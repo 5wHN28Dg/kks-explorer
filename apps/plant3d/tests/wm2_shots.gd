@@ -277,11 +277,10 @@ func _part4() -> void:
 				"started": true, "int": true, "owner": null, "act": null, "orig": null}
 		ui.crew.refresh()
 		await process_frame
-		var cur = ui.crew.body.find_child("copy_part_WDP-PT-UNIT-A3", true, false)
-		if cur == null:
-			for l in ui.crew.body.find_children("*", "Label", true, false):
-				if (l as Label).text.begins_with("▶"):
-					cur = l
+		var cur = null              # (the current step's line in view; its control, when it has one, under it)
+		for l in ui.crew.body.find_children("*", "Label", true, false):
+			if (l as Label).text.begins_with("▶"):
+				cur = l
 		var scr = ui.crew.body.get_parent()
 		if cur != null and scr is ScrollContainer:
 			await process_frame

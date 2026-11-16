@@ -24,6 +24,7 @@ const W = preload("res://ui/widgets.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Debrief = preload("res://ui/debrief.gd")
 const Discussions = preload("res://ui/discussions.gd")     # the discussion panel and its radio lines (REALISM.md §6.3.1)
+const WoPanel = preload("res://ui/wo_panel.gd")            # a work order step's words
 const StoresPanel = preload("res://ui/stores_panel.gd")    # the jump's rule, the store counter (REALISM.md §2.23)
 
 var ui                          # ui/plant_ui.gd
@@ -84,11 +85,18 @@ func open() -> void:
 			b.grab_focus.call_deferred()
 
 
+## The control the focus goes to in n: its first button or field that acts (the current step's, UI-UX-POLICY A1), a
+## part number's Copy button only when there is nothing else (the task's copy row sits above its steps).
 func _first(n: Node) -> Control:
+	var f := _first_of(n, false)
+	return f if f != null else _first_of(n, true)
+
+
+func _first_of(n: Node, copies: bool) -> Control:
 	for c in n.get_children():
-		if (c is Button and not c.disabled) or c is LineEdit:
+		if ((c is Button and not c.disabled) or c is LineEdit) and (copies or not String(c.name).begins_with("copy_part_")):
 			return c
-		var f := _first(c)
+		var f := _first_of(c, copies)
 		if f:
 			return f
 	return null
@@ -632,6 +640,8 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 				names.append(e._iso[key.x][1][key.y][0])
 			what += ": " + (", ".join(names) if not names.is_empty() else "none left")
 		return what
+	if s.has("wo"):                 # a work order's step in words (as the work order panel's buttons), not its record
+		return "%s the work order" % WoPanel.ACTION_WORDS.get(String(s["wo"].get("action", "")), "Update")
 	if s.has("issue"):              # the stores' steps (REALISM.md §2.23), in words
 		var ip := StoresPanel.part_of(e, String(s["issue"]))
 		return "Issue %d × %s at the counter against the work order" % [int(s["qty"]), ip.get("number", s["issue"])]
