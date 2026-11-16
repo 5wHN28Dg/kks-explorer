@@ -378,6 +378,7 @@ def close_steps():
 JOB = 'job_cond_p2_fix'
 END, TX, FIT, ISSUE = f'{JOB}_end', f'{JOB}_tx', f'{JOB}_fit', 'issue_cond_p2_fix'
 SWAP, SEEN = f'{JOB}_swap', 'issue_cond_p2_fix_seen'      # (part 4, 2026-11-16: the spare in hand first)
+ISSUE_DO = 'issue_cond_p2_fix_do'
 
 
 def tx_steps():
@@ -406,7 +407,9 @@ def swap_steps():
     transmitter the leads off, the wires
     lifted, the manifold's block valve shut and the transmitter vented through its flange, unbolted; the new one fitted
     (the part check), then its second half."""
-    return [{'go': STORE_FRONT}, {'work': 3, 'anim': 'write'}, {'go': {'kks': CP2}}, _hand('disconnect_dmm', 'dmm'),
+    return [{'go': STORE_FRONT}, {'work': 3, 'anim': 'write'}, {'go': {'kks': CP2}},
+            _hand('open_cover'),        # (as the readings left it, unless someone closed it while the job waited)
+            _hand('disconnect_dmm', 'dmm'),
             _hand('disconnect_hart', 'hart'), _hand('lift_wires', 'sd_term'), _hand('shut_block'),
             _hand('crack_vent', 'spanner_17'), {'work': 1}, _hand('remove_tx', 'spanner_17'),
             _hand('fit_tx', 'spanner_17'), {'choose': [[1, FIT]]}]
@@ -436,14 +439,19 @@ def tasks():
                   'steps': tx_steps()}, **kw),
             dict({'id': FIT, 'title': 'The new transmitter: wires, range, loop check', 'steps': fit_steps()}, **kw),
             {'id': ISSUE, 'title': 'Issue the spare transmitter against its work order', 'priority': 2, 'work': w,
+             # (part 4) the ledger first: a spare issued against the order and not yet fitted is not issued again,
+             # nor one once the failed transmitter is out (a call kept until the storekeeper's duty may come after
+             # the fitting, which empties the ledger)
              'steps': [{'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 4}},
-                       # (part 4: the ledger first; a spare issued against the order already is not issued again)
                        {'wait': {'issued': [SPARE, '$'], 'minutes': 1, 'else': 3}}, {'choose': [[1, SEEN]]},
-                       {'issue': SPARE, 'qty': 1, 'for': '$', 'else': 4}, {'work': 1, 'anim': 'write'},
+                       {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 5}},
+                       {'choose': [[1, ISSUE_DO]]}, {'choose': [[1, SEEN]]}]},
+            {'id': ISSUE_DO, 'title': 'Issue the spare transmitter against its work order', 'priority': 2, 'work': w,
+             'steps': [{'issue': SPARE, 'qty': 1, 'for': '$', 'else': 1}, {'work': 1, 'anim': 'write'},
                        {'order': SPARE}]},
             dict({'id': SWAP, 'title': 'The spare in hand: take the old transmitter off and fit the new one',
                   'steps': swap_steps()}, **kw),
-            {'id': SEEN, 'title': 'The spare is issued against the order already: note the request', 'priority': 2,
+            {'id': SEEN, 'title': 'No spare to issue: one is on the order already, or the failed one is replaced', 'priority': 2,
              'work': w, 'steps': [{'work': 1, 'anim': 'write'}]}]
 
 

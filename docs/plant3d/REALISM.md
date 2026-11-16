@@ -1426,18 +1426,25 @@ parts). Lead times are clock days (§2.1).
       issue (no second call while the first may still come), then a wait until a spare is on the shelf (no
       minutes: held through the nights with the permit's lock on, a jump passing) and the order open (the storekeeper
       issues only against an open one), the storekeeper called again, in front of the counter until the spare is
-      issued (no minutes: with nobody to issue it, the job is held there, the transmitter not taken off, until the
-      trainer issues it in free mode: the store's role is not played), then the swap, which starts at the counter
-      (again after a night's hold). The transmitter is taken off only with the spare in hand (its cover and the
-      meters' leads stay as the readings left them while the job waits); the look-alike handed over by a trainer is never offered by the NPC (it waits for the part
+      issued (no minutes: with nobody to issue it, the job is held, the transmitter not taken off, until the trainer
+      issues it in free mode: the store's role is not played; a held task resumes at its step, so the technician
+      waits where the next duty finds them), then the swap, which starts at the counter (the spare collected) and
+      takes the terminal cover off first (the readings left it off; someone may have closed it during a long
+      wait). The transmitter is taken off only with the spare in hand (its cover and the meters' leads stay as the
+      readings left them while the job waits); the look-alike handed over by a trainer is never offered by the NPC (it waits for the part
       its fitting needs), so `wrong_part` stays the trainee's lesson.
-    - **`issue_cond_p2_fix`** checks the ledger first: a minute's wait for the spare already issued against the order
-      goes, when it is, to `issue_cond_p2_fix_seen` (a minute's writing) instead of issuing a second one; else as
-      before.
-    - Two spares: an issue task that finds the spare in the ledger notes it instead; two calls waiting in the
-      storekeeper's queue run one after the other, so the second finds the first's spare. Not excluded by
-      construction: the ledger is the parts issued and not yet fitted, so a second call held up longer than the
-      whole swap (only a priority 1 task of the storekeeper's could) would issue another. A fitting is made under
+    - **`issue_cond_p2_fix`** checks first: a minute's wait for the spare already issued against the order (and not yet
+      fitted), then a minute's wait for the failed sensor still in (`cpt2_sensor_module_fail`: a call kept until the
+      storekeeper's duty may come after the fitting, which empties the ledger); either way out goes to
+      `issue_cond_p2_fix_seen` (a minute's writing) instead of a second spare. The issue itself, the writing and the
+      order up to the max are `issue_cond_p2_fix_do`, chosen when both checks pass (or straight away when the order
+      is not open: refused `work` there, as before).
+    - Two spares: an issue task finds the first spare in the ledger until it is fitted, and the failed sensor gone
+      after; so a second call, queued, held up or kept to the storekeeper's duty, issues none. A wait's clock runs
+      through a night's hold (§17.10 keeps the step, not the wait's start), so the hour's waits at the counter may
+      pass at once on resuming: the checks above make that harmless. If the second call's issue is refused (the
+      trainer drew the spare elsewhere in between), the technician waits at the last step until the trainer issues
+      one. A fitting is made under
       the code's work whose permit is accepted; the permits of transmitter 2's works share an isolation, so a
       second one is refused while the job's is open (the day's calibration's request is, in the forks).
     - Left as it is (the user, 2026-11-16): after the issue drops the spare to its reorder point, the storekeeper's

@@ -210,8 +210,13 @@ class Job(unittest.TestCase):
         # the ledger first: a spare issued against the order already goes to the note, never a second issue
         self.assertEqual(iss[1], {'wait': {'issued': spare, 'minutes': 1, 'else': 3}})
         self.assertEqual(iss[2], {'choose': [[1, train_hands.SEEN]]})
-        self.assertEqual(iss[3], {'issue': train_hands.SPARE, 'qty': 1, 'for': '$', 'else': 4})
-        self.assertEqual(iss[-1], {'order': train_hands.SPARE})
+        self.assertEqual(iss[3], {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 5}})
+        self.assertEqual(iss[4], {'choose': [[1, train_hands.ISSUE_DO]]})
+        self.assertEqual(iss[5], {'choose': [[1, train_hands.SEEN]]})
+        do = self.tasks[train_hands.ISSUE_DO]['steps']
+        self.assertEqual(do[0], {'issue': train_hands.SPARE, 'qty': 1, 'for': '$', 'else': 1})
+        self.assertEqual(do[-1], {'order': train_hands.SPARE})
+        self.assertEqual(self.tasks[train_hands.SWAP]['steps'][3]['hand'], 'open_cover')
         # only the storekeeper issues (the validator's authority rule): the issue task is called for the store role
         self.assertTrue(all(s['call']['role'] == 'store' for s in tx if 'call' in s))
 
@@ -273,6 +278,20 @@ class SlowStorekeeper(unittest.TestCase):
 
     def test_two_calls_one_spare(self):
         self.assertEqual(self.spares(P.check_dir(DATA)), 1)
+
+    def test_a_call_after_the_fitting_issues_none(self):
+        """A call kept until the storekeeper's duty (or held up) that comes after the fitting: the ledger is empty
+        then, the failed sensor gone; no second spare."""
+        b = P.check_dir(DATA)
+        e = P.Engine(b, 'shift_fail')
+        while e.step_no < 40000 and not any(x[1] == 'hand' and x[3] == 'fit_tx' and x[6] == 'done' for x in e.events):
+            e.step()
+        self.assertTrue(e.staff.assign(['store'], train_hands.ISSUE, 2, None, 'wo_cond_p2_fix', None, None))
+        for _ in range(3000):
+            e.step()
+        done = [x for x in e.events if x[1] == 'issue' and x[2] == train_hands.SPARE and x[6] == 'done']
+        self.assertEqual(len(done), 1, done)
+        self.assertTrue(any(x[1] == 'task' and x[3] == train_hands.SEEN and x[4] == 'done' for x in e.events))
 
     def test_the_old_issue_task_issued_two(self):
         """The same with the issue task as it was before part 4 (no ledger check): the test sees the double issue."""
