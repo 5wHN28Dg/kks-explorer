@@ -446,12 +446,12 @@ def tasks():
                        {'wait': {'issued': [SPARE, '$'], 'minutes': 1, 'else': 3}}, {'choose': [[1, SEEN]]},
                        {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 5}},
                        {'choose': [[1, ISSUE_DO]]}, {'choose': [[1, SEEN]]}]},
-            {'id': ISSUE_DO, 'title': 'Issue the spare transmitter against its work order', 'priority': 2, 'work': w,
+            {'id': ISSUE_DO, 'title': 'Hand over the spare transmitter and write it on the work order', 'priority': 2, 'work': w,
              'steps': [{'issue': SPARE, 'qty': 1, 'for': '$', 'else': 1}, {'work': 1, 'anim': 'write'},
                        {'order': SPARE}]},
             dict({'id': SWAP, 'title': 'The spare in hand: take the old transmitter off and fit the new one',
                   'steps': swap_steps()}, **kw),
-            {'id': SEEN, 'title': 'No spare to issue: one is on the order already, or the failed one is replaced', 'priority': 2,
+            {'id': SEEN, 'title': 'No spare to issue: one is on the work order already, or the failed one is replaced', 'priority': 2,
              'work': w, 'steps': [{'work': 1, 'anim': 'write'}]}]
 
 

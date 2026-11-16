@@ -277,7 +277,9 @@ func refresh(spread := false) -> void:
 		for sid in ui.model.scenarios:
 			if ui.model.scenarios[sid].has("staff"):
 				var s := sid as String
-				body.add_child(W.button("Start: " + ui.model.scenarios[s].get("title", s), func(): ui.start_shift(s)))
+				var sb := W.button("Start: " + ui.model.scenarios[s].get("title", s), func(): ui.start_shift(s))
+				sb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART     # (UI-UX-POLICY L2)
+				body.add_child(sb)
 		ui.phone.build(body)
 		return
 	_roles(e, sm)
@@ -512,8 +514,20 @@ func _task(e, sm, cur: Dictionary) -> void:
 		var mark := "▶ " if k == cur["step"] else ("✓ " if k < cur["step"] else "· ")
 		var l := W.label(mark + describe(e, sm, cur, steps[k]), 18, Color.WHITE if k == cur["step"] else W.DIM)
 		body.add_child(l)
+		var cr = step_copy(e, steps[k]) if k == cur["step"] else null
+		if cr != null:
+			body.add_child(cr)
 		if k == cur["step"]:
 			_controls(e, sm, cur, steps[k])
+
+
+## The part number a step waits for, as a row of one Copy button (UI-UX-POLICY C1), or null.
+func step_copy(e, st: Dictionary):
+	var wi = st["wait"].get("issued") if st.has("wait") and typeof(st["wait"]) == TYPE_DICTIONARY else null
+	if wi == null:
+		return null
+	var pn: String = StoresPanel.part_of(e, String(wi[0])).get("number", "")
+	return StoresPanel.copy_row(ui, [pn] if pn != "" else [], "copy_part_")
 
 
 ## A step in words.
@@ -556,7 +570,7 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 	if s.has("wait"):
 		if s["wait"].has("issued"):     # (REALISM.md §2.24)
 			var sp := StoresPanel.part_of(e, String(s["wait"]["issued"][0]))
-			return "Wait for %s issued against the work order" % (sp.get("number", s["wait"]["issued"][0]))
+			return "Wait for %s to be issued against the work order" % (sp.get("number", s["wait"]["issued"][0]))
 		return "Wait: " + (str(s["wait"].get("until")) if s["wait"].has("until") else "permit %s" % str(s["wait"]["permit"]))
 	if s.has("meet"):
 		return "Meet in the %s" % String(s["meet"]["room"]).replace("_", " ")
@@ -592,6 +606,13 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 				names.append(e._iso[key.x][1][key.y][0])
 			what += ": " + (", ".join(names) if not names.is_empty() else "none left")
 		return what
+	if s.has("issue"):              # the stores' steps (REALISM.md §2.23), in words
+		var ip := StoresPanel.part_of(e, String(s["issue"]))
+		return "Issue %d × %s at the counter against the work order" % [int(s["qty"]), ip.get("number", s["issue"])]
+	if s.has("order"):
+		var op := StoresPanel.part_of(e, String(s["order"]))
+		return ("Order %d × %s" % [int(s["qty"]), op.get("number", s["order"])]) if s.has("qty") \
+				else "Order %s up to its maximum stock" % op.get("number", s["order"])
 	return str(s)
 
 
@@ -693,7 +714,10 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	if s.has("choose"):
 		for k in s["choose"].size():
 			var kk: int = k
-			row.add_child(W.button(sm.tasks[s["choose"][k][1]]["title"], func(): ui.inputs.pick(kk)))
+			# (a whole line each, wrapped: a long title must not widen the panel, UI-UX-POLICY L2)
+			var cb := W.button(sm.tasks[s["choose"][k][1]]["title"], func(): ui.inputs.pick(kk))
+			cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			body.add_child(cb)
 	if s.has("ack") and cur["alarm"] != null:
 		var a: String = cur["alarm"]
 		row.add_child(W.button("Acknowledge", func(): ui.ack(a)))

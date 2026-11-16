@@ -363,6 +363,20 @@ func _panel(tree: SceneTree) -> Array:
 	var tr: Rect2 = ui._toast.get_global_rect()
 	if tr.intersects(sp.get_global_rect()) or tr.end.y > sp.get_viewport_rect().end.y:
 		p.append("a notice covers the stores panel or leaves the screen: %s, panel %s" % [str(tr), str(sp.get_global_rect())])
+	# (F2) the crew panel says the stores' steps in words, never as records
+	var cdesc: Array = [ui.crew.describe(e, e._sm, {"work": null}, {"issue": "pt_unit_a3", "qty": 1, "for": "$"}),
+			ui.crew.describe(e, e._sm, {"work": null}, {"order": "pt_unit_a3"}),
+			ui.crew.describe(e, e._sm, {"work": null}, {"order": "pt_unit_a3", "qty": 2})]
+	if cdesc != ["Issue 1 × WDP-PT-UNIT-A3 at the counter against the work order",
+			"Order WDP-PT-UNIT-A3 up to its maximum stock", "Order 2 × WDP-PT-UNIT-A3"]:
+		p.append("the crew panel's stores steps: %s" % str(cdesc))
+	var wst := {"wait": {"issued": ["pt_unit_a3", "$"]}}
+	var wrow = ui.crew.step_copy(e, wst)
+	if ui.crew.describe(e, e._sm, {"work": null}, wst) != "Wait for WDP-PT-UNIT-A3 to be issued against the work order" \
+			or wrow == null or wrow.find_child("copy_part_WDP-PT-UNIT-A3", true, false) == null:
+		p.append("the crew panel's wait for a part: %s" % ui.crew.describe(e, e._sm, {"work": null}, wst))
+	if wrow != null:
+		wrow.free()
 	# (C1–C3, A1) a part's number copied, or written on the request by a press; (K4) the levels say the state in words
 	_press(sp.body, "copy_pt_unit_a3")
 	if sp.last_copied != "WDP-PT-UNIT-A3":
