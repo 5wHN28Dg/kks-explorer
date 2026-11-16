@@ -488,7 +488,7 @@ def scenario(base):
     return s
 
 
-FAIL_SEED, NOSPARE_SEED = 13, 15     # (WM2: each draws the failed sensor among the six causes, weights 1)
+FAIL_SEED, NOSPARE_SEED, ABSENT_SEED = 13, 15, 21     # (WM2: each draws the failed sensor among the six causes, weights 1)
 
 
 def fail_scenario(base):
@@ -523,6 +523,7 @@ def absent_scenario(base):
     s['id'] = 'shift_fail_absent'
     s['title'] = 'Day shift: a condenser transmitter failed, the storekeeper away (choose a role)'
     s['staff'] = dict(s['staff'], absent=['store1'])
+    s['world'] = dict(s['world'], seed=ABSENT_SEED)     # (every scenario its own world seed)
     return s
 
 

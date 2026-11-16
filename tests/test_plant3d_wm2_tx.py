@@ -135,6 +135,7 @@ class Weights(unittest.TestCase):
             _, r = draw(stream(world_seed(sc), TAGS['causes'], 'cond_p2_low'))
             self.assertEqual(CAUSES[(r * 6) >> 24], 'failed', sid)
         self.assertEqual(json.loads(F['scenarios/shift_nospare.json'].decode())['stock'], {train_hands.SPARE: 0})
+        self.assertEqual(json.loads(F['scenarios/shift_fail_absent.json'].decode())['staff']['absent'], ['store1'])
 
 
 class Diagnosis(unittest.TestCase):
