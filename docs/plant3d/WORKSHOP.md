@@ -120,7 +120,8 @@ A part kind's Workshop data comes from two places, joined by the builder:
 - **the generator** (`kit/parts_*.gd`, R5): everything that is geometry or depends on the parameters: the
   components, their pivots and boxes, explode directions and distances, fastener positions, anchors, flow-path
   points, symmetry for snapping;
-- **the data file** `data/plant3d/workshop/<part>.json`: everything that is words, order or choice: names, what
+- **the data file** `data/plant3d/workshop/<part>.json`: everything that is words, order or choice: the kind's
+  title (`title`, at most 60 characters, shown in the Workshop's title bar and lists), names, what
   each does, materials as text, sealing, the assembly order and its sentences, the cutaway, which parts the X-ray
   takes, the bench model it runs, the sources.
 
@@ -1097,6 +1098,55 @@ addition (both engines, vectors) made in K6.
   sliver, the tools off screen) for every kind, and their text not fitting at 150 %, the step line without a panel behind it and the titles
   made from the kinds' ids: on main before this pull request, filed as #388-#391 (and #392: the policy's frame rule
   against §8's for the Workshop).
+
+### 6.12 The plate and shell-and-tube heat exchangers (K6, fifth pull request)
+
+**As built (K6, 2026-11-14).**
+- **The plate heat exchanger** (`kit/parts_heat.gd plate_hx`, `_phe_*`; the data file names the plant's plate heat
+  exchanger, 300 plates, 2.5 m): the frame plate with its four nozzles, the pressure plate, the carrying and guiding
+  bars, the support column, the plate package as End plate II, the channel plates and End plate I (46 plates drawn, a
+  picture), the four tightening bolts and the two locking bolts. 8 components, 2 fastener groups, 10 guided steps,
+  1,940 triangles (the plant's 1,812). The order is Alfa Laval's (the Grundfos by Alfa Laval maintenance manual: opening
+  pp. 45-48, closing pp. 50-52, plates p. 55, the bolt layout p. 35).
+- **The shell-and-tube heat exchanger** (`shell_tube_hx`, `_ste_*`, horizontal; the plant has none, so the data file
+  names the kit's defaults, 1.2 m by 5 m): a removable bundle with bonnets at both ends and a packed floating
+  tubesheet with a lantern ring (TEMA BEW), the type the generator draws and the public manuals take apart: the shell
+  and its saddles, the sealed bundle (the stationary and floating tubesheets, 117 tubes, five segmental baffles, the
+  tie rods), the inner packing rings, the lantern ring, the outer packing rings, the rear and front bonnets and the
+  front bonnet's 32 studs. 12 components, 1 fastener group, 13 guided steps, 7,342 triangles (the plant's 2,844). The
+  order is the Xylem Standard Xchange CPK manual's (items 3-19) with API Heat Transfer's Basco guide as a second source.
+- **The plant unchanged** (`test_kit_frozen`); what is simplified and the trees' limits are in the kit README.
+- **The UI audit** (docs/UI-UX-POLICY.md) brought two fixes for every kind: each data file has a `title` ("Plate heat
+  exchanger", "Horizontal pump"), which the Workshop's title bar and lists show instead of a name made from the id
+  (#391; `test_workshop` and `test_plant3d_workshop` check every kind has one); and the panels' root fills the screen
+  (#388: it kept zero offsets, so the parts tree was a sliver and the tools were off screen; `test_workshop_mode` checks
+  its size).
+- **New checks** (`tests/test_workshop.gd`): `_packs` (the plates lie square to the line from the pressure plate to
+  the frame plate and follow each other plate by plate without a gap between their faces; every bolt runs along that line beside the
+  plates, from beyond the pressure plate's outer face to beyond the frame plate's) and `_bundles` (every tube runs
+  straight along the bundle's line from the stationary tubesheet's outer face to the floating one's, inside the floating
+  tubesheet's rim and the shell's bore). Each made to fail once: a gap of 10 mm before End plate I, the locking bolts
+  0.3 m short, the tubes ending 50 mm before the floating tubesheet.
+- **The Note 9** (`lean+vis`, a test-signed release build of the pull request's head with the title and panel fixes,
+  a fresh install for each kind, `probe=1`, SAMPLE=1, battery 26.3 / 29.0 °C at the start, the kernel reclaiming in
+  0.33 / 0.00 % of the samples; the Workshop's own rule, §8). The panels are drawn now (#388), so the walks before the
+  fix (99.75 / 99.84 % with the panels collapsed) were made again; the first shell-and-tube walk after it had the
+  kernel reclaiming in 1.46 % of its samples and was walked again:
+
+  | | plate heat exchanger | shell-and-tube |
+  |---|---|---|
+  | first entry (after the plant's warm-up) | 126 ms (load 45 ms) | 128 ms (load 61 ms) |
+  | second entry | 28 ms | 29 ms |
+  | back to the plant | 12–15 ms | 17 ms |
+  | guided steps | all walked, 0 loose | all walked, 0 loose |
+  | longest frame / over 100 ms | 55.1 ms / 0 | 41.9 ms / 0 |
+  | frames at ≥ 30 fps | **99.84 %** | **99.73 %** |
+  | median / p95 frame | 17.0 / 36.7 ms | 16.9 / 36.5 ms |
+  | draw calls in the Workshop (most) | 117 | 125 |
+  | peak PSS | 1,163 MB | 1,167 MB |
+  | pipelines after the first 5 s | 0 | 0 |
+
+  The APK is 148.8 MB (the third pull request's was 148.5 MB).
 
 ## 7. Shaders and cut faces
 

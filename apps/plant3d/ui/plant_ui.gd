@@ -514,6 +514,8 @@ func _workshop_settings(box: VBoxContainer) -> void:
 	box.add_child(row)
 	row.add_child(W.label("Workshop  ", 20, Color.WHITE, false))
 	var WS = load("res://workshop/workshop.gd")
+	kinds = kinds.duplicate()
+	kinds.sort_custom(func(x, y): return WS.title_of(x).naturalnocasecmp_to(WS.title_of(y)) < 0)   # by the names shown
 	for k in kinds:
 		var b := W.button(WS.title_of(k), func(): open_workshop(k))
 		b.name = "workshop_" + k

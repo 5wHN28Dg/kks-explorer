@@ -301,7 +301,7 @@ ASSEMBLY = [
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'fan_axial',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'fan_axial', 'title': 'Cooling tower fan',
         'params': PARAMS,
         'sources': SOURCES + motor.SOURCES,
         'components': components(),

@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "valve_gate",
+ "title": "Gate valve",
  "params": {"dn": 300, "actuator": "manual"},
  "sources": [
   {"id": "crane_csv", "cite": "Crane ChemPharma & Energy, Pacific CSV cast steel valves, installation, operation and maintenance manual CPE-PACIFIC-CSV-IOM-EN-LT (2018): gate valve figure p. 12, operating the handwheel §2.1 p. 13 (the handwheel on the stem nut under the handwheel nut), parts list, disassembly and reassembly p. 14", "url": "https://cranecpe.com/wp-content/uploads/CPE-PACIFIC-CSV-IOM-EN-LT-2018_23_10.pdf"}

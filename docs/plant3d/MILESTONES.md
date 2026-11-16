@@ -340,6 +340,8 @@ APK 147.8 MB.
 
 **K6, the mirror (2026-11-14):** the card's Workshop opens the plant's equipment on its bench, read only (WORKSHOP.md §6.5): the bench's `mirror` entries resolved by the equipment's own bindings (units made the bench's), the plant's machine state and values written over step 2's in both engines (`set_mirror`, with vectors; a mirrored machine moves with the plant only and the bench's trips wait while it is mirrored), no ops or faults offered; frozen as left in single play, following the plant in a session. Left for the user: what the bindings don't carry stays the bench's own (the gas turbine's flame, the steam turbine's load).
 
+**K6, fifth pull request (2026-11-15):** the plate heat exchanger (Alfa Laval's order) and the shell-and-tube heat exchanger with a packed floating tubesheet (Xylem's CPK and the Basco guide) in the Workshop (WORKSHOP.md §6.12), the plant byte for byte unchanged, new checks of the plate pack and the tube bundle. The UI audit's fixes for every kind: the kinds' titles from their data files and the Workshop's panels filling the screen. The Note 9: first entry 126 / 128 ms, 99.84 / 99.73 % of frames at ≥ 30 fps, no frame over 100 ms, at most 117 / 125 draw calls, peak PSS 1,163 / 1,167 MB; APK 148.8 MB. Left in K6: the condenser.
+
 **K5a as built (2026-11-08):** the gas turbine's insides for the plant's first instance: 84 components, 2 fastener
 groups (the compressor casing's 40 studs replacing the plant's stand-ins, the coupling's 12 bolts `beyond`), 86 guided
 steps in a major inspection's order, 27,868 triangles, a public source per subassembly; the plant byte for byte

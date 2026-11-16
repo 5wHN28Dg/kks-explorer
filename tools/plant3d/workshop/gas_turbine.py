@@ -367,7 +367,7 @@ def assembly():
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'gas_turbine',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'gas_turbine', 'title': 'Gas turbine',
         'context': ['axis_z', 'shaft_lo', 'shaft_hi'],
         'sources': SOURCES,
         'components': components(),

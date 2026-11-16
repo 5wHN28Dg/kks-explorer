@@ -107,7 +107,7 @@ ASSEMBLY = [
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'valve_butterfly',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'valve_butterfly', 'title': 'Butterfly valve',
         'params': PARAMS,
         'sources': SOURCES,
         'components': components(),

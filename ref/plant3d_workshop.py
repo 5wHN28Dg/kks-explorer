@@ -45,9 +45,11 @@ def check(w, kit=None, where='workshop', parts=None):
     {part, components, fasteners, steps, sources}."""
     from ref import plant3d as P
     from ref.plant3d import PlantText
-    keys(w, ('format', 'version', 'part', 'sources', 'components'), ('params', 'context', 'fasteners', 'assembly', 'views'),
+    keys(w, ('format', 'version', 'part', 'sources', 'components'), ('title', 'params', 'context', 'fasteners', 'assembly', 'views'),
          where)
     need(w['format'] == FORMAT, 'bad_format', f'{where}.format: {FORMAT}')
+    if 'title' in w:   # the kind's name in the Workshop's title and lists (else made from its id)
+        words(w['title'], f'{where}.title', 60)
     need(w['version'] == VERSION and type(w['version']) is int, 'bad_version', f'{where}.version: {VERSION}')
     part = w['part']
     need(isinstance(part, str) and ID.fullmatch(part) is not None, 'bad_id', f'{where}.part')

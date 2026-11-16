@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "pressure_transmitter",
+ "title": "Pressure transmitter",
  "sources": [
   {"id": "r3051", "cite": "Emerson, Rosemount 3051 Pressure Transmitter with HART Protocol, reference manual 00809-0100-4007 rev. BA (2017): §3.5 integral manifolds, §4.3 LCD display, §6.4 disassembly and §6.5 reassembly procedures, appendix A spare parts (the LCD display cover comes with its window)", "url": "https://core.instrumart.com/assets/rosemount_3051-420ma_manual.pdf"}
  ],
