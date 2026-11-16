@@ -49,6 +49,8 @@ proc drawingsShape(w: Win): seq[string] =
 
 proc drawingsTab(w: Win, p: Page) =
   var results: seq[Tag]
+  var marks: seq[string]        ## each result's photo coverage ("" = no code: no mark)
+  var shownRows: seq[string]
   var resList: HWND
   proc idAt(i: int): string = results[i].id
   proc fill(q: string, keep = false) =
@@ -60,10 +62,16 @@ proc drawingsTab(w: Win, p: Page) =
     let was = if keep and cur >= 0 and cur < results.len: idAt(cur) else: ""
     results = if q.strip.len >= 2: w.m.search(q.strip) else: @[]
     var rows: seq[string]
+    # each result's photo mark, and the same in words at the end of its text (what a screen reader reads)
+    let covers = if results.len > 0: w.m.photoCovers else: initTable[string, string]()
+    marks.setLen(0)
     for t in results:
       let (ok, si) = w.m.sheetById(t.sheet)
-      rows.add (if t.full.len > 0: t.full else: "(unread)") & "   " & w.m.kindName(t) & " · " & (if ok: si.name else: t.sheet)
+      marks.add (if t.full.len > 0: covers.getOrDefault(t.full, "none") else: "")
+      rows.add (if t.full.len > 0: t.full else: "(unread)") & "   " & w.m.kindName(t) & " · " & (if ok: si.name else: t.sheet) &
+               (if t.full.len > 0: " · " & photoStateWords(marks[^1]) else: "")
     if q.strip.len >= 2 and rows.len == 0: rows = @["Nothing found"]
+    shownRows = rows
     if keep:
       resList.updateRows(rows)
       var ids: seq[string]
@@ -74,7 +82,11 @@ proc drawingsTab(w: Win, p: Page) =
   search = p.field("Search equipment by KKS code or description", "", onChange = proc () = fill(search.text))
   sendText(search, EM_SETCUEBANNER, 1, "e.g. LAB70AA501 or feed water")
   # the select mode: a result toggles its tag (the keyboard's way to select several)
-  resList = p.list(@[], 180, onActivate = (proc (i: int) =
+  resList = p.pictureList(@[], (proc (dc: HDC, r: RECT, item: int, selected: bool) =
+    if item < 0 or item >= shownRows.len: return
+    let mark = if item < marks.len: marks[item] else: ""
+    drawRow(dc, r, shownRows[item], selected, (if mark.len > 0: px(26) else: px(6)))
+    if mark.len > 0: drawPhotoMark(dc, r, mark, selected)), 180, onActivate = (proc (i: int) =
     if i >= results.len: return
     if w.picking:
       # the result's code joins (or leaves) the selection; the drawing stays (equipment in one place is often on

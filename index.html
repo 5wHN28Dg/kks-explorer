@@ -147,7 +147,18 @@ dt{color:var(--muted)} dd{margin:0}
 .sysrow{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;padding:6px 4px 6px 16px;border:0;border-bottom:1px solid var(--chrome3);background:none;color:inherit;font:inherit;cursor:pointer}
 .sysrow:hover,.sysrow:focus-visible{background:var(--chrome3)}
 .sysrow .mono{flex:none} .sysrow .d{flex:1;min-width:0;color:var(--muted);font-size:12.5px}
-.sysdot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--pc);align-self:center}
+/* the photo mark beside a code (search results, equipment by system): the coverage colour AND a shape of its own, so it
+   reads without colour: none = an empty ring, equipment only = a half-filled disc, tag plate only = a filled square,
+   both = a filled disc. A thin line in the text colour around it keeps the shape at 3:1 on any theme (amber alone
+   does not reach it on a light background). */
+.pmark{flex:none;display:inline-block;box-sizing:border-box;width:11px;height:11px;border:2px solid var(--pc);border-radius:50%;background:var(--pc);box-shadow:0 0 0 1px currentColor;align-self:center;forced-color-adjust:none}
+.pmark.p-none{background:none}
+.pmark.p-equipment{background:linear-gradient(90deg,var(--pc) 50%,transparent 50%)}
+.pmark.p-plate{border-radius:1px}
+@media (forced-colors:active){.pmark{box-shadow:0 0 0 1px CanvasText}}
+.res .k .pmark{margin-right:7px;vertical-align:-1px}
+.res.legend .pmark{margin:0 4px 0 8px;vertical-align:-1px}
+.res.legend,.res.legend:hover{cursor:default;background:none;color:var(--muted);font-size:12px}
 /* coverage: bars in the photo coverage colours, each with its numbers in words beside it */
 .covbar{flex:none;display:flex;width:56px;height:10px;border:1px solid var(--muted);border-radius:2px;overflow:hidden;align-self:center;background:var(--chrome)}
 .covbar span{display:block;background:var(--pc)} .covbar.wide{width:120px;margin:5px 0 3px}

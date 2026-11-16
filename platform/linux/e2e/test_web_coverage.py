@@ -26,6 +26,54 @@ class WebCoverage(tws.WebSystems):
     def text(self, page, sel):
         return re.sub(r'\s+', ' ', page.text_content(sel)).strip()
 
+    def search_marks(self, page, name):
+        """each search result shows its code's photo coverage: a mark with the coverage colour and a shape of its own
+        (none a ring, equipment only a half disc, tag plate only a square, both a disc), the same in words for screen
+        readers, and a last line saying what the marks mean (not a result)"""
+        page.evaluate("""STATE.photos = [{id: 'p1', kks: '11LAB70AA503', caption: 'the valve'},
+            {id: 'p2', kks: '11LAB70AA504', caption: 'Tag plate'}, {id: 'p3', kks: '11LAB71AP001', caption: ''},
+            {id: 'p4', kks: '11LAB71AP001', caption: 'Tag plate · north side'}]""")
+        page.fill('#q', 'LAB7')
+        page.wait_for_function("() => document.querySelectorAll('#results .res[id^=res-]').length >= 5")
+        got = page.evaluate("""[...document.querySelectorAll('#results .res[id^=res-]')].map(r => {
+            const m = r.querySelector('.pmark'), c = m && getComputedStyle(m);
+            return [r.querySelector('.k').firstChild === m ? r.querySelector('.k').childNodes[1].textContent : r.querySelector('.k').textContent.trim(),
+                    m ? m.className : '', m ? m.getAttribute('aria-hidden') : '', r.querySelector('.vh')?.textContent || '',
+                    c ? [c.borderTopLeftRadius, c.backgroundImage !== 'none', c.backgroundColor !== 'rgba(0, 0, 0, 0)', c.boxShadow !== 'none'].join() : '']})""")
+        by = {}
+        for code, cls, hidden, words, look in got:
+            if cls: self.assertEqual(hidden, 'true', code)
+            by.setdefault(code, (cls, words, look))
+        self.assertEqual(by['11LAB70AA501'][:2], ('pmark p-none', ' · no photos'), name)
+        self.assertEqual(by['11LAB70AA503'][:2], ('pmark p-equipment', ' · equipment photo only'), name)
+        self.assertEqual(by['11LAB70AA504'][:2], ('pmark p-plate', ' · tag plate photo only'), name)
+        self.assertEqual(by['11LAB71AP001'][:2], ('pmark p-both', ' · equipment and tag plate photos'), name)
+        # four shapes, told apart without colour: (corner radius, half fill, filled), each with the outline
+        looks = {k: by[k][2] for k in ('11LAB70AA501', '11LAB70AA503', '11LAB70AA504', '11LAB71AP001')}
+        self.assertEqual(len(set(looks.values())), 4, looks)
+        self.assertTrue(all(v.endswith('true') for v in looks.values()), looks)
+        self.assertEqual(looks['11LAB70AA501'].split(',')[1:3], ['false', 'false'], looks)   # the ring: nothing inside
+        self.assertEqual(looks['11LAB70AA503'].split(',')[1], 'true', looks)                 # half filled
+        self.assertNotEqual(looks['11LAB70AA504'].split(',')[0], looks['11LAB71AP001'].split(',')[0], looks)  # square, disc
+        # what the marks mean: the last line, which the keyboard can't land on or pick
+        legend = page.locator('#results #resLegend')
+        self.assertEqual(re.sub(r'\s+', ' ', legend.text_content()),
+                         'Photos:no photosequipment photo onlytag plate photo onlyequipment and tag plate photos')
+        self.assertEqual(legend.get_attribute('aria-disabled'), 'true')
+        self.assertEqual(legend.locator('.pmark').count(), 4)
+        page.focus('#q')
+        for _ in range(70): page.keyboard.press('ArrowDown')
+        self.assertRegex(page.get_attribute('#q', 'aria-activedescendant'), r'^res-\d+$')
+        self.assertEqual(legend.get_attribute('aria-selected'), 'false')
+        page.screenshot(path=os.path.join(SHOTS, 'search-photos-' + name + '.png'))
+        legend.click()                       # not a result: nothing opens, the list stays
+        self.assertTrue(page.is_visible('#results'))
+        # a result without a code has no mark; nothing found has no legend
+        page.fill('#q', 'zzzz')
+        page.wait_for_function("() => document.querySelector('#results').textContent.includes('No match')")
+        self.assertEqual(page.locator('#results .pmark').count(), 0)
+        page.keyboard.press('Escape')
+
     def run_engine(self, name):
         # each engine starts from the fixture's places: AA501 in the location list; earlier engines' edits are undone
         boss = Client(self.base)
@@ -133,6 +181,7 @@ class WebCoverage(tws.WebSystems):
             self.assertFalse(page.is_visible('#covDrawer'))
             self.assertEqual(page.evaluate("document.activeElement.id"), 'covBtn')
             self.assertEqual(btn.get_attribute('aria-expanded'), 'false')
+            self.search_marks(page, name)
             browser.close()
             self.assertEqual(errors, [], name)
 

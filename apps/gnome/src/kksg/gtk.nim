@@ -479,6 +479,8 @@ proc gtk_list_box_remove_all*(l: W) {.importc, header: HA.}
 proc gtk_list_box_set_selection_mode*(l: W, m: cint) {.importc, header: HA.}
 proc gtk_list_box_row_new*(): W {.importc, header: HA.}
 proc gtk_list_box_row_set_child*(r, c: W) {.importc, header: HA.}
+proc gtk_list_box_row_set_activatable*(r: W, v: cint) {.importc, header: HA.}
+proc gtk_list_box_row_set_selectable*(r: W, v: cint) {.importc, header: HA.}
 proc gtk_list_box_row_get_index*(r: W): cint {.importc, header: HA.}
 proc gtk_list_box_get_row_at_index*(l: W, i: cint): W {.importc, header: HA.}
 proc gtk_list_box_select_row*(l, r: W) {.importc, header: HA.}
@@ -900,3 +902,6 @@ proc adw_clamp_new*(): W {.importc, header: HA.}
 proc adw_clamp_set_maximum_size*(c: W, s: cint) {.importc, header: HA.}
 proc adw_clamp_set_child*(c, w: W) {.importc, header: HA.}
 proc cairo_new_sub_path*(c: Cairo) {.importc, header: HC.}
+type GdkRGBA* {.importc, header: HA.} = object
+  red*, green*, blue*, alpha*: cfloat
+proc gtk_widget_get_color*(w: W, c: ptr GdkRGBA) {.importc, header: HA.}   ## the widget's text colour (GTK 4.10)

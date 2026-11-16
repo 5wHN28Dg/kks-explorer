@@ -88,6 +88,8 @@ proc runSearch(w: Win) =
     return
   let found = w.m.search(q)
   let items2 = toSeq(found)
+  let covers = w.m.photoCovers       # each result's photo mark (one pass over the photos)
+  var marked = false
   for i2 in 0 ..< items2.len:
     closureScope:   # each pass gets its own copies of the captured variables
       let t = items2[i2]
@@ -96,12 +98,24 @@ proc runSearch(w: Win) =
       let id = t.id
       let sheet = t.sheet
       let picking = w.picking     # the select mode: a result toggles its tag (the keyboard's way to select)
-      gtk_list_box_append(w.resultList, navRow(title, w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet),
+      let r = navRow(title, w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet),
         (if picking: "Select or unselect " else: "Show ") & title & " on " & (if okS: si.name else: t.sheet), proc () =
           if w.picking: w.pickResult(id)      # the open drawing stays (multi.nim)
-          else: w.goToTag(sheet, id)))
+          else: w.goToTag(sheet, id))
+      if t.full.len > 0:
+        adw_action_row_add_prefix(r, photoMark(covers.getOrDefault(t.full, "none")))
+        marked = true
+      gtk_list_box_append(w.resultList, r)
       w.v.hits.incl t.id
   if found.len == 0: gtk_list_box_append(w.resultList, row("Nothing found", "Try part of the code, or a word from the description"))
+  if marked:      # what the marks mean: a last line that is not a result
+    let lr = gtk_list_box_row_new()
+    gtk_list_box_row_set_child(lr, photoLegend())
+    gtk_list_box_row_set_activatable(lr, 0)
+    gtk_list_box_row_set_selectable(lr, 0)
+    gtk_widget_set_focusable(lr, 0)
+    setAccessibleLabel(lr, "Photo marks: ring no photos, half disc equipment photo only, square tag plate photo only, disc equipment and tag plate photos")
+    gtk_list_box_append(w.resultList, lr)
   gtk_widget_set_visible(w.resultList, 1)
   gtk_widget_queue_draw(w.v.widget)
 

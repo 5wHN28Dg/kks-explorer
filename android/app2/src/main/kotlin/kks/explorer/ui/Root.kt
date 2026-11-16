@@ -462,17 +462,23 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                         LazyColumn {
                             items(res) { r ->
                                 val code = r.getString("code")
+                                // the code's photos, as a mark before it and in words for TalkBack
+                                val photos = r.optString("photos").ifEmpty { "none" }
+                                val mark: (@Composable () -> Unit)? = if (code.isEmpty()) null else { { PhotoMark(photos, named = true) } }
                                 // while selecting, a result (on any drawing) adds its code or takes it out again; the
                                 // mode and the drawing stay as they are
                                 if (selecting) ListItem(headlineContent = { Text(code.ifEmpty { "(unread)" }) },
                                     supportingContent = { Text(r.getString("kind") + " · " + r.getString("sheet_name") + if (code.isEmpty()) " · no code: can't be selected" else "") },
+                                    leadingContent = mark,
                                     trailingContent = { if (code.isNotEmpty()) Checkbox(code in selection, onCheckedChange = null) },
                                     modifier = Modifier.toggleable(value = code in selection, enabled = code.isNotEmpty(),
                                         role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = { toggleCode(code) }))
                                 else ListItem(headlineContent = { Text(code.ifEmpty { "(unread)" }) },
                                     supportingContent = { Text(r.getString("kind") + " · " + r.getString("sheet_name")) },
+                                    leadingContent = mark,
                                     modifier = Modifier.clickable { query = ""; ui.show(r.getString("id")) })
                             }
+                            if (res.any { it.optString("code").isNotEmpty() }) item { PhotoLegend() }
                         }
                     }
                 }

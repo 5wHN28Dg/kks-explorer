@@ -12,26 +12,70 @@ proc s(n: JNode, k: string): string =
 proc n(node: JNode, k: string): int =
   if node != nil and node.get(k) != nil and node[k].isInt: int(node[k].i) else: 0
 
-proc coverWords(photos: string): string =
+proc coverWords*(photos: string): string =
   case photos
   of "both": "equipment and tag plate photos"
   of "equipment": "equipment photo only"
   of "plate": "tag plate photo only"
   else: "no photos"
 
-proc coverDot(photos: string): W =
-  ## the photo coverage colour of the drawings' coverage view, as a small image with its meaning as its name
+proc photoMark*(photos: string, named = true): W =
+  ## the photo mark beside a code (search results, equipment by system): the coverage colour of the drawings and a
+  ## shape of its own per state, so it reads without colour: none = an empty ring, equipment only = a half-filled
+  ## disc, tag plate only = a filled square, both = a filled disc. A thin line in the text colour around it keeps the
+  ## shape at 3:1 on any theme (amber alone does not reach it on a light background). A small image with its meaning
+  ## as its name and tooltip; `named = false` beside a label that says it (the legend).
   result = imageArea()
-  gtk_drawing_area_set_content_width(result, 12)
-  gtk_drawing_area_set_content_height(result, 12)
+  gtk_drawing_area_set_content_width(result, 14)
+  gtk_drawing_area_set_content_height(result, 14)
   gtk_widget_set_valign(result, GTK_ALIGN_CENTER)
-  setAccessibleLabel(result, coverWords(photos))
-  gtk_widget_set_tooltip_text(result, coverWords(photos).cstring)
+  if named:
+    setAccessibleLabel(result, coverWords(photos))
+    gtk_widget_set_tooltip_text(result, coverWords(photos).cstring)
   let (r, g, b) = coverColor(photos)
+  let me = result
   result.onDraw(proc (c: Cairo, w, h: int) =
+    let cx = w / 2
+    let cy = h / 2
+    let rad = min(w, h) / 2 - 2.0        # the coloured shape; the outline runs just outside it
+    var fg: GdkRGBA
+    gtk_widget_get_color(me, addr fg)
+    proc shape(grow: float) =
+      cairo_new_path(c)
+      if photos == "plate": cairo_rectangle(c, cx - rad - grow, cy - rad - grow, 2 * (rad + grow), 2 * (rad + grow))
+      else: cairo_arc(c, cx, cy, rad + grow, 0, 6.2832)
     cairo_set_source_rgb(c, r, g, b)
-    cairo_arc(c, w / 2, h / 2, min(w, h) / 2 - 1, 0, 6.2832)
-    cairo_fill(c))
+    case photos
+    of "both", "plate":
+      shape(0)
+      cairo_fill(c)
+    of "equipment":                      # the left half filled, the ring whole
+      cairo_new_path(c)
+      cairo_arc(c, cx, cy, rad, 1.5708, 4.7124)
+      cairo_close_path(c)
+      cairo_fill(c)
+      shape(-1)
+      cairo_set_line_width(c, 2)
+      cairo_stroke(c)
+    else:
+      shape(-1)
+      cairo_set_line_width(c, 2)
+      cairo_stroke(c)
+    cairo_set_source_rgba(c, fg.red, fg.green, fg.blue, 1)
+    shape(0.5)
+    cairo_set_line_width(c, 1)
+    cairo_stroke(c))
+
+proc photoLegend*(): W =
+  ## what the photo marks mean, in two lines (under the search results)
+  result = vbox(2)
+  let kinds = ["none", "equipment", "plate", "both"]
+  for line in 0 .. 1:
+    let hb = hbox(6)
+    for k in kinds[2 * line .. 2 * line + 1]:
+      hb.add photoMark(k, named = false), label(coverWords(k), "dim-label caption", wrap = false)
+    result.add hb
+  discard margins(result, 6)
 
 proc itemRow(w: Win, it: JNode): W =
   let code = s(it, "code")
@@ -47,7 +91,7 @@ proc itemRow(w: Win, it: JNode): W =
   result = navRow(code, sub.join(" · "), "Show " & code & (if desc.len > 0: ", " & desc else: "") & ", on " & sheetName &
                   (if count > 1: ", appears " & $count & " times" else: ""), proc () =
     w.goToTag(sheet, tag))
-  adw_action_row_add_prefix(result, coverDot(s(it, "photos")))
+  adw_action_row_add_prefix(result, photoMark(s(it, "photos")))
 
 proc expander(title, subtitle: string, fill: proc (r: W), open: bool, key = "", opened: ref HashSet[string] = nil): W =
   ## an expander row whose children are built the first time it opens (thousands of codes otherwise); `opened`

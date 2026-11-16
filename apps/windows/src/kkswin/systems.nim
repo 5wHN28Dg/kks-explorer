@@ -56,11 +56,7 @@ proc n(node: JNode, k: string): int =
 
 proc coverWords(photos: string): string =
   ## the photo coverage of the drawings' coverage view, in words (a screen reader reads the row's text)
-  case photos
-  of "both": "photos: equipment and tag plate"
-  of "equipment": "photo: equipment only"
-  of "plate": "photo: tag plate only"
-  else: "no photos"
+  photoStateWords(photos)      # the same words on every client
 
 proc codes(k: int): string = (if k == 1: "1 code" else: $k & " codes")
 

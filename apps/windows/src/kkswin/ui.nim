@@ -714,6 +714,63 @@ proc drawRow*(dc: HDC, r: RECT, text: string, selected: bool, indent: int) =
   discard DrawTextW(dc, newWideCString(text), -1, addr tr, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS)
   SelectObject(dc, oldFont)  # the DC goes back as it came (WM_DRAWITEM)
 
+proc CreatePen(style, width: int32, c: DWORD): HGDIOBJ {.importc, stdcall, header: HG.}
+proc GetStockObject(i: int32): HGDIOBJ {.importc, stdcall, header: HG.}
+proc Ellipse(dc: HDC, l, t, r, b: int32): int32 {.importc, stdcall, header: HG, discardable.}
+proc Rectangle(dc: HDC, l, t, r, b: int32): int32 {.importc, stdcall, header: HG, discardable.}
+proc Pie(dc: HDC, l, t, r, b, x1, y1, x2, y2: int32): int32 {.importc, stdcall, header: HG, discardable.}
+
+proc photoStateWords*(photos: string): string =
+  ## a code's photo coverage in words, the same on every client
+  case photos
+  of "both": "equipment and tag plate photos"
+  of "equipment": "equipment photo only"
+  of "plate": "tag plate photo only"
+  else: "no photos"
+
+proc photoRgb*(photos: string): uint32 =
+  ## the photo coverage colours, the same on every client (viewer.coverColor): both green, the equipment only amber,
+  ## the tag plate only blue, none red
+  case photos
+  of "both": 0x2EA043'u32
+  of "equipment": 0xE69600'u32
+  of "plate": 0x1E78E6'u32
+  else: 0xDC2828'u32
+
+proc drawPhotoMark*(dc: HDC, r: RECT, photos: string, selected: bool) =
+  ## the photo mark at the start of an owner-drawn row `r` (search results): the coverage colour and a shape of its
+  ## own per state, so it reads without colour: none = an empty ring, equipment only = a half-filled disc, tag plate
+  ## only = a filled square, both = a filled disc. A thin line in the text colour around it keeps the shape at 3:1 on
+  ## any theme, the contrast themes included. The row's text says the same in words.
+  let d = px(12)
+  let l = r.left + px(7)
+  let t = r.top + (r.bottom - r.top - d) div 2
+  let hue = colorRef(photoRgb(photos))
+  let line = CreatePen(0, 1, GetSysColor(if selected: COLOR_HIGHLIGHTTEXT else: COLOR_WINDOWTEXT))
+  let ring = CreatePen(6, max(2, px(2)), hue)          # PS_INSIDEFRAME: the ring stays inside its box
+  let fill = CreateSolidBrush(hue)
+  let hollow = GetStockObject(5)                       # NULL_BRUSH
+  let oldPen = SelectObject(dc, line)
+  let oldBrush = SelectObject(dc, fill)
+  case photos
+  of "both": Ellipse(dc, l, t, l + d, t + d)
+  of "plate": Rectangle(dc, l, t, l + d, t + d)
+  else:
+    SelectObject(dc, ring)
+    SelectObject(dc, hollow)
+    Ellipse(dc, l + 1, t + 1, l + d - 1, t + d - 1)
+    if photos == "equipment":                          # the left half filled (from the top round to the bottom)
+      SelectObject(dc, fill)
+      Pie(dc, l + 1, t + 1, l + d - 1, t + d - 1, l + d div 2, t, l + d div 2, t + d)
+    SelectObject(dc, line)
+    SelectObject(dc, hollow)
+    Ellipse(dc, l, t, l + d, t + d)
+  SelectObject(dc, oldPen)
+  SelectObject(dc, oldBrush)
+  DeleteObject(line)
+  DeleteObject(ring)
+  DeleteObject(fill)
+
 proc pictureList*(p: Page, rows: seq[string], draw: OwnerDraw, height = 200, onActivate: proc (i: int) = nil,
                   openLabel = ""): HWND {.discardable.} =
   ## a list whose rows `draw` paints (a small picture, then drawRow); the rows' strings stay its UI Automation names

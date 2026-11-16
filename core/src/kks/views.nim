@@ -86,11 +86,17 @@ proc findLink*(ls: JNode, label: string, x0, y0: float): int =
     if l["label"].s == label and abs(l["x0"].num - x0) < 0.01 and abs(l["y0"].num - y0) < 0.01: return i
 
 proc searchView*(m: Model, q: string): JNode =
+  ## the search's results; `photos` is the code's photo coverage ("both", "equipment", "plate" or "none"), which each
+  ## result shows as a mark beside it
   result = newArr()
-  for t in m.search(q):
+  let found = m.search(q)
+  if found.len == 0: return
+  let covers = m.photoCovers
+  for t in found:
     let (ok, si) = m.sheetById(t.sheet)
     result.elems.add O(("id", S(t.id)), ("sheet", S(t.sheet)), ("sheet_name", S(if ok: si.name else: t.sheet)),
-                       ("code", S(t.full)), ("kind", S(m.kindName(t))))
+                       ("code", S(t.full)), ("kind", S(m.kindName(t))),
+                       ("photos", S(covers.getOrDefault(t.full, "none"))))
 
 proc descriptionOf(m: Model, t: Tag, eq, eqBy: JNode): JNode =
   ## what the equipment does: confirmed (the custom field "Description", set through a proposal) or a draft from

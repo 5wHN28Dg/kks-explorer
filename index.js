@@ -395,6 +395,12 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
 // a photo of the tag plate is a photo whose caption starts with "Tag plate" (PROTOCOL-v2 §9; core model.photoCover)
 const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
+// the photo mark beside a code (search results, equipment by system): the coverage colour and a shape of its own per
+// state (index.html .pmark). Drawn only: the row says the same in words for screen readers.
+const pmark=p=>h('span',{class:'pmark p-'+p,'aria-hidden':'true',title:COVER_WORDS[p]});
+// what the marks mean, as the last line of the search results (not a result: it can't be picked)
+const photoLegend=()=>h('div',{class:'res m legend',role:'option','aria-disabled':'true',id:'resLegend'},'Photos:',
+  ['none','equipment','plate','both'].map(p=>[pmark(p),COVER_WORDS[p]]));
 // empties the tag layer (all but the select and mark boxes); data-sheet names the sheet whose image has loaded and
 // whose tags were drawn over it
 function clearLayer(){ const L=$('#layer'); delete L.dataset.sheet; for(const x of [...L.children]) if(x.id!=='selbox'&&x.id!=='markbox') x.remove() }
@@ -976,13 +982,15 @@ $('#q').addEventListener('input',()=>{
     const score=b===qb?90:b.startsWith(qb)?70:b.includes(qb)?50:qr.length>2&&text.includes(qr)?35:0; if(score)hits.push({loc:b,score,k:b}) }
   hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
   const sn=id=>SHEETS.find(s=>s.id===id).name;
+  const covers=KSys.photoCovers(STATE.photos), pc=k=>covers.get(k)||'none';   // one pass over the photos
   put(R,hits.length?hits.map((x,i)=>{ const opt={class:'res'+(i===0?' on':''),role:'option',id:'res-'+i,'aria-selected':String(i===0),onclick:()=>pick(i)};
     if(x.loc){const r=refLoc(x.loc);return h('div',opt,h('div',{class:'k'},x.loc+' ',h('span',{class:'m',style:'color:var(--review)'},r.rows.length?'location list only':'instrument point only')),
       h('div',{class:'m'},r.rows.length?(r.elev||'level varies')+(r.cabinet?' · '+r.cabinet:'')+(r.rows[0].desc?' · '+r.rows[0].desc:''):
         'instrument point'+((PTS[x.loc]||[])[0]?.desc?' · '+PTS[x.loc][0].desc:'')))}
     const e=eq(x.k), fl=floorOf(x.t), cab=refLoc(bodyOf(x.t)).cabinet;
-    return h('div',opt,h('div',{class:'k'},x.k||x.t.read.join(' / '),x.t.isa?[' ',h('span',{class:'m'},x.t.isa)]:null,x.t.status==='review'?[' ',h('span',{class:'m',style:'color:var(--review)'},'unverified')]:null),
-      h('div',{class:'m'},`${sn(x.t.sheet)} · ${kindName(x.t)??''}`+(fl?' · '+floorName(fl):'')+(cab?' · '+cab:'')+(e.area?' · '+e.area:'')))})
+    return h('div',opt,h('div',{class:'k'},x.k?pmark(pc(x.k)):null,x.k||x.t.read.join(' / '),x.t.isa?[' ',h('span',{class:'m'},x.t.isa)]:null,x.t.status==='review'?[' ',h('span',{class:'m',style:'color:var(--review)'},'unverified')]:null),
+      h('div',{class:'m'},`${sn(x.t.sheet)} · ${kindName(x.t)??''}`+(fl?' · '+floorName(fl):'')+(cab?' · '+cab:'')+(e.area?' · '+e.area:''),
+        x.k?h('span',{class:'vh'},' · '+COVER_WORDS[pc(x.k)]):null))}).concat(hits.some(x=>x.k&&!x.loc)?[photoLegend()]:[])
     :h('div',{class:'res m',role:'option','aria-disabled':'true'},'No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.'));
   R.style.display='block';
   $('#q').setAttribute('aria-expanded','true'); $('#q').setAttribute('aria-activedescendant', hits.length?'res-0':'');
@@ -1072,7 +1080,7 @@ function renderSystems(){
   const all=(q!==''||!!sysOnly)&&v.total<=SYS_OPEN_ALL;
   const sum=(label,n)=>h('summary',null,label,' ',h('span',{class:'c'},`(${n})`));
   const row=it=>h('button',{type:'button',class:'sysrow','data-tag':it.tag,onclick:()=>{ focusPanel=true; if(innerWidth<=720){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') } goTo(it.tag) }},
-    h('span',{class:'sysdot p-'+it.photos,'aria-hidden':'true',title:COVER_WORDS[it.photos]}),
+    h('span',{class:'sysdot pmark p-'+it.photos,'aria-hidden':'true',title:COVER_WORDS[it.photos]}),
     h('span',{class:'mono'},it.code),
     h('span',{class:'d'},it.desc?[K.userText(it.desc),it.sheet_name?' · ':'']:null,it.sheet_name||'',it.count>1?' · ×'+it.count:''),
     h('span',{class:'vh'},' · '+COVER_WORDS[it.photos]));

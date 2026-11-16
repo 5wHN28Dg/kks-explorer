@@ -160,7 +160,7 @@ private fun SysItem(j: JSONObject, indent: Int, onOpen: () -> Unit) {
         .clearAndSetSemantics { contentDescription = label; role = Role.Button; onClick("Show on the drawing") { onOpen(); true } }
         .padding(start = (8 + 16 * indent).dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(10.dp).clip(CircleShape).background(Color(coverColor(photos))))
+        PhotoMark(photos)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -169,6 +169,49 @@ private fun SysItem(j: JSONObject, indent: Int, onOpen: () -> Unit) {
             }
             if (desc.isNotEmpty()) Text(desc, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(sheet, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** The photo mark beside a code (search results, equipment by system): the coverage colour of the drawings and a shape
+ *  of its own per state, so it reads without colour: none = an empty ring, equipment only = a half-filled disc, tag
+ *  plate only = a filled square, both = a filled disc. A thin line in the text colour around it keeps the shape at 3:1
+ *  on any theme (amber alone does not reach it on a light background). Drawn only: the row says the same in words
+ *  ([coverWords]) unless [named]. */
+@Composable
+fun PhotoMark(photos: String, modifier: Modifier = Modifier, named: Boolean = false) {
+    val hue = Color(coverColor(photos))
+    val line = LocalContentColor.current
+    val words = coverWords(photos)
+    androidx.compose.foundation.Canvas(modifier.size(14.dp).then(if (named) Modifier.semantics { contentDescription = words } else Modifier)) {
+        val w = 2.dp.toPx(); val thin = 1.dp.toPx()
+        val r = size.minDimension / 2 - thin * 1.5f                    // the coloured shape; the outline runs just outside it
+        val inner = androidx.compose.ui.graphics.drawscope.Stroke(w)
+        val outer = androidx.compose.ui.graphics.drawscope.Stroke(thin)
+        when (photos) {
+            "both" -> drawCircle(hue, r)
+            "plate" -> drawRect(hue, androidx.compose.ui.geometry.Offset(center.x - r, center.y - r), androidx.compose.ui.geometry.Size(2 * r, 2 * r))
+            "equipment" -> {
+                drawArc(hue, 90f, 180f, true, androidx.compose.ui.geometry.Offset(center.x - r, center.y - r), androidx.compose.ui.geometry.Size(2 * r, 2 * r))
+                drawCircle(hue, r - w / 2, style = inner)
+            }
+            else -> drawCircle(hue, r - w / 2, style = inner)
+        }
+        if (photos == "plate") drawRect(line, androidx.compose.ui.geometry.Offset(center.x - r - thin / 2, center.y - r - thin / 2),
+            androidx.compose.ui.geometry.Size(2 * r + thin, 2 * r + thin), style = outer)
+        else drawCircle(line, r + thin / 2, style = outer)
+    }
+}
+
+/** what the photo marks mean: the last line under the search results (not a result) */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PhotoLegend(modifier: Modifier = Modifier) {
+    FlowRow(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (k in listOf("none", "equipment", "plate", "both")) Row(verticalAlignment = Alignment.CenterVertically) {
+            PhotoMark(k)
+            Spacer(Modifier.width(6.dp))
+            Text(coverWords(k), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

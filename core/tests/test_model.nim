@@ -52,6 +52,12 @@ suite "model":
     var seen: Table[string, string]
     for t in tagsView(c, "a").elems: seen[t["code"].s] = t["photos"].s
     check seen["11LAB70AA501"] == "both" and seen["11HAD70CT101R"] == "none"
+    # the search's results carry the same word (each client draws its photo mark from it)
+    var found: Table[string, string]
+    for r in searchView(c, "11LAB70AA50").elems: found[r["code"].s] = r["photos"].s
+    check found.len >= 2 and found["11LAB70AA501"] == "both" and found["11LAB70AA504"] == "equipment"
+    for k, v in found: check v == c.photoCover(k)
+    for r in searchView(c, "11HAD70CT101").elems: check r["photos"].s == "none"
   test "the location list: one elevation when the rows agree":
     check m.refLoc("LAB70AA501").elev == "14.5 m"
     check m.refLoc("LAB70AA501").cabinet == "C1"
