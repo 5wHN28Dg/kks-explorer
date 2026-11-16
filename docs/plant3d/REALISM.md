@@ -1424,14 +1424,22 @@ parts). Lead times are clock days (§2.1).
       off, the wires lifted, the block valve shut, the vent cracked, unbolted, the new one fitted, then the second
       half as before). Without it, "held for parts" to the maintenance supervisor, another hour's wait for a slow
       issue (no second call while the first may still come), then a wait until a spare is on the shelf (no
-      minutes: held through the nights with the permit's lock on, a jump passing), the storekeeper called again, in
-      front of the counter until the spare is issued (no minutes: with nobody to issue it, the job is held there,
-      the plant untouched, until someone does, the trainee too), then the swap. The plant is touched only with the
-      spare in hand; the look-alike handed over by a trainer is never offered by the NPC (it waits for the part
+      minutes: held through the nights with the permit's lock on, a jump passing) and the order open (the storekeeper
+      issues only against an open one), the storekeeper called again, in front of the counter until the spare is
+      issued (no minutes: with nobody to issue it, the job is held there, the transmitter not taken off, until the
+      trainer issues it in free mode: the store's role is not played), then the swap, which starts at the counter
+      (again after a night's hold). The transmitter is taken off only with the spare in hand (its cover and the
+      meters' leads stay as the readings left them while the job waits); the look-alike handed over by a trainer is never offered by the NPC (it waits for the part
       its fitting needs), so `wrong_part` stays the trainee's lesson.
     - **`issue_cond_p2_fix`** checks the ledger first: a minute's wait for the spare already issued against the order
       goes, when it is, to `issue_cond_p2_fix_seen` (a minute's writing) instead of issuing a second one; else as
       before.
+    - Two spares: an issue task that finds the spare in the ledger notes it instead; two calls waiting in the
+      storekeeper's queue run one after the other, so the second finds the first's spare. Not excluded by
+      construction: the ledger is the parts issued and not yet fitted, so a second call held up longer than the
+      whole swap (only a priority 1 task of the storekeeper's could) would issue another. A fitting is made under
+      the code's work whose permit is accepted; the permits of transmitter 2's works share an isolation, so a
+      second one is refused while the job's is open (the day's calibration's request is, in the forks).
     - Left as it is (the user, 2026-11-16): after the issue drops the spare to its reorder point, the storekeeper's
       own order in `issue_cond_p2_fix` orders it up to its max, and the reorder reaction offered by the same drop
       then finds nothing missing: its order is refused `qty` (an event, no effect).

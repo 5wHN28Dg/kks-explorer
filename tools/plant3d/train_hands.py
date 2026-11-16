@@ -386,9 +386,9 @@ def tx_steps():
     to issue the spare, the technician in front of the counter until the order is open, then up to an hour for the
     spare issued against it: with it in hand, the swap (the plant is touched only then). Without it, held for parts:
     the maintenance supervisor told, another hour for a slow issue (no second call while the first may still come),
-    then a wait until a spare is on the shelf (held overnight with the permit's lock on, §17.10), the storekeeper
-    called again and the technician at the counter until it is issued (held there, the plant untouched, while nobody
-    issues it), then the swap."""
+    then a wait until a spare is on the shelf (held overnight with the permit's lock on, §17.10) and the order open
+    (the storekeeper issues only against an open one), the storekeeper called again and the technician at the counter
+    until it is issued (held there, the transmitter not taken off, while nobody issues it), then the swap."""
     spare = {'issued': [SPARE, '$']}
     return [{'read': CP2, 'via': 'cpt2_status', 'tol': TOL}, {'wo': {'work': '$', 'action': 'notify'}, 'else': 2},
             {'call': {'role': 'store', 'task': ISSUE}}, {'go': STORE_FRONT},
@@ -396,15 +396,17 @@ def tx_steps():
             {'wait': dict(spare, minutes=60, **{'else': 7})}, {'choose': [[1, SWAP]]},
             {'say': 'held_for_parts', 'to': 'maint_sup'},
             {'wait': dict(spare, minutes=60, **{'else': 10})}, {'choose': [[1, SWAP]]},
-            {'wait': {'until': 'cpt2_spare_shelf'}}, {'call': {'role': 'store', 'task': ISSUE}}, {'go': STORE_FRONT},
+            {'wait': {'until': 'cpt2_spare_shelf'}}, {'wait': {'until': 'cpt2_wo_open'}},
+            {'call': {'role': 'store', 'task': ISSUE}}, {'go': STORE_FRONT},
             {'wait': dict(spare)}, {'choose': [[1, SWAP]]}]
 
 
 def swap_steps():
-    """The spare in hand: three minutes' writing at the counter; back at the transmitter the leads off, the wires
+    """The spare in hand: at the counter (again after a night's hold), three minutes' writing; back at the
+    transmitter the leads off, the wires
     lifted, the manifold's block valve shut and the transmitter vented through its flange, unbolted; the new one fitted
     (the part check), then its second half."""
-    return [{'work': 3, 'anim': 'write'}, {'go': {'kks': CP2}}, _hand('disconnect_dmm', 'dmm'),
+    return [{'go': STORE_FRONT}, {'work': 3, 'anim': 'write'}, {'go': {'kks': CP2}}, _hand('disconnect_dmm', 'dmm'),
             _hand('disconnect_hart', 'hart'), _hand('lift_wires', 'sd_term'), _hand('shut_block'),
             _hand('crack_vent', 'spanner_17'), {'work': 1}, _hand('remove_tx', 'spanner_17'),
             _hand('fit_tx', 'spanner_17'), {'choose': [[1, FIT]]}]
@@ -507,8 +509,8 @@ def nospare_scenario(base):
 
 def absent_scenario(base):
     """`shift_fail_absent` (REALISM.md §2.24, part 4): shift_fail with the storekeeper absent (the scenario's
-    `staff.absent`): nobody to issue the spare, so the job is held for parts at the counter, the old transmitter still
-    in, until someone issues it (the trainee too, as any role that may)."""
+    `staff.absent`): nobody to issue the spare, so the job is held for parts at the counter, the old transmitter not
+    taken off, until the trainer issues it in free mode (the store's role is not played)."""
     s = fail_scenario(base)
     s['id'] = 'shift_fail_absent'
     s['title'] = 'Day shift: a condenser transmitter failed, the storekeeper away (choose a role)'

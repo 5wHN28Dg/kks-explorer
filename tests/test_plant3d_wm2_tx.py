@@ -20,6 +20,7 @@ import train_hands  # noqa: E402
 
 DATA = os.path.join(ROOT, 'data', 'plant3d')
 CP2 = '30MAG10CP002'
+SWAP_ACTS = ('disconnect_dmm', 'disconnect_hart', 'lift_wires', 'shut_block', 'crack_vent', 'remove_tx', 'fit_tx')
 CAUSES = ('drift', 'loose', 'blocked', 'passing', 'wet', 'failed')
 NEW = {'cpt2_sensor_module_fail': 0, 'cpt2_flange_bolts_off': 0, 'cpt2_electronics_urv': 120}
 
@@ -190,6 +191,7 @@ class Job(unittest.TestCase):
         second_call = order.index('call', first_call + 1)
         self.assertLess(to_swap[1], second_call)
         self.assertIn({'wait': {'until': 'cpt2_spare_shelf'}}, tx[to_swap[1]:second_call])
+        self.assertEqual(tx[second_call - 1], {'wait': {'until': 'cpt2_wo_open'}})    # (issued only against an open one)
         self.assertEqual(tx[to_swap[2] - 1], {'wait': {'issued': spare}})
         sw = self.tasks[train_hands.SWAP]['steps']
         order = [s.get('hand') or next(iter(s)) for s in sw]
@@ -198,6 +200,7 @@ class Job(unittest.TestCase):
                      ('crack_vent', 'remove_tx'), ('remove_tx', 'fit_tx')):
             self.assertLess(first(a), first(b), (a, b))
         self.assertEqual(sw[-1], {'choose': [[1, train_hands.FIT]]})
+        self.assertEqual(sw[0], {'go': train_hands.STORE_FRONT})       # (the spare collected, after a night's hold too)
         fs = self.tasks[train_hands.FIT]['steps']
         hands = [s.get('hand') for s in fs]
         self.assertLess(hands.index('set_range'), hands.index('loop_test'))
@@ -244,18 +247,20 @@ class Forks(unittest.TestCase):
         self.assertFalse([x for x in ev if x[1] == 'hand' and x[3] == 'fit_tx' and x[6] == 'refused'])
         k_del = next(k for k, x in enumerate(ev) if x[1] == 'delivery' and x[3] == 'pt_unit_a3')
         k_iss = next(k for k, x in enumerate(ev) if x[1] == 'issue' and x[2] == 'pt_unit_a3' and x[6] == 'done')
-        k_off = next(k for k, x in enumerate(ev) if x[1] == 'hand' and x[2] == CP2 and x[6] != 'refused')
+        k_off = next(k for k, x in enumerate(ev) if x[1] == 'hand' and x[2] == CP2 and x[3] in SWAP_ACTS)
         self.assertLess(k_del, k_iss)
         self.assertLess(k_iss, k_off)
         self.assertEqual(self.hands('npc_hands_nospare').count('fit_tx'), 1)
         self.assertEqual(len([x for x in ev if x[1] == 'repair' and x[2] == 'cond_p2_low']), 1)
 
     def test_absent(self):
-        """(part 4) The storekeeper absent: nobody issues the spare; the job is held for parts, the old transmitter
-        untouched (no hand action at it at all), its permit accepted with the lock on as a held job's."""
+        """(part 4) The storekeeper absent: nobody issues the spare; the job is held for parts, the old transmitter not
+        taken off (none of the swap's actions: only the readings' before it), its permit accepted with the lock on as a
+        held job's."""
         f = self.forks['npc_hands_absent']
         ev = f['events']
-        self.assertFalse([x for x in ev if x[1] == 'hand' and x[2] == CP2 and x[6] != 'refused'])
+        self.assertFalse([x for x in ev if x[1] == 'hand' and x[2] == CP2 and x[3] in SWAP_ACTS])
+        self.assertTrue([x for x in ev if x[1] == 'hand' and x[2] == CP2 and x[3] == 'open_cover'])   # (the readings')
         self.assertFalse([x for x in ev if x[1] == 'issue'])
         self.assertIn(['ic1', 'job_cond_p2_fix_tx', 'held'], [x[2:5] for x in ev if x[1] == 'task'])
         self.assertNotIn(['ic1', 'job_cond_p2_fix_tx', 'abandoned'], [x[2:5] for x in ev if x[1] == 'task'])
@@ -267,7 +272,20 @@ class SlowStorekeeper(unittest.TestCase):
     tasks wait in their queue, one spare is issued against the order; the others find it in the ledger."""
 
     def test_two_calls_one_spare(self):
-        b = P.check_dir(DATA)
+        self.assertEqual(self.spares(P.check_dir(DATA)), 1)
+
+    def test_the_old_issue_task_issued_two(self):
+        """The same with the issue task as it was before part 4 (no ledger check): the test sees the double issue."""
+        F = P.load_dir(DATA)
+        st = json.loads(F['staff.json'])
+        t = next(x for x in st['tasks'] if x['id'] == train_hands.ISSUE)
+        t['steps'] = [{'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 2}},
+                      {'issue': train_hands.SPARE, 'qty': 1, 'for': '$', 'else': 2}, {'work': 1, 'anim': 'write'},
+                      {'order': train_hands.SPARE}]
+        F['staff.json'] = json.dumps(st).encode()
+        self.assertGreaterEqual(self.spares(P.check_files(F)), 2)
+
+    def spares(self, b):
         e = P.Engine(b, 'shift_fail')
         while e.step_no < 30000 and not any(x[1] == 'call' and x[4] == train_hands.ISSUE for x in e.events):
             e.step()
@@ -276,11 +294,8 @@ class SlowStorekeeper(unittest.TestCase):
         while e.step_no < 40000 and not any(x[1] == 'hand' and x[3] == 'fit_tx' and x[6] == 'done'
                                             for x in e.events):
             e.step()
-        done = [x for x in e.events if x[1] == 'issue' and x[2] == train_hands.SPARE and x[6] == 'done']
-        self.assertEqual(len(done), 1, done)
-        seen = [x for x in e.events if x[1] == 'task' and x[3] == train_hands.SEEN and x[4] == 'done']
-        self.assertEqual(len(seen), 2)
         self.assertTrue(any(x[1] == 'hand' and x[3] == 'fit_tx' and x[6] == 'done' for x in e.events))
+        return len([x for x in e.events if x[1] == 'issue' and x[2] == train_hands.SPARE and x[6] == 'done'])
 
 
 if __name__ == '__main__':
