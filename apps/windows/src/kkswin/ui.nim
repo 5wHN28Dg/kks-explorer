@@ -905,40 +905,6 @@ proc setRows*(l: HWND, rows: seq[string]) =
 proc ask*(owner: HWND, title, text: string): bool =
   MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OKCANCEL or MB_ICONQUESTION) == IDOK
 
-type
-  TaskButton {.importc: "TASKDIALOG_BUTTON", header: "<commctrl.h>".} = object
-    nButtonID: int32
-    pszButtonText: WideCString
-  TaskConfig {.importc: "TASKDIALOGCONFIG", header: "<commctrl.h>".} = object
-    cbSize: UINT
-    hwndParent: HWND
-    dwFlags: int32
-    dwCommonButtons: int32
-    pszWindowTitle: WideCString
-    pszMainInstruction: WideCString
-    pszContent: WideCString
-    cButtons: UINT
-    pButtons: ptr TaskButton
-    nDefaultButton: int32
-proc TaskDialogIndirect(c: ptr TaskConfig, button: ptr int32, radio: ptr int32, verify: ptr int32): int32 {.importc, stdcall, header: "<commctrl.h>".}
-
-proc askAction*(owner: HWND, title, text, action: string): bool =
-  ## a question whose confirming button names the action ("Reject 3 proposals", never OK), with Cancel the default
-  ## (Enter and Escape cancel; the focus starts on Cancel). -> the action was chosen
-  let wTitle = newWideCString(title)
-  let wText = newWideCString(text)
-  let wAction = newWideCString(action)
-  let wApp = newWideCString("Walkdown")
-  var b = TaskButton(nButtonID: 100, pszButtonText: wAction)
-  var c = TaskConfig(cbSize: UINT(sizeof(TaskConfig)), hwndParent: owner, dwFlags: 0x0010 or 0x0008,   # TDF_POSITION_RELATIVE_TO_WINDOW, TDF_ALLOW_DIALOG_CANCELLATION
-                     dwCommonButtons: 0x0008,         # TDCBF_CANCEL_BUTTON
-                     pszWindowTitle: wApp, pszMainInstruction: wTitle, pszContent: wText,
-                     cButtons: 1, pButtons: addr b, nDefaultButton: 2)   # IDCANCEL
-  var pressed: int32 = 0
-  if TaskDialogIndirect(addr c, addr pressed, nil, nil) != 0:     # (S_OK is 0) no dialog: nothing is done
-    return false
-  pressed == 100
-
 proc askYesNo*(owner: HWND, title, text: string): bool =
   ## a question with Yes and No (MB_YESNO; IDYES = 6)
   MessageBoxW(owner, newWideCString(text), newWideCString(title), 0x4'u32 or MB_ICONQUESTION) == 6

@@ -88,6 +88,8 @@ proc pickShow() =
   EnableWindow(pickOk, BOOL(n > 0 and not pickBusy))
   EnableWindow(pickNo, BOOL(n > 0 and not pickBusy))
 
+proc runBatch(w: Win, action: string, chosen: seq[JNode])
+
 proc decideMany(w: Win, action: string) =
   ## every ticked proposal, oldest first, each as its own button sends it (approve without force, reject). A held one
   ## (it clashes with the value as it is now) is not approved here: its own "Approve anyway" does that.
@@ -97,11 +99,28 @@ proc decideMany(w: Win, action: string) =
   if chosen.len == 0:
     w.toast("Nothing selected")
     return
-  let what = if chosen.len == 1: "1 proposal" else: $chosen.len & " proposals"
-  if action == "reject" and not askAction(w.hwnd, "Reject " & what & "?",
-                                          "Each one is rejected as its own Reject button does. The submitters see that it was rejected.",
-                                          "Reject " & what):
+  if action == "reject":
+    # one question, in a window of the app's own: the button names the action, Cancel has the focus, Escape cancels
+    # (standard buttons a screen reader and UI Automation reach as anywhere else in the app)
+    let what = if chosen.len == 1: "1 proposal" else: $chosen.len & " proposals"
+    var hw: HWND
+    let (h, p) = popup(w.hwnd, "Reject " & what & "?", 460, 220, escape = true)
+    hw = h
+    p.title("Reject " & what & "?")
+    p.dim("Each one is rejected as its own Reject button does. The submitters see that it was rejected.")
+    let ids = chosen.mapIt(it["id"].i)
+    let bs = p.buttons(("Cancel", proc () = DestroyWindow(hw)),
+                       ("Reject " & what, proc () =
+                         DestroyWindow(hw)
+                         w.runBatch("reject", pickSubs.filterIt(it["id"].i in ids and it["id"].i in picked))))
+    p.layout()
+    ShowWindow(h, SW_SHOW)
+    SetFocus(bs[0])
     return
+  w.runBatch(action, chosen)
+
+proc runBatch(w: Win, action: string, chosen: seq[JNode]) =
+  if chosen.len == 0: return
   if pickBusy: return
   pickBusy = true
   EnableWindow(pickOk, 0)

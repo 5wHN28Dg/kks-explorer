@@ -43,6 +43,7 @@ block:
                          nil, nil, hinst, nil)
   doAssert main != nil
   ShowWindow(main, SW_SHOW)
+  ShowWindow(main, SW_SHOW)      # (the first call follows the starting process's show flag: hidden when started over SSH)
 
 suite "the tag panel's heading":
   test "Copy and Close stay at the top while the panel scrolls to its end":

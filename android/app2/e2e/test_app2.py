@@ -2040,8 +2040,10 @@ class Phone(unittest.TestCase):
 # that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
 # test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 3: at the
 # end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
-PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'copy_close_batch'),
+# test_copy_close_batch (2026-11-16) is in part 1: at the end of part 2 it took the emulator from 7.14 to 7.67 GiB;
+# part 1 had ended at 5.92 GiB.
+PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures', 'app_links'))
 
