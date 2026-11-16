@@ -44,11 +44,21 @@ func run(tree: SceneTree) -> Array:
 	var scale0: float = W.scale
 	var kinds: Array = ws.kinds()
 	check(not kinds.is_empty(), "the build has Workshop kinds")
+	var first := true
 	for kind in kinds:
+		tree.root.size = SCREENS[0][1]
+		W.scale = scale0
 		check(ws.open(kind), "%s: the Workshop opens" % kind)
 		if not await _wait_shown(tree, ws):
 			check(false, "%s: the machine did not show" % kind)
 			continue
+		if first:   # the panels the Workshop made itself (not remade): on the desktop at the scale it has
+			first = false
+			await _frames(tree, 3)
+			await _layout(tree, ws, "%s, the panels as first made (scale %.2f)" % [kind, scale0])
+			if not ws.has_method("make_panels"):
+				check(false, "the Workshop can't make its panels again at another scale (make_panels)")
+				break
 		for sc in SCREENS:
 			tree.root.size = sc[1]
 			W.scale = sc[2]
@@ -129,7 +139,21 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 	check(pn.run_panel.is_visible_in_tree() and _inside(pn.run_panel.get_global_rect(), screen) and pn.run_panel.size.x >= side
 		and pn.run_panel.size.y >= ROWS * row, "%s: the bench's panel shows, inside the screen (%s)" % [at, pn.run_panel.get_global_rect()])
 	_apart(at, [pn.top_bar, pn.tree_panel, pn.run_panel, pn.tools_panel])
+	var rr: Rect2 = pn.run_panel.get_global_rect()
+	for c in _controls(pn.run_panel):   # its rows wrap: nothing squeezed or past the panel's sides (#389)
+		var m: Vector2 = c.get_combined_minimum_size()
+		var r: Rect2 = c.get_global_rect()
+		check(c.size.x >= m.x - 0.5 and c.size.y >= m.y - 0.5 and r.position.x >= rr.position.x - 0.5 and r.end.x <= rr.end.x + 0.5,
+			"%s: the bench's %s is squeezed or cut (%s, needs %s, the panel %s)" % [at, c.name, r, m, rr])
 	pn.show_info(true)
+	# the session's strip, when shown, takes its own place in the column (over nothing else)
+	pn.strip.text = "The plant runs on (a session).  12 new alarms: Back to the plant."
+	pn.strip.visible = true
+	await _frames(tree, 3)
+	check(_inside(pn.strip.get_global_rect(), screen), "%s: the strip is on the screen (%s)" % [at, pn.strip.get_global_rect()])
+	_apart(at, [pn.strip, pn.top_bar, pn.tree_panel, pn.props_panel, pn.tools_panel])
+	check(pn.tree.size.y >= ROWS * row, "%s: with the strip the tree still shows %d rows (%.0f)" % [at, ROWS, pn.tree.size.y])
+	pn.strip.visible = false
 	# a long properties text scrolls inside its panel: it never runs under the tools (#389)
 	var long := PackedStringArray()
 	for i in 60:

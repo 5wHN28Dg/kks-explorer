@@ -256,7 +256,7 @@ func setup(w) -> void:
 	step_label.add_theme_stylebox_override("normal", backing())
 	step_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	step_label.visible = false
-	# on a canvas layer of its own, just above the Workshop's: in the panels' layer this wrapped sentence (then outlined)
+	# on a canvas layer of its own, just above the Workshop's: in the panels' layer this wrapped sentence (outlined then)
 	# cost about two draw calls a letter (a long assembly step ~440, the pile's view ~510 in all against §8's 300)
 	step_layer = CanvasLayer.new()
 	step_layer.name = "step_layer"
