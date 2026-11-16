@@ -782,6 +782,29 @@ func _review(tree: SceneTree, ui) -> Array:
 	ui.alarms._ack_all()
 	if ui.sounds.played.get("horn_ack", 0) != 1:
 		p.append("Acknowledge all (%d alarms) played the acknowledge %d times" % [ks.size(), ui.sounds.played.get("horn_ack", 0)])
+	# Acknowledge screen says how many it acknowledges (UI-UX-POLICY B1), and acknowledges those
+	var states0: Array = e.astate.duplicate()
+	for k in e._al.size():
+		if e.shelved[k] == -1:
+			e.astate[k] = "active_unack"
+	var sk: Array = mim.screen_unacked()
+	mim.refresh()
+	var ab: Button = App.find_button(mim, "Acknowledge screen (…")
+	if ab == null:
+		p.append("the screens have no Acknowledge screen (N) button")
+	elif sk.is_empty() or ab.text != "Acknowledge screen (%d)" % sk.size():
+		p.append("Acknowledge screen says %s with %d alarms of the screen unacknowledged" % [ab.text, sk.size()])
+	else:
+		ab.pressed.emit()
+		ui.clock.run_steps(1)
+		var left := sk.filter(func(k): return String(e.astate[k]).ends_with("_unack"))
+		if not left.is_empty():
+			p.append("Acknowledge screen left %d of its %d alarms unacknowledged" % [left.size(), sk.size()])
+		mim.refresh()
+		if ab.text != "Acknowledge screen (%d)" % mim.screen_unacked().size():
+			p.append("after Acknowledge screen its button says %s" % ab.text)
+	for k in e._al.size():
+		e.astate[k] = states0[k]
 	# the walking buttons and the crosshair are not shown over the screens
 	var hud = ui.main.hud
 	var touch0 = ui.main.cf.get_value("controls", "touch", "auto")

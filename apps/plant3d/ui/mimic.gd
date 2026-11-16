@@ -57,6 +57,7 @@ var canvas: Control
 var banner: Control
 var tabs: HFlowContainer
 var _tab_btns: Array = []
+var ack_btn: Button              # "Acknowledge screen (N)": N the alarms it acknowledges (screen_unacked)
 var _layouts := {}              # screen index -> layout (below)
 var _view := {}                 # screen index -> [zoom, offset]
 var zoom := 1.0
@@ -148,6 +149,9 @@ func setup(u, screens_model, trend_buffer) -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size.y = 38 * W.scale
 		bb.add_child(b)
+		if ack_btn == null:
+			ack_btn = b
+			b.name = "ack_screen"
 	canvas = Control.new()
 	canvas.name = "canvas"
 	canvas.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -369,6 +373,8 @@ func _tabs_text() -> void:
 		var top := 1 if by[0] > 0 else (2 if by[1] > 0 else (3 if by[2] > 0 else 0))
 		var col: Color = PRIO.get(top, Color.WHITE)
 		b.modulate = col.lerp(Color.WHITE, 0.25) if top > 0 and (a.unack == 0 or _blink) else Color.WHITE
+	if ack_btn != null:
+		ack_btn.text = "Acknowledge screen (%d)" % screen_unacked().size()
 
 
 # ------------------------------------------------------------------ the layout (once per screen; the values change, not the places)
@@ -864,6 +870,19 @@ func move_selection(dir: Vector2) -> void:
 ## Acknowledges the alarms of the screen shown (the overview: every alarm), as a control system's page acknowledge.
 func ack_screen() -> void:
 	var e = ui.clock.engine
+	var any := false
+	for k in screen_unacked():
+		ui.ack(e._al[k][0], false)
+		any = true
+	if any:
+		ui.sounds.once("horn_ack")          # one acknowledge, one sound (not one for each alarm)
+	refresh()
+
+
+## The alarms "Acknowledge screen" acknowledges, on the screen shown: those unacknowledged and not shelved (the
+## overview: of every screen this desk has, and those on no screen). Its button says how many (B1).
+func screen_unacked() -> Array:
+	var e = ui.clock.engine
 	var ks: Array = []
 	if current < 0:
 		# the overview: every alarm of the screens this desk has (the main control room reads the WTP's overview
@@ -876,15 +895,9 @@ func ack_screen() -> void:
 				ks.append(k)
 	else:
 		ks = sm.screen_alarms(current, e).alarms
-	var any := false
-	for k in ks:
+	return ks.filter(func(k):
 		var s: String = e.astate[k]
-		if e.shelved[k] == -1 and (s == "active_unack" or s == "cleared_unack"):
-			ui.ack(e._al[k][0], false)
-			any = true
-	if any:
-		ui.sounds.once("horn_ack")          # one acknowledge, one sound (not one for each alarm)
-	refresh()
+		return e.shelved[k] == -1 and (s == "active_unack" or s == "cleared_unack"))
 
 
 func _banner_input(ev: InputEvent) -> void:
