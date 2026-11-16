@@ -361,11 +361,22 @@ func _build_space() -> void:
 	world.add_child(cam)
 	cam.current = true
 	container.gui_input.connect(_on_view_input)
+	make_panels()
+	_apply_tier()
+
+## The panels, made again at the UI's scale as it is now (`W.scale`: a change of the UI size, #382), showing the
+## machine shown.
+func make_panels() -> void:
+	if panels != null:
+		remove_child(panels)
+		panels.free()
 	panels = Panels.new()
 	panels.name = "workshop_panels"
 	add_child(panels)
 	panels.setup(self)
-	_apply_tier()
+	if machine != null and _loading == "":
+		panels.machine_shown()
+		panels.refresh()
 
 ## The plant's tier as it is now (it can change in the settings between two entries).
 func _apply_tier() -> void:
