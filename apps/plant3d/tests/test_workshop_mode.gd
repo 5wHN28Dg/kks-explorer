@@ -53,6 +53,22 @@ func run(tree: SceneTree) -> Array:
 	main.hud.show_settings(true)
 	var sbtn: Button = App.find_button(main.hud.extra, "Pressure transmitter")
 	check(sbtn != null, "the settings list the Workshop's kinds")
+	# every kind's button within the screen (UI-UX-POLICY L2: the row wraps), the kinds in the order of their names
+	for i in 3:
+		await tree.process_frame
+	var vw: float = main.get_viewport().get_visible_rect().size.x
+	var names: Array = []
+	for k in ws.kinds():
+		var kb: Button = main.hud.extra.find_child("workshop_" + k, true, false)
+		check(kb != null and kb.get_global_rect().end.x <= vw + 0.5, "the settings' button for %s within the screen (%s, the screen %.0f wide)" % [
+			k, str(kb.get_global_rect()) if kb != null else "none", vw])
+		if kb != null:
+			names.append([kb.get_global_rect().position.y, kb.get_global_rect().position.x, kb.text])
+	names.sort()
+	var in_row: Array = names.map(func(n): return n[2])
+	var sorted: Array = in_row.duplicate()
+	sorted.sort_custom(func(x, y): return String(x).naturalnocasecmp_to(String(y)) < 0)
+	check(in_row == sorted, "the settings list the kinds in the order of their names: %s" % str(in_row))
 	if sbtn != null:
 		sbtn.pressed.emit()
 		check(ws.is_open and not main.hud.panel.visible, "the settings' button opens the Workshop, the settings closed behind it")
