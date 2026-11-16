@@ -515,6 +515,15 @@ func _replace(tree: SceneTree) -> Array:
 	for ev in e.events:
 		if ev.size() > 6 and ev[1] == "issue" and ev[2] == "pt_unit_a3" and ev[6] == "done":
 			spares += 1
+	var seen_at := -1          # (the storekeeper's note written before the fitting's end: the call was taken during it)
+	var fit_at := -1
+	for ev in e.events:
+		if ev.size() > 4 and ev[1] == "task" and ev[3] == "issue_cond_p2_fix_seen" and ev[4] == "done":
+			seen_at = ev[0]
+		if ev.size() > 6 and ev[1] == "hand" and ev[3] == "fit_tx" and ev[6] == "done":
+			fit_at = ev[0]
+	if stocked and (seen_at == -1 or fit_at == -1 or seen_at >= fit_at):
+		p.append("the call during the fitting was answered at %d, the fitting done at %d" % [seen_at, fit_at])
 	if stocked and (not recalled or spares != 1 or not Maint._has_ev(e, ["task", "store1", "issue_cond_p2_fix_seen", "done"])):
 		p.append("a call during the fitting: called %s, %d spares issued (1 wanted), the storekeeper's note %s" % [
 				str(recalled), spares, str(Maint._has_ev(e, ["task", "store1", "issue_cond_p2_fix_seen", "done"]))])

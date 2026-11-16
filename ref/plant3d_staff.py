@@ -1028,7 +1028,8 @@ class Staff:
                     keys(x, ('until',), ('minutes', 'else'), f'{ws}.wait')
                     self.m.cond(x['until'], f'{ws}.wait.until')
                 elif 'issued' in x:     # REALISM.md §2.24: a part issued against the work
-                    keys(x, ('issued',), ('minutes', 'else'), f'{ws}.wait')
+                    keys(x, ('issued',), ('minutes', 'else', 'fitting'), f'{ws}.wait')
+                    need(x.get('fitting', True) is True, 'bad_type', f'{ws}.wait.fitting: true, or left out')
                     lst(x['issued'], f'{ws}.wait.issued', 2, 2)
                     from ref import plant3d_stores as SR
                     SR.check_service_part(self.b, x['issued'][0], f'{ws}.wait.issued')
@@ -3760,9 +3761,9 @@ class StaffRun:
         elif 'issued' in w:         # REALISM.md §2.24: the part issued against the work and not yet fitted
             wid = cur['work'] if w['issued'][1] == '$' else w['issued'][1]
             ok = e.stores is not None and int(e.issued.get(wid, {}).get(w['issued'][0], 0)) >= 1
-            if not ok and e.stores is not None and wid is not None:
-                # (a fitting under way has taken the part from the work's issued parts and has not fitted it yet:
-                # its busy record names the work, §2.23)
+            if not ok and w.get('fitting') and e.stores is not None and wid is not None:
+                # ("fitting": a fitting under way counts too: it has taken the part from the work's issued parts
+                # and has not fitted it yet; its busy record names the work, §2.23)
                 ok = any(len(b) > 6 and b[6] == wid and e.hands[(b[0], b[1])].get('part') == w['issued'][0]
                          for b in e.busy.values())
             gone = False

@@ -209,7 +209,10 @@ class Job(unittest.TestCase):
         self.assertEqual([s['value'] for s in fs if s.get('hand') == 'loop_test'], list(train_hands.LOOP_CHECK))
         iss = self.tasks[train_hands.ISSUE]['steps']
         # the ledger first: a spare issued against the order already goes to the note, never a second issue
-        self.assertEqual(iss[1], {'wait': {'issued': spare, 'minutes': 1, 'else': 3}})
+        self.assertEqual(iss[1], {'wait': {'issued': spare, 'fitting': True, 'minutes': 1, 'else': 3}})
+        # the technician's own waits count the issued parts alone: somebody else's fitting never sends them to the swap
+        self.assertFalse([s for s in tx if 'wait' in s and 'fitting' in s['wait']])
+        self.assertEqual(len([s for s in tx if 'wait' in s and s['wait'].get('issued') == spare]), 3)
         self.assertEqual(iss[2], {'choose': [[1, train_hands.SEEN]]})
         # an order never opened goes through the checks too (it may open on the way to the counter)
         self.assertEqual(iss[0], {'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 1}})
@@ -298,14 +301,18 @@ class SlowStorekeeper(unittest.TestCase):
 
     def test_a_call_during_the_fitting_issues_none(self):
         """A call taken while the new transmitter is being fitted (ten minutes: the fitting takes the spare from the
-        work's issued parts when it starts, the failed sensor is gone only when it ends): the wait counts the part
-        the fitting holds, so no second spare. Counting the issued parts alone, a second one was issued (seen here
-        with the fitting's busy record hidden from the wait)."""
-        b = P.check_dir(DATA)
-        self.assertEqual(self.during(b), 1)
-        self.assertEqual(self.during(b, hide=True), 2)
+        work's issued parts when it starts, the failed sensor is gone only when it ends): the storekeeper's wait
+        counts the part the fitting holds ("fitting"), so no second spare. A wait without the key counts the issued
+        parts alone (as the technician's own do): with the issue task's wait so, a second one is issued."""
+        self.assertEqual(self.during(P.check_dir(DATA)), 1)
+        F = P.load_dir(DATA)
+        st = json.loads(F['staff.json'])
+        t = next(x for x in st['tasks'] if x['id'] == train_hands.ISSUE)
+        self.assertIs(t['steps'][1]['wait'].pop('fitting'), True)
+        F['staff.json'] = json.dumps(st).encode()
+        self.assertEqual(self.during(P.check_files(F)), 2)
 
-    def during(self, b, hide=False):
+    def during(self, b):
         e = P.Engine(b, 'shift_fail')
         seen = False
         while e.step_no < 40000:          # to the fitting's start: the spare issued, then gone from the ledger
@@ -315,18 +322,12 @@ class SlowStorekeeper(unittest.TestCase):
                 break
         self.assertTrue(seen and e.step_no < 40000)
         self.assertEqual(e.cur[b.model.index['cpt2_sensor_module_fail']], 1)
-        fit = [v for v in e.busy.values() if v[1] == 'fit_tx']
-        self.assertEqual([v[6] for v in fit], ['wo_cond_p2_fix'])
+        self.assertEqual([v[6] for v in e.busy.values() if v[1] == 'fit_tx'], ['wo_cond_p2_fix'])
         for _ in range(100):
             e.step()
         self.assertTrue(e.staff.assign(['store'], train_hands.ISSUE, 2, None, 'wo_cond_p2_fix', None, None))
         for _ in range(6000):
-            if hide and fit[0] in e.busy.values():      # (the wait as it was: the work's name off the busy record)
-                del fit[0][6:]
-                e.step()
-                fit[0].append('wo_cond_p2_fix')
-            else:
-                e.step()
+            e.step()
         self.assertEqual(e.cur[b.model.index['cpt2_sensor_module_fail']], 0)      # (the fitting went through)
         return len([x for x in e.events if x[1] == 'issue' and x[2] == train_hands.SPARE and x[6] == 'done'])
 

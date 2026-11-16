@@ -1415,8 +1415,9 @@ parts). Lead times are clock days (§2.1).
     call could make a slow storekeeper issue two spares. Settled:
     - **A step condition** (both engines): `{"wait": {"issued": [part, work], "minutes", "else"}}`, done when the work
       (`"$"`: the task's) holds at least one of the part issued against it and not yet fitted (the record's issued
-      parts, §2.23, or one a fitting under way under that work has taken: below). The validator: the part is one of stores.json's (`bad_ref` without the file), the work one of
-      the model's or `"$"` with a work given to the task (as the permit wait's), `minutes` and `else` as any wait's.
+      parts, §2.23; with `"fitting": true` also one a fitting under way under that work has taken: below). The validator: the part is one of stores.json's (`bad_ref` without the file), the work one of
+      the model's or `"$"` with a work given to the task (as the permit wait's), `minutes` and `else` as any wait's,
+      `fitting` true or left out (`bad_type`).
       An absent work (`"$"` in a task given none) is never done.
     - **`job_cond_p2_fix_tx`** now: the status read, the work order notified, the storekeeper called, in front of the
       counter until the order is open, then a wait of up to an hour for the spare issued against the order; with it,
@@ -1444,8 +1445,11 @@ parts). Lead times are clock days (§2.1).
       (the walk to the counter) gets a second one issued, as they asked.
     - **A fitting under way counts** (the second review, 2026-11-16): the fitting takes the spare from the work's
       issued parts when it starts and cures the sensor ten minutes later, when it ends; a call taken in between
-      found neither and issued a second spare. So the `issued` wait is also done while a fitting of that part under
-      that work is under way (its busy record names the work, §2.23; both engines): issued and not yet fitted. A
+      found neither and issued a second spare. So with `"fitting": true` the `issued` wait is also done while a fitting of that part
+      under that work is under way (its busy record names the work, §2.23; both engines): issued and not yet
+      fitted. Only the storekeeper's check asks for it: the technician's own waits count the issued parts alone,
+      or somebody else's fitting (a trainer's by hand) would send them into the swap to unbolt the new transmitter
+      (the third review). A
       check on the old transmitter being off its flange instead was tried and dropped: a trainee who takes the old
       one off before calling for the spare (the look-alike's lesson) would never be issued one.
     - Two spares: an issue task finds the first spare in the ledger until it is fitted, and the failed sensor gone
@@ -1461,17 +1465,17 @@ parts). Lead times are clock days (§2.1).
       the code's work whose permit is accepted; the permits of transmitter 2's works share an isolation, so a
       second one is refused while the job's is open (the day's calibration's request is, in the forks).
     - **Vectors** (made again, compared item by item with 45aae8bd's): `plant3d-v1.json` unchanged;
-      `plant3d-realism.json` gains six rejects of the new wait form (a part not in the file or not a name, no work,
-      no `[part, work]` pair, `"$"` in a task given no work, an unknown key), nothing else; `plant3d-v2.json`: only
+      `plant3d-realism.json` gains seven rejects of the new wait form (a part not in the file or not a name, no work,
+      no `[part, work]` pair, `"$"` in a task given no work, an unknown key, `fitting` not true), nothing else; `plant3d-v2.json`: only
       `npc_hands_failed` (the spare issued, then the swap: cured at step 31,425) and `npc_hands_nospare` (lengthened
       to 106,000 steps: no fitting refused, held at 16:00, the spare issued after the delivery on the second morning,
       the swap, cured at 98,875) changed, and `npc_hands_absent` (shift_fail_absent, 67,000 steps: the storekeeper's
       issue unassigned, held for parts at 16:00, no issue, none of the swap's actions, permit 5 with its lock as a
       held job's) appended; the day and every other fork as before. Made again twice more the same day, each
       compared item by item with the files before: for shift_fail_absent's own world seed (21; only
-      `npc_hands_absent` moved) and after the second review's fixes (nothing moved: no vector takes a call during a
-      fitting or leaves the order unopened for two hours); `plant3d-v1.json` and `plant3d-realism.json` byte for
-      byte the same both times.
+      `npc_hands_absent` moved) and after the second and third reviews' fixes (`plant3d-v2.json` byte for byte the same:
+      no vector takes a call during a fitting or leaves the order unopened for two hours; `plant3d-realism.json`
+      gains the seventh reject, nothing else); `plant3d-v1.json` byte for byte the same each time.
     - **Tests:** `tests/test_plant3d_wm2_tx.py` (the job's shape: no hand action before the swap, every way into it
       after the wait for the spare; the issue task's checks; the forks; three calls queued at once issue one spare,
       the issue task before part 4 issued two; a call after the fitting issues none, the ledger-only check issued a

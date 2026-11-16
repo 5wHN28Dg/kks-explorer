@@ -442,11 +442,12 @@ def tasks():
              # (part 4) the ledger first: a spare issued against the order and not yet fitted is not issued again,
              # nor one once the failed transmitter is out (a call kept until the storekeeper's duty may come after
              # the fitting, which empties the ledger)
-             # nor during the fitting (the wait counts a part a fitting under way has taken: it leaves the ledger
+             # nor during the fitting ("fitting": the wait counts a part a fitting under way has taken: it leaves the ledger
              # when the fitting starts, the sensor is cured when it ends). An order that never opened goes through
              # the same checks (it may open on the way to the counter).
              'steps': [{'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 1}},
-                       {'wait': {'issued': [SPARE, '$'], 'minutes': 1, 'else': 3}}, {'choose': [[1, SEEN]]},
+                       {'wait': {'issued': [SPARE, '$'], 'fitting': True, 'minutes': 1, 'else': 3}},
+                       {'choose': [[1, SEEN]]},
                        {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 5}},
                        {'choose': [[1, ISSUE_DO]]}, {'choose': [[1, SEEN]]}]},
             {'id': ISSUE_DO, 'title': 'Hand over the spare transmitter and write it on the work order', 'priority': 2, 'work': w,
