@@ -451,16 +451,16 @@
   {"id": "wo_ct_fan7_alm", "kks": "30PAD10AN007", "title": "Cooling tower fan 7 vibration alarm: limit raised to 7.1 mm/s for seven days", "discipline": "inst", "permit": "general", "set": {"ct_fan7_chat": 0}, "task": "job_ct_fan7_alm", "jsa": "alarm_change", "assign": "assign_ct_fan7_alm", "codes": ["erratic", "faulty_signal", "modify"], "hours": 1, "finds": ["erratic"]}
  ],
  "hands": [
-  {"kks": "30PAD10AN001", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan1_lab_fe", "ct_fan1_lab_pc", "ct_fan1_lab_visc", "ct_fan1_lab_h2o"]},
-  {"kks": "30PAD10AN002", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan2_lab_fe", "ct_fan2_lab_pc", "ct_fan2_lab_visc", "ct_fan2_lab_h2o"]},
-  {"kks": "30PAD10AN003", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan3_lab_fe", "ct_fan3_lab_pc", "ct_fan3_lab_visc", "ct_fan3_lab_h2o"]},
-  {"kks": "30PAD10AN004", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan4_lab_fe", "ct_fan4_lab_pc", "ct_fan4_lab_visc", "ct_fan4_lab_h2o"]},
-  {"kks": "30PAD10AN005", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan5_lab_fe", "ct_fan5_lab_pc", "ct_fan5_lab_visc", "ct_fan5_lab_h2o"]},
-  {"kks": "30PAD10AN006", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan6_lab_fe", "ct_fan6_lab_pc", "ct_fan6_lab_visc", "ct_fan6_lab_h2o"]},
-  {"kks": "30PAD10AN007", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan7_lab_fe", "ct_fan7_lab_pc", "ct_fan7_lab_visc", "ct_fan7_lab_h2o"]},
-  {"kks": "30PAD10AN008", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan8_lab_fe", "ct_fan8_lab_pc", "ct_fan8_lab_visc", "ct_fan8_lab_h2o"]},
-  {"kks": "30PAD10AN009", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan9_lab_fe", "ct_fan9_lab_pc", "ct_fan9_lab_visc", "ct_fan9_lab_h2o"]},
-  {"kks": "30PAD10AN010", "action": "take_oil", "component": "body", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan10_lab_fe", "ct_fan10_lab_pc", "ct_fan10_lab_visc", "ct_fan10_lab_h2o"]}
+  {"kks": "30PAD10AN001", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan1_lab_fe", "ct_fan1_lab_pc", "ct_fan1_lab_visc", "ct_fan1_lab_h2o"]},
+  {"kks": "30PAD10AN002", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan2_lab_fe", "ct_fan2_lab_pc", "ct_fan2_lab_visc", "ct_fan2_lab_h2o"]},
+  {"kks": "30PAD10AN003", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan3_lab_fe", "ct_fan3_lab_pc", "ct_fan3_lab_visc", "ct_fan3_lab_h2o"]},
+  {"kks": "30PAD10AN004", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan4_lab_fe", "ct_fan4_lab_pc", "ct_fan4_lab_visc", "ct_fan4_lab_h2o"]},
+  {"kks": "30PAD10AN005", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan5_lab_fe", "ct_fan5_lab_pc", "ct_fan5_lab_visc", "ct_fan5_lab_h2o"]},
+  {"kks": "30PAD10AN006", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan6_lab_fe", "ct_fan6_lab_pc", "ct_fan6_lab_visc", "ct_fan6_lab_h2o"]},
+  {"kks": "30PAD10AN007", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan7_lab_fe", "ct_fan7_lab_pc", "ct_fan7_lab_visc", "ct_fan7_lab_h2o"]},
+  {"kks": "30PAD10AN008", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan8_lab_fe", "ct_fan8_lab_pc", "ct_fan8_lab_visc", "ct_fan8_lab_h2o"]},
+  {"kks": "30PAD10AN009", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan9_lab_fe", "ct_fan9_lab_pc", "ct_fan9_lab_visc", "ct_fan9_lab_h2o"]},
+  {"kks": "30PAD10AN010", "action": "take_oil", "component": "gb_case", "tools": ["oil_kit"], "minutes": 10, "work": false, "samples": ["ct_fan10_lab_fe", "ct_fan10_lab_pc", "ct_fan10_lab_visc", "ct_fan10_lab_h2o"]}
  ],
  "meters": [
   {"id": "ct_fan1_vel", "kks": "30PAD10CY001", "point": "brg", "tool_kind": "collector", "mode": "vel", "value": "ct_fan1_vib"},

@@ -1173,6 +1173,11 @@ class Windows(unittest.TestCase):
         self.check('board.uia', ['click\t‹ Manage', 'click\tLeaderboard', 'wait\t~. Omar Fieldman\t20',
                                  'wait\t3 approved · 0 waiting · 1 rejected · 4 in all · 75 % approved\t20',
                                  'wait\t~Equipment photos: 1 approved of 2, 1 rejected\t10'])
+        # History: each change in words, with who and when (before 2026-11-15: "#" and "added_tag <id>", from fields
+        # /api/revisions never sent)
+        self.check('hist.uia', ['click\t‹ Manage', 'click\tHistory', 'wait\t~11LAC30AP002: notes \t20',
+                                'wait\t~photo added 11LAC30AP001\t10', 'wait\t~ · 20\t10', 'gone\t~\u2068\t5', 'sleep\t2010'],   # GDI drew U+2068 as a box
+                   during=[('sleep\t2010', lambda: self.screenshot('history'))])   # for the UI audit
         self.leave()
 
     def test_copy_close_select(self):

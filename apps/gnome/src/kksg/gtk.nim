@@ -248,6 +248,7 @@ proc adw_action_row_add_prefix*(r, w: W) {.importc, header: HA.}
 proc adw_action_row_set_subtitle*(r: W, s: cstring) {.importc, header: HA.}
 proc adw_action_row_set_activatable_widget*(r, w: W) {.importc, header: HA.}
 proc adw_action_row_set_subtitle_selectable*(r: W, s: cint) {.importc, header: HA.}
+proc adw_preferences_row_set_title_selectable*(r: W, s: cint) {.importc, header: HA.}
 proc adw_preferences_row_set_title*(r: W, t: cstring) {.importc, header: HA.}
 proc adw_preferences_row_set_use_markup*(r: W, v: cint) {.importc, header: HA.}
 proc adw_entry_row_new*(): W {.importc, header: HA.}
