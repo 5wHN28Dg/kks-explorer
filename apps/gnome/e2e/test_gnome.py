@@ -1500,9 +1500,12 @@ class Gnome(Plant):
         tick({'name': f'Select all ({waiting})'}, f'{waiting} selected')
         tick({'name': f'Select all ({waiting})'}, 'None selected')
         # (named by the app's own number for the proposal, which is not the server's: found by code and person)
-        boxes = atspi.find_all(a, 'toggle button', contains=f'{code} by Nadia Batch')
-        self.assertEqual(len(boxes), 4, [b.get_name() for b in boxes])
-        names = [b.get_name() for b in boxes]
+        for _ in range(10):         # (a page rebuilt after a sync while it is read gives buttons without a name: read again)
+            names = [b.get_name() for b in atspi.find_all(a, 'toggle button', contains=f'{code} by Nadia Batch')]
+            if len(names) == 4 and all(names): break
+            time.sleep(1)
+        self.assertEqual(len(names), 4, names)
+        self.assertTrue(all(names), names)
         for i, nm in enumerate(names):
             tick({'name': nm}, f'{i + 1} selected')
         after = '1 selected'        # (the held one is not approved, and stays ticked)

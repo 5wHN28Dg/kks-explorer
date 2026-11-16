@@ -249,13 +249,16 @@ proc approvals(w: Win, box: W) =
             closureScope:
               let sub = items[ii]
               let id = sub["id"].i
+              # a group of its own for each proposal (the kind's heading over the first): a group puts its buttons under
+              # all its rows, and several proposals in one had their buttons in a stack below, away from what they decide
+              let pg = if ii == 0: kg else: group("")
               let who = "#" & $id & " · by " & s(sub, "by_name") & " · " & sub.at("created") &
                         (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: "")
-              adw_preferences_group_add(kg, row(proposalTitle(sub), who, selectable = true))
-              for (lab, v) in proposalRows(sub): adw_preferences_group_add(kg, row(lab, v, selectable = true))
+              adw_preferences_group_add(pg, row(proposalTitle(sub), who, selectable = true))
+              for (lab, v) in proposalRows(sub): adw_preferences_group_add(pg, row(lab, v, selectable = true))
               if sub["status"].s == "conflict":
-                adw_preferences_group_add(kg, row("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), selectable = true))
-              w.photoButton(kg, sub)
+                adw_preferences_group_add(pg, row("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), selectable = true))
+              w.photoButton(pg, sub)
               let what = proposalTitle(sub) & " by " & s(sub, "by_name")
               let btns = hbox(8)
               gtk_widget_set_margin_top(btns, 6)
@@ -291,8 +294,8 @@ proc approvals(w: Win, box: W) =
                 if w.act(id, "reject", newObj(), "Rejected"): again())
               setAccessibleDescription(rb, what)
               btns.add rb
-              adw_preferences_group_add(kg, btns)
-          box.add kg
+              adw_preferences_group_add(pg, btns)
+              box.add pg
 
 const StatusChoices = [("All", "all"), ("Waiting", "pending"), ("Held (clashes)", "conflict"), ("Approved", "approved"),
                        ("Rejected", "rejected"), ("Withdrawn", "withdrawn")]
