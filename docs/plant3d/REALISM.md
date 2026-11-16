@@ -1409,6 +1409,32 @@ parts). Lead times are clock days (§2.1).
       starts a part at or under its reorder point makes no edge for the reorder reaction.
     - `cpt2_spare_shelf` and `cpt2_wo_open` are content nodes in the store's area (`model/admin.json`, after the
       parts' nodes).
+  - **The spare in hand before the plant is touched (part 4, 2026-11-16; the user's choice after the review found
+    the job stranded):** with the storekeeper absent the job above called for the spare, took the old transmitter
+    off anyway, was refused twice at the fitting and was abandoned, the transmitter off; and a held job's second
+    call could make a slow storekeeper issue two spares. Settled:
+    - **A step condition** (both engines): `{"wait": {"issued": [part, work], "minutes", "else"}}`, done when the work
+      (`"$"`: the task's) holds at least one of the part issued against it and not yet fitted (the record's issued
+      parts, §2.23). The validator: the part is one of stores.json's (`bad_ref` without the file), the work one of
+      the model's or `"$"` with a work given to the task (as the permit wait's), `minutes` and `else` as any wait's.
+      An absent work (`"$"` in a task given none) is never done.
+    - **`job_cond_p2_fix_tx`** now: the status read, the work order notified, the storekeeper called, in front of the
+      counter until the order is open, then a wait of up to an hour for the spare issued against the order; with it,
+      `choose` of `job_cond_p2_fix_swap` (three minutes' writing at the counter, back at the transmitter: the leads
+      off, the wires lifted, the block valve shut, the vent cracked, unbolted, the new one fitted, then the second
+      half as before). Without it, "held for parts" to the maintenance supervisor, another hour's wait for a slow
+      issue (no second call while the first may still come), then a wait until a spare is on the shelf (no
+      minutes: held through the nights with the permit's lock on, a jump passing), the storekeeper called again, in
+      front of the counter until the spare is issued (no minutes: with nobody to issue it, the job is held there,
+      the plant untouched, until someone does, the trainee too), then the swap. The plant is touched only with the
+      spare in hand; the look-alike handed over by a trainer is never offered by the NPC (it waits for the part
+      its fitting needs), so `wrong_part` stays the trainee's lesson.
+    - **`issue_cond_p2_fix`** checks the ledger first: a minute's wait for the spare already issued against the order
+      goes, when it is, to `issue_cond_p2_fix_seen` (a minute's writing) instead of issuing a second one; else as
+      before.
+    - Left as it is (the user, 2026-11-16): after the issue drops the spare to its reorder point, the storekeeper's
+      own order in `issue_cond_p2_fix` orders it up to its max, and the reorder reaction offered by the same drop
+      then finds nothing missing: its order is refused `qty` (an event, no effect).
   - **Scenarios:** `shift_fail` (shift_tx with `cpt2_w_fail` 1, world seed 13: it draws `failed`, the spare on the
     shelf) and `shift_nospare` (shift_fail with `"stock": {"pt_unit_a3": 0}`, seed 15, `failed` again).
   - **The app:** the diagnosis tab's review gains `removed` (a hand action of the service file with `part` done at

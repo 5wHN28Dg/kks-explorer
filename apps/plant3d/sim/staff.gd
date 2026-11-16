@@ -3671,6 +3671,9 @@ func wait(e, cur: Dictionary, w: Dictionary) -> String:
 	var gone := false
 	if w.has("until"):
 		ok = e.truth(w["until"])
+	elif w.has("issued"):      # REALISM.md §2.24: the part issued against the work and not yet fitted
+		var iw = cur["work"] if w["issued"][1] == "$" else w["issued"][1]
+		ok = e._sr != null and iw != null and e.sr_issued.has(iw) and int(e.sr_issued[iw].get(w["issued"][0], 0)) >= 1
 	else:
 		var wid = cur["work"] if w["permit"][0] == "$" else w["permit"][0]
 		var sv: int = e.pstate[e.m.work_ix[wid]] if wid != null and e.m.work_ix.has(wid) else 0

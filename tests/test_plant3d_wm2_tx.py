@@ -128,8 +128,8 @@ class Weights(unittest.TestCase):
             sid = rel.split('/')[1][:-5]
             e = P.Engine(b, sid)
             w = e.cur[b.model.index[train_hands.W_FAIL]]
-            self.assertEqual(w, 1 if sid in ('shift_fail', 'shift_nospare') else 0, sid)
-        for sid in ('shift_fail', 'shift_nospare'):
+            self.assertEqual(w, 1 if sid in ('shift_fail', 'shift_nospare', 'shift_fail_absent') else 0, sid)
+        for sid in ('shift_fail', 'shift_nospare', 'shift_fail_absent'):
             sc = json.loads(F[f'scenarios/{sid}.json'].decode())
             _, r = draw(stream(world_seed(sc), TAGS['causes'], 'cond_p2_low'))
             self.assertEqual(CAUSES[(r * 6) >> 24], 'failed', sid)
@@ -164,29 +164,50 @@ class Job(unittest.TestCase):
         self.assertEqual(main[i]['wait']['else'], len(main) - 1)
         self.assertEqual(main[-1], {'choose': [[1, train_hands.TX]]})
         self.assertEqual(main[-2], {'choose': [[1, train_hands.END]]})       # the job's end, never into the last
-        for t in (train_hands.TX, train_hands.FIT, train_hands.END, train_hands.ISSUE):
+        for t in (train_hands.TX, train_hands.FIT, train_hands.END, train_hands.ISSUE, train_hands.SWAP,
+                  train_hands.SEEN):
             self.assertLessEqual(len(self.tasks[t]['steps']), 64, t)
             self.assertEqual(self.tasks[t]['work'], 'wo_cond_p2_fix', t)
 
     def test_order(self):
         tx = self.tasks[train_hands.TX]['steps']
-        order = [s.get('hand') or next(iter(s)) for s in tx]
+        spare = [train_hands.SPARE, '$']
+        # (part 4, REALISM.md §2.24) the replacement touches nothing of the plant: every hand action is the swap's,
+        # and every way to the swap is a wait for the spare issued against the order, right before its choice
+        self.assertFalse([s for s in tx if 'hand' in s])
+        to_swap = [k for k, s in enumerate(tx) if s.get('choose') == [[1, train_hands.SWAP]]]
+        self.assertEqual(len(to_swap), 3)
+        for k in to_swap:
+            self.assertEqual(tx[k - 1]['wait']['issued'], spare, k)
+        # the first hour's wait, then held for parts: another hour for a slow issue (no second call before it), then
+        # a spare on the shelf, the second call, and the counter until it is issued (no minutes)
+        order = [next(iter(s)) for s in tx]
+        first_call = order.index('call')
+        self.assertEqual(tx[to_swap[0] - 1]['wait']['minutes'], 60)
+        held = tx[to_swap[0] - 1]['wait']['else']
+        self.assertEqual(tx[held], {'say': 'held_for_parts', 'to': 'maint_sup'})
+        self.assertEqual(tx[held + 1]['wait']['issued'], spare)
+        second_call = order.index('call', first_call + 1)
+        self.assertLess(to_swap[1], second_call)
+        self.assertIn({'wait': {'until': 'cpt2_spare_shelf'}}, tx[to_swap[1]:second_call])
+        self.assertEqual(tx[to_swap[2] - 1], {'wait': {'issued': spare}})
+        sw = self.tasks[train_hands.SWAP]['steps']
+        order = [s.get('hand') or next(iter(s)) for s in sw]
         first = order.index
-        self.assertLess(first('call'), first('remove_tx'))
         for a, b in (('disconnect_dmm', 'lift_wires'), ('lift_wires', 'shut_block'), ('shut_block', 'crack_vent'),
                      ('crack_vent', 'remove_tx'), ('remove_tx', 'fit_tx')):
             self.assertLess(first(a), first(b), (a, b))
-        # held for parts: the fitting's else waits for a spare on the shelf and calls the storekeeper again
-        fit = tx[first('fit_tx')]
-        self.assertEqual(tx[fit['else']], {'say': 'held_for_parts', 'to': 'maint_sup'})
-        self.assertEqual(tx[fit['else'] + 1], {'wait': {'until': 'cpt2_spare_shelf'}})
+        self.assertEqual(sw[-1], {'choose': [[1, train_hands.FIT]]})
         fs = self.tasks[train_hands.FIT]['steps']
         hands = [s.get('hand') for s in fs]
         self.assertLess(hands.index('set_range'), hands.index('loop_test'))
         self.assertEqual(next(s for s in fs if s.get('hand') == 'set_range')['value'], 120)
         self.assertEqual([s['value'] for s in fs if s.get('hand') == 'loop_test'], list(train_hands.LOOP_CHECK))
         iss = self.tasks[train_hands.ISSUE]['steps']
-        self.assertEqual(iss[1], {'issue': train_hands.SPARE, 'qty': 1, 'for': '$', 'else': 2})
+        # the ledger first: a spare issued against the order already goes to the note, never a second issue
+        self.assertEqual(iss[1], {'wait': {'issued': spare, 'minutes': 1, 'else': 3}})
+        self.assertEqual(iss[2], {'choose': [[1, train_hands.SEEN]]})
+        self.assertEqual(iss[3], {'issue': train_hands.SPARE, 'qty': 1, 'for': '$', 'else': 4})
         self.assertEqual(iss[-1], {'order': train_hands.SPARE})
         # only the storekeeper issues (the validator's authority rule): the issue task is called for the store role
         self.assertTrue(all(s['call']['role'] == 'store' for s in tx if 'call' in s))
@@ -218,10 +239,48 @@ class Forks(unittest.TestCase):
 
     def test_nospare(self):
         ev = self.forks['npc_hands_nospare']['events']
-        self.assertIn(['wrong_part'], [x[7] for x in ev if x[1] == 'hand' and x[3] == 'fit_tx' and x[6] == 'refused'])
-        self.assertTrue(any(x[1] == 'delivery' and x[3] == 'pt_unit_a3' for x in ev))
+        # (part 4) the look-alike the trainer hands over is never offered: the job waits for the spare it needs, and
+        # the plant is touched only after the delivery and the issue
+        self.assertFalse([x for x in ev if x[1] == 'hand' and x[3] == 'fit_tx' and x[6] == 'refused'])
+        k_del = next(k for k, x in enumerate(ev) if x[1] == 'delivery' and x[3] == 'pt_unit_a3')
+        k_iss = next(k for k, x in enumerate(ev) if x[1] == 'issue' and x[2] == 'pt_unit_a3' and x[6] == 'done')
+        k_off = next(k for k, x in enumerate(ev) if x[1] == 'hand' and x[2] == CP2 and x[6] != 'refused')
+        self.assertLess(k_del, k_iss)
+        self.assertLess(k_iss, k_off)
         self.assertEqual(self.hands('npc_hands_nospare').count('fit_tx'), 1)
         self.assertEqual(len([x for x in ev if x[1] == 'repair' and x[2] == 'cond_p2_low']), 1)
+
+    def test_absent(self):
+        """(part 4) The storekeeper absent: nobody issues the spare; the job is held for parts, the old transmitter
+        untouched (no hand action at it at all), its permit accepted with the lock on as a held job's."""
+        f = self.forks['npc_hands_absent']
+        ev = f['events']
+        self.assertFalse([x for x in ev if x[1] == 'hand' and x[2] == CP2 and x[6] != 'refused'])
+        self.assertFalse([x for x in ev if x[1] == 'issue'])
+        self.assertIn(['ic1', 'job_cond_p2_fix_tx', 'held'], [x[2:5] for x in ev if x[1] == 'task'])
+        self.assertNotIn(['ic1', 'job_cond_p2_fix_tx', 'abandoned'], [x[2:5] for x in ev if x[1] == 'task'])
+        self.assertEqual(f['end']['permits'].get('wo_cond_p2_fix'), 5)
+
+
+class SlowStorekeeper(unittest.TestCase):
+    """(part 4) A storekeeper slow to the first call gets the second one too (the held job's): however many issue
+    tasks wait in their queue, one spare is issued against the order; the others find it in the ledger."""
+
+    def test_two_calls_one_spare(self):
+        b = P.check_dir(DATA)
+        e = P.Engine(b, 'shift_fail')
+        while e.step_no < 30000 and not any(x[1] == 'call' and x[4] == train_hands.ISSUE for x in e.events):
+            e.step()
+        for _ in range(2):          # (two more calls while the first may still be pending)
+            self.assertTrue(e.staff.assign(['store'], train_hands.ISSUE, 2, None, 'wo_cond_p2_fix', None, None))
+        while e.step_no < 40000 and not any(x[1] == 'hand' and x[3] == 'fit_tx' and x[6] == 'done'
+                                            for x in e.events):
+            e.step()
+        done = [x for x in e.events if x[1] == 'issue' and x[2] == train_hands.SPARE and x[6] == 'done']
+        self.assertEqual(len(done), 1, done)
+        seen = [x for x in e.events if x[1] == 'task' and x[3] == train_hands.SEEN and x[4] == 'done']
+        self.assertEqual(len(seen), 2)
+        self.assertTrue(any(x[1] == 'hand' and x[3] == 'fit_tx' and x[6] == 'done' for x in e.events))
 
 
 if __name__ == '__main__':

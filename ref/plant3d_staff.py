@@ -1027,6 +1027,12 @@ class Staff:
                 if 'until' in x:
                     keys(x, ('until',), ('minutes', 'else'), f'{ws}.wait')
                     self.m.cond(x['until'], f'{ws}.wait.until')
+                elif 'issued' in x:     # REALISM.md §2.24: a part issued against the work
+                    keys(x, ('issued',), ('minutes', 'else'), f'{ws}.wait')
+                    lst(x['issued'], f'{ws}.wait.issued', 2, 2)
+                    from ref import plant3d_stores as SR
+                    SR.check_service_part(self.b, x['issued'][0], f'{ws}.wait.issued')
+                    self.work_ref(x['issued'][1], f'{ws}.wait.issued')
                 else:
                     keys(x, ('permit',), ('minutes', 'else'), f'{ws}.wait')
                     lst(x['permit'], f'{ws}.wait.permit', 2, 2)
@@ -1412,6 +1418,8 @@ class Staff:
                 if 'issue' in s and s['for'] == '$':
                     need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
                 if 'wait' in s and 'permit' in s['wait'] and s['wait']['permit'][0] == '$':
+                    need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
+                if 'wait' in s and 'issued' in s['wait'] and s['wait']['issued'][1] == '$':
                     need(works[tid], 'bad_ref', f'{ws}: "$" but no work is ever given to task {tid}')
         # a hot or confined work's task tests the air first: a read with "test": "gas" before its first work step
         # (§15.2; checked from milestone S3, whose confined-space jobs are the first with staff)
@@ -3748,6 +3756,10 @@ class StaffRun:
             x['from'] = e.step_no
         if 'until' in w:
             ok = e.truth(w['until'])
+            gone = False
+        elif 'issued' in w:         # REALISM.md §2.24: the part issued against the work and not yet fitted
+            wid = cur['work'] if w['issued'][1] == '$' else w['issued'][1]
+            ok = e.stores is not None and int(e.issued.get(wid, {}).get(w['issued'][0], 0)) >= 1
             gone = False
         else:
             wid = cur['work'] if w['permit'][0] == '$' else w['permit'][0]

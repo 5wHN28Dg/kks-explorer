@@ -238,7 +238,8 @@ MESSAGES = {
     **wtp_staff.MESSAGES,
     **train_discussions.MESSAGES,      # milestone DC3 (REALISM.md §6.3.1)
     # milestone WM2 (REALISM.md §2.24): the transmitter's replacement waiting for its spare
-    'held_for_parts': 'Job held for parts: no right spare transmitter issued, the job waits until one is on the shelf',
+    'held_for_parts': 'Job held for parts: no spare transmitter issued against the order yet, the old one stays in '
+                      'until it is',
 }
 
 

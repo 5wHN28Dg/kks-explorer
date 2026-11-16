@@ -126,7 +126,7 @@ def check_service_part(b, part, w):
     """A service file's action's `part` (§2.23): a part of stores.json; without the file, bad_ref."""
     st = getattr(b, 'stores', None)
     need(st is not None, 'bad_ref', f'{w}: part: the plant has no stores.json (REALISM.md §2.23)')
-    need(part in st['ix'], 'bad_ref', f'{w}: part: no part {part!r} in stores.json')
+    need(isinstance(part, str) and part in st['ix'], 'bad_ref', f'{w}: part: no part {part!r} in stores.json')
 
 
 def check_hand_part(m, x, w):

@@ -554,6 +554,9 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		var k := "lock" if s.has("lock") else "unlock"
 		return "%s point %s of %s" % [k.capitalize(), str(s[k]["point"]), str(cur["work"] if s[k]["work"] == "$" else s[k]["work"])]
 	if s.has("wait"):
+		if s["wait"].has("issued"):     # (REALISM.md §2.24)
+			var sp := StoresPanel.part_of(e, String(s["wait"]["issued"][0]))
+			return "Wait for %s issued against the work order" % (sp.get("number", s["wait"]["issued"][0]))
 		return "Wait: " + (str(s["wait"].get("until")) if s["wait"].has("until") else "permit %s" % str(s["wait"]["permit"]))
 	if s.has("meet"):
 		return "Meet in the %s" % String(s["meet"]["room"]).replace("_", " ")

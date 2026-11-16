@@ -3330,13 +3330,22 @@ def day_forks():
                      ['issue', 'pt_unit_a3', 1, 'wo_cond_p2_fix', 'store1', 'refused', ['stock']],
                      ['order', 'pt_unit_a3'],
                      ['issue', 'pt_unit_a4', 1, 'wo_cond_p2_fix', None, 'done', []],
-                     ['hand', '30MAG10CP002', 'fit_tx', 'spanner_17', 'ic1', 'refused', ['wrong_part']],
+                     ['say', 'ic1', 'held_for_parts', 'maint_sup'],
                      ['task', 'ic1', 'job_cond_p2_fix_tx', 'held'],
                      ['jump', None, None, 'done'], ['delivery'],
                      ['issue', 'pt_unit_a3', 1, 'wo_cond_p2_fix', 'store1', 'done', []],
                      ['hand', '30MAG10CP002', 'fit_tx', 'spanner_17', 'ic1', 'done', []]],
           'end': {'cond_p2_low': 0, 'cpt2_sensor_module_fail': 0, 'cpt2_electronics_urv': 120,
                   'cpt2_sound': 1}}, 'shift_nospare'),
+        # (part 4, 2026-11-16) the storekeeper absent: nobody issues the spare, so the job is held for parts at the
+        # counter at the duty's end, the old transmitter untouched (its bolts, wires and block valve as they were), the
+        # permit accepted and its lock on as a held job's are (§17.10)
+        ('npc_hands_absent', Trainee(), ABSENT_STEPS,
+         {'permits': {'wo_cond_p2_fix': 5},
+          'events': [['cause', 'cond_p2_low', 'failed'], ['task', None, 'issue_cond_p2_fix', 'unassigned'],
+                     ['say', 'ic1', 'held_for_parts', 'maint_sup'], ['task', 'ic1', 'job_cond_p2_fix_tx', 'held']],
+          'end': {'cpt2_sensor_module_fail': 1, 'cpt2_flange_bolts_off': 0, 'cpt2_terminal_block_lift': 0,
+                  'cpt2_manifold_shut': 0}}, 'shift_fail_absent'),
     ]
 
 
@@ -3345,9 +3354,10 @@ def day_forks():
 # month's wear leaves closed cooling water pump A's vibration alarm cleared but not acknowledged, which refuses a jump
 # (§7.9): the trainer acknowledges it first
 FAIL_STEPS = 40000
+ABSENT_STEPS = 67000        # (past the day shift's end at 66,000: the job held)
 NOSPARE_LOOK = 25000
 NOSPARE_J1 = 70000
-NOSPARE_STEPS = 96000
+NOSPARE_STEPS = 106000      # (part 4: the swap waits for the spare in hand, later on the second morning)
 NOSPARE_EXTRA = [[NOSPARE_LOOK, 'issue', 'pt_unit_a4', 1, 'wo_cond_p2_fix', None],
                  [NOSPARE_J1, 'jump', '06:00', 30], [NOSPARE_J1 + 2999, 'ack', 'ccw_a_vib_high'],
                  [NOSPARE_J1 + 3000, 'jump', '08:00', 12]]
@@ -6695,6 +6705,17 @@ REJECTS_STORES = [
     ('an issue step without its work', 'missing_key', _sr_task('kit_valve', lambda s: s[0].pop('for')), 'steps[0].for'),
     ('an issue step for the work given in a task given none', 'bad_ref',
      _sr_task('kit_valve', lambda s: SET(s[0], 'for', '$')), '"$" but no work is ever given'),
+    # (part 4, REALISM.md §2.24) a wait for a part issued against a work
+    ('a wait for a part not in the file', 'bad_ref',
+     _sr_task('kit_valve', lambda s: s.append({'wait': {'issued': ['gasket', 'wo_valve']}})), "no part 'gasket'"),
+    ('a wait for a part issued against no work', 'bad_ref',
+     _sr_task('kit_valve', lambda s: s.append({'wait': {'issued': ['packing', 'wo_fan']}})), "no work 'wo_fan'"),
+    ('a wait for a part without its work', 'bad_length',
+     _sr_task('kit_valve', lambda s: s.append({'wait': {'issued': ['packing']}})), 'wait.issued'),
+    ('a wait for a part issued against "$" in a task given no work', 'bad_ref',
+     _sr_task('kit_valve', lambda s: s.append({'wait': {'issued': ['packing', '$']}})), '"$" but no work is ever given'),
+    ('a wait for a part with a key it doesn\'t know', 'unknown_key',
+     _sr_task('kit_valve', lambda s: s.append({'wait': {'issued': ['packing', 'wo_valve'], 'until': 'x'}})), 'wait'),
     ('an order step of a part not in the file', 'bad_ref', _sr_task('reorder_packing', lambda s: SET(s[2], 'order', 'gasket')), "no part 'gasket'"),
     ('an order step of 10,000 parts', 'bad_number', _sr_task('reorder_packing', lambda s: SET(s[2], 'qty', 10000)), 'qty: 1 to 9,999'),
     ('an order step for a work', 'unknown_key', _sr_task('reorder_packing', lambda s: SET(s[2], 'for', 'wo_valve')), 'steps[2].for'),
