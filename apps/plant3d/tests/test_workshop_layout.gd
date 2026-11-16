@@ -61,6 +61,8 @@ func run(tree: SceneTree) -> Array:
 		await ws.left
 	tree.root.size = size0
 	W.scale = scale0
+	for i in 3:   # (not while the last close's signal is still being sent; the panels made last freed first)
+		await tree.process_frame
 	main.free()
 	return p
 

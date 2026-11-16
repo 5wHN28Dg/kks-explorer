@@ -367,9 +367,9 @@ func _build_space() -> void:
 ## The panels, made again at the UI's scale as it is now (`W.scale`: a change of the UI size, #382), showing the
 ## machine shown.
 func make_panels() -> void:
-	if panels != null:
+	if panels != null:   # (queued: this may run from one of the old panels' own signals)
 		remove_child(panels)
-		panels.free()
+		panels.queue_free()
 	panels = Panels.new()
 	panels.name = "workshop_panels"
 	add_child(panels)
