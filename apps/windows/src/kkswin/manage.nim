@@ -100,7 +100,9 @@ proc pickShow() =
   EnableWindow(pickNo, BOOL(n > 0 and not pickBusy))
   if pickPage != nil:       # (a button is as wide as its label when the page is laid out: "(20)" was cut)
     pickPage.layout()
-    InvalidateRect(pickPage.hwnd, nil, 1)     # (what moved leaves nothing of itself behind, as after a scroll)
+    # (the page and everything on it painted again: the controls under the bar move when its buttons take another
+    # line, and one moved over another's old place left pieces of it behind)
+    RedrawWindow(pickPage.hwnd, nil, nil, RDW_INVALIDATE or RDW_ERASE or RDW_ALLCHILDREN)
 
 proc runBatch(w: Win, action: string, chosen: seq[JNode])
 
