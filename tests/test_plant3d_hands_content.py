@@ -331,11 +331,12 @@ class HiddenCauseJob(unittest.TestCase):
                     self.assertEqual([c['id'] for c in f['causes']],
                                      ['drift', 'loose', 'blocked', 'passing', 'wet', 'failed'])
                     # (HW3) the three new causes weigh by a value, 0 unless the scenario sets it (shift_tx, shift_vac
-                    # and WM2's two); (WM2) the failed sensor too, set only in shift_fail and shift_nospare
+                    # and WM2's three); (WM2) the failed sensor too, set only in shift_fail, shift_nospare, shift_fail_absent
                     self.assertEqual([c['weight'] for c in f['causes']],
                                      [1, 1] + list(train_hands.W_NEW) + [train_hands.W_FAIL])
                     init = jload(F, rel)['init']
-                    fail = rel in ('scenarios/shift_fail.json', 'scenarios/shift_nospare.json')
+                    fail = rel in ('scenarios/shift_fail.json', 'scenarios/shift_nospare.json',
+                                   'scenarios/shift_fail_absent.json')
                     want = 1 if rel in ('scenarios/shift_tx.json', 'scenarios/shift_vac.json') or fail else None
                     self.assertEqual({init.get(w) for w in train_hands.W_NEW}, {want}, rel)
                     self.assertEqual(init.get(train_hands.W_FAIL), 1 if fail else None, rel)

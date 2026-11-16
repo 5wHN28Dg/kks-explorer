@@ -211,9 +211,14 @@ class Job(unittest.TestCase):
         # the ledger first: a spare issued against the order already goes to the note, never a second issue
         self.assertEqual(iss[1], {'wait': {'issued': spare, 'minutes': 1, 'else': 3}})
         self.assertEqual(iss[2], {'choose': [[1, train_hands.SEEN]]})
-        self.assertEqual(iss[3], {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 5}})
-        self.assertEqual(iss[4], {'choose': [[1, train_hands.ISSUE_DO]]})
-        self.assertEqual(iss[5], {'choose': [[1, train_hands.SEEN]]})
+        # an order never opened goes through the checks too (it may open on the way to the counter)
+        self.assertEqual(iss[0], {'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 1}})
+        # nor with the old transmitter off its flange (the fitting under way has taken the spare from the ledger)
+        self.assertEqual(iss[3], {'wait': {'until': 'cpt2_flange_bolts_off', 'minutes': 1, 'else': 5}})
+        self.assertEqual(iss[4], {'choose': [[1, train_hands.SEEN]]})
+        self.assertEqual(iss[5], {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 7}})
+        self.assertEqual(iss[6], {'choose': [[1, train_hands.ISSUE_DO]]})
+        self.assertEqual(iss[7], {'choose': [[1, train_hands.SEEN]]})
         do = self.tasks[train_hands.ISSUE_DO]['steps']
         self.assertEqual(do[0], {'issue': train_hands.SPARE, 'qty': 1, 'for': '$', 'else': 1})
         self.assertEqual(do[-1], {'order': train_hands.SPARE})
@@ -293,6 +298,40 @@ class SlowStorekeeper(unittest.TestCase):
         done = [x for x in e.events if x[1] == 'issue' and x[2] == train_hands.SPARE and x[6] == 'done']
         self.assertEqual(len(done), 1, done)
         self.assertTrue(any(x[1] == 'task' and x[3] == train_hands.SEEN and x[4] == 'done' for x in e.events))
+
+    def test_a_call_during_the_fitting_issues_none(self):
+        """A call taken while the new transmitter is being fitted (ten minutes: the fitting takes the spare from the
+        ledger when it starts, the failed sensor is gone only when it ends): the old one is off its flange, no second
+        spare. With the issue task's steps before this check (the ledger, then the sensor) a second one was issued."""
+        self.assertEqual(self.during(P.check_dir(DATA)), 1)
+        F = P.load_dir(DATA)
+        st = json.loads(F['staff.json'])
+        t = next(x for x in st['tasks'] if x['id'] == train_hands.ISSUE)
+        spare = [train_hands.SPARE, '$']
+        t['steps'] = [{'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 4}},
+                      {'wait': {'issued': spare, 'minutes': 1, 'else': 3}}, {'choose': [[1, train_hands.SEEN]]},
+                      {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 5}},
+                      {'choose': [[1, train_hands.ISSUE_DO]]}, {'choose': [[1, train_hands.SEEN]]}]
+        F['staff.json'] = json.dumps(st).encode()
+        self.assertEqual(self.during(P.check_files(F)), 2)
+
+    def during(self, b):
+        e = P.Engine(b, 'shift_fail')
+        seen = False
+        while e.step_no < 40000:          # to the fitting's start: the spare issued, then gone from the ledger
+            e.step()
+            seen = seen or any(x[1] == 'issue' and x[6] == 'done' for x in e.events)
+            if seen and not e.issued.get('wo_cond_p2_fix'):
+                break
+        self.assertTrue(seen and e.step_no < 40000)
+        self.assertEqual(e.cur[b.model.index['cpt2_sensor_module_fail']], 1)
+        for _ in range(100):
+            e.step()
+        self.assertTrue(e.staff.assign(['store'], train_hands.ISSUE, 2, None, 'wo_cond_p2_fix', None, None))
+        for _ in range(6000):
+            e.step()
+        self.assertEqual(e.cur[b.model.index['cpt2_sensor_module_fail']], 0)      # (the fitting went through)
+        return len([x for x in e.events if x[1] == 'issue' and x[2] == train_hands.SPARE and x[6] == 'done'])
 
     def test_the_old_issue_task_issued_two(self):
         """The same with the issue task as it was before part 4 (no ledger check): the test sees the double issue."""

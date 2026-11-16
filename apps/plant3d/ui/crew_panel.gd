@@ -510,24 +510,47 @@ func _task(e, sm, cur: Dictionary) -> void:
 	var t: Dictionary = sm.tasks[cur["task"]]
 	body.add_child(W.label("Now: " + t["title"], 22, Color(1.0, 0.85, 0.4)))
 	var steps: Array = t["steps"]
+	# (UI-UX-POLICY C1) every part number the task's lines name, copied from one row under the title: the numbers
+	# stay on the screen in the done and coming steps too, whichever step is current
+	var cr = task_copy(e, steps)
+	if cr != null:
+		body.add_child(cr)
 	for k in steps.size():
 		var mark := "▶ " if k == cur["step"] else ("✓ " if k < cur["step"] else "· ")
 		var l := W.label(mark + describe(e, sm, cur, steps[k]), 18, Color.WHITE if k == cur["step"] else W.DIM)
 		body.add_child(l)
-		var cr = step_copy(e, steps[k]) if k == cur["step"] else null
-		if cr != null:
-			body.add_child(cr)
 		if k == cur["step"]:
 			_controls(e, sm, cur, steps[k])
 
 
-## The part number a step waits for, as a row of one Copy button (UI-UX-POLICY C1), or null.
-func step_copy(e, st: Dictionary):
-	var wi = st["wait"].get("issued") if st.has("wait") and typeof(st["wait"]) == TYPE_DICTIONARY else null
-	if wi == null:
-		return null
-	var pn: String = StoresPanel.part_of(e, String(wi[0])).get("number", "")
-	return StoresPanel.copy_row(ui, [pn] if pn != "" else [], "copy_part_")
+## The part numbers a task's steps name (a wait for an issue, an issue, an order), each once in the steps' order, as a
+## row of Copy buttons (UI-UX-POLICY C1), or null.
+func task_copy(e, steps: Array):
+	var nums: Array = []
+	for st in steps:
+		var id = null
+		if st.has("wait") and typeof(st["wait"]) == TYPE_DICTIONARY and st["wait"].has("issued"):
+			id = st["wait"]["issued"][0]
+		elif st.has("issue"):
+			id = st["issue"]
+		elif st.has("order"):
+			id = st["order"]
+		if id == null:
+			continue
+		var pn: String = StoresPanel.part_of(e, String(id)).get("number", "")
+		if pn != "" and not nums.has(pn):
+			nums.append(pn)
+	return StoresPanel.copy_row(ui, nums, "copy_part_")
+
+
+## A wait on one of the stores' values in words (the replacement job's: the spare on the shelf, its work order open);
+## "" for any other value, which still shows by its name (#396).
+static func wait_words(until: String) -> String:
+	if until.ends_with("_spare_shelf"):
+		return "Wait for the spare to be on the store's shelf (a delivery)"
+	if until.ends_with("_wo_open"):
+		return "Wait for the work order to be open (planned, not closed)"
+	return ""
 
 
 ## A step in words.
@@ -571,6 +594,9 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		if s["wait"].has("issued"):     # (REALISM.md §2.24)
 			var sp := StoresPanel.part_of(e, String(s["wait"]["issued"][0]))
 			return "Wait for %s to be issued against the work order" % (sp.get("number", s["wait"]["issued"][0]))
+		var ww := wait_words(String(s["wait"].get("until", "")))
+		if ww != "":
+			return ww
 		return "Wait: " + (str(s["wait"].get("until")) if s["wait"].has("until") else "permit %s" % str(s["wait"]["permit"]))
 	if s.has("meet"):
 		return "Meet in the %s" % String(s["meet"]["room"]).replace("_", " ")

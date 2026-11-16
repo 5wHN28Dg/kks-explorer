@@ -435,16 +435,20 @@ def tasks():
     w = WORK[0]
     kw = {'work': w, 'resume': 'next_duty'}
     return [dict({'id': END, 'title': 'Report the job done and put the tools back', 'steps': end_steps()}, **kw),
-            dict({'id': TX, 'title': 'Replace the failed transmitter: draw the spare and take the old one off',
+            dict({'id': TX, 'title': 'Replace the failed transmitter: call for the spare and wait for it at the counter',
                   'steps': tx_steps()}, **kw),
             dict({'id': FIT, 'title': 'The new transmitter: wires, range, loop check', 'steps': fit_steps()}, **kw),
             {'id': ISSUE, 'title': 'Issue the spare transmitter against its work order', 'priority': 2, 'work': w,
              # (part 4) the ledger first: a spare issued against the order and not yet fitted is not issued again,
              # nor one once the failed transmitter is out (a call kept until the storekeeper's duty may come after
              # the fitting, which empties the ledger)
-             'steps': [{'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 4}},
+             # nor while the old one is off its flange (the fitting takes the spare from the ledger when it starts and
+             # cures the sensor when it ends: a call taken in between found neither). An order that never opened
+             # goes through the same checks (it may open on the way to the counter).
+             'steps': [{'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 1}},
                        {'wait': {'issued': [SPARE, '$'], 'minutes': 1, 'else': 3}}, {'choose': [[1, SEEN]]},
-                       {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 5}},
+                       {'wait': {'until': 'cpt2_flange_bolts_off', 'minutes': 1, 'else': 5}}, {'choose': [[1, SEEN]]},
+                       {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 7}},
                        {'choose': [[1, ISSUE_DO]]}, {'choose': [[1, SEEN]]}]},
             {'id': ISSUE_DO, 'title': 'Hand over the spare transmitter and write it on the work order', 'priority': 2, 'work': w,
              'steps': [{'issue': SPARE, 'qty': 1, 'for': '$', 'else': 1}, {'work': 1, 'anim': 'write'},

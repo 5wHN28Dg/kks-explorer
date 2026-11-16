@@ -371,9 +371,14 @@ func _panel(tree: SceneTree) -> Array:
 			"Order WDP-PT-UNIT-A3 up to its maximum stock", "Order 2 × WDP-PT-UNIT-A3"]:
 		p.append("the crew panel's stores steps: %s" % str(cdesc))
 	var wst := {"wait": {"issued": ["pt_unit_a3", "$"]}}
-	var wrow = ui.crew.step_copy(e, wst)
+	# (C1) one Copy per number for the whole task, whichever step is current: the wait, an issue and an order of the same part
+	var wrow = ui.crew.task_copy(e, [{"go": "x"}, wst, {"issue": "pt_unit_a3", "qty": 1, "for": "$"}, {"order": "pt_unit_a3"}])
 	if ui.crew.describe(e, e._sm, {"work": null}, wst) != "Wait for WDP-PT-UNIT-A3 to be issued against the work order" \
-			or wrow == null or wrow.find_child("copy_part_WDP-PT-UNIT-A3", true, false) == null:
+			or wrow == null or wrow.get_child_count() != 1 or wrow.find_child("copy_part_WDP-PT-UNIT-A3", true, false) == null \
+			or ui.crew.task_copy(e, [{"go": "x"}]) != null \
+			or ui.crew.describe(e, e._sm, {"work": null}, {"wait": {"until": "cpt2_spare_shelf"}}) != "Wait for the spare to be on the store's shelf (a delivery)" \
+			or ui.crew.describe(e, e._sm, {"work": null}, {"wait": {"until": "cpt2_wo_open"}}) != "Wait for the work order to be open (planned, not closed)" \
+			or ui.crew.describe(e, e._sm, {"work": null}, {"wait": {"until": "some_value"}}) != "Wait: some_value":
 		p.append("the crew panel's wait for a part: %s" % ui.crew.describe(e, e._sm, {"work": null}, wst))
 	if wrow != null:
 		wrow.free()

@@ -251,4 +251,49 @@ func _run() -> void:
 	else:
 		ui.crew.visible = true
 	await shot("crew_jump", ui.crew)
+	await _part4()
 	quit(0)
+
+
+## Part 4 (REALISM.md §2.24): the Crew panel as the I&C technician on the replacement job in the run with the
+## storekeeper away, at the wait for the spare, held for parts, at the choice of the swap; then the list of runs
+## with crews a run without them offers. The task and its step are written in for the pictures.
+func _part4() -> void:
+	ui.close_crew()
+	ui.start_shift("shift_fail_absent")
+	await process_frame
+	ui.take_role("ic1")
+	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	var e = ui.clock.engine
+	var pi: int = ui.my_person()
+	if pi == -1 or not e._sm.tasks.has("job_cond_p2_fix_tx"):
+		print("wm2_shots: no technician or no replacement job")
+		return
+	ui.open_crew()
+	for pic in [["crew_wait_issued", 5], ["crew_choose_swap", 6], ["crew_held_parts", 8], ["crew_held_stock", 10],
+			["crew_held_issue", 14]]:
+		e.sp_cur[pi] = {"task": "job_cond_p2_fix_tx", "prio": 2, "made": e.step_no, "order": e.st_order,
+				"step": pic[1], "st": {}, "work": WORK, "code": PT2, "alarm": null, "src": null, "idle": false,
+				"started": true, "int": true, "owner": null, "act": null, "orig": null}
+		ui.crew.refresh()
+		await process_frame
+		var cur = ui.crew.body.find_child("copy_part_WDP-PT-UNIT-A3", true, false)
+		if cur == null:
+			for l in ui.crew.body.find_children("*", "Label", true, false):
+				if (l as Label).text.begins_with("▶"):
+					cur = l
+		var scr = ui.crew.body.get_parent()
+		if cur != null and scr is ScrollContainer:
+			await process_frame
+			(scr as ScrollContainer).ensure_control_visible(cur)
+		await shot(pic[0], ui.crew)
+	ui.close_crew()
+	ui.model.scenarios.erase("shots_stores")        # (the pictures' own copy of shift_aged is not one of the list)
+	ui.start_shift("cold_iron")
+	await process_frame
+	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	ui.open_crew()
+	await process_frame
+	if ui.crew.body.get_parent() is ScrollContainer:
+		(ui.crew.body.get_parent() as ScrollContainer).scroll_vertical = 0
+	await shot("crew_start_list", ui.crew)

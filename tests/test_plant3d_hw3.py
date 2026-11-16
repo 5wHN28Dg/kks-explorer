@@ -206,7 +206,8 @@ class Weights(unittest.TestCase):
             sid = rel.split('/')[1][:-5]
             e = P.Engine(b, sid)
             ws = [e.cur[b.model.index[w]] for w in train_hands.W_NEW]
-            self.assertEqual(ws, [1, 1, 1] if sid in ('shift_tx', 'shift_vac', 'shift_fail', 'shift_nospare')
+            self.assertEqual(ws, [1, 1, 1] if sid in ('shift_tx', 'shift_vac', 'shift_fail', 'shift_nospare',
+                                                           'shift_fail_absent')
                              else [0, 0, 0], sid)
         sc = json.loads(F['scenarios/shift_tx.json'].decode())
         f = next(x for x in sc['faults'] if x['id'] == 'cond_p2_low')
