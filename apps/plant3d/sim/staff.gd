@@ -3674,6 +3674,13 @@ func wait(e, cur: Dictionary, w: Dictionary) -> String:
 	elif w.has("issued"):      # REALISM.md §2.24: the part issued against the work and not yet fitted
 		var iw = cur["work"] if w["issued"][1] == "$" else w["issued"][1]
 		ok = e._sr != null and iw != null and e.sr_issued.has(iw) and int(e.sr_issued[iw].get(w["issued"][0], 0)) >= 1
+		if not ok and e._sr != null and iw != null:
+			# (a fitting under way has taken the part from the work's issued parts and has not fitted it yet:
+			# its busy record names the work, §2.23)
+			for b in e.busy.values():
+				if b.size() > 6 and b[6] == iw and e.m.hands_ix[String(b[0]) + "|" + String(b[1])].get("part") == w["issued"][0]:
+					ok = true
+					break
 	else:
 		var wid = cur["work"] if w["permit"][0] == "$" else w["permit"][0]
 		var sv: int = e.pstate[e.m.work_ix[wid]] if wid != null and e.m.work_ix.has(wid) else 0

@@ -1415,7 +1415,7 @@ parts). Lead times are clock days (§2.1).
     call could make a slow storekeeper issue two spares. Settled:
     - **A step condition** (both engines): `{"wait": {"issued": [part, work], "minutes", "else"}}`, done when the work
       (`"$"`: the task's) holds at least one of the part issued against it and not yet fitted (the record's issued
-      parts, §2.23). The validator: the part is one of stores.json's (`bad_ref` without the file), the work one of
+      parts, §2.23, or one a fitting under way under that work has taken: below). The validator: the part is one of stores.json's (`bad_ref` without the file), the work one of
       the model's or `"$"` with a work given to the task (as the permit wait's), `minutes` and `else` as any wait's.
       An absent work (`"$"` in a task given none) is never done.
     - **`job_cond_p2_fix_tx`** now: the status read, the work order notified, the storekeeper called, in front of the
@@ -1434,18 +1434,22 @@ parts). Lead times are clock days (§2.1).
       readings left them while the job waits); the look-alike handed over by a trainer is never offered by the NPC (it waits for the part
       its fitting needs), so `wrong_part` stays the trainee's lesson.
     - **`issue_cond_p2_fix`** checks first: a minute's wait for the spare already issued against the order (and not yet
-      fitted), then a minute's wait for the old transmitter off its flange (`cpt2_flange_bolts_off`: the fitting takes
-      the spare from the ledger when it starts and cures the sensor ten minutes later, when it ends; a call taken in
-      between found neither and issued a second spare, the second review's finding), then a minute's wait for the
-      failed sensor still in (`cpt2_sensor_module_fail`: a call kept until the storekeeper's duty may come after the
-      fitting); any of the three goes to `issue_cond_p2_fix_seen` (a minute's writing) instead of a second spare.
-      The issue itself, the writing and the order up to the max are `issue_cond_p2_fix_do`, chosen when the checks
-      pass. An order still not open after two hours goes through the same checks (it may open on the way to the
-      counter) and is then refused `work` at the issue; a refused issue goes on to the minute's writing and the
-      order. The checks are made when the call is taken, not at the counter: a trainer who issues the same spare by
-      hand in free mode in the minutes between (the walk to the counter) gets a second one issued, as they asked.
+      fitted), then a minute's wait for the failed sensor still in (`cpt2_sensor_module_fail`: a call kept until the
+      storekeeper's duty may come after the fitting, which empties the ledger); either way out goes to
+      `issue_cond_p2_fix_seen` (a minute's writing) instead of a second spare. The issue itself, the writing and the
+      order up to the max are `issue_cond_p2_fix_do`, chosen when both checks pass. An order still not open after
+      two hours goes through the same checks (it may open on the way to the counter) and is then refused `work` at
+      the issue; a refused issue goes on to the minute's writing and the order. The checks are made when the call
+      is taken, not at the counter: a trainer who issues the same spare by hand in free mode in the minutes between
+      (the walk to the counter) gets a second one issued, as they asked.
+    - **A fitting under way counts** (the second review, 2026-11-16): the fitting takes the spare from the work's
+      issued parts when it starts and cures the sensor ten minutes later, when it ends; a call taken in between
+      found neither and issued a second spare. So the `issued` wait is also done while a fitting of that part under
+      that work is under way (its busy record names the work, §2.23; both engines): issued and not yet fitted. A
+      check on the old transmitter being off its flange instead was tried and dropped: a trainee who takes the old
+      one off before calling for the spare (the look-alike's lesson) would never be issued one.
     - Two spares: an issue task finds the first spare in the ledger until it is fitted, and the failed sensor gone
-      after, and the old one off its flange in between; so a second call, queued, held up or kept to the
+      after, and the fitting's own part in between; so a second call, queued, held up or kept to the
       storekeeper's duty, issues none. A wait's clock runs
       through a night's hold (§17.10 keeps the step, not the wait's start), so the hour's waits at the counter may
       pass at once on resuming: the checks above make that harmless. If the second call's issue is refused (the
@@ -1465,15 +1469,16 @@ parts). Lead times are clock days (§2.1).
       issue unassigned, held for parts at 16:00, no issue, none of the swap's actions, permit 5 with its lock as a
       held job's) appended; the day and every other fork as before. Made again twice more the same day, each
       compared item by item with the files before: for shift_fail_absent's own world seed (21; only
-      `npc_hands_absent` moved) and for the issue task's third check (only the three forks moved: the storekeeper's
-      issue a minute later, at 22,398 and 75,210, and the events after it up to the swap, which starts when it did;
-      the cures at the same steps); `plant3d-v1.json` and `plant3d-realism.json` byte for byte the same both times.
+      `npc_hands_absent` moved) and after the second review's fixes (nothing moved: no vector takes a call during a
+      fitting or leaves the order unopened for two hours); `plant3d-v1.json` and `plant3d-realism.json` byte for
+      byte the same both times.
     - **Tests:** `tests/test_plant3d_wm2_tx.py` (the job's shape: no hand action before the swap, every way into it
       after the wait for the spare; the issue task's checks; the forks; three calls queued at once issue one spare,
       the issue task before part 4 issued two; a call after the fitting issues none, the ledger-only check issued a
-      second; a call taken during the fitting issues none, the two-check task issued a second), the realism
+      second; a call taken during the fitting issues none, and a second with the fitting's part not counted), the realism
       rejects, `test_ui_stores.gd` (the crew panel's words for the stores' steps and the waits, one Copy per part
-      number for the whole task).
+      number for the whole task), `test_ui_hands.gd` (the app's engine: the trainee's second call during their own
+      fitting issues no second spare).
     - Left as it is (the user, 2026-11-16): after the issue drops the spare to its reorder point, the storekeeper's
       own order in `issue_cond_p2_fix` orders it up to its max, and the reorder reaction offered by the same drop
       then finds nothing missing: its order is refused `qty` (an event, no effect).

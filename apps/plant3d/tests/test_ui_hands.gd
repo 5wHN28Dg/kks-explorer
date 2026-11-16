@@ -474,6 +474,7 @@ func _replace(tree: SceneTree) -> Array:
 	var fit_x: Dictionary = e.m.hands_ix[PT2 + "|fit_tx"]
 	var looked := ""
 	var stocked := false
+	var recalled := false
 	for i in 4000:
 		if e.pstate[e.m.work_ix[WORK]] >= 8 and e.carried.get("ic1", []).is_empty() and _job_over(e):
 			break
@@ -497,12 +498,26 @@ func _replace(tree: SceneTree) -> Array:
 				e.cur[e._sr_slot[2 * ix]] = 1.0
 				stocked = true
 				continue
+		if stocked and not recalled and e.busy.has("ic1") and e.busy["ic1"][1] == "fit_tx":
+			# (part 4) a second call taken while the new one is being fitted, a spare on the shelf again: the
+			# fitting holds the first, so the storekeeper issues no second one
+			var ix2: int = e._sr["ix"]["pt_unit_a3"]
+			e.sr_stock[ix2] = 1
+			e.cur[e._sr_slot[2 * ix2]] = 1.0
+			recalled = e._sm.assign(e, ["store"], "issue_cond_p2_fix", 2, null, WORK, null, null)
 		if not await _play(tree, ui, log):
 			await _m._play(tree, ui, log)
 		ui.clock.run_steps(10)
 		if i % 8 == 0:
 			await tree.process_frame
 	ui.work.close()
+	var spares := 0
+	for ev in e.events:
+		if ev.size() > 6 and ev[1] == "issue" and ev[2] == "pt_unit_a3" and ev[6] == "done":
+			spares += 1
+	if stocked and (not recalled or spares != 1 or not Maint._has_ev(e, ["task", "store1", "issue_cond_p2_fix_seen", "done"])):
+		p.append("a call during the fitting: called %s, %d spares issued (1 wanted), the storekeeper's note %s" % [
+				str(recalled), spares, str(Maint._has_ev(e, ["task", "store1", "issue_cond_p2_fix_seen", "done"]))])
 	if not stocked:
 		p.append("the replacement never reached its call to the storekeeper: %s" % ", ".join(log.slice(0, 4)))
 		main.free()

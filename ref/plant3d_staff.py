@@ -3760,6 +3760,11 @@ class StaffRun:
         elif 'issued' in w:         # REALISM.md §2.24: the part issued against the work and not yet fitted
             wid = cur['work'] if w['issued'][1] == '$' else w['issued'][1]
             ok = e.stores is not None and int(e.issued.get(wid, {}).get(w['issued'][0], 0)) >= 1
+            if not ok and e.stores is not None and wid is not None:
+                # (a fitting under way has taken the part from the work's issued parts and has not fitted it yet:
+                # its busy record names the work, §2.23)
+                ok = any(len(b) > 6 and b[6] == wid and e.hands[(b[0], b[1])].get('part') == w['issued'][0]
+                         for b in e.busy.values())
             gone = False
         else:
             wid = cur['work'] if w['permit'][0] == '$' else w['permit'][0]
