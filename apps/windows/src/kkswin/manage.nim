@@ -280,7 +280,7 @@ proc history(w: Win, p: Page) =
     closureScope:
       let r = lp4[lp4i]
       let hid = r.get("hid")
-      p.label(historyTitle(r))
+      p.label(isolatesAsEmbeddings(historyTitle(r)))   # GDI draws isolates as boxes
       p.dim(historyBy(r))
       if historyUndoable(r):
         let h = if hid.kind == jInt: $hid.i else: hid.s
