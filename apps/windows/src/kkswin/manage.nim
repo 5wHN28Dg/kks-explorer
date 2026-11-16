@@ -145,7 +145,7 @@ proc runBatch(w: Win, action: string, chosen: seq[JNode]) =
           discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
           inc done
           picked.keepItIf(it != id)
-        except ApiError as e:
+        except CatchableError as e:      # (anything else than the server's answer too: the batch must end and say so)
           failed.add "#" & $id & ": " & e.msg
       later(step)
       return

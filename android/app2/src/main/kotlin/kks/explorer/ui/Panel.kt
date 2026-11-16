@@ -81,7 +81,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
     // panel (the code and Close, the drawing above free to move around) and the usual height
     // low: the grip and the heading as tall as they are (a long code wraps, large text grows): never cut short
     var headDp by remember { mutableFloatStateOf(80f) }
-    val low = maxOf(104f, 44f + headDp); val high = screen * 0.85f; val usual = maxOf(screen * 0.45f, low)
+    val low = maxOf(104f, 44f + headDp); val high = maxOf(screen * 0.85f, low); val usual = maxOf(screen * 0.45f, low)
     var height by remember { mutableFloatStateOf(if (PanelSize.dp > 0) PanelSize.dp else usual) }
     val dens = androidx.compose.ui.platform.LocalDensity.current.density
     var editing by remember(id) { mutableStateOf(false) }

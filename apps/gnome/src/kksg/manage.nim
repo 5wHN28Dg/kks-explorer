@@ -118,6 +118,7 @@ proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) 
     w.toast("Nothing selected")
     return
   pickBusy = true
+  let startBar = pickBar      # (the page the batch was started from: `again` rebuilds that one, and no other)
   pickShow()
   # one proposal per turn of the main loop, saying how far it got: the window stays live during a long batch
   var i = 0
@@ -139,7 +140,7 @@ proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) 
           discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
           inc done
           picked.keepItIf(it != id)
-        except ApiError as e:
+        except CatchableError as e:      # (anything else than the server's answer too: the batch must end and say so)
           failed.add "#" & $id & ": " & e.msg
       idle(step)
       return
@@ -154,14 +155,18 @@ proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) 
     if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
     lastSaid = msg
     w.toast(msg)
-    if pickBar != nil: again()     # (only while the page is still open; its next opening shows the result)
+    if pickBar != nil and pickBar == startBar: again()   # (only while that page is still open: closed, or closed and
+                                                          # opened again, its box is gone; the result shows there next)
     else: pickShow()
   idle(step)      # (the bar's own button ran this: the page and the bar are made again after it returned)
 
 proc fillPickBar(w: Win, again: proc ()) =
   if pickBar == nil: return
   pickBar.clear()
-  pickAll = nil
+  pickAll = nil        # (the bar's widgets are gone with it: a batch still running must not write to them)
+  pickCount = nil
+  pickOk = nil
+  pickNo = nil
   if pickSubs.len == 0:
     gtk_widget_set_visible(pickBar, 0)
     return

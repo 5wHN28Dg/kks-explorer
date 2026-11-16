@@ -569,9 +569,9 @@ async function decideMany(action){
       if(action==='approve'&&COMPETING.has(id)){ competing.push(id); continue }
       const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);
       const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
-      $('#pickN').textContent=`${action==='approve'?'Approving':'Rejecting'} ${done+failedL.length+1} of ${n}…`;
+      const pn=$('#pickN'); if(pn) pn.textContent=`${action==='approve'?'Approving':'Rejecting'} ${done+failedL.length+1} of ${n}…`;   // (no bar: another tab was opened meanwhile; the batch goes on and its result is said)
       try{ await K.api(`/api/submissions/${id}/${action}`,{force:false,note,edit}); done++; PICKED.delete(id) }
-      catch(e){ if(e.status===401) return failed(e); if(K.isNetErr(e)){ offline=ids.slice(ids.indexOf(id)); break } failedL.push(`#${id}: ${e.message}`) }
+      catch(e){ if(e.status===401) return failed(e); if(K.isNetErr(e)){ offline=ids.slice(ids.indexOf(id)).filter(i=>!held.includes(i)&&!competing.includes(i)); break } failedL.push(`#${id}: ${e.message}`) }
     }
   }finally{ deciding=false }
   const L=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${n}.`];

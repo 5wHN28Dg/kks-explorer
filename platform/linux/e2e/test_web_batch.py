@@ -227,6 +227,22 @@ class WebBatch(unittest.TestCase):
         expect(page.locator('dialog.ask')).to_have_count(0)
         page.wait_for_timeout(300)
         self.assertIn(self.subs()[r['id']]['status'], ('pending', 'conflict'))      # still waiting
+        # another tab opened while a batch runs (the bar is gone): the batch goes on to its end and says its result
+        # (it stopped without a word at the next proposal, its count line being gone)
+        more = [self.tom.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': c, 'changes': {'near': 'later'}, 'base': {}}})['id']
+                for c in codes[2:4]]
+        page.reload()
+        page.locator('#pickAll').check()
+        expect(ok).to_have_text('Approve selected (3)')
+        slow = lambda route: (time.sleep(0.7), route.continue_())
+        page.route('**/api/submissions/*/approve', slow)
+        ok.click()
+        page.evaluate("location.hash='#mine'")
+        expect(page.locator('#pickbar')).to_have_count(0)
+        expect(page.locator('#toast')).to_contain_text('Approved 3 of 3.', timeout=15000)
+        page.unroute('**/api/submissions/*/approve', slow)
+        S = self.subs()
+        self.assertEqual({S[i]['status'] for i in (r['id'], *more)}, {'approved'})
         self.assertEqual(errors, [])
         ctx.close()
 
