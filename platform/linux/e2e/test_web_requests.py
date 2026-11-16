@@ -167,6 +167,17 @@ class WebRequests(unittest.TestCase):
         self.assertFalse(page.is_visible('#phAdd'))
         page.fill('#phFloor', '3')
         self.assertTrue(page.is_visible('#phAdd'))
+        # every button says which kind of photo it adds and where from (the user, 2026-11-16): at a desk one per kind,
+        # for a file; where the main pointer is a finger, the camera or the gallery for each kind
+        LABELS = "[...document.querySelectorAll('#phAdd label')].map(l => l.textContent + '|' + (l.querySelector('input').dataset.plate || '') + '|' + (l.querySelector('input').getAttribute('capture') || ''))"
+        self.assertEqual(page.evaluate(LABELS), ['Equipment: from a file…||', 'Tag plate: from a file…|1|'])
+        page.evaluate("window.matchMedia0 = window.matchMedia.bind(window); window.matchMedia = q => q === '(pointer:coarse)' ? {matches: true} : window.matchMedia0(q)")
+        page.evaluate("reselect()")
+        page.fill('#phFloor', '3')
+        self.assertEqual(page.evaluate(LABELS), ['Equipment: take photo||environment', 'Equipment: from gallery||',
+                                                 'Tag plate: take photo|1|environment', 'Tag plate: from gallery|1|'])
+        page.evaluate("window.matchMedia = window.matchMedia0; reselect()")
+        page.fill('#phFloor', '3')
         page.set_input_files('#phAdd input[data-plate="1"]', files=[{'name': 'plate.png', 'mimeType': 'image/png', 'buffer': png(320, 240)}])
         page.wait_for_selector('[data-a="ok"]')
         page.wait_for_function("() => document.querySelector('[data-a=arrow]').style.borderColor !== ''")   # (the photo is in the editor)

@@ -338,8 +338,16 @@ class Gnome(Plant):
         atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
         atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA501')
         time.sleep(1)
+        # the search result's photo mark, named by what the code has; under the results, what the marks mean
+        words = ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos')
+        def mark():
+            row = atspi.find(a, 'list item', name='11LAB70AA501', timeout=10)
+            return [n.get_name() for n in atspi.walk(row) if n.get_role_name() == 'image' and n.get_name() in words]
+        self.assertEqual(len(mark()), 1)
+        legend = atspi.find(a, 'list item', contains='Photo marks: ring no photos', timeout=10)
+        self.assertEqual([n.get_name() for n in atspi.walk(legend) if n.get_role_name() == 'label'], list(words))
         atspi.click(atspi.find(a, 'button', name='11LAB70AA501'))
-        atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+        atspi.click(atspi.find(a, 'button', name='Equipment: from a file…', timeout=10))
         for b in ('Thick', 'Zoom in', 'Zoom out', 'Fit the photo'):
             atspi.click(atspi.find(a, None, name=b, timeout=10))
         atspi.click(atspi.find(a, 'button', name='Add the photo'))
@@ -351,6 +359,17 @@ class Gnome(Plant):
                 break
             time.sleep(0.5)
         self.assertTrue(any(p['kks'] == '11LAB70AA501' for p in self.boss.req('GET', '/api/state')['photos']))
+        # the mark of a new search says so once the photo is back from the server
+        got = []
+        for _ in range(40):
+            atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA50')
+            time.sleep(0.5)
+            atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA501')
+            time.sleep(0.5)
+            got = mark()
+            if got and got[0] in words[1::2]:
+                break
+        self.assertIn(got and got[0], words[1::2], 'the search result does not show the equipment photo')
         tb = atspi.find(a, 'toggle button', name='Colour tags by photos')
         atspi.click(tb)
         for _ in range(20):
@@ -375,7 +394,7 @@ class Gnome(Plant):
         time.sleep(2)            # the panel is built for this code
         for cap in ('queued one', 'queued two'):
             for _ in range(5):   # the panel rebuilds after a sync and when a photo is queued: a lost click is retried
-                atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+                atspi.click(atspi.find(a, 'button', name='Equipment: from a file…', timeout=10))
                 try:
                     caption = atspi.find(a, 'text', name='Caption', timeout=8)
                     break
@@ -771,40 +790,62 @@ class Gnome(Plant):
         self.assertGreater(after, before, 'the panel does not show the code')
 
     def test_dark_drawings(self):
-        """Dark drawings: the header's toggle turns the sheet light-on-dark at once (dark paper, light lines), off
-        restores it, and the choice survives a restart of the app"""
+        """Dark drawings: a setting with three choices behind the header's button. The drawings follow the theme until
+        the person says otherwise; Always dark turns the sheet light-on-dark at once (dark paper, light lines), Always
+        light restores it, the choice survives a restart of the app, and Follow theme makes the sheet dark when the
+        theme is (ADW_DEBUG_COLOR_SCHEME stands in for the system's setting)"""
         os.makedirs(SHOTS, exist_ok=True)
         shot = os.path.join(SHOTS, 'gnome-dark.png')
         a = self.start_app('darkdrawings', KKS_SHOT_ON_SIGNAL=shot)
         pid = self.apps[-1].pid
         self.join(a)
         med, light, dark, n = self.drawing_shot(a, pid, shot)
-        self.assertGreater(med, 200, 'light mode: white paper')
-        self.assertGreater(dark, 0, 'light mode: dark lines')
-        toggle = atspi.find(a, 'toggle button', name='Dark drawings')
-        self.assertFalse(self.pressed(toggle))
-        atspi.click(toggle)
+        self.assertGreater(med, 200, 'light theme, following it: white paper')
+        self.assertGreater(dark, 0, 'light theme: dark lines')
+        def choose(a, mode, was=None):
+            atspi.click(atspi.find(a, 'toggle button', name='Dark drawings'))
+            radios = {m: atspi.find(a, 'radio button', name=m, timeout=10) for m in ('Follow theme', 'Always dark', 'Always light')}
+            if was:
+                self.assertEqual([m for m, r in radios.items() if r.get_state_set().contains(Atspi.StateType.CHECKED)], [was])
+            atspi.click(radios[mode])
+            for _ in range(20):
+                if radios[mode].get_state_set().contains(Atspi.StateType.CHECKED):
+                    break
+                time.sleep(0.3)
+            self.assertTrue(radios[mode].get_state_set().contains(Atspi.StateType.CHECKED), mode + ' is not chosen')
+        choose(a, 'Always dark', was='Follow theme')
         med, light, dark, n = self.drawing_shot(a, pid, shot)
         shutil.copy(shot, os.path.join(SHOTS, 'gnome-dark-on.png'))
-        self.assertLess(med, 40, 'dark mode: dark paper')
-        self.assertGreater(light, 0, 'dark mode: light lines')
-        self.assertTrue(self.pressed(toggle))
-        atspi.click(atspi.find(a, 'toggle button', name='Dark drawings'))
+        self.assertLess(med, 40, 'always dark: dark paper')
+        self.assertGreater(light, 0, 'always dark: light lines')
+        choose(a, 'Always light', was='Always dark')
         med, light, dark, n = self.drawing_shot(a, pid, shot)
-        self.assertGreater(med, 200, 'off again: white paper')
-        atspi.click(atspi.find(a, 'toggle button', name='Dark drawings'))
+        self.assertGreater(med, 200, 'always light: white paper')
+        choose(a, 'Always dark', was='Always light')
         time.sleep(1)
         # a restart keeps it (this device's store)
-        p = self.apps.pop()
-        p.terminate()
-        p.wait(5)
-        a = self.start_app('darkdrawings', KKS_SHOT_ON_SIGNAL=shot)
-        pid = self.apps[-1].pid
-        toggle = atspi.find(a, 'toggle button', name='Dark drawings', timeout=20)
-        self.assertTrue(self.pressed(toggle), 'the toggle is on after a restart')
+        def restart(**env):
+            p = self.apps.pop()
+            p.terminate()
+            p.wait(5)
+            a = self.start_app('darkdrawings', KKS_SHOT_ON_SIGNAL=shot, **env)
+            atspi.find(a, 'toggle button', name='Dark drawings', timeout=20)
+            return a, self.apps[-1].pid
+        a, pid = restart()
         med, light, dark, n = self.drawing_shot(a, pid, shot)
         shutil.copy(shot, os.path.join(SHOTS, 'gnome-dark-restart.png'))
         self.assertLess(med, 40, 'after a restart: still dark')
+        self.assertGreater(light, 0)
+        # always light holds against a dark theme; following it, the drawings are dark with it
+        choose(a, 'Always light', was='Always dark')
+        time.sleep(1)
+        a, pid = restart(ADW_DEBUG_COLOR_SCHEME='prefer-dark')
+        med, light, dark, n = self.drawing_shot(a, pid, shot)
+        self.assertGreater(med, 200, 'always light under a dark theme: white paper')
+        choose(a, 'Follow theme', was='Always light')
+        med, light, dark, n = self.drawing_shot(a, pid, shot)
+        shutil.copy(shot, os.path.join(SHOTS, 'gnome-dark-follow.png'))
+        self.assertLess(med, 40, 'following a dark theme: dark paper')
         self.assertGreater(light, 0)
 
     def test_valve_type(self):
@@ -1334,7 +1375,7 @@ class Gnome(Plant):
             # the panel rebuilds when a photo is queued and after each sync: a click on the button it just replaced is
             # lost, so click again until the floor question or the editor shows
             for _ in range(5):
-                atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+                atspi.click(atspi.find(a, 'button', name='Equipment: from a file…', timeout=10))
                 if cap == 'first':
                     try:
                         dlg = atspi.find(a, 'alert', name='Which floor is 11LCB20AA102 on?', timeout=5)
@@ -1468,7 +1509,7 @@ class Gnome(Plant):
         time.sleep(2)            # the panel is built for this code
         dlg = None
         for _ in range(5):       # the panel rebuilds after a sync: a lost click is retried
-            atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+            atspi.click(atspi.find(a, 'button', name='Equipment: from a file…', timeout=10))
             try:
                 dlg = atspi.find(a, 'alert', name=f'Which floor is {one} on?', timeout=5)
                 break
@@ -1548,7 +1589,7 @@ class Gnome(Plant):
             for cap in ('asked', 'not asked'):
                 caption = None
                 for _ in range(5):   # the panel rebuilds after a sync: a lost click is retried
-                    atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+                    atspi.click(atspi.find(a, 'button', name='Equipment: from a file…', timeout=10))
                     if cap == 'asked':
                         try:
                             dlg = atspi.find(a, 'alert', name=f'Which floor is {code} on?', timeout=5)
@@ -1999,7 +2040,7 @@ class Gnome(Plant):
         time.sleep(3)                # (the first rounds' data is in)
 
         def add_photo(caption):
-            atspi.click(atspi.find(a, 'button', name='+ Add photo', timeout=10))
+            atspi.click(atspi.find(a, 'button', name='Equipment: from a file…', timeout=10))
             atspi.set_text(atspi.find(a, 'text', name='Caption', timeout=10), caption)
             atspi.click(atspi.find(a, 'button', name='Add the photo'))
             atspi.click(atspi.find(atspi.find(a, 'alert', name='And its tag plate?', timeout=10), 'button', name='Not now'))

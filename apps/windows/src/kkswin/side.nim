@@ -6,7 +6,7 @@ import kks/json
 import kks/model
 import appstate
 import kksl/dbstore
-import w32, ui, win, viewer, systems, multi, coverage, links
+import w32, ui, win, viewer, systems, multi, coverage, links, darkcolor
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -132,9 +132,10 @@ proc drawingsTab(w: Win, p: Page) =
       w.toast(if on: "Tags by photos: green both · amber equipment only · blue tag plate only · red none" else: "Tags by how they were read"))
     # dark drawings: a PDF reader's dark mode for the sheets (lightness inverted, hue kept; photos never change),
     # remembered on this device (its store, like sync_peers)
-    p.check("Dark drawings", w.v.dark, proc (on: bool) =
-      w.v.setDark(on)
-      w.a.store.setMeta("dark_drawings", if on: "1" else: ""))
+    # Three choices (the user, 2026-11-16: the drawings can stay dark, or light, whatever the theme; until then they
+    # follow Windows' app mode).
+    p.label(DarkSetting)
+    p.radios(@DarkModeLabels, ord(w.darkMode), proc (i: int) = w.setDarkMode(DarkMode(i)))
     # the select mode: one photo, place or note for several tags (multi.nim); a check box, so its state is exposed
     p.check("Select tags", w.picking, proc (on: bool) =
       if on != w.picking:

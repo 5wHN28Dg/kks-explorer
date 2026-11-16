@@ -245,6 +245,9 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     if (int(wp) and 0xFFF0) == IdmAbout:
       guard: openAbout(h)
       return 0
+  of 0x001A'u32:              # WM_SETTINGCHANGE: Windows' app mode may have changed; drawings that follow it do
+    if w != nil and w.v != nil:
+      guard: w.applyDark()
   of WM_SIZE:
     if w != nil and w.v != nil or setupP != nil: layoutMain()
     return 0
@@ -358,7 +361,7 @@ proc showMain() =
   w.v.onMark = markDialog
   w.v.onBox = proc (x0, y0, x1, y1: float) = w.addBox(x0, y0, x1, y1)
   w.v.onEscape = proc () = w.stopPicking()
-  w.v.setDark(w.a.store.getMeta("dark_drawings") == "1")    # per device (this device's store), like sync_peers
+  w.applyDark()      # the Dark drawings setting (win.nim)
   w.loadModel()
   trace("model: " & $w.m.sheets.len & " sheets, " & $w.m.tags.len & " tags")
   w.rebuildSide()

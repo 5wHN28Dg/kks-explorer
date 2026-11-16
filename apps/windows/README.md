@@ -33,7 +33,7 @@ which the `config.nims` of core/, platform/linux/, platform/windows/ and apps/wi
     The sidebar is never made again under the keyboard: a sync then changes only what it can in place (the search's
     results, the sheets' counts, the procedures' links), the rest once the keyboard has left;
   - `viewer.nim` + `kks_d2d.cpp`: the drawing (overview pyramid; vector tiles drawn by Direct2D into WIC bitmaps on
-    worker threads; tag hotspots; marking). Dark drawings (the sidebar's check box, remembered per device): every
+    worker threads; tag hotspots; marking). Dark drawings (the sidebar's three choices, remembered per device: follow Windows' app mode, always dark, always light): every
     colour's lightness inverted, its hue kept, on the worker threads (`kks_dark_rgb`, a copy of
     `apps/common/darkcolor.nim` that `tests/test_dark.nim` checks on every 8-bit colour); tag outlines lightened.
     A sheet is shared by its owner and its tile jobs and goes with the last of them, so a sheet switch never frees one

@@ -5,7 +5,7 @@ import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequt
 import kks/[json, api, applink]
 import kks/model
 import kksl/dbstore
-import appstate
+import appstate, darkcolor
 import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, coverage, links, photos, about]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
@@ -247,7 +247,9 @@ proc mainScreen(w: Win): W =
   let sidebar = page(w.sideNav, "Sheets")
   # content: viewer + tag panel
   w.v = newViewer()
-  w.v.setDark(w.a.store.getMeta("dark_drawings") == "1")    # per device (this device's store), like sync_peers
+  # the Dark drawings setting, per device (this device's store, like sync_peers): follow the theme, always dark or
+  # always light (darkcolor.nim)
+  w.v.setDark(darkNow(darkModeOf(w.a.store.getMeta("dark_drawings")), adw_style_manager_get_dark(adw_style_manager_get_default()) != 0))
   w.showSheet = proc (id: string) = w.doShowSheet(id)
   w.selectTag = proc (id: string, center: bool) = w.doSelectTag(id, center)
   w.rebuildPanel = proc () =
@@ -311,15 +313,37 @@ proc mainScreen(w: Win): W =
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-in-symbolic", "Zoom in (+)", proc () = w.v.zoomBy(1.5)))
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-out-symbolic", "Zoom out (−)", proc () = w.v.zoomBy(1 / 1.5)))
   # dark drawings: a PDF reader's dark mode for the sheets (lightness inverted, hue kept; photos never change)
-  let darkBtn = gtk_toggle_button_new()
-  gtk_button_set_icon_name(darkBtn, "weather-clear-night-symbolic")
-  gtk_widget_set_tooltip_text(darkBtn, "Dark drawings")
-  setAccessibleLabel(darkBtn, "Dark drawings")
-  gtk_toggle_button_set_active(darkBtn, cint(w.v.dark))
-  darkBtn.on("toggled", proc () =
-    let on = gtk_toggle_button_get_active(darkBtn) != 0
-    w.v.setDark(on)
-    w.a.store.setMeta("dark_drawings", if on: "1" else: ""))
+  # A menu button with the three choices (the user, 2026-11-16: the drawings can stay dark, or light, whatever the
+  # theme; until then they follow it). The choice is remembered on this device.
+  let darkBtn = gtk_menu_button_new()
+  gtk_menu_button_set_icon_name(darkBtn, "weather-clear-night-symbolic")
+  gtk_widget_set_tooltip_text(darkBtn, DarkSetting)
+  setAccessibleLabel(darkBtn, DarkSetting)
+  let darkPop = gtk_popover_new()
+  let darkBox = vbox(4)
+  darkBox.add label(DarkSetting, "heading", wrap = false)
+  let styles = adw_style_manager_get_default()
+  var darkMode = darkModeOf(w.a.store.getMeta("dark_drawings"))
+  let applyDark = proc () = w.v.setDark(darkNow(darkMode, adw_style_manager_get_dark(styles) != 0))
+  var firstRadio: W
+  for m in DarkMode:
+    closureScope:
+      let mode = m
+      let rb = gtk_check_button_new_with_label(DarkModeLabels[mode].cstring)
+      if firstRadio == nil: firstRadio = rb else: gtk_check_button_set_group(rb, firstRadio)
+      gtk_check_button_set_active(rb, cint(mode == darkMode))
+      rb.on("toggled", proc () =
+        if gtk_check_button_get_active(rb) == 0 or darkMode == mode: return
+        darkMode = mode
+        w.a.store.setMeta("dark_drawings", storedAs(mode))
+        applyDark()
+        idle(proc () = gtk_popover_popdown(darkPop)))     # chosen: the drawing shows it, the menu is done
+      darkBox.add rb
+  discard margins(darkBox, 8)
+  gtk_popover_set_child(darkPop, darkBox)
+  gtk_menu_button_set_popover(darkBtn, darkPop)
+  # the theme changed while the app runs: the drawings follow at once when they are set to
+  styles.onPtr("notify::dark", proc (p: W) = applyDark())
   adw_header_bar_pack_end(contentHeader, darkBtn)
   # a toggle: its pressed state is what Orca reads (and what the Coverage page turns on)
   w.coverBtn = gtk_toggle_button_new()

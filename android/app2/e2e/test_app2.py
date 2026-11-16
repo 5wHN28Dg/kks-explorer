@@ -931,7 +931,7 @@ class Phone(unittest.TestCase):
         ui.find('Photo for 4 codes', exact=True, timeout=10)
         # held (debug builds): the job waits, so the app can be stopped with it queued
         ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--ez', 'hold', 'true')
-        ui.tap('Take a photo', exact=True)
+        ui.tap('Take photo', exact=True)
         self.allow_camera()
         time.sleep(5)                                     # the emulator's camera app: shutter, then confirm
         ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
@@ -1023,13 +1023,20 @@ class Phone(unittest.TestCase):
         ui.find('Sample sheet', timeout=40)
         ui.type_into('Search KKS or description', 'LAB70AA501')
         ui.tap('11LAB70AA501', exact=True)
-        ui.scroll_to('Take a photo', exact=True)
-        ui.tap('Take a photo', exact=True)
+        ui.scroll_to('Equipment: take photo', exact=True)
+        # every way to add a photo says which kind it adds (the user, 2026-11-16): the equipment or its tag plate,
+        # from the camera or the gallery
+        ui.scroll_to('Tag plate: from gallery', exact=True)
+        for b in ('Equipment: take photo', 'Equipment: from gallery', 'Tag plate: take photo', 'Tag plate: from gallery'):
+            self.assertTrue(ui.present(b, exact=True), b)
+        self.assertFalse(ui.present('From the gallery'))
+        ui.tap('Equipment: take photo', exact=True)
         # the code has no floor: it is asked first, and goes with the photo (request 4, 2026-10-08)
         ui.find('Which floor is it on?', exact=True)
         ui.tap('Floor 5')
         ui.tap('Continue', exact=True)
         snap()
+        ui.find('Equipment photo', exact=True)      # the editor says which kind too
         for b in ('Undo', 'Retake', 'Cancel', 'Send', 'Arrow', 'Circle', 'White'):
             bottom = int(re.findall(r'\d+', ui.find(b, exact=b != 'White').get('bounds'))[3])
             self.assertLessEqual(bottom, h - nav, f'{b} is under the navigation bar or off the screen')
@@ -1062,7 +1069,7 @@ class Phone(unittest.TestCase):
         ui.find('And its tag plate?', exact=True, timeout=60)
         ui.tap('Take it', exact=True)
         snap()
-        ui.find('Tag plate', exact=True)
+        ui.find('Tag plate photo', exact=True)
         ui.tap('Send', exact=True)
         def caps():
             c = sorted(p['caption'] for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501')
@@ -1088,8 +1095,10 @@ class Phone(unittest.TestCase):
 
     def test_dark(self):
         """dark drawings: DarkColor equals the Nim function (tests/web/dark-vectors.json, checked on the device by the
-        debug-only DebugDarkReceiver) and the markers keep 3:1; the ⋮ toggle turns the paper dark and the lines light
-        at once (a screenshot against the light one, pixel by pixel), and it is still on after the app restarts"""
+        debug-only DebugDarkReceiver) and the markers keep 3:1. The setting (⋮ → Dark drawings) has three choices: the
+        drawings follow the system's theme until the person says otherwise; Always dark turns the paper dark and the
+        lines light at once (a screenshot against the light one, pixel by pixel) and is still on after the app
+        restarts; Always light holds against the system's dark theme, and Follow theme is dark with it"""
         from PIL import Image
         import io
 
@@ -1115,6 +1124,20 @@ class Phone(unittest.TestCase):
             a, b, c, d = map(int, re.findall(r'\d+', ui.find('Drawing sample').get('bounds')))
             top = int(re.findall(r'\d+', ui.find('Search equipment by KKS code or description').get('bounds'))[3]) + 20
             return a + (c - a) // 5, top, c - (c - a) // 5, top + (d - top) * 2 // 3
+        # the system's theme light to begin with (put back after): the drawings follow it until told otherwise
+        was = 'yes' if 'yes' in ui.sh('cmd', 'uimode', 'night') else 'no'
+        self.addCleanup(ui.sh, 'cmd', 'uimode', 'night', was)
+        ui.sh('cmd', 'uimode', 'night', 'no')
+
+        def choose(mode, was_mode):
+            ui.tap('More', exact=True)
+            ui.find(was_mode, exact=True)                   # the menu item says the choice in force
+            ui.tap('Dark drawings', exact=True)
+            for m in ('Follow theme', 'Always dark', 'Always light'):
+                self.assertEqual(checked(m), 'true' if m == was_mode else 'false', m)
+            ui.tap(mode, exact=True)
+            self.assertEqual(checked(mode), 'true')
+            ui.tap('Done', exact=True)
         ui.tap('Join through a server', exact=True)
         ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
         ui.type_into('Username', 'boss')
@@ -1150,9 +1173,7 @@ class Phone(unittest.TestCase):
                     lines.append((x, y))
         self.assertGreater(len(paper), 1000, 'no paper in the light screenshot')
         self.assertGreater(len(lines), 20, 'no lines in the light screenshot')
-        ui.tap('More', exact=True)
-        self.assertEqual(checked('Dark drawings'), 'false')
-        ui.tap('Dark drawings', exact=True)
+        choose('Always dark', 'Follow theme')
         time.sleep(4)
 
         def judge(im):
@@ -1170,9 +1191,24 @@ class Phone(unittest.TestCase):
         pf, lf = judge(shot('android-dark-restarted.png'))
         self.assertGreater(pf, 0.95, f'after a restart only {pf:.0%} of the paper is dark')
         self.assertGreater(lf, 0.8, f'after a restart only {lf:.0%} of the lines are light')
-        ui.tap('More', exact=True)
-        self.assertEqual(checked('Dark drawings'), 'true')
-        ui.sh('input', 'keyevent', '4')
+        # always light holds when the system's theme turns dark; following it, the drawings are dark with it
+        choose('Always light', 'Always dark')
+        ui.sh('cmd', 'uimode', 'night', 'yes')
+        time.sleep(5)
+        ui.find('Sample sheet', timeout=20)
+        im = shot('android-dark-light-in-night.png')
+        white = sum(1 for p in paper if min(im.getpixel(p)) >= 250) / len(paper)
+        self.assertGreater(white, 0.95, f'always light under the dark theme: only {white:.0%} of the paper is white')
+        choose('Follow theme', 'Always light')
+        time.sleep(4)
+        pf, lf = judge(shot('android-dark-follow.png'))
+        self.assertGreater(pf, 0.95, f'following the dark theme only {pf:.0%} of the paper is dark')
+        self.assertGreater(lf, 0.8, f'following the dark theme only {lf:.0%} of the lines are light')
+        ui.sh('cmd', 'uimode', 'night', 'no')
+        time.sleep(5)
+        im = shot('android-dark-follow-light.png')
+        white = sum(1 for p in paper if min(im.getpixel(p)) >= 250) / len(paper)
+        self.assertGreater(white, 0.95, f'following the light theme: only {white:.0%} of the paper is white')
 
     def test_diagnostics(self):
         """decision 0040: the manager's phone switches reports on; an event is sealed into a report the server stores
@@ -1283,6 +1319,12 @@ class Phone(unittest.TestCase):
         ui.find('Sample sheet', timeout=40)
         # search → the panel decodes the tag
         ui.type_into('Search KKS or description', 'LAB70AA501')
+        # each result's photo mark, in words for TalkBack, and under the results what the marks mean
+        ui.find('11LAB70AA501', exact=True)
+        row = [n for n in ui.nodes() if n.get('content-desc') in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos')]
+        self.assertGreaterEqual(len(row), 1, [(n.get('text'), n.get('content-desc')) for n in ui.nodes()])
+        for words in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos'):
+            self.assertTrue(ui.present(words, exact=True), words)
         ui.tap('11LAB70AA501', exact=True)
         ui.find('Feed water piping system', timeout=10)
         # edit a field; the change reaches the server by the automatic sync
@@ -1379,8 +1421,8 @@ class Phone(unittest.TestCase):
         # the photo's editor is closed; a code on no drawing then says so
         link('walkdown://kks/11LAB70AA501')
         ui.find('Feed water piping system', timeout=15)
-        ui.scroll_to('Take a photo', exact=True)
-        ui.tap('Take a photo', exact=True)
+        ui.scroll_to('Equipment: take photo', exact=True)
+        ui.tap('Equipment: take photo', exact=True)
         ui.find('Which floor is it on?', exact=True)
         ui.tap('Floor 5')
         ui.tap('Continue', exact=True)
@@ -1635,8 +1677,8 @@ class Phone(unittest.TestCase):
         self.wait_server(lambda: [n for n in queue_files() if n.endswith('.json')], 'the held photo was never queued')
         self.open_tag()
         ui.scroll_to('1 photo of this tag is being prepared', exact=True)
-        ui.scroll_to('Take a photo', exact=True)
-        ui.tap('Take a photo', exact=True)
+        ui.scroll_to('Equipment: take photo', exact=True)
+        ui.tap('Equipment: take photo', exact=True)
         time.sleep(2)
         self.assertFalse(ui.present('Which floor is it on?', exact=True), 'asked for a floor a queued photo of the code carries')
         self.allow_camera()
@@ -1667,16 +1709,16 @@ class Phone(unittest.TestCase):
         self.join()
         # a code with no tag on the drawing has no panel: the sample tag, which has no floor
         self.open_tag()
-        ui.scroll_to('Take a photo', exact=True)
-        ui.tap('Take a photo', exact=True)
+        ui.scroll_to('Equipment: take photo', exact=True)
+        ui.tap('Equipment: take photo', exact=True)
         ui.find('Which floor is it on?', exact=True)
         ui.tap('Cancel', exact=True)
         time.sleep(2)
-        self.assertTrue(ui.present('Take a photo', exact=True), 'the camera opened without a floor')
-        # the photo buttons wrap: "From the gallery" is on the row under "Take a photo", below the screen's edge
-        # when the swipes stopped with "Take a photo" at the bottom (run 37899373392)
-        ui.scroll_to('From the gallery', exact=True)
-        ui.tap('From the gallery', exact=True)
+        self.assertTrue(ui.present('Equipment: take photo', exact=True), 'the camera opened without a floor')
+        # the photo buttons wrap: "Equipment: from gallery" is on the row under "Equipment: take photo", below the screen's edge
+        # when the swipes stopped with "Equipment: take photo" at the bottom (run 37899373392)
+        ui.scroll_to('Equipment: from gallery', exact=True)
+        ui.tap('Equipment: from gallery', exact=True)
         ui.find('Which floor is it on?', exact=True)
         ui.tap('Floor 4')
         ui.tap('Continue', exact=True)

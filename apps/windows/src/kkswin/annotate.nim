@@ -261,8 +261,8 @@ proc capText*(s: string, n: int): string =
   if s.runeLen <= n: s else: $s.toRunes[0 ..< n]
 
 proc annotate*(owner: HWND, rgba: seq[byte], w, h: int, done: proc (rgba: seq[byte], caption, note: string), askNote: bool,
-               captionMax = MaxCaption) =
-  ## opens the editor; `done` gets the picture with the marks burned in. The caption and the note are capped as they
+               captionMax = MaxCaption, title = "Mark up the photo") =
+  ## opens the editor (`title`: its window's, which says the kind of photo when there is one); `done` gets the picture with the marks burned in. The caption and the note are capped as they
   ## are typed (EM_LIMITTEXT counts UTF-16 units: never more characters than the core takes) and cut again when sent
   ## (a value set from outside, e.g. UI Automation, isn't capped by the field)
   if not classDone:
@@ -280,7 +280,7 @@ proc annotate*(owner: HWND, rgba: seq[byte], w, h: int, done: proc (rgba: seq[by
     e.bgra[i + 2] = byte(int(rgba[i]) * a div 255)
     e.bgra[i + 3] = byte(a)
   var hw: HWND
-  let (pw, page) = popup(owner, "Mark up the photo", 1000, 860, proc () =
+  let (pw, page) = popup(owner, title, 1000, 860, proc () =
     if e.canvas != nil:
       editors.del e.canvas)
   hw = pw

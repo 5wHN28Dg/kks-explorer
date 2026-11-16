@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -107,7 +109,9 @@ class Ui {
     var sheet by mutableStateOf("")
     var selected by mutableStateOf("")
     var coverage by mutableStateOf(false)                  // the drawings coloured by photos
-    var dark by mutableStateOf(false)                      // dark drawings (remembered on this device: prefs "app")
+    /** the Dark drawings setting: "follow" (the system's theme), "dark" or "light" (remembered on this device: prefs
+     *  "app", [DARK_MODE_PREF]) */
+    var darkMode by mutableStateOf("follow")
     var focus by mutableStateOf<List<Float>?>(null)       // a tag to zoom to once its sheet is shown
     var activeProc by mutableStateOf("")
     var linkProc by mutableStateOf("")
@@ -149,7 +153,10 @@ class Ui {
 fun MainScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val ui = remember { Ui().also { it.dark = ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE).getBoolean("dark_drawings", false) } }
+    val ui = remember { Ui().also { it.darkMode = storedDarkMode(ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE)) } }
+    // the drawings follow the system's theme until the person says always dark or always light (the user, 2026-11-16)
+    val darkDrawings = darkNow(ui.darkMode, androidx.compose.foundation.isSystemInDarkTheme())
+    var darkAsk by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
     val rev = Changes.rev
     val admin = remember(rev) { Sync.config().optBoolean("admin") }
@@ -312,7 +319,11 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     LaunchedEffect(symbolBox, view) { view?.symbolBox = symbolBox }
     LaunchedEffect(ui.selected, view) { view?.selected = ui.selected }
     LaunchedEffect(ui.coverage, view) { view?.coverage = ui.coverage }
-    LaunchedEffect(ui.dark, view) { view?.dark = ui.dark }
+    LaunchedEffect(darkDrawings, view) { view?.dark = darkDrawings }
+    if (darkAsk) DarkDrawingsDialog(ui.darkMode, onPick = {
+        ui.darkMode = it
+        ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE).edit().putString(DARK_MODE_PREF, it).apply()
+    }, onClose = { darkAsk = false })
     LaunchedEffect(linkedCodes, boxes, view) { view?.highlight = boxes.filter { it.code in linkedCodes }.map { it.id }.toSet() }
     LaunchedEffect(ui.floor, floors, view) {
         view?.dimmed = if (ui.floor.isEmpty()) null else floors.optJSONArray(ui.floor)?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet()
@@ -340,15 +351,10 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     DropdownMenuItem(text = { Text("Coverage") }, onClick = { coverageOpen = true; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text("Colour tags by photos" + if (ui.coverage) " ✓" else "") },
                         onClick = { ui.coverage = !ui.coverage; floorMenu = false })
-                    // checkable: TalkBack says "Dark drawings, checkbox, checked"; the switch is instant (SheetView.dark)
+                    // a setting with three choices (its dialog); the item says the one in force
                     if (current != null) DropdownMenuItem(text = { Text("Dark drawings") },
-                        trailingIcon = { Checkbox(ui.dark, onCheckedChange = null, modifier = Modifier.clearAndSetSemantics {}) },
-                        modifier = Modifier.semantics { role = androidx.compose.ui.semantics.Role.Checkbox
-                            toggleableState = androidx.compose.ui.state.ToggleableState(ui.dark) },
-                        onClick = {
-                            ui.dark = !ui.dark; floorMenu = false
-                            ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE).edit().putBoolean("dark_drawings", ui.dark).apply()
-                        })
+                        trailingIcon = { Text(darkModeLabel(ui.darkMode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        onClick = { darkAsk = true; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
                         onClick = { marking = !marking; selecting = false; selection = emptySet(); ui.selected = ""; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (selecting) "Stop selecting" else "Select tags") },
@@ -609,4 +615,41 @@ private fun CoverageLegend() {
             }
         }
     }
+}
+
+/** The Dark drawings setting, the same three choices with the same words in every app: the drawings follow the
+ *  system's theme, or are always dark, or always light. */
+internal const val DARK_MODE_PREF = "dark_drawings_mode"
+internal val DARK_MODES = listOf("follow" to "Follow theme", "dark" to "Always dark", "light" to "Always light")
+internal fun darkModeLabel(mode: String) = DARK_MODES.firstOrNull { it.first == mode }?.second ?: DARK_MODES[0].second
+internal fun darkNow(mode: String, systemDark: Boolean) = mode == "dark" || (mode != "light" && systemDark)
+/** the stored choice; before it had three, a switch (`dark_drawings` true = on, which stays "always dark") */
+internal fun storedDarkMode(p: android.content.SharedPreferences): String {
+    val m = p.getString(DARK_MODE_PREF, null)
+    return when {
+        m != null && DARK_MODES.any { it.first == m } -> m
+        p.getBoolean("dark_drawings", false) -> "dark"
+        else -> "follow"
+    }
+}
+
+@Composable
+private fun DarkDrawingsDialog(mode: String, onPick: (String) -> Unit, onClose: () -> Unit) {
+    AlertDialog(onDismissRequest = onClose, title = { Text("Dark drawings") },
+        text = {
+            Column {
+                Text("Light lines on dark paper, like a PDF reader's dark mode. Remembered on this phone.", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                Column(Modifier.selectableGroup()) {
+                    for ((m, label) in DARK_MODES) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .selectable(selected = m == mode, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = { onPick(m) }),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = m == mode, onClick = null)
+                        Spacer(Modifier.width(12.dp))
+                        Text(label, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Done") } })
 }

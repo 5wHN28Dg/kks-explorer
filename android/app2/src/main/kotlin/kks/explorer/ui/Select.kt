@@ -290,8 +290,8 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
     if (picked == null) AlertDialog(onDismissRequest = onClose, title = { Text(title) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Dim("One picture showing all of them; each code gets it.")
-            Button(onClick = { shoot() }, modifier = Modifier.fillMaxWidth()) { Text("Take a photo") }
-            OutlinedButton(onClick = { fromCamera = false; gallery.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("From the gallery") }
+            Button(onClick = { shoot() }, modifier = Modifier.fillMaxWidth()) { Text("Take photo") }
+            OutlinedButton(onClick = { fromCamera = false; gallery.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("From gallery") }
         }
     }, confirmButton = { TextButton(onClick = onClose) { Text("Cancel") } })
     picked?.let { bmp ->

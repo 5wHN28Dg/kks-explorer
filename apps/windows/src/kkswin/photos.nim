@@ -702,7 +702,7 @@ proc addPhoto*(w: Win, kks: string, plate = false) =
   ## an equipment photo, or (plate) a photo of its tag plate, through the queue. The floor first when the code has
   ## none. After an equipment photo of a code with no tag plate photo, the app offers one (as Android and GNOME do).
   proc go(floor: string) =
-    let (rgba, pw, ph) = w.pickPicture(if plate: "Choose a photo of the tag plate" else: "Add a photo")
+    let (rgba, pw, ph) = w.pickPicture(if plate: "Choose a tag plate photo" else: "Choose an equipment photo")
     if rgba.len == 0: return
     annotate(w.hwnd, rgba, pw, ph, proc (marked: seq[byte], caption, note: string) =
       let offer = not plate and not w.hasPlate(kks)
@@ -721,7 +721,8 @@ proc addPhoto*(w: Win, kks: string, plate = false) =
                       "person find this equipment. Add one now?"):
             w.addPhoto(kks, plate = true)),
       askNote = not w.isAdmin,
-      captionMax = if plate: MaxCaption - (PlateCaption & " · ").runeLen else: MaxCaption)
+      captionMax = if plate: MaxCaption - (PlateCaption & " · ").runeLen else: MaxCaption,
+      title = if plate: "Mark up the tag plate photo" else: "Mark up the equipment photo")
   if w.floorKnown(kks): go("")
   else: w.askFloor(kks, go)
 
@@ -786,6 +787,6 @@ proc photoSection*(w: Win, p: Page, kks: string) =
   let f = failedFor(kks)
   if f > 0:
     p.dim((if f == 1: "1 photo" else: $f & " photos") & " of this equipment not sent: see Photos not sent below the drawing.")
-  p.buttons(("Add a photo from a file…", proc () = w.addPhoto(kks)),
-            ((if w.hasPlate(kks): "New tag plate photo from a file…" else: "Tag plate photo from a file…"), proc () =
-              w.addPhoto(kks, plate = true)))
+  # each button says which kind of photo it adds (the user, 2026-11-16); the same words on every client
+  p.buttons(("Equipment: from a file…", proc () = w.addPhoto(kks)),
+            ("Tag plate: from a file…", proc () = w.addPhoto(kks, plate = true)))

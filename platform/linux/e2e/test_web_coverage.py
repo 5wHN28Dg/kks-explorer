@@ -66,13 +66,63 @@ class WebCoverage(tws.WebSystems):
         self.assertRegex(page.get_attribute('#q', 'aria-activedescendant'), r'^res-\d+$')
         self.assertEqual(legend.get_attribute('aria-selected'), 'false')
         page.screenshot(path=os.path.join(SHOTS, 'search-photos-' + name + '.png'))
-        legend.click()                       # not a result: nothing opens, the list stays
+        legend.click(force=True)             # not a result: nothing opens, the list stays
         self.assertTrue(page.is_visible('#results'))
         # a result without a code has no mark; nothing found has no legend
         page.fill('#q', 'zzzz')
         page.wait_for_function("() => document.querySelector('#results').textContent.includes('No match')")
         self.assertEqual(page.locator('#results .pmark').count(), 0)
         page.keyboard.press('Escape')
+
+    def dark_setting(self, page, name):
+        """Dark drawings is a setting with three choices behind its button: the drawings follow the device's theme
+        until the person says always dark or always light; the choice is kept on this device (a reload), and holds
+        against the theme"""
+        is_dark = "document.body.classList.contains('darkdwg')"
+        chosen = "[...document.querySelectorAll('dialog[open] input[name=darkMode]')].filter(i => i.checked).map(i => i.parentElement.textContent.trim())"
+        def choose(label, was):
+            page.click('#zdark')
+            self.assertEqual(self.text(page, 'dialog[open] h2'), 'Dark drawings')
+            self.assertEqual(page.evaluate("[...document.querySelectorAll('dialog[open] label.radio')].map(l => l.textContent.trim())"),
+                             ['Follow theme', 'Always dark', 'Always light'])
+            self.assertEqual(page.evaluate(chosen), [was], name)
+            self.assertEqual(page.evaluate("document.activeElement.parentElement.textContent.trim()"), was)   # the focus on the choice
+            page.get_by_role('radio', name=label).check()
+            page.get_by_role('button', name='Done').click()
+            self.assertEqual(page.locator('dialog[open]').count(), 0)
+            self.assertEqual(page.evaluate("document.activeElement.id"), 'zdark')
+            self.assertEqual(page.get_attribute('#zdark', 'aria-label'), 'Dark drawings: ' + label)
+        def reload():
+            page.reload()
+            page.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length === 8 && typeof cur !== 'undefined' && cur", timeout=30000)
+        page.emulate_media(color_scheme='light')
+        self.assertFalse(page.evaluate(is_dark), 'a light theme, followed')
+        choose('Always dark', 'Follow theme')
+        self.assertTrue(page.evaluate(is_dark))
+        self.assertEqual(page.evaluate("localStorage.getItem('darkDrawings')"), '1')
+        reload()
+        self.assertTrue(page.evaluate(is_dark), 'always dark after a reload')
+        # the keyboard: Escape closes the dialog and changes nothing
+        page.click('#zdark')
+        page.keyboard.press('Escape')
+        self.assertEqual(page.locator('dialog[open]').count(), 0)
+        self.assertTrue(page.evaluate(is_dark))
+        choose('Always light', 'Always dark')
+        self.assertFalse(page.evaluate(is_dark))
+        page.emulate_media(color_scheme='dark')
+        self.assertFalse(page.evaluate(is_dark), 'always light holds against a dark theme')
+        reload()
+        self.assertFalse(page.evaluate(is_dark), 'always light after a reload, the theme dark')
+        choose('Follow theme', 'Always light')
+        self.assertTrue(page.evaluate(is_dark), 'following a dark theme')
+        self.assertIsNone(page.evaluate("localStorage.getItem('darkDrawings')"))
+        page.screenshot(path=os.path.join(SHOTS, 'dark-setting-' + name + '.png'))
+        # the theme changes while the page is open: the drawings follow at once
+        page.emulate_media(color_scheme='light')
+        page.wait_for_function("() => !" + is_dark)
+        page.emulate_media(color_scheme='dark')
+        page.wait_for_function("() => " + is_dark)
+        page.emulate_media(color_scheme='light')
 
     def run_engine(self, name):
         # each engine starts from the fixture's places: AA501 in the location list; earlier engines' edits are undone
@@ -182,6 +232,7 @@ class WebCoverage(tws.WebSystems):
             self.assertEqual(page.evaluate("document.activeElement.id"), 'covBtn')
             self.assertEqual(btn.get_attribute('aria-expanded'), 'false')
             self.search_marks(page, name)
+            self.dark_setting(page, name)
             browser.close()
             self.assertEqual(errors, [], name)
 

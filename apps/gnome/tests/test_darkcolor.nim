@@ -110,3 +110,13 @@ suite "markers on dark":
     # light mode unchanged
     check markerColor("auto", "", false, false) == (0.1, 0.4, 0.9)
     check linkColor(false) == (0.55, 0.2, 0.85)
+
+suite "the Dark drawings setting":
+  test "follows the theme unless always dark or always light; the old toggle's value still means dark":
+    check darkModeOf("1") == dmDark and darkModeOf("0") == dmLight
+    check darkModeOf("") == dmFollow and darkModeOf("anything else") == dmFollow
+    for m in DarkMode: check darkModeOf(storedAs(m)) == m
+    check darkNow(dmFollow, true) and not darkNow(dmFollow, false)
+    check darkNow(dmDark, false) and darkNow(dmDark, true)
+    check not darkNow(dmLight, true) and not darkNow(dmLight, false)
+    check DarkModeLabels == ["Follow theme", "Always dark", "Always light"]

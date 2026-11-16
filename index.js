@@ -272,9 +272,9 @@ function dropDarkLevels(){ for(const p of dark.levels.values()) p.then(u=>URL.re
 // ---------- dark drawings: like a PDF reader's dark mode; remembered on this device ----------
 const dark={on:false,gen:0,sheet:null,levels:new Map(),wait:new Map(),seq:0,warned:false};
 function setDark(on){
+  if(dark.on===on) return;
   dark.on=on; dark.gen++; document.body.classList.toggle('darkdwg',on);
-  const b=$('#zdark'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
-  try{ on?localStorage.setItem('darkDrawings','1'):localStorage.removeItem('darkDrawings') }catch(e){}
+  $('#zdark').classList.toggle('on',on);
   if(!on){ dropDarkLevels(); dark.sheet=null }      // their blob: URLs are freed with them
   if(!cur?.levels) return;
   sharp.worker??=startTiles();
@@ -284,8 +284,32 @@ function setDark(on){
   levelSrc(k).then(u=>{ if(cur===s&&dark.gen===g) img.src=u }).catch(e=>console.warn('overview level',k,e));
   clearTimeout(sharp.timer); drawSharp();
 }
-$('#zdark').onclick=()=>setDark(!dark.on);
-try{ if(localStorage.getItem('darkDrawings')==='1') setDark(true) }catch(e){}
+// The setting (the user, 2026-11-16: "an option to keep dark mode on for the sheets"): the drawings follow the device's
+// theme until the person says always dark or always light. Kept on this device as localStorage darkDrawings: '1' always
+// dark (what the old on/off button wrote when on), '0' always light, absent = follow the theme. The same three
+// choices, with the same words, in every app.
+const DARK_MODES=[['follow','Follow theme'],['dark','Always dark'],['light','Always light']];
+const sysDark=matchMedia('(prefers-color-scheme: dark)');
+let darkMode='follow';
+try{ const v=localStorage.getItem('darkDrawings'); darkMode=v==='1'?'dark':v==='0'?'light':'follow' }catch(e){}
+const darkWanted=()=>darkMode==='dark'||(darkMode==='follow'&&sysDark.matches);
+const darkTitle=()=>{ const t='Dark drawings: '+DARK_MODES.find(m=>m[0]===darkMode)[1]; $('#zdark').title=t; $('#zdark').setAttribute('aria-label',t) };
+function setDarkMode(m){
+  darkMode=m;
+  try{ m==='follow'?localStorage.removeItem('darkDrawings'):localStorage.setItem('darkDrawings',m==='dark'?'1':'0') }catch(e){}
+  darkTitle(); setDark(darkWanted());
+}
+$('#zdark').onclick=()=>{
+  const d=dialog('Dark drawings',
+    h('p',{class:'sub',style:'margin:0 0 8px'},'Light lines on dark paper, like a PDF reader’s dark mode. Remembered on this device.'),
+    h('div',{role:'radiogroup','aria-labelledby':'dlgT'},DARK_MODES.map(([m,label])=>h('label',{class:'radio'},
+      h('input',{type:'radio',name:'darkMode',value:m,checked:m===darkMode?'':null,onchange:e=>{ if(e.currentTarget.checked) setDarkMode(m) }}),' ',label))),
+    h('div',{class:'btns'},h('button',{type:'button',class:'primary',onclick:()=>d.close()},'Done')));
+  d.addEventListener('close',()=>$('#zdark').focus());
+  d.querySelector('input:checked')?.focus();
+};
+(sysDark.addEventListener?sysDark.addEventListener.bind(sysDark,'change'):sysDark.addListener.bind(sysDark))(()=>{ if(darkMode==='follow') setDark(darkWanted()) });
+darkTitle(); setDark(darkWanted());
 function apply(){ const t=`translate(${view.x}px,${view.y}px) scale(${view.s})`; $('#stage').style.transform=t; $('#stage2').style.transform=t; followSharp() }
 
 // ---------- sharp layer: the sheet's vector drawing, redrawn for the visible area once the view stops moving ----------
@@ -400,7 +424,7 @@ const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment ph
 const pmark=p=>h('span',{class:'pmark p-'+p,'aria-hidden':'true',title:COVER_WORDS[p]});
 // what the marks mean, as the last line of the search results (not a result: it can't be picked)
 const photoLegend=()=>h('div',{class:'res m legend',role:'option','aria-disabled':'true',id:'resLegend'},'Photos:',
-  ['none','equipment','plate','both'].map(p=>[pmark(p),COVER_WORDS[p]]));
+  ['none','equipment','plate','both'].map(p=>h('span',{class:'nw'},pmark(p),COVER_WORDS[p])));
 // empties the tag layer (all but the select and mark boxes); data-sheet names the sheet whose image has loaded and
 // whose tags were drawn over it
 function clearLayer(){ const L=$('#layer'); delete L.dataset.sheet; for(const x of [...L.children]) if(x.id!=='selbox'&&x.id!=='markbox') x.remove() }
@@ -541,11 +565,18 @@ async function saveDesc(t,text){
 // `queued` false: a floor that is only in the outbox (with a photo waiting or kept after it was refused, or a place change) doesn't count
 const floorKnown=(k,queued=true)=>!!((eq(k).floor||'').trim()||String(myPendingEq(k,queued).floor??'').trim()
   ||[...(STATE.mine||[]).map(s=>s.payload),...(queued?K.outbox:[]).map(i=>i.payload)].some(p=>p&&p.kks===k&&p.floor));
+// a device whose main pointer is a finger: a file input with `capture` opens its camera
+const PHONE_CAMERA=()=>matchMedia('(pointer:coarse)').matches;
 function photoAdd(k){
   const need=!floorKnown(k);
-  const pick=(label,plate)=>h('label',{class:'ghost',style:'display:inline-block;margin:8px 6px 0 0;cursor:pointer'},label,
-    h('input',{type:'file',accept:'image/*',capture:'environment',style:'display:none','data-plate':plate?'1':null,onchange:ev=>addPhoto(ev.currentTarget,k,plate)}));
-  const btns=h('div',{id:'phAdd',style:need?'display:none':null},pick('+ Equipment photo',false),pick('+ Tag plate photo',true));
+  // Each button says which kind of photo it adds and where it comes from (the user, 2026-11-16; the same words on
+  // every client). On a phone or tablet: the camera (`capture`) or the gallery, for each kind; elsewhere `capture`
+  // does nothing, so there is one button per kind, for a file.
+  const pick=(label,plate,cam)=>h('label',{class:'ghost',style:'display:inline-block;margin:8px 6px 0 0;cursor:pointer'},label,
+    h('input',{type:'file',accept:'image/*',capture:cam?'environment':null,style:'display:none','data-plate':plate?'1':null,'data-src':cam?'camera':'file',onchange:ev=>addPhoto(ev.currentTarget,k,plate)}));
+  const btns=h('div',{id:'phAdd',style:need?'display:none':null},PHONE_CAMERA()
+    ?[pick('Equipment: take photo',false,true),pick('Equipment: from gallery',false,false),pick('Tag plate: take photo',true,true),pick('Tag plate: from gallery',true,false)]
+    :[pick('Equipment: from a file…',false,false),pick('Tag plate: from a file…',true,false)]);
   if(!need) return btns;
   const inp=h('input',{id:'phFloor',type:'number',inputmode:'numeric',min:0,max:10,step:1,placeholder:'0–10',style:'width:90px',
     oninput:()=>{ btns.style.display=/^(\d|10)$/.test(inp.value.trim())?'':'none' }});
@@ -729,7 +760,7 @@ async function addPhoto(input,k,plate){
   // queued at once (kept on this device), converted in the background, sent in order: closing the panel stops nothing
   try{ await K.queuePhoto(a.canvas,{kks:k,...(plate?{caption:'Tag plate'}:{}),...(fl?{floor:fl}:{})},a.note) }
   catch(e){ toast('Not saved: '+e.message); return }
-  toast(`${plate?'Tag plate photo':'Photo'} for ${k}: converting, then sent`);
+  toast(`${plate?'Tag plate photo':'Equipment photo'} for ${k}: converting, then sent`);
   if(selTag&&full(selTag)===k&&!$('#panel').querySelector('.editing')) reselect();
 }
 // a picture file → scaled and marked up in the editor -> {canvas, note} or null
