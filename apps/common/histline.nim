@@ -12,7 +12,8 @@ proc historyTitle*(r: JNode): string =
   let rev = if r.get("rev") != nil and r["rev"].isInt: "#" & $r["rev"].i & " " else: ""
   let note = r.str("note")
   let entity = r.str("entity")
-  (rev & r.str("summary") & (if note.len > 0 and entity notin ["user", "sheet"]: " (\u2068" & note.replace('\n', ' ') & "\u2069)" else: "")).strutils.strip
+  strutils.strip(rev & r.str("summary") &
+    (if note.len > 0 and entity notin ["user", "sheet"]: " (\u2068" & note.replace('\n', ' ') & "\u2069)" else: ""))
 
 proc historyBy*(r: JNode): string =
   ## "The Manager · 2026-11-15 14:05": who (full name, else username, else the server's console) and when
