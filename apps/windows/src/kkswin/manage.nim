@@ -75,6 +75,7 @@ var
   pickSubs: seq[JNode]              ## the waiting proposals as last drawn, oldest first
   pickChecks: seq[(int64, HWND)]    ## each one's tick
   pickAll, pickCount, pickOk, pickNo: HWND
+  pickPage: Page                    ## their page (laid out again when a button's label grows with its count)
   pickBusy = false                  ## a batch is running (one proposal per turn of the message loop)
   lastSaid = ""                     ## the last batch's result, on the page until the next batch (the status line is one line)
 
@@ -85,6 +86,7 @@ proc pickGone() =
     pickCount = nil
     pickOk = nil
     pickNo = nil
+    pickPage = nil
 
 proc pickShow() =
   let n = picked.len
@@ -96,6 +98,7 @@ proc pickShow() =
   pickNo.setText("Reject selected" & (if n > 0: " (" & $n & ")" else: ""))
   EnableWindow(pickOk, BOOL(n > 0 and not pickBusy))
   EnableWindow(pickNo, BOOL(n > 0 and not pickBusy))
+  if pickPage != nil: pickPage.layout()     # (a button is as wide as its label when the page is laid out: "(20)" was cut)
 
 proc runBatch(w: Win, action: string, chosen: seq[JNode])
 
@@ -112,14 +115,14 @@ proc decideMany(w: Win, action: string) =
     # one question, in a window of the app's own: the button names the action, Cancel has the focus, Escape cancels
     # (standard buttons a screen reader and UI Automation reach as anywhere else in the app)
     let what = if chosen.len == 1: "1 proposal" else: $chosen.len & " proposals"
-    # The app's window takes no input while the question is open (as under any dialog): a second question, or the
-    # page left with the question still open, can't happen.
+    # The app's window takes no input while the question is open (as under any dialog), so the page isn't left with
+    # the question open; whatever still gets through (another window of the app) meets the checks below: only what
+    # was asked about and is still ticked is rejected, and one batch at a time.
     var hw: HWND
     let (h, p) = popup(w.hwnd, "Reject " & what & "?", 460, 220, proc () =
       EnableWindow(w.hwnd, 1)
       SetForegroundWindow(w.hwnd), escape = true)
     hw = h
-    EnableWindow(w.hwnd, 0)
     p.title("Reject " & what & "?")
     p.dim("Each one is rejected as its own Reject button does. The submitters see that it was rejected.")
     let ids = chosen.mapIt(it["id"].i)
@@ -132,6 +135,7 @@ proc decideMany(w: Win, action: string) =
                          DestroyWindow(hw)
                          w.runBatch("reject", pickSubs.filterIt(it["id"].i in ids and it["id"].i in picked))))
     p.layout()
+    EnableWindow(w.hwnd, 0)
     ShowWindow(h, SW_SHOW)
     SetFocus(bs[0])
     return
@@ -178,6 +182,7 @@ proc runBatch(w: Win, action: string, chosen: seq[JNode]) =
     if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
     lastSaid = msg
     w.toast(msg)
+    pickShow()          # (the bar as it is now, should the page wait for the keyboard to leave one of its fields)
     w.sideChanged()     # (not rebuildSide: the person may be typing on another page by now, #168)
   later(step)
 
@@ -197,6 +202,7 @@ proc approvals(w: Win, p: Page) =
   pickCount = nil
   pickOk = nil
   pickNo = nil
+  pickPage = nil
   pickCompeting.setLen(0)
   for grp in groups:
     for k in grp["kinds"].elems:
@@ -224,6 +230,7 @@ proc approvals(w: Win, p: Page) =
                        ("Reject selected", proc () = w.decideMany("reject")))
     pickOk = bs[0]
     pickNo = bs[1]
+    pickPage = p
     if lastSaid.len > 0: p.label(lastSaid)
     pickShow()
   for gi in 0 ..< groups.len:
@@ -264,6 +271,7 @@ proc approvals(w: Win, p: Page) =
                   else: picked.keepItIf(it != id)
                   pickShow())
                 pickChecks.add (id, cb)
+                p.space(2)      # (8 px between the tick and the row with Reject under it)
               var specs: seq[(string, proc ())]
               w.photoButton(sub, specs)
               if w.isAdmin:

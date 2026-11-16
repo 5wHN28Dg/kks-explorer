@@ -277,7 +277,12 @@ proc approvals(w: Win, box: W) =
                   else: picked.keepItIf(it != id)
                   pickShow())
                 pickChecks.add (id, cb)
-                btns.add cb
+                if pick:        # (a line of its own: with "Pick this photo", the votes and Reject the row was too wide)
+                  let top = hbox(8)
+                  gtk_widget_set_margin_top(top, 6)
+                  top.add cb
+                  adw_preferences_group_add(pg, top)
+                else: btns.add cb
               if pick:
                 let votes = if sub.get("votes") != nil and sub["votes"].kind == jInt: sub["votes"].i else: 0
                 let pb = button("Pick this photo", "suggested-action", proc () =

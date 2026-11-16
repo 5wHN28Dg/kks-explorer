@@ -267,6 +267,40 @@ class WebBatch(unittest.TestCase):
         self.assertEqual([S[first]['status'], S[mark]['status']], ['approved', 'approved'])
         saved = [t['kks'] for t in self.boss.req('GET', '/api/state')['added_tags'] if t['kks'].startswith('11LAB72AA59')]
         self.assertEqual(saved, ['11LAB72AA591'])
+        # one of the ticked ones is decided elsewhere and the page made again while the batch runs: it is not sent,
+        # and the result names it
+        more = ['11LAB72AA52%d' % i for i in range(1, 5)]
+        for i, c in enumerate(more): self.tag(c, 12 + i)
+        sub = lambda c: self.tom.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': c, 'changes': {'near': 'last'}, 'base': {}}})['id']
+        a1 = sub(more[0]); time.sleep(1.1); a2 = sub(more[1])
+        page.evaluate('rebuild()')
+        expect(page.locator(f'#main label.pick input[data-id="{a2}"]')).to_be_visible()
+        page.locator('#pickAll').check()
+        expect(ok).to_have_text('Approve selected (2)')
+        self.boss.req('POST', f'/api/submissions/{a2}/reject', {})
+        page.route('**/api/submissions/*/approve', slow)
+        page.evaluate("() => { document.querySelector('#pickOk').click(); setTimeout(rebuild, 100) }")
+        expect(page.locator('#toast')).to_contain_text('Approved 1 of 2.', timeout=15000)
+        expect(page.locator('#toast')).to_contain_text(f'No longer waiting or no longer ticked: #{a2}.')
+        page.unroute('**/api/submissions/*/approve', slow)
+        self.assertEqual(self.subs()[a1]['status'], 'approved')
+        # the server answers "sign in" in the middle of a batch: it stops there and says how far it got (it ended
+        # without a word, its buttons left off); still signed in, the page is made again with what is left
+        b1 = sub(more[2]); time.sleep(1.1); b2 = sub(more[3])
+        page.evaluate('rebuild()')
+        expect(page.locator(f'#main label.pick input[data-id="{b2}"]')).to_be_visible()
+        page.locator('#pickAll').check()
+        expect(ok).to_have_text('Approve selected (2)')
+        page.route(f'**/api/submissions/{b2}/approve', lambda route: route.fulfill(status=401, content_type='application/json', body='{"error":"sign in"}'))
+        ok.click()
+        expect(page.locator('#toast')).to_contain_text('Approved 1 of 2.', timeout=15000)
+        expect(page.locator('#toast')).to_contain_text('Stopped there:')
+        page.unroute(f'**/api/submissions/{b2}/approve')
+        expect(ok).to_have_text('Approve selected (1)')
+        expect(ok).to_be_enabled()
+        S = self.subs()
+        self.assertEqual([S[b1]['status'], S[b2]['status']], ['approved', 'pending'])
+        self.boss.req('POST', f'/api/submissions/{b2}/reject', {})
         self.assertEqual(errors, [])
         ctx.close()
 
