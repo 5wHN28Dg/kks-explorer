@@ -6,7 +6,9 @@ extends RefCounted
 ##
 ## The engine's state (saved with a run, in the digest): tool_n (per tool, its counts per place in tools.json's order),
 ## carried (person id -> tool ids in the order taken), busy (person id -> [code, action, tool, value, end clock,
-## place]), cause_of (fault -> its applied cause), cause_s and slip_s (the streams' states).
+## place, and for a fitting the work its part came from, REALISM.md §2.23]), cause_of (fault -> its applied cause), cause_s and slip_s (the streams' states).
+
+const Stores = preload("stores.gd")    # a fitting's part (REALISM.md §2.23)
 
 const CARRIED := 12
 const WEIGHT := 65536
@@ -247,12 +249,17 @@ static func hand(e, item: Array, npc: bool) -> String:
 	if x.has("input") and not (_is_num(value) and float(x["range"][0]) <= float(value)
 			and float(value) <= float(x["range"][1])):
 		why.append("value")
+	if x.has("part"):           # the fitting check (REALISM.md §2.23): part or wrong_part
+		why.append_array(Stores.fit_reasons(e, x))
 	if not why.is_empty():
 		e._ev(["hand", kks, action, tl, person, "refused", why])
 		return "refused"
+	var fw = Stores.fit_take(e, x) if x.has("part") else null    # the part taken from the work's issued parts
 	if x.has("minutes"):
 		var end: int = e.clock() + ceili(float(x["minutes"]) * MINUTE)
 		e.busy[person] = [kks, action, tl, float(value) if x.has("input") else null, end, e.sp_pos[pi]]
+		if fw != null:
+			e.busy[person].append(fw)   # (a fitting's busy record: the work its part came from, REALISM.md §2.23)
 		e._ev(["hand", kks, action, tl, person, "start", []])
 		return "start"
 	write(e, x, value, e.prev)
@@ -288,6 +295,7 @@ static func end_hands(e, jumped: bool) -> void:
 		var b = e.busy[pid]
 		if jumped or e.sp_pos[pi] != b[5]:
 			e.busy.erase(pid)
+			Stores.give_back(e, b)
 			e._ev(["hand", b[0], b[1], b[2], pid, "abandoned", []])
 			_result(e, pi, "abandoned")
 		elif c >= b[4]:
@@ -309,6 +317,7 @@ static func abandon(e, pi: int) -> void:
 	var b = e.busy.get(pid)
 	if b != null:
 		e.busy.erase(pid)
+		Stores.give_back(e, b)
 		e._ev(["hand", b[0], b[1], b[2], pid, "abandoned", []])
 
 

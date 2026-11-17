@@ -1149,6 +1149,385 @@ condition-based maintenance, the work order) and [ISO55000] (the work's record a
   samples, as WM1's walk did); the model 24.1 ms a second (2.50 ms a step), peak PSS 1,161 MB, first frame at
   12.0 s; no pipeline compiled after the first 5 s.
 
+### 2.23 WM2's details (settled 2026-11-10, before the code: the stores)
+
+§7.2 leaves these open; settled here. What is drawn is the app's, pinned by app tests; what the engine does is in
+both engines bit for bit, with vectors. The words follow [EN13306] (spare part, the maintenance support), the part
+taxonomy [ISO14224]'s (equipment class, unit, maintainable item: its Annex A), and the stores' practice [Palmer]'s
+(min/max stock levels, the reorder point, parts reserved and issued against a work order, the backlog held for
+parts). Lead times are clock days (§2.1).
+
+- **The gate: `stores.json`** (format `walkdown-plant-stores`, version 1, optional, version 2 plants only). A model
+  has stores when the plant has it; without it an `issue` or `order` is `unknown`, a service action's `part` and a
+  scenario's `stock` are `bad_ref`, and the plant steps exactly as before.
+  - `stores`: 1 to 8 `{"id", "title", "place", "self_service"}`: `place` a staff place (checked only with staff),
+    `self_service` true for a store anyone draws from (no storekeeper needed at the counter).
+  - `parts`: 1 to 512 `{"id", "number", "title", "class", "store", "stock", "min", "reorder", "max", "lead_days"}`
+    and optionally `"looks_like": [{"part", "differs"}]` (1 to 8). `id` an identifier of at most 22 characters,
+    each once (`dup_id`); `number` the generic catalogue number of §6.2 (`WDP-…`, at most 40 characters, each
+    once); `class` the [ISO14224] equipment class or maintainable item it belongs to (text, at most 40);
+    `stock`, `min`, `reorder`, `max` whole numbers with 0 ≤ min ≤ reorder < max ≤ 9,999 and stock ≤ max;
+    `lead_days` 1 to 365. `looks_like`: another part of the file (not itself, each once) and the sentence (at most
+    200 characters) that the fitting check gives when that part is offered in this one's place ("the range code
+    on the new transmitter's plate is not the one on the data sheet").
+  - Two new authorities: `issue_parts` (the storekeeper's) and `order_parts` (the storekeeper's and the
+    maintenance supervisor's), in the train's staff content.
+- **Two values per part**, engine-kept, after the work orders' (`_wo`) values, in the file's order: `<part>_stock`
+  (on the shelf) and `<part>_due` (on order, not yet delivered), read by any node as `_wo` is. A name that is
+  already a value is `dup_id`. A scenario may set `"stock": {part: n}` (0 to the part's `max`) for its start.
+- **The input `[n, "issue", part, qty, work, person]`**, step 1, its event at once `[n, "issue", part, qty, work,
+  person, "done" | "refused" | "unknown", [reasons]]`. `unknown`, changing nothing: no stores, a part not of the
+  file, a work not of the model. Reasons in this order, every one that applies:
+  - `authority`: the person check every input has (§17.1; with staff, the trainee names themself);
+  - `where`: with staff, a named person not at the part's store's place;
+  - `storekeeper`: with staff, a store not self-service, and nobody on duty at its place whose role holds
+    `issue_parts` (the person themself counts): the storekeeper hands over what is written on the request, the
+    part number the person asked for, and checks nothing else (§7.2);
+  - `qty`: not a whole number from 1 to 9,999; `stock`: more than is on the shelf;
+  - `work`: in a plant with work orders, the work's order is not planned, scheduled or in progress (2 to 4: parts
+    are issued against a work order, [Palmer]).
+  Free mode (a slot playing nobody, person null) skips `where` and `storekeeper`. Done: the shelf goes down by qty
+  and the work holds qty more of the part (its **issued** parts, kept per work in the part file's order).
+- **The input `[n, "order", part, qty, person]`**, its event `[n, "order", part, qty, person, "done" | "refused" |
+  "unknown", [reasons], number]` (number null unless done). `unknown`: no stores, a part not of the file. Reasons:
+  `authority` (`order_parts`), `qty` (whole, 1 to 9,999), `pending` (the part has 8 orders pending already). Done:
+  a purchase order `PO-` and four digits (counted from 1 in the run, as work orders'), due at the clock +
+  `lead_days` × 864,000; `<part>_due` goes up by qty. The lead time is the file's: the stores stream (§2.1) draws
+  nothing in WM2 (it is WM7's, for cycle counts).
+- **Deliveries** (step 3, after hand actions whose minutes end, §2.7): every pending order whose due clock is
+  reached, in the order made: the shelf up by qty, `_due` down by it, the event `[n, "delivery", number, part,
+  qty]`. A jump's step delivers every order due by the clock after it.
+- **Fitting a part** (the look-alike's lesson): a service file's action may name `"part"`, a part of the stores
+  file. Such a hand action is made under a work: the first work on the code, in model order, whose permit is
+  accepted. Reasons after `value`: `part` when that work holds none of the part (or no such work), else nothing;
+  `wrong_part` in its place when the work holds none of the part but holds a part that lists it in `looks_like`
+  (the app gives that part's sentence: the permissive reads the new part's plate against the data sheet). The
+  part is taken from the work's issued parts when the action starts (an abandoned one gives it back); the removed
+  part is the Workshop's (§3.5).
+- **Jumps to a date:** `[n, "jump", "HH:MM", days]` with `days` a whole number 0 to 30 (absent: 0) goes to the next
+  occurrence of HH:MM, then `days` × 864,000 on; other `days` are refused. In a scenario with `world`, §7.4's
+  amendment of §17.6 applies (it is WM2's first use): refused while a permit is issued or accepted and its task
+  is not held for the next duty (§17.10), or while anyone is in a hand action; permits requested, approved,
+  isolated, done or returned, and held jobs, don't block, and held jobs' locks stay on through the gap. Wear ages
+  across it (§2.2); deliveries due inside it arrive in its step.
+- **NPCs:** a task step `{"issue": part, "qty": n, "work": "$" | work}` (made at the counter: the step's place is
+  the store's) and `{"order": part, "qty": n}`; an `order` step without `qty` orders up to the part's `max`
+  (max − stock − due; refused `qty` when that is under 1). The validator checks each step's roles hold its
+  authority. The first train's storekeeper is at the counter on their duty days (a routine) and orders a part when
+  its `<part>_low` value (stock + due ≤ reorder, a content node the tool makes per part) turns true (a reaction
+  `{"on": {"value": …}}`), so stock is kept between the levels without the trainee.
+- **The record and the digest:** the PO counter, each part's stock and due, the pending orders (number, part, qty,
+  by, ordered clock, due clock) and each work's issued parts. Snapshots carry them; saves keep and check them; the
+  digest gains, after the work orders' part, `[counter, stock per part, due per part, pending, issued per work in
+  model order]` (clocks as whole numbers).
+- **The content** (`tools/plant3d/train_stores.py` → `data/plant3d/stores.json`): the parts of the manuals' spare
+  parts lists (§6.2's numbers) for the train's equipment classes, the consumables, and complete units where a
+  job replaces one (the condenser pressure transmitters, with a look-alike of another range); levels and lead
+  times after [Palmer]'s practice for critical and common spares; the store at the counter (`store_counter`), not
+  self-service.
+- **The app:** the stores panel (the catalogue by class, each part's number, title, stock, due, levels and store;
+  the look-alikes beside each other, as on the shelf), the counter's issue form (the part number written by the
+  person drawing, the quantity, the work order), the order form, deliveries due by day; the work order's form
+  lists its issued parts; the work view names the part a fitting needs and gives a refusal in words; the
+  debrief's parts drawn per work and every look-alike offered; the jump's days.
+- **Replacing a transmitter** (HW3's leftover): a sixth cause of the condenser transmitter's fault, `failed` (the
+  sensor module failed: the output goes to the NAMUR NE 43 low alarm current and HART reports the sensor failure;
+  weighed by a value at 0, so every earlier draw stands), put right only by a new transmitter: the old one
+  removed under the permit (wires lifted, the manifold's block valve shut and vented, unbolted), the spare issued
+  against the work order, fitted (the part check), its range set with HART from the data sheet, the wires landed,
+  the loop check, and the equipment back in service. The removed transmitter opens in the Workshop, writable (§3.5).
+
+### 2.24 As built for milestone WM2 (draft, 2026-11-10: the stores; part 1 the reference, the content, the vectors; part 2 the app's engine, saves, sessions and the app)
+
+- **Where:** the reference `ref/plant3d_stores.py` (stores.json's check, the values, the scenario's `stock`, the
+  `issue` and `order` inputs, the deliveries, the fitting check, the snapshot's and digest's parts), with hooks in
+  `ref/plant3d.py` (the file, the kept values after the work orders', step 1's inputs, step 3's deliveries after the
+  hand actions, `jump(hhmm, days)`), `ref/plant3d_hands.py` (a hand action's `part`, its reasons after `value`),
+  `ref/plant3d_service.py` (a service action's `part`) and `ref/plant3d_staff.py` (the two authorities, the `issue`
+  and `order` steps for NPCs and the trainee, the jump's days and §7.4's rule, held jobs through a jump). The app's
+  engine, bit for bit with it: `apps/plant3d/sim/stores.gd` (stores.json as the engine reads it, the values, the
+  inputs, the deliveries, the fitting, the snapshot's and digest's parts; its state `sr_stock`, `sr_due`, `sr_po`,
+  `sr_orders`, `sr_issued`, saved with a run as every engine field), with hooks in `engine.gd` (the stores before step
+  0, step 1's `issue` and `order`, step 3's deliveries after the hand actions, `jump(hhmm, slot, days)`),
+  `plant_model.gd` (stores.json read first, the kept values after the work orders', a scenario's `stock`, a hand
+  action's `part`), `hands.gd` (the fitting's reasons after `value`, the part taken, given back when abandoned) and
+  `staff.gd` (the NPCs' `issue` and `order` steps, the trainee's and kept ones, the jump's days and §7.4's rule, held
+  jobs kept through a jump). Saves (`ui/autosave.gd`) check the stores' state: one stock and one on-order count per
+  part agreeing with their values, pending orders of parts of the content with numbers the counter gave (at most 8 a
+  part, adding up to each part's on order), issued parts of works and parts of the content, a fitting's busy record
+  naming its work, NPC issues and orders, the trainee's kept issues and orders. A session (`net/input_check.gd`)
+  carries `issue` and `order`, and the jump's days: a jump vote names its days, and the host commits
+  `["jump", "HH:MM", days]` when everyone voted the same (`net/session.gd`).
+- **The content:** `tools/plant3d/train_stores.py` makes `data/plant3d/stores.json`: one store, the counter
+  (`store_counter`, not self-service), and 43 parts in 30 classes: 41 from the manuals' spare parts lists (PT 9,
+  CP 12, CV 7, MV 6, GT 4, ST 3; every number checked against the lists by `tests/test_plant3d_stores.py`) and the two
+  complete condenser pressure transmitters, `WDP-PT-UNIT-A3` (range code 3, to 248 kPa: the condenser's 0–120 kPa(a))
+  and its look-alike `WDP-PT-UNIT-A4` (range 4, to 2,068 kPa), each listing the other. Levels after [Palmer]:
+  insurance spares at 1 to 3 with 6 to 17 weeks' lead time, common spares at a few with 2 to 6 weeks, consumables
+  in tens or hundreds with a week or two; every stock starts above its reorder point. `model/admin.json` (the store's
+  area) holds each part's `<part>_have` (stock + due) and `<part>_low` (have ≤ reorder); the storekeeper (`store1`,
+  days, idle at the counter) holds `issue_parts` and `order_parts`, the maintenance supervisors `order_parts`;
+  `train_staff.py` appends 43 reorder tasks (at the counter, 5 minutes' writing, an `order` without qty) and their
+  reactions on `<part>_low` after everything before them, so no earlier task's or reaction's index moves.
+- **Vectors:** `plant3d-realism.json` gains the part `stores` (65 rejects; 10 runs: an issue's reasons, free mode
+  and orders, a plant without work orders, an order and its delivery, a jump to a date with deliveries in its step,
+  §7.4's rule, a held job through a jump, the fitting with no part, a look-alike and the right part (taken,
+  given back when abandoned), the storekeeper's reorder, an NPC's issue). Earlier items that changed, compared item
+  by item: `about`'s sentence; `hands` run 3 (its jump, made before with a hand action under way, is now refused
+  under §7.4's rule: its why, events, states and digests). `plant3d-v1.json` and `plant3d-v2.json` made again with the
+  train's stores (and again after main's HW3, §2.22, compared item by item with HW3's files): every input, event,
+  expectation and earlier value unchanged (in part 1; part 3, below, adds two events to HW3's five forks); the snapshots gain the 172 new values (v1's `train` and `hot`, v2's `wtp`,
+  `wtp_cip`, `wtp_regen`) and the `stores` part, as do v2's `day` states (the part only) and every fork's end (the
+  part only); v2's `day` digests moved, the day's own and every fork's (the digest's stores part and the new slots),
+  HW3's forks `npc_hands`, `npc_hands_drift`, `npc_hands_blocked`, `npc_hands_passing` and `npc_hands_wet` among
+  them. `plant3d-bench-v1.json` unchanged.
+- **The app:** `ui/stores_panel.gd`, opened from the work order list and the permit list ("Stores"), from an
+  order's form ("Draw parts for it at the counter", on the issue form with that order chosen) and, with a person
+  played, from the crew panel while they stand at the counter. The catalogue by class, each part's number, title,
+  stock, on order, levels, store and lead time (the stock red at 0, amber at or below the reorder point), a part's
+  look-alikes drawn right after it ("looks like the one above"); deliveries due by day, with "Jump to the next
+  delivery" when it lands within 30 days and the jump's rule allows; the counter's issue form (the part number as the
+  person writes it, any case, the quantity, the work order among those planned, scheduled or in progress), which with
+  a person played away from the counter offers only "Take me to the store counter"; a part's order form (offered up to
+  its max, named by the roles holding `order_parts`). The work order form lists its issued parts. The work view names
+  the part a fitting needs under its action, and gives `part` ("No … issued against this job's work order: draw one
+  at the store counter") and `wrong_part` (the look-alike's `differs` sentence) in words. The debrief: the parts drawn
+  per work and every look-alike offered with its sentence. The crew panel offers the jump's days (the next shift's
+  time 1, 2 and 7 days on) beside "Sleep to", both by the engine's rule (`stores_panel.gd` `jump_blocked`). Every
+  action is an input through `ui/inputs.gd`; refusals come back in words. `walk=stores` (app/main.gd): shift_aged in
+  free mode, the pump's vibration reported and planned, the first part on the shelf drawn against it and the last
+  ordered, the panel left on the catalogue for the frames (the STORES line).
+- **The Note 9** (a test-signed release build of this branch at ed0f6ec3, `walk=stores probe=1`, 300 s from a cool
+  start at 28.7 °C, 2026-11-17): the part issued and the order placed, the panel open on the catalogue: it opened in
+  14.0 ms; the frame drew 426 draw calls and 223,445 triangles (404 and 221,289 before it opened). Tier lean+vis,
+  11,976 frames: median 22.5 ms, p95 36.1 ms, max 55.1 ms, none over 100 ms (the frame rule passes without excluding
+  any frame; the kernel reclaimed in 0.36 % of the samples); 99.33 % of the frames shown at 30 fps or more; no
+  pipeline compiled after the first 5 s; peak PSS 1,139 MB. The screen's only long gaps were while the app loaded
+  (its first frame at 13.5 s). Two earlier walks the same day had the same result (max 92.4 and 56.9 ms, none over
+  100 ms) but the kernel reclaiming in 5.47 % and 2.21 % of the samples, so they were walked again.
+- **Tests (part 2):** `tests/test_plant3d_sim.py`'s Godot checks run the realism file's `stores` (`run_vectors.gd`
+  `REALISM_PARTS`: 85 of 85 realism items pass, with the straight-line program and the interpreter) and v1 and v2 with
+  the train's stores. `tests/test_run_save.gd` `_round_trip_stores`: run 7 saved mid-fitting and run 8 with an order
+  pending, each continued bit for bit to its end after the save; 28 damaged saves refused, 4 good variants taken (one an NPC's issue with no work: a `"$"` step of a task given
+  without one, which the engine answers `unknown`).
+  `apps/plant3d/tests/test_ui_stores.gd` (app shard 2): the shelves and the number as written, the jump to a clock,
+  the fitting's words and the debrief's lines in the realism plant, and in the aged plant the order's form, the
+  counter's refusals on the form and in words, an issue, the catalogue's look-alikes and levels, an order and its
+  delivery line, the debrief, a jump with days, and a person played away from the counter.
+- **Settled in the code:**
+  - An issue step names its work under `"for"`, not `"work"`: `work` is a step kind of its own (a work of minutes),
+    and a step has exactly one kind: `{"issue": part, "qty": n, "for": "$" | work}`.
+  - The two values per part are kept per part in the file's order: `<p1>_stock`, `<p1>_due`, `<p2>_stock`, …
+  - `stock` is checked only for a quantity that is one (a bad quantity is `qty` alone).
+  - Deliveries come after the hand actions whose minutes end and before the lab's results (§2.19 came after §2.7's
+    list).
+  - A fitting's busy record carries, as a seventh element, the work its part was taken from; an abandoned fitting
+    gives the part back to it. Each fitting takes one part. A hand action with `part` is a work's (`"work": false` is
+    `bad_value`).
+  - A jump's days other than a whole number 0 to 30 are refused as a bad time (`[n, "jump", from, null, "refused"]`).
+  - In a scenario with `world`, a jump keeps held jobs held (not skipped, their reaction sources still given); a jump
+    that lands inside their person's duty puts them back in the queue at once (event `resumed` each). Without
+    `world`, §17.10's skip stands.
+  - The digest's issued parts per work are a packed list of (part index, count) pairs in the file's order.
+  - An issue step needs `issue_parts`, an order step `order_parts` (the validator's authority rule): only a
+    storekeeper issues as an NPC. A technician's job that needs a part (the transmitter's replacement, waiting on its
+    own branch) has the storekeeper issue against its work order, or is played.
+  - A reorder offer that finds no storekeeper on duty is not kept (§17.12 keeps only abandoned value jobs): only
+    free mode draws from the counter without a storekeeper there, and `<part>_low` then stays true with no new edge
+    until the part is ordered by hand.
+  - The app's engine reads stores.json as far as it runs it (`stores.gd` `read`: ids, stores, levels, look-alikes) and
+    refuses a file it can't run; every other rule is the validator's (the reference's `check`), as for the other
+    files.
+  - The issue form finds the part by its catalogue number as written (spaces round it and case ignored); a number not
+    in the catalogue is refused on the form, nothing sent: the storekeeper hands over what is written, so the
+    look-alike's lesson is a number copied wrong, not a number that does not exist.
+  - A jump vote in a session carries its days only when they are not 0; votes agree when time and days do.
+  - A jump's days written as `null` are the same as none (0 days), in both engines (`["jump", "06:00", null]`); only
+    the vectors and the API can write it (a session's form is `["s", "i"]`).
+  - A whole number of stores.json written as `16.0` (the validator takes it) is a whole number to both engines: an
+    order's quantity up to the max and its due clock are whole numbers (`tests/test_plant3d_stores.py`).
+  - A service file's action's `part` is looked up in stores.json by the plant's check (`check_files`), `bad_ref`
+    when it is not there or the plant has none; the app's engine refuses a store whose place is not a staff place
+    when the plant loads (`plant_model.gd`), not at the first walk to it.
+  - "Jump to the next delivery" works its jump out when pressed (the list is not rebuilt as the clock goes on within
+    the day), and is not offered for a delivery within the next minute (it comes on its own).
+  - A save's purchase order count has no cap of 9,999 (the engines have none: PO-10000 follows PO-9999).
+  - In a session, a jump vote whose days are not a whole number 0 to 30 is refused (`session.gd` `jump_days`: -1),
+    as the engine refuses such a jump, never committed as a plain jump.
+  - The UI/UX audit (docs/UI-UX-POLICY.md, 2026-11-15; PR #361's comments hold its tables) changed the stores'
+    screens:
+    - each part number and PO number can be copied, or written on the counter's request with a press;
+    - the levels say "none on the shelf" or "at or below the reorder point";
+    - refusals say what to do next;
+    - a form's error is shown at its field, with the focus there;
+    - the typed number, quantity and work are kept through a visit to the catalogue (each part's order quantity
+      too);
+    - fields are labelled and named, and quantities have − and + (a gamepad has no keyboard);
+    - the order and work order buttons naming roles wrap;
+    - notices keep clear of the stores and work order panels and stay on the screen;
+    - the debrief says the stores' events in words, without today's stock.
+  - The counter's issue form keeps the work chosen by its id across rebuilds (works entering or leaving the list
+    while it is open), and a work the trainee chose stays chosen; a chosen work that leaves the list leaves none.
+- **Replacing a transmitter (part 3, HW3's leftover; 2026-11-14):**
+  - **The sixth cause, `failed`** (`train_hands.FAULT`): the sensor module failed. The output goes to NAMUR NE 43's
+    low alarm current, 3.6 mA (`cpt2_ma_f`, after the 3.8–20.5 mA clamp, before the loop test's select: the
+    electronics still answer, so a loop test still drives the output), and HART's device status reports it (the new
+    meter `$_status`, 1 for a sensor failure); the control system shows what 3.6 mA stands for (−3 kPa(a): the
+    `bad` select gains the failure). Weighed by the new value `cpt2_w_fail`, 0 in every scenario but the two new
+    ones, so every earlier draw and value stands. Put right only by a new transmitter: `cpt2_sound` now also needs
+    the sensor sound, the transmitter bolted to its manifold and its range the data sheet's.
+  - **The range:** a new state `$_electronics_urv` (the upper range value set in the transmitter; 0 is the
+    commissioned one's, the data sheet's 120 kPa). Above 0 the output's gain is 16/URV through a table over whole kPa
+    (`cpt2_rng_k`: there is no division node) and a select keeps the old node otherwise, so every earlier value is
+    bit for bit; the screen then shows what the current stands for. A new unit arrives as the factory ships it, its
+    range the sensor's upper limit (248 kPa, range code 3): the PV on the screen is 120/248 of the true one until the
+    range is set with HART (`set_range`, a hand action with an input, 1–248 kPa). The loop check at forced currents
+    can't see the range (the loop test drives the current); the PV read after it, and `cpt2_sound`, do.
+  - **The hand actions** (the service file): `remove_tx` (17 mm spanner, 5 minutes) needs the wires lifted, the
+    leads off, the manifold's block valve shut and the transmitter vented through its flange's drain/vent valve;
+    `fit_tx` (17 mm, 10 minutes, `"part": "pt_unit_a3"`, the complete transmitter WDP-PT-UNIT-A3; the look-alike
+    A4 is `wrong_part`) needs the old one off and sets the new unit's states: sensor sound, bolted, URV 248, vent shut,
+    cover on, a dry and tight terminal block, no loop test. Both act on the `process_flange` (a hand action's
+    component is one of the tree's components, not a fastener group: the state is `$_flange_bolts_off`). Settled
+    here: the replacement leaves the gland as it is (the gland stays with the cable), and the old unit's drift and
+    trim (`cond_p2_drift`, `cond_p2_trim`, not component states) are not reset by it.
+  - **The diagnosis data:** the cause `failed` (in the sensor module; sources [R3051], NE 43 and the HART
+    specifications), its tests (`$_status` and `$_ao`, each showing only it), its fix (`fit_tx`) and its part
+    (`pt_unit_a3`, "A complete pressure transmitter, range 3"); every cause still has a test and a fix, and every
+    two causes are told apart by some test.
+  - **The job** (`train_hands.py`; it is at the 64-step limit, so the replacement is tasks of its own). After the
+    readings, a wait on `cpt2_alive` (the AO above 3.7 mA) goes on at once for a sound sensor (no minute waited) and
+    else to the job's last step, a `choose` of the replacement task; the job's old end (the report, the tools back)
+    is a task of its own (`job_cond_p2_fix_end`) chosen by the step before, so the replacement is never reached by
+    falling through. A choice keeps the task's work (its permit, its lock, `"$"`). The tasks, appended after every
+    earlier task (no index moves), each under the job's work and held overnight as it is:
+    - `job_cond_p2_fix_tx` (24 steps): the status read; the work order notified (`else`: already open); the
+      storekeeper called (`issue_cond_p2_fix`); in front of the counter (`p_store`: the counter itself is the
+      storekeeper's place) until the order is open, then three minutes there; back at the transmitter: the leads off,
+      the wires lifted, the block valve shut, the vent cracked, unbolted; the new one fitted. Refused (no spare
+      issued, or the look-alike), its `else`: "held for parts" said to the maintenance supervisor, a wait until a
+      spare is on the shelf (`cpt2_spare_shelf`, no minutes: held at the duty's end with the lock on, which lets a
+      jump to a date pass), then the storekeeper called again, the counter, the fitting.
+    - `job_cond_p2_fix_fit` (36 steps): the cover off, the wires landed, the block valve opened, the communicator on,
+      a minute, the range set to 120 kPa, the multimeter on, the PV and the status read, the loop check and the close
+      (as the job's), then the end task.
+    - `issue_cond_p2_fix` (the storekeeper's, priority 2): a wait until the order is open (planned, scheduled or in
+      progress, `cpt2_wo_open`), the issue of the spare against it, then an order of the spare without a quantity
+      (up to its max; refused `qty` when nothing is missing). The order is there because a scenario's `stock` that
+      starts a part at or under its reorder point makes no edge for the reorder reaction.
+    - `cpt2_spare_shelf` and `cpt2_wo_open` are content nodes in the store's area (`model/admin.json`, after the
+      parts' nodes).
+  - **The spare in hand before the plant is touched (part 4, 2026-11-16; the user's choice after the review found
+    the job stranded):** with the storekeeper absent the job above called for the spare, took the old transmitter
+    off anyway, was refused twice at the fitting and was abandoned, the transmitter off; and a held job's second
+    call could make a slow storekeeper issue two spares. Settled:
+    - **A step condition** (both engines): `{"wait": {"issued": [part, work], "minutes", "else"}}`, done when the work
+      (`"$"`: the task's) holds at least one of the part issued against it and not yet fitted (the record's issued
+      parts, §2.23; with `"fitting": true` also one a fitting under way under that work has taken: below). The validator: the part is one of stores.json's (`bad_ref` without the file), the work one of
+      the model's or `"$"` with a work given to the task (as the permit wait's), `minutes` and `else` as any wait's,
+      `fitting` true or left out (`bad_type`).
+      An absent work (`"$"` in a task given none) is never done.
+    - **`job_cond_p2_fix_tx`** now: the status read, the work order notified, the storekeeper called, in front of the
+      counter until the order is open, then a wait of up to an hour for the spare issued against the order; with it,
+      `choose` of `job_cond_p2_fix_swap` (three minutes' writing at the counter, back at the transmitter: the leads
+      off, the wires lifted, the block valve shut, the vent cracked, unbolted, the new one fitted, then the second
+      half as before). Without it, "held for parts" to the maintenance supervisor, another hour's wait for a slow
+      issue (no second call while the first may still come), then a wait until a spare is on the shelf (no
+      minutes: held through the nights with the permit's lock on, a jump passing) and the order open (the storekeeper
+      issues only against an open one), the storekeeper called again, in front of the counter until the spare is
+      issued (no minutes: with nobody to issue it, the job is held, the transmitter not taken off, until the trainer
+      issues it in free mode: the store's role is not played; a held task resumes at its step, so the technician
+      waits where the next duty finds them), then the swap, which starts at the counter (the spare collected) and
+      takes the terminal cover off first (the readings left it off; someone may have closed it during a long
+      wait). The transmitter is taken off only with the spare in hand (its cover and the meters' leads stay as the
+      readings left them while the job waits); the look-alike handed over by a trainer is never offered by the NPC (it waits for the part
+      its fitting needs), so `wrong_part` stays the trainee's lesson.
+    - **`issue_cond_p2_fix`** checks first: a minute's wait for the spare already issued against the order (and not yet
+      fitted), then a minute's wait for the failed sensor still in (`cpt2_sensor_module_fail`: a call kept until the
+      storekeeper's duty may come after the fitting, which empties the ledger); either way out goes to
+      `issue_cond_p2_fix_seen` (a minute's writing) instead of a second spare. The issue itself, the writing and the
+      order up to the max are `issue_cond_p2_fix_do`, chosen when both checks pass. An order still not open after
+      two hours goes through the same checks (it may open on the way to the counter) and is then refused `work` at
+      the issue; a refused issue goes on to the minute's writing and the order. The checks are made when the call
+      is taken, not at the counter: a trainer who issues the same spare by hand in free mode in the minutes between
+      (the walk to the counter) gets a second one issued, as they asked.
+    - **A fitting under way counts** (the second review, 2026-11-16): the fitting takes the spare from the work's
+      issued parts when it starts and cures the sensor ten minutes later, when it ends; a call taken in between
+      found neither and issued a second spare. So with `"fitting": true` the `issued` wait is also done while a fitting of that part
+      under that work is under way (its busy record names the work, §2.23; both engines): issued and not yet
+      fitted. Only the storekeeper's check asks for it: the technician's own waits count the issued parts alone,
+      or somebody else's fitting (a trainer's by hand) would send them into the swap to unbolt the new transmitter
+      (the third review). A
+      check on the old transmitter being off its flange instead was tried and dropped: a trainee who takes the old
+      one off before calling for the spare (the look-alike's lesson) would never be issued one.
+    - Two spares: an issue task finds the first spare in the ledger until it is fitted, and the failed sensor gone
+      after, and the fitting's own part in between; so a second call, queued, held up or kept to the
+      storekeeper's duty, issues none. A wait's clock runs
+      through a night's hold (§17.10 keeps the step, not the wait's start), so the hour's waits at the counter may
+      pass at once on resuming: the checks above make that harmless. If the second call's issue is refused (the
+      trainer drew the spare elsewhere in between), the technician waits at the last step until the trainer issues
+      one; the same when a day jump drops the second call from the storekeeper's queue (a jump skips queued tasks
+      that don't resume, §2.23) while the technician was held at that last wait. The swap's own fitting has no way
+      out: if the spare leaves the ledger between the wait and the fitting (only a trainer's own fitting
+      does that), the swap is abandoned with the old transmitter off, as any refused hand action's task. A fitting is made under
+      the code's work whose permit is accepted; the permits of transmitter 2's works share an isolation, so a
+      second one is refused while the job's is open (the day's calibration's request is, in the forks).
+    - **Vectors** (made again, compared item by item with 45aae8bd's): `plant3d-v1.json` unchanged;
+      `plant3d-realism.json` gains seven rejects of the new wait form (a part not in the file or not a name, no work,
+      no `[part, work]` pair, `"$"` in a task given no work, an unknown key, `fitting` not true), nothing else; `plant3d-v2.json`: only
+      `npc_hands_failed` (the spare issued, then the swap: cured at step 31,425) and `npc_hands_nospare` (lengthened
+      to 106,000 steps: no fitting refused, held at 16:00, the spare issued after the delivery on the second morning,
+      the swap, cured at 98,875) changed, and `npc_hands_absent` (shift_fail_absent, 67,000 steps: the storekeeper's
+      issue unassigned, held for parts at 16:00, no issue, none of the swap's actions, permit 5 with its lock as a
+      held job's) appended; the day and every other fork as before. Made again twice more the same day, each
+      compared item by item with the files before: for shift_fail_absent's own world seed (21; only
+      `npc_hands_absent` moved) and after the second and third reviews' fixes (`plant3d-v2.json` byte for byte the same:
+      no vector takes a call during a fitting or leaves the order unopened for two hours; `plant3d-realism.json`
+      gains the seventh reject, nothing else); `plant3d-v1.json` byte for byte the same each time.
+    - **Tests:** `tests/test_plant3d_wm2_tx.py` (the job's shape: no hand action before the swap, every way into it
+      after the wait for the spare; the issue task's checks; the forks; three calls queued at once issue one spare,
+      the issue task before part 4 issued two; a call after the fitting issues none, the ledger-only check issued a
+      second; a call taken during the fitting issues none, and a second with the fitting's part not counted), the realism
+      rejects, `test_ui_stores.gd` (the crew panel's words for the stores' steps and the waits, one Copy per part
+      number for the whole task), `test_ui_hands.gd` (the app's engine: the trainee's second call during their own
+      fitting issues no second spare).
+    - Left as it is (the user, 2026-11-16): after the issue drops the spare to its reorder point, the storekeeper's
+      own order in `issue_cond_p2_fix` orders it up to its max, and the reorder reaction offered by the same drop
+      then finds nothing missing: its order is refused `qty` (an event, no effect).
+  - **Scenarios:** `shift_fail` (shift_tx with `cpt2_w_fail` 1, world seed 13: it draws `failed`, the spare on the
+    shelf), `shift_nospare` (shift_fail with `"stock": {"pt_unit_a3": 0}`, seed 15, `failed` again) and, part 4,
+    `shift_fail_absent` (shift_fail with `"staff": {"absent": ["store1"]}`, seed 21, `failed` again).
+  - **The app:** the diagnosis tab's review gains `removed` (a hand action of the service file with `part` done at
+    the equipment: the old part is off); its button reads "Open the removed part in the Workshop" then, and the
+    Workshop opens it writable (`failed.writable`): taken apart there as any part. Opened for a part still in the
+    plant (every other cause) it is read only: the slider's taking apart, the guided steps and picking a part up
+    are refused with "Read only: this part is still in the plant…" (`workshop.gd` `read_only`), looking (picking,
+    hiding, isolating) stays. The work view gives the fitting's refusals in words as before.
+  - **Vectors** (made again, compared item by item with this branch's before: `39fb06c4`): `plant3d-realism.json`
+    unchanged; `plant3d-v1.json`: only values added (the new nodes in every snapshot); `plant3d-v2.json`: `wtp`,
+    `wtp_cip`, `wtp_regen` values added; the day's events and states unchanged (values added); every digest of the
+    day and of every fork moved (the digest hashes every value, and the new ones are there from step 0); two forks
+    appended: `npc_hands_failed` (shift_fail: the cause drawn, the work order notified, the storekeeper's issue of
+    the spare, the old one off, the new one fitted, its range set, the loop check at 0–120 kPa(a), cured, the
+    tools back by 33,242 of its 40,000 steps) and `npc_hands_nospare` (shift_nospare: the storekeeper's issue refused
+    `stock` and the spare ordered, PO-0001 for 3, 42 days; the trainer hands over the look-alike in free mode, the
+    fitting refused `wrong_part` and the job held for parts at 16:00 with its lock; the trainer jumps to 06:00 30 days
+    on, acknowledges the vibration alarm the month left (a jump is refused with an alarm unacknowledged, §7.9), and
+    jumps to 08:00 12 days on: the delivery in that step, the job resumed, the spare issued and fitted, cured). Changed
+    in earlier forks, and only these: `npc_hands`, `npc_hands_drift`, `npc_hands_blocked`, `npc_hands_passing` and
+    `npc_hands_wet` each gain two events after the permit's return, the job's done and its end task's start, and the
+    job's last `task … done` is now the end task's (`job_cond_p2_fix_end`): every other event, every input,
+    expectation, end state and value as before (the choice's draw from the technician's stream changed nothing that
+    followed).
+  - **Tests:** `tests/test_plant3d_wm2_tx.py` (the low alarm current and the status; only a new transmitter with its
+    range cures it, the factory's range reads 120/248; the hand actions' needs, part and input; the weights and the
+    two seeds' draws; the diagnosis data; the job's lengths, its way to the replacement and the order of its steps;
+    the forks), `tests/test_plant3d_hw3.py` and `tests/test_plant3d_hands_content.py` (the six causes and the
+    weights), `apps/plant3d/tests/test_ui_hands.gd` (`_replace`: the trainee as the I&C technician with the sensor
+    failed and no spare: the look-alike drawn at the counter and refused at the fitting with its sentence in the work
+    view, the storekeeper's issue, the range through the work view's field, the loop check, the diagnosis tab's cause
+    and part, the removed transmitter writable in the Workshop; and HW3's failed terminal block read only).
+
 ## 3. Hands-on work and tools
 
 ### 3.1 What the trainee does

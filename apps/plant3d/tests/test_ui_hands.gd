@@ -16,6 +16,7 @@ const App = preload("res://tests/ui_app.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Hands = preload("res://sim/hands.gd")
 const Maint = preload("res://tests/test_ui_maintenance.gd")
+const Stores = preload("res://ui/stores_panel.gd")
 
 const PT2 := "30MAG10CP002"
 const WORK := "wo_cond_p2_fix"
@@ -30,6 +31,7 @@ func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	p += await _swap(tree)
 	p += await _job(tree)
+	p += await _replace(tree)
 	return p
 
 
@@ -226,6 +228,10 @@ func _diagnosis(tree: SceneTree, ui) -> Array:
 	if ws.selected != "terminal_block" or not ws.note.begins_with("Failed: A loose signal terminal"):
 		p.append("the Workshop opened on %s with the note %s, not the terminal block and what was found" % [
 				ws.selected, ws.note.left(120)])
+	# (WM2, §3.5) nothing was removed in this job: the part is still in the plant, read only (not taken apart)
+	ws.set_slider(0.5)
+	if not ws.read_only() or ws.s != 0.0 or ws.note != ws.READ_ONLY_WHY:
+		p.append("the failed part still in the plant was not read only: slider %.2f, note %s" % [ws.s, ws.note])
 	ws.close()
 	for i in 5:
 		await tree.process_frame
@@ -234,9 +240,12 @@ func _diagnosis(tree: SceneTree, ui) -> Array:
 	return p
 
 
+## The job and its further tasks (WM2: the end, the replacement and its second half: REALISM.md §2.24).
+const JOB_TASKS := ["job_cond_p2_fix", "job_cond_p2_fix_end", "job_cond_p2_fix_tx", "job_cond_p2_fix_fit"]
+
 static func _job_over(e) -> bool:
 	var c = e.sp_cur[e.trainee()]
-	return c == null or c["task"] != "job_cond_p2_fix"
+	return c == null or not c["task"] in JOB_TASKS
 
 
 func _once(e, cur: Dictionary, what: String, every := 40) -> bool:
@@ -432,4 +441,184 @@ func _refused(tree: SceneTree, ui, comp: String, tool: String, action: String, w
 		return "%s with %s: shown %s, not the sentence with \"%s\"" % [action, tool, w.last_text, words]
 	if ui.clock.engine.v("cpt2_terminal_block_lift") != 0.0:
 		return "%s refused, yet the wires were lifted" % action
+	return ""
+
+
+## (WM2, REALISM.md §2.24, §3.5) the transmitter replaced, the trainee as the I&C technician: the sensor failed (named
+## by the instructor), no range 3 spare on the shelf at first (the scenario's stock): the job's readings call for the
+## replacement; the trainee draws the look-alike (range 4) at the counter against the work order, takes the old one
+## off through the work view and offers the look-alike: refused with its sentence; then calls the storekeeper, who
+## issues the spare (put on the shelf for the test) against the work order; the fitting, the range set through the
+## work view's field, the loop check, the close; the diagnosis tab names the cause and the transmitter used (needed),
+## and opens the removed transmitter in the Workshop writable (taken apart there).
+func _replace(tree: SceneTree) -> Array:
+	var p: Array = []
+	var main := App.start(tree)
+	var ui = main.ui
+	if ui == null or ui.clock == null:
+		main.free()
+		return ["the app did not start"]
+	ui.player.set_physics_process(false)
+	Maint._scenario(ui, "test_hands_tx", "06:30", {"absent": ["ic2", "ic3", "ic4"]})
+	ui.model.scenarios["test_hands_tx"]["stock"] = {"pt_unit_a3": 0}
+	var why: String = await Maint._take(tree, ui, "test_hands_tx", "Play I&C technician (coming on shift)")
+	if why != "":
+		main.free()
+		return [why]
+	var e = ui.clock.engine
+	ui.inputs.fault(FAULT, "failed")
+	ui.clock.run_steps(2)
+	if e.cause_of.get(FAULT) != "failed":
+		p.append("the instructor's cause was not applied: %s" % str(e.cause_of.get(FAULT)))
+	var log := []
+	var fit_x: Dictionary = e.m.hands_ix[PT2 + "|fit_tx"]
+	var looked := ""
+	var stocked := false
+	var recalled := false
+	for i in 4000:
+		if e.pstate[e.m.work_ix[WORK]] >= 8 and e.carried.get("ic1", []).is_empty() and _job_over(e):
+			break
+		var cur = e.sp_cur[e.trainee()]
+		if cur != null and cur["task"] == "job_cond_p2_fix_tx":
+			var st: Dictionary = e._sm.tasks[cur["task"]]["steps"][cur["step"]]
+			if st.has("wo") and _once(e, cur, "wo", 200):
+				ui.inputs.work_order(WORK, "notify", "ic1", [null])
+			elif st.has("call") and looked == "":
+				if e.v("cpt2_wo_open") < 0.5:
+					ui.clock.run_steps(20)
+					continue
+				looked = await _lookalike(tree, ui, fit_x)
+				if looked != "":
+					p.append(looked)
+					break
+				looked = "done"
+				# the spare arrives on the shelf (as a delivery would: the test's shortcut past the jump)
+				var ix: int = e._sr["ix"]["pt_unit_a3"]
+				e.sr_stock[ix] = 1
+				e.cur[e._sr_slot[2 * ix]] = 1.0
+				stocked = true
+				continue
+		if stocked and not recalled and e.busy.has("ic1") and e.busy["ic1"][1] == "fit_tx":
+			# (part 4) a second call taken while the new one is being fitted, a spare on the shelf again: the
+			# fitting holds the first, so the storekeeper issues no second one
+			var ix2: int = e._sr["ix"]["pt_unit_a3"]
+			e.sr_stock[ix2] = 1
+			e.cur[e._sr_slot[2 * ix2]] = 1.0
+			recalled = e._sm.assign(e, ["store"], "issue_cond_p2_fix", 2, null, WORK, null, null)
+		if not await _play(tree, ui, log):
+			await _m._play(tree, ui, log)
+		ui.clock.run_steps(10)
+		if i % 8 == 0:
+			await tree.process_frame
+	ui.work.close()
+	var spares := 0
+	for ev in e.events:
+		if ev.size() > 6 and ev[1] == "issue" and ev[2] == "pt_unit_a3" and ev[6] == "done":
+			spares += 1
+	var seen_at := -1          # (the storekeeper's note written before the fitting's end: the call was taken during it)
+	var fit_at := -1
+	for ev in e.events:
+		if ev.size() > 4 and ev[1] == "task" and ev[3] == "issue_cond_p2_fix_seen" and ev[4] == "done":
+			seen_at = ev[0]
+		if ev.size() > 6 and ev[1] == "hand" and ev[3] == "fit_tx" and ev[6] == "done":
+			fit_at = ev[0]
+	if stocked and (seen_at == -1 or fit_at == -1 or seen_at >= fit_at):
+		p.append("the call during the fitting was answered at %d, the fitting done at %d" % [seen_at, fit_at])
+	if stocked and (not recalled or spares != 1 or not Maint._has_ev(e, ["task", "store1", "issue_cond_p2_fix_seen", "done"])):
+		p.append("a call during the fitting: called %s, %d spares issued (1 wanted), the storekeeper's note %s" % [
+				str(recalled), spares, str(Maint._has_ev(e, ["task", "store1", "issue_cond_p2_fix_seen", "done"]))])
+	if not stocked:
+		p.append("the replacement never reached its call to the storekeeper: %s" % ", ".join(log.slice(0, 4)))
+		main.free()
+		return p
+	for want in [["issue", "pt_unit_a4", 1, WORK, "ic1", "done"], ["issue", "pt_unit_a3", 1, WORK, "store1", "done"],
+			["hand", PT2, "fit_tx", "spanner_17", "ic1", "done"], ["hand", PT2, "set_range", "hart", "ic1", "done"],
+			["repair", FAULT]]:
+		if not Maint._has_ev(e, want):
+			p.append("no event like %s" % str(want))
+	ui.clock.run_steps(5)
+	for want in [["cpt2_sensor_module_fail", 0.0], ["cpt2_electronics_urv", 120.0], ["cpt2_sound", 1.0],
+			["cond_p2_low", 0.0]]:
+		if e.v(want[0]) != want[1]:
+			p.append("%s is %s after the replacement, not %s" % [want[0], e.v(want[0]), want[1]])
+	# the diagnosis tab: the cause, the transmitter used and needed; the removed part opens writable
+	ui.open_debrief()
+	ui.debrief._tab("diagnosis")
+	await tree.process_frame
+	var box = ui.debrief._list.get_node_or_null("diag_" + FAULT)
+	var t: String = App.texts(box) if box != null else ""
+	for want in ["The cause: The sensor module failed", "Used: A complete pressure transmitter, range 3",
+			"The HART device status: a sensor failure", "Put right."]:
+		if not t.contains(want):
+			p.append("the diagnosis tab lacks \"%s\": %s" % [want, t.left(600)])
+	if t.contains("not needed"):
+		p.append("the new transmitter counted as not needed: %s" % t.left(400))
+	var b = box.get_node_or_null("failed_part") if box != null else null
+	if b == null or not String(b.text).contains("removed part") or ui.main.workshop == null:
+		p.append("no button opens the removed part in the Workshop")
+		main.free()
+		return p
+	b.pressed.emit()
+	var ws = ui.main.workshop
+	var end := Time.get_ticks_msec() + 60000
+	while (not ws.is_open or ws.machine == null or ws.selected == "") and Time.get_ticks_msec() < end:
+		await tree.process_frame
+	if ws.selected != "sensor_module" or not ws.note.begins_with("Failed: The sensor module failed") \
+			or not ws.note.contains("Removed in the job"):
+		p.append("the Workshop opened on %s with the note %s" % [ws.selected, ws.note.left(160)])
+	ws.set_slider(0.5)
+	if ws.read_only() or absf(ws.s - 0.5) > 1e-6:
+		p.append("the removed transmitter is not writable in the Workshop: slider %.2f, note %s" % [ws.s, ws.note])
+	ws.close()
+	main.free()
+	return p
+
+
+## At the counter the look-alike drawn against the work order, then the old transmitter taken off through the work
+## view, and the look-alike offered: "" when refused with its sentence, else what went wrong.
+func _lookalike(tree: SceneTree, ui, x: Dictionary) -> String:
+	var e = ui.clock.engine
+	ui.go_to_place(e._sm.pix["store_counter"])
+	ui._place_tick()
+	ui.clock.run_steps(2)
+	ui.inputs.issue("pt_unit_a4", 1, WORK, "ic1")
+	ui.clock.run_steps(2)
+	if not Maint._has_ev(e, ["issue", "pt_unit_a4", 1, WORK, "ic1", "done"]):
+		return "the look-alike was not issued at the counter: %s" % str(e.events.filter(func(v): return v[1] == "issue"))
+	var why := await _open(tree, ui, PT2)
+	if why != "":
+		return why
+	var w = ui.work
+	for a in [["terminal_block", "dmm", "disconnect_dmm"], ["terminal_block", "hart", "disconnect_hart"],
+			["terminal_block", "sd_term", "lift_wires"], ["manifold", "", "shut_block"],
+			["drain_vents", "spanner_17", "crack_vent"], ["process_flange", "spanner_17", "remove_tx"]]:
+		ui.clock.run_steps(12)     # (a need reads the step before: the last action's writes settled)
+		w.pick_comp(a[0])
+		w.pick_tool(a[1])
+		w.refresh()
+		w.do_action(a[2])
+		for k in 400:
+			ui.clock.run_steps(10)
+			if not e.busy.has("ic1"):
+				break
+		if not Maint._has_ev(e, ["hand", PT2, a[2], a[1] if a[1] != "" else null, "ic1", "done"]):
+			return "%s was not done: %s" % [a[2], str(e.events.filter(func(v): return v[1] == "hand").slice(-2))]
+	ui.clock.run_steps(12)
+	w.pick_comp("process_flange")
+	w.pick_tool("spanner_17")
+	w.refresh()
+	w.last_text = ""
+	var b = w.actions.find_child("act_fit_tx", true, false)
+	if w.actions.find_child("copy_part_WDP-PT-UNIT-A3", true, false) == null:
+		return "the fitting's part cannot be copied in the work view"
+	if b == null:
+		return "no button for fit_tx: %s" % App.texts(w.actions).left(200)
+	b.pressed.emit()
+	ui.clock.run_steps(1)
+	ui._sync_events()
+	await tree.process_frame
+	var want := Stores.fit_reason(e, x, "wrong_part")
+	if not want.contains("range code") or not w.last_text.contains(want):
+		return "the look-alike offered: shown %s, not its sentence %s" % [w.last_text, want]
+	w.close()
 	return ""

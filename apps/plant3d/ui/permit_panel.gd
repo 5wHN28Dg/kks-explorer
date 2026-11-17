@@ -483,6 +483,10 @@ func _list(e) -> void:
 		var wo := W.button("Work orders", func(): ui.open_work_orders())    # (REALISM.md §2.20)
 		wo.name = "to_work_orders"
 		body.add_child(wo)
+	if ui.stores != null and ui.stores.available():
+		var sb := W.button("Stores", func(): ui.open_stores())     # (REALISM.md §2.23)
+		sb.name = "to_stores"
+		body.add_child(sb)
 	for wd in e.m.works:
 		var st: int = Permits.state_of(e, wd["id"])
 		var num: String = Permits.number_of(e, wd["id"])
