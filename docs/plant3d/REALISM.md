@@ -1297,6 +1297,14 @@ parts). Lead times are clock days (§2.1).
   action is an input through `ui/inputs.gd`; refusals come back in words. `walk=stores` (app/main.gd): shift_aged in
   free mode, the pump's vibration reported and planned, the first part on the shelf drawn against it and the last
   ordered, the panel left on the catalogue for the frames (the STORES line).
+- **The Note 9** (a test-signed release build of this branch at ed0f6ec3, `walk=stores probe=1`, 300 s from a cool
+  start at 28.7 °C, 2026-11-17): the part issued and the order placed, the panel open on the catalogue: it opened in
+  14.0 ms; the frame drew 426 draw calls and 223,445 triangles (404 and 221,289 before it opened). Tier lean+vis,
+  11,976 frames: median 22.5 ms, p95 36.1 ms, max 55.1 ms, none over 100 ms (the frame rule passes without excluding
+  any frame; the kernel reclaimed in 0.36 % of the samples); 99.33 % of the frames shown at 30 fps or more; no
+  pipeline compiled after the first 5 s; peak PSS 1,139 MB. The screen's only long gaps were while the app loaded
+  (its first frame at 13.5 s). Two earlier walks the same day had the same result (max 92.4 and 56.9 ms, none over
+  100 ms) but the kernel reclaiming in 5.47 % and 2.21 % of the samples, so they were walked again.
 - **Tests (part 2):** `tests/test_plant3d_sim.py`'s Godot checks run the realism file's `stores` (`run_vectors.gd`
   `REALISM_PARTS`: 85 of 85 realism items pass, with the straight-line program and the interpreter) and v1 and v2 with
   the train's stores. `tests/test_run_save.gd` `_round_trip_stores`: run 7 saved mid-fitting and run 8 with an order
