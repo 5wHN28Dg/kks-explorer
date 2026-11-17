@@ -518,6 +518,119 @@ What each kind simplifies, and its sources (the data file `data/plant3d/workshop
   cones, so a boss under the bonnet flange (the body's) closes the view under it;
   the other actuators of each kind have no tree.
 
+- **fan_axial** (the cooling tower fan, K6: kit/parts_rotating.gd `_fan_*`; the data file names the plant's fan, 9.5 m,
+  eight blades, 200 kW, a 3 m stack): an adjustable-pitch fan on a Hudson Tuf-Lite 6000 series hub, an Amarillo double
+  reduction right-angle gear drive under it, an Amarillo composite drive shaft through the stack's wall to a motor on
+  the deck. **The orders** (the user's decision, 2026-11-14): Hudson gives only the installation (the hub on the gear
+  drive's shaft, the blades clamped between its plates, pitch and track, the seal disc), so **the fan comes apart in
+  the reverse of Hudson's installation**, and its steps say so; the gear drive follows Amarillo's repair instructions
+  (disassembly §1-4: the oil seal plate, the seal carrier and the intermediate bearing cover with their shims, the
+  vertical cover, the output and intermediate shafts lifted out together, the horizontal carrier, the lower covers;
+  then each shaft pressed apart); the drive shaft comes off in the reverse of Amarillo's installation steps (said in its
+  step); the motor's order is derived from how it is built, as the motor kind's. **Simplified:** the plant's fan turns
+  anticlockwise seen from above (its `shaft` node's axis is up) and its blades are pitched for that turn, so they push
+  the air up (`tests/test_workshop.gd _blade_lean` checks it, and that the same blades turning the other way fail):
+  Hudson's turn clockwise, so the plant's fan is their mirror image; the blades are flat plates (one part: a blade can
+  be changed alone, the steps say so; one part turns on the shaft's line, as `_turning` asks); the hub is one part
+  (its spool, two plates and the blade clamps; its bushing and the thrust retainer not drawn) and the blades' 32 clamp
+  bolts are inside it (hidden), drawn backing out downwards, clear of the seal disc (a real one is drawn out upwards
+  once its nut is off); the seal disc is the plant's
+  dome, closed underneath, on six bolts; the gear case is the plant's closed box (0.9 x 0.7 x 0.6 m whatever the
+  fan's size) with everything inside it hidden: the vertical cover is a plate inside its top and the input shaft's
+  carrier sits inside its side, so they and the shafts come out through the box's faces in the explode (listed in
+  `PASSES`); the plant draws the box's top 0.1 m up inside the hub, so the hub turns round it (listed in `RUBS`, the
+  only such pair: every standing part inside the box stays clear of the hub; the output shaft reaches up into it and
+  turns with it); gears are plain discs with a gap where they mesh
+  (no teeth); the bearing cups are part of the case and the cover; the inspection plates, the oil pump and the oil
+  lines, the shim packs, spacers and keys are not drawn; the intermediate shaft and the input shaft are drawn standing
+  (only the output shaft turns with the fan in the `shaft` node); the drive shaft is the plant's one tube (its two
+  hubs, flex discs and spacer tube one part), the guard the plant's; the motor is the motor kind's tree, its rotor
+  drawn standing (the fan's `shaft` node turns about another axis); the stack is thin (the plant draws it open). The
+  gear drive is drawn taken apart in place, where Amarillo takes it off the tower to a shop. **The explode:** the guard,
+  the drive shaft and the motor come off first and the hub lifts with its blades above the stack, then the blades and
+  the seal disc leave it; the gear drive's parts come out upwards and the input shaft's carrier sideways (the lower bearing
+  covers only rise a little inside the case: a real one comes off from below, which the floor doesn't allow), and each
+  shaft's parts come off its nearer end. The guided steps press the shafts' parts on and off in place, where Amarillo
+  does it on the bench with the shafts out (the steps' reasons say so). The gear drive's oil sample (REALISM.md §2.19) is now drawn from the gear case
+  (`gb_case`). **Known limits** (built and tested for the data file's fan only): the gear drive's size does not follow
+  the fan's; another blade count gives another `sym` but the same component.
+- **generator** (the air-cooled turbo-generator, K6: kit/parts_machines.gd `_gen_*`; the plant's first generator, the
+  gas turbine's, built with its shaft line: the coupling at the drive end): the stator in its frame (core, end
+  windings), the end shields in halves at both ends, a fan shield round each of the rotor's fans, the bearing pedestals
+  with their upper halves, the rotor (body, retaining rings, two fans of straight blades), the coolers on top
+  and their pipes, the terminal box, the brushless exciter (its stator and rotor) under its hood; the coupling's bolts.
+  **The order** is BHEL's overhaul tender's (the user's decision, 2026-11-14: a contract scope for a hydrogen-cooled
+  250 MW machine, **not a maker's manual**, which the data file and every step say), with WEG's S line manual (§8.1,
+  §8.2) as the second source: the bushings, the bearings' upper halves and the coupling, the exciter's hood and the
+  exciter off its bed, the pipes and the coolers, the end shields' upper halves, the lower end shields and the
+  bearings moved aside, the fan shields slid out along the shaft (BHEL takes them out with the end shields: drawn
+  sliding out, they wait for the lower halves), the rotor threaded out. The hydrogen seals and their seal oil are left out (this machine is
+  air-cooled: the steps say so). **Simplified:** the plant's frame, bearing pedestals and exciter hood are one stand-in
+  (all its identify-class paint), split into the frame's walls (closed by a wall inside and a ring at each end), the end
+  shields' halves (slabs whose outer faces are the plant's ends), the pedestals and their caps (cut at the shaft line)
+  and the hood; the plant draws the end shields' faces closed, so the rotor's shaft stops at their inner faces, and the
+  pedestals are its boxes cut at the shaft line, so the journals are not drawn in them; the bearings' shells and oil catchers are their pedestals' and caps'
+  (not drawn apart); the rotor's slots, wedges and winding are its body, its fans twelve straight blades (they lean
+  neither way: `tests/test_workshop.gd` counts no leaning row) whose tips, like the retaining rings, pass through the
+  stator's bore and the fan shields when it is threaded out; the bushings are inside the terminal box (one part), which
+  the plant draws sunk in the plinth and which stays; the exciter's bed is not drawn (the plant's hood overhangs the
+  plinth) and its coupling to the rotor is not drawn; the exciter's hood is the plant's closed drum, lifted over the
+  exciter (listed in `PASSES`), and its end grille is the plant's disc 10 mm off the hood across the shaft's end (in
+  `RUBS`); the coolers are two bundles in the plant's housing (its lifting lug on it), the pipes
+  thin. **The explode:** the coolers, the hood and the exciter under it lift, the pipes move off, the end shields' upper
+  halves lift and their lower halves and the pedestals move aside (the bearings' upper halves then lift off them), then
+  the fan shields slide out along the shaft and the rotor is threaded out through the drive end. **Known limits:** a
+  hydrogen-cooled generator has no tree; built and tested for the plant's first generator only.
+
+- **plate_hx** (K6: kit/parts_heat.gd `plate_hx`, `_phe_*`): a gasketed plate heat exchanger as the Grundfos by Alfa
+  Laval maintenance manual names its parts (the frame plate, the pressure plate, the carrying bar, the guiding bar,
+  the support column, the plate package of End plate II, the channel plates and End plate I, the tightening and
+  locking bolts) and opens and closes it (the locking bolts out, the tightening bolts loosened with the plates kept
+  parallel and taken out, the pressure plate pushed back along the carrying bar, the plates out one by one; closed
+  the reverse, the tightening bolts crosswise to 1.2 times the A-measurement, then the locking bolts, all to the
+  A-measurement). **Simplified:** the plate package is the plant's pack drawn as as many plates as the plant draws
+  plates' edges on it plus one (46 for the data file's 300 plates: each as thick as several real ones, a picture),
+  plain slabs (their portholes, gaskets and corrugation not drawn); the channel plates are one part (the steps hang them
+  one by one); the plant's six bolts are the four tightening bolts at the corners and the two locking bolts at
+  mid-height (the manual's first bolt layout, p. 35), as long as each other (a real locking bolt is shorter); the
+  pressure plate has no feet and the frame plate's stud bolts round its portholes are not drawn (the plant's nozzles
+  are the frame plate's); the plant's carrying bar leaves the pressure plate 0.25 m to the column, so the explode
+  pushes it back that far and takes the plates out to the side (End plate I, the first off, farthest); both bolt
+  groups back out together there (the steps take the locking bolts out first).
+  `tests/test_workshop.gd _packs` checks that the plates lie square to the line from the pressure plate to the frame
+  plate, follow each other plate by plate without a gap from one plate's inner face to the other's, and that every bolt runs along
+  that line beside the plates, from beyond the pressure plate's outer face to beyond the frame plate's. **The
+  stand-ins:** the plant's pack with the plates' edges it draws on it, its bolts (the two fastener groups) and its
+  nozzles (drawn again with each piece closed: `_ws_nozzle`).
+- **shell_tube_hx** (the horizontal one, K6: `shell_tube_hx`, `_ste_*`): a removable bundle with a bonnet at each
+  end and a packed floating tubesheet with a lantern ring at the rear (TEMA BEW), the type the generator draws (a
+  flanged bonnet in front, a bonnet on the rear end with the tube side's inlet: one pass, straight tubes) and the
+  public manuals take apart: the Xylem Standard Xchange CPK manual (the bonnet or channel, the lantern ring and the
+  packing rings at the packed end, new gaskets and packing, the bundle drawn from the stationary end with rods through
+  its tubes, carried by its tubesheets and baffles) and API Heat Transfer's Basco guide (AEW/BEW and BEP). Neither
+  takes apart a split-ring floating head (TEMA S), so the tree is not one. The bundle is sealed: the stationary
+  tubesheet (its own piece), the floating tubesheet, the tubes, the segmental baffles (cut a quarter, alternately at
+  the top and the bottom) and the tie rods come out as one. **Simplified:** the tubes are a picture (117 of 19 mm on a
+  90 mm triangular pitch in the 1.2 m shell, which would hold about 1,500); the tube holes in the baffles and the
+  baffles' spacers are not drawn (a tie rod is one rod); the plant draws the joint's two flanges as one disc, so it is
+  the front bonnet's flange and the stationary tubesheet sits in the shell's end behind it (a real one is clamped
+  between the shell's flange and the bonnet's with a gasket each side); the plant draws the rear bonnet without a
+  flange, so the packing rings and the lantern ring sit in the shell's end round the floating tubesheet and the rear
+  bonnet's studs are not drawn (its step says so); the plant's shell nozzles stand inside the shell (their points lie
+  under its top) and are left out; the plant's tube inlet stands a few centimetres off the rear bonnet and stays so,
+  the rear bonnet's; the plant's saddles are boxes reaching 0.3 m up into the shell, so the bundle's lowest tubes,
+  baffles and tie rods stand in their tops (seen in the X-ray and the cutaway) and the floating tubesheet passes the
+  front one's top as the bundle is drawn out (listed in `tests/test_workshop.gd`); the four tie rods stand near the
+  rim at mid-height, where every baffle is whichever side it is cut. `tests/test_workshop.gd _bundles` checks that every
+  tube runs straight along the bundle's line from the stationary tubesheet's outer face to the floating one's,
+  inside the floating tubesheet's rim and the shell's bore. **The stand-ins:** the joint's stud ring (a fastener group) and
+  the two tube nozzles. **Known limits** (built and tested for the data file's 1.2 m shell only, as the Workshop builds
+  one scene per kind; WORKSHOP.md §5's scenes per equipment need these first): a shell whose circle has an odd
+  number of segments leaves the plant's front bonnet open (the plant's own cylinder and caps); a shell under about
+  1.1 m long (1.3 m at 5 m across) has no room between its tubesheets for the baffles; a 0.2 m shell holds three
+  tubes, a long thin one far too many baffles; the data file's "32 front bonnet studs" is the 1.2 m flange's count;
+  the vertical exchanger has no tree.
+
 ## Tables and their sources
 
 The kit derives what a part looks like from what its content says it is (§9: content says what the equipment *is*).

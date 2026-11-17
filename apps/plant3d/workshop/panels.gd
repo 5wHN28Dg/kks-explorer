@@ -32,7 +32,7 @@ var _strip_n := -1
 
 func setup(w) -> void:
 	ws = w
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # (with its offsets: its size is the screen, #388)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	theme = W.make_theme()
 	var top := HBoxContainer.new()

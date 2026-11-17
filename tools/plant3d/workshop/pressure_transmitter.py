@@ -30,7 +30,7 @@ def comp(name, does, material, sealed_why=None):
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'pressure_transmitter',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'pressure_transmitter', 'title': 'Pressure transmitter',
         'sources': SOURCES,
         'components': {
             'manifold': comp('Valve manifold', 'Bolted under the process flange: its valves isolate the transmitter '

@@ -11,6 +11,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 const Quality = preload("res://app/quality.gd")
 const Player = preload("res://app/player.gd")
 const About = preload("res://app/about.gd")
+const W = preload("res://ui/widgets.gd")
 const InputMode = preload("res://app/input_mode.gd")
 const TOUCH := ["auto", "on", "off"]   # the settings' values of "Touch controls": Automatic, Always, Never
 
@@ -35,7 +36,18 @@ var extra: VBoxContainer       # rows the interaction layer adds (ui/plant_ui.gd
 var settings_box: VBoxContainer
 var about: About               # shown in the settings panel in place of the settings, the panel made larger
 var about_btn: Button
-var _panel_offsets: Array = []
+var close_btn: Button
+var settings_head: HBoxContainer   # the settings' title row: the title, About and Close (always on screen)
+var settings_scroll: ScrollContainer   # the settings' body, under the title row
+var controls_btn: Button       # "Controls": folds the keyboard and gamepad help (controls_help) open and shut
+var controls_help: Label
+var _fit_queued := false
+var settings_layer: CanvasLayer
+var _theme_scale := 0.0        # the UI scale the settings' theme was made for
+const SETTINGS_W := 700.0      # the settings panel's width at UI scale 1 (less on a narrower canvas)
+const SETTINGS_MARGIN := 16.0  # the least room left round the settings panel (as the layer's panels)
+const SETTINGS_LAYER := 8      # the settings' canvas layer (_settings)
+const SETTINGS_TOP := 160.0    # where it may begin without the interaction layer (below the HUD's buttons)
 
 func setup(m) -> void:
 	main = m
@@ -134,13 +146,35 @@ func _button(parent: Control, text: String, f: Callable) -> Button:
 	parent.add_child(b)
 	return b
 
-func _settings(root: Control) -> void:
+## The settings panel: a title row with About and Close that stays put, and the settings under it in a body that
+## scrolls when they don't fit (on a short canvas, or the phone's larger text): Close is always on screen, and the
+## keyboard's and gamepad's focus reaches every control (the body follows it). The long keyboard and gamepad help is
+## folded under its own button ("Controls"). Sized to its content, at most the canvas less a margin (_fit_settings).
+func _settings(_hud_root: Control) -> void:
+	# on a layer of its own above the interaction layer's (ui/plant_ui.gd, 2): its side panels and the control room's
+	# screens never cover the settings' Close (below the save offer, 10, and the Workshop, 60)
+	settings_layer = CanvasLayer.new()
+	settings_layer.name = "settings_layer"
+	settings_layer.layer = SETTINGS_LAYER
+	add_child(settings_layer)
+	visibility_changed.connect(func(): settings_layer.visible = visible)   # hidden with the HUD (the Workshop)
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	settings_layer.add_child(root)
 	panel = PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-330, -170)
-	panel.custom_minimum_size = Vector2(660, 340)
+	panel.name = "settings"
 	panel.visible = false
+	# opaque: it lies over the view and over the layer's panels, whose text would show through a translucent one (K5)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.08, 0.09, 0.11, 1.0)
+	sb.border_color = Color(0.3, 0.33, 0.38)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(14)
+	panel.add_theme_stylebox_override("panel", sb)
 	root.add_child(panel)
+	root.resized.connect(_queue_fit)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 14)
 	panel.add_child(v)
@@ -148,26 +182,50 @@ func _settings(root: Control) -> void:
 	about = About.new()
 	about.closed.connect(_about_closed)
 	panel.add_child(about)
+	settings_head = HBoxContainer.new()
+	settings_head.name = "head"
+	settings_head.add_theme_constant_override("separation", 10)
+	v.add_child(settings_head)
 	var t := Label.new()
 	t.text = "Settings"
 	t.add_theme_font_size_override("font_size", 28)
-	v.add_child(t)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	settings_head.add_child(t)
+	# these two take the keyboard and gamepad focus (ui_accept presses them, the D-pad moves between them)
+	about_btn = _button(settings_head, "About", show_about)
+	about_btn.focus_mode = Control.FOCUS_ALL
+	close_btn = _button(settings_head, "Close", func(): show_settings(false))
+	close_btn.name = "close"
+	close_btn.focus_mode = Control.FOCUS_ALL
+	settings_scroll = ScrollContainer.new()
+	settings_scroll.name = "scroll"
+	settings_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	settings_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	settings_scroll.follow_focus = true        # the control the keyboard or gamepad moves to scrolls into view
+	v.add_child(settings_scroll)
+	var body := VBoxContainer.new()
+	body.name = "body"
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 14)
+	body.minimum_size_changed.connect(_queue_fit)
+	settings_scroll.add_child(body)
 	var row := HBoxContainer.new()
-	v.add_child(row)
+	body.add_child(row)
 	var l := Label.new(); l.text = "Quality  "; row.add_child(l)
 	tier_opt = OptionButton.new()
+	tier_opt.focus_mode = Control.FOCUS_ALL
 	for s in ["Automatic", "Full (laptops)", "Lean (phones)"]:
 		tier_opt.add_item(s)
 	tier_opt.item_selected.connect(_on_tier)
 	row.add_child(tier_opt)
 	tier_note = Label.new()
 	tier_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tier_note.custom_minimum_size = Vector2(620, 0)
-	v.add_child(tier_note)
+	body.add_child(tier_note)
 	var row2 := HBoxContainer.new()
-	v.add_child(row2)
+	body.add_child(row2)
 	var l2 := Label.new(); l2.text = "Touch controls  "; row2.add_child(l2)
 	touch_opt = OptionButton.new()
+	touch_opt.focus_mode = Control.FOCUS_ALL
 	for s in ["Automatic", "Always", "Never"]:
 		touch_opt.add_item(s)
 	touch_opt.item_selected.connect(_on_touch)
@@ -176,12 +234,12 @@ func _settings(root: Control) -> void:
 	touch_note.name = "touch_note"
 	touch_note.text = "Automatic: the sticks and walking buttons show on a touch screen, and hide while a gamepad is in use (connected, or its buttons or sticks used); touching the screen brings them back until the gamepad is used again, and they come back when the last gamepad is disconnected. Always: shown, gamepad or not. Never: hidden (walk with a gamepad or the keyboard)."
 	touch_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	touch_note.custom_minimum_size = Vector2(620, 0)
-	v.add_child(touch_note)
-	var row_g := HBoxContainer.new()
-	v.add_child(row_g)
+	body.add_child(touch_note)
+	var row_g := HFlowContainer.new()
+	body.add_child(row_g)
 	var lg := Label.new(); lg.text = "Walking pace  "; row_g.add_child(lg)
 	pace_opt = OptionButton.new()
+	pace_opt.focus_mode = Control.FOCUS_ALL
 	for s in ["Slow", "Normal", "Brisk"]:
 		pace_opt.add_item(s)
 	pace_opt.item_selected.connect(_on_pace)
@@ -192,24 +250,81 @@ func _settings(root: Control) -> void:
 	run_toggle_cb.toggled.connect(_on_run_toggle)
 	row_g.add_child(run_toggle_cb)
 	extra = VBoxContainer.new()
-	v.add_child(extra)
-	var help := Label.new()
-	help.text = "Keyboard: W A S D to walk, Shift to run (held, or pressed once with \"Run key toggles\"), mouse to look (click the view), F to fly (Space and C up and down), M for the map, E to open a door or the card of the part in the middle of the view (or click or tap a part), L alarms, P procedures and tours, T permits to work, K pause and run, the full stop to fast-forward, H to the control room and its screens (there: the arrows move between items, Enter opens one, Page Up and Down change screen, + and − zoom), Esc for this panel or to close the top one. Gamepad: the left stick walks (push it a little to step slowly, further to walk, all the way to jog; click it to run), the right one looks, Y fly, Back map, A use, Start settings, D-pad up alarms, left procedures, down pause, right fast-forward, X the control room's screens (D-pad between items, A opens one, LB and RB change screen), B closes a panel."
-	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	help.custom_minimum_size = Vector2(620, 0)
-	v.add_child(help)
-	var row3 := HBoxContainer.new()
-	row3.add_theme_constant_override("separation", 10)
-	v.add_child(row3)
-	# these two take the keyboard and gamepad focus (ui_accept presses them, the D-pad moves between them)
-	about_btn = _button(row3, "About", show_about)
-	about_btn.focus_mode = Control.FOCUS_ALL
-	_button(row3, "Close", func(): show_settings(false)).focus_mode = Control.FOCUS_ALL
+	body.add_child(extra)
+	# the keyboard's and gamepad's controls, folded: opened, the body scrolls to show them
+	# (the interaction layer's shared button, ui/widgets.gd; sized to its UI scale when the panel opens: show_settings)
+	controls_btn = W.button("Controls: keyboard and gamepad", func(): pass)
+	controls_btn.name = "controls"
+	controls_btn.toggle_mode = true
+	controls_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	body.add_child(controls_btn)
+	controls_help = Label.new()
+	controls_help.name = "controls_help"
+	controls_help.text = "Keyboard: W A S D to walk, Shift to run (held, or pressed once with \"Run key toggles\"), mouse to look (click the view), F to fly (Space and C up and down), M for the map, E to open a door or the card of the part in the middle of the view (or click or tap a part), L alarms, P procedures and tours, T permits to work, K pause and run, the full stop to fast-forward, H to the control room and its screens (there: the arrows move between items, Enter opens one, Page Up and Down change screen, + and − zoom), Esc for this panel or to close the top one. Gamepad: the left stick walks (push it a little to step slowly, further to walk, all the way to jog; click it to run), the right one looks, Y fly, Back map, A use, Start settings, D-pad up alarms, left procedures, down pause, right fast-forward, X the control room's screens (D-pad between items, A opens one, LB and RB change screen), B closes a panel."
+	controls_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	controls_help.visible = false
+	body.add_child(controls_help)
+	controls_btn.toggled.connect(func(on: bool):
+		controls_help.visible = on
+		if on:
+			_show_controls_help.call_deferred())
 
-## Gamepad A acts as ui_accept on the focused control of the settings panel (Godot's ui_accept has no gamepad button;
+## The opened help scrolled into view (after the layout has placed it), its button kept in view above it.
+func _show_controls_help() -> void:
+	if not is_inside_tree():
+		return
+	await get_tree().process_frame
+	if is_instance_valid(controls_help) and controls_help.is_visible_in_tree():
+		settings_scroll.ensure_control_visible(controls_help)
+		settings_scroll.ensure_control_visible(controls_btn)
+
+## The panel's size again at the next frame (its content or the canvas changed).
+func _queue_fit() -> void:
+	if not _fit_queued:
+		_fit_queued = true
+		_fit_settings.call_deferred()
+
+## The settings panel centred across, just below the bars (the HUD's buttons and the interaction layer's: ui/plant_ui.gd
+## panels_top), as tall as its content but at most the room there less a margin: the title row with Close stays on
+## screen and the body scrolls under it. (About has the whole canvas less a margin: show_about.)
+func _fit_settings() -> void:
+	_fit_queued = false
+	if panel == null or about.visible:
+		return
+	var vs: Vector2 = (panel.get_parent() as Control).size
+	if vs.x <= 0.0 or vs.y <= 0.0:
+		return
+	var top: float = main.ui.panels_top() if main != null and main.ui != null and main.ui.has_method("panels_top") \
+		else SETTINGS_TOP
+	var room := maxf(vs.y - top - SETTINGS_MARGIN, 200.0)
+	var pad := panel.get_theme_stylebox("panel").get_minimum_size()
+	var w := minf(SETTINGS_W * W.scale, vs.x - 2.0 * SETTINGS_MARGIN)
+	var body: Control = settings_scroll.get_child(0)
+	var want := settings_head.get_combined_minimum_size().y + float(settings_box.get_theme_constant("separation")) \
+		+ body.get_combined_minimum_size().y + pad.y
+	var h := minf(want, room)
+	var y := top                  # from the top: opening the Controls help doesn't move Close or the button pressed
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.0
+	panel.anchor_bottom = 0.0
+	panel.offset_left = -w * 0.5
+	panel.offset_right = w * 0.5
+	panel.offset_top = y
+	panel.offset_bottom = y + h
+
+## Gamepad B closes the settings (Godot's ui_cancel has no gamepad button). Gamepad A acts as ui_accept on the
+## focused control of the settings panel (Godot's ui_accept has no gamepad button;
 ## the walker's "use" is off while the panel shows): a button is pressed, a check box toggled, a disabled one left.
 func _input(e: InputEvent) -> void:
-	if panel == null or not panel.visible or not (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A):
+	if panel == null or not panel.visible or not e is InputEventJoypadButton:
+		return
+	# gamepad B closes the settings, the top layer (About, inside them, takes it first to go back: app/about.gd)
+	if e.button_index == JOY_BUTTON_B and e.pressed and not about.visible:
+		get_viewport().set_input_as_handled()
+		show_settings(false)
+		return
+	if e.button_index != JOY_BUTTON_A:
 		return
 	var fo := panel.get_viewport().gui_get_focus_owner()
 	if fo == null or not panel.is_ancestor_of(fo) or not fo.is_visible_in_tree():
@@ -226,30 +341,46 @@ func show_about() -> void:
 		return
 	if not panel.visible:
 		show_settings(true)
-	_panel_offsets = [panel.anchor_left, panel.anchor_top, panel.anchor_right, panel.anchor_bottom,
-		panel.offset_left, panel.offset_top, panel.offset_right, panel.offset_bottom]
 	settings_box.visible = false
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 40)
 	about.open()
 
 func _about_closed() -> void:
 	settings_box.visible = true
-	if _panel_offsets.size() == 8:
-		panel.anchor_left = _panel_offsets[0]; panel.anchor_top = _panel_offsets[1]
-		panel.anchor_right = _panel_offsets[2]; panel.anchor_bottom = _panel_offsets[3]
-		panel.offset_left = _panel_offsets[4]; panel.offset_top = _panel_offsets[5]
-		panel.offset_right = _panel_offsets[6]; panel.offset_bottom = _panel_offsets[7]
-	panel.reset_size()
+	_fit_settings()
 	if panel.visible:
 		about_btn.grab_focus()
 
 func show_settings(on: bool) -> void:
 	if not on and about.visible:
 		about.close()
+	var was_on := panel.visible
 	panel.visible = on
+	if on:
+		# the layer's theme (ui/widgets.gd: its buttons' fills and focus ring, its text size) at its UI scale, chosen
+		# after the HUD is made; on the opaque panel the default theme's buttons barely showed
+		if panel.theme == null or _theme_scale != W.scale:
+			panel.theme = W.make_theme()
+			_theme_scale = W.scale
+		# the Controls button as the layer's buttons
+		controls_btn.custom_minimum_size = Vector2(0, 52 * W.scale)
+		controls_btn.add_theme_font_size_override("font_size", int(20 * W.scale))
+		if not was_on:                       # each opening as the first: the help folded, the body at its top
+			controls_btn.set_pressed_no_signal(false)
+			controls_help.visible = false
+			settings_scroll.scroll_vertical = 0
+		_fit_settings()
+		_queue_fit()                         # again once the body's wrapped text has its width
 	refresh()
 	if not on and main.ui != null and main.ui.mimic != null:
-		main.ui.mimic.take_focus()          # the screens' canvas again, when they are open
+		# the focus back to the top panel under the settings (a side panel, the drawings, the screens' canvas): the
+		# About button that had it is hidden now
+		if main.workshop_open():
+			pass                            # (the Workshop opened from the settings takes its own focus)
+		elif main.ui.wants_focus():
+			main.ui.focus_top()
+		else:
+			main.ui.mimic.take_focus()      # the screens' canvas again, when they are open
 	if on:
 		if not about.visible:
 			about_btn.grab_focus()

@@ -33,8 +33,11 @@ static func axial_extent(part: String, p: Dictionary) -> Array:
 ## The shaft stubs out of both ends, with a coupling where they meet a neighbour's half way.
 ## `bolts_id` (the Workshop, WORKSHOP.md §4.4): the coupling's bolts are that fastener group, replacing the plant's
 ## bolt ring as a stand-in (the current component holds them).
-static func _shaft(g, za: float, y_back: float, y_front: float, r: float, bolts_id := "") -> void:
+## `back_comp` (the Workshop): the component the back stub belongs to (the generator's exciter rotor; the front stub
+## stays the current component's).
+static func _shaft(g, za: float, y_back: float, y_front: float, r: float, bolts_id := "", back_comp := "") -> void:
 	var sh = g.move("shaft", Vector3(0, 0, za), Vector3(0, 1, 0), "rotate", 0.0)
+	var front_comp: String = g.cur_comp
 	var lo: float = g.ctx.get("shaft_lo", 0.0)
 	var hi: float = g.ctx.get("shaft_hi", 0.0)
 	var coupled := 0
@@ -43,6 +46,8 @@ static func _shaft(g, za: float, y_back: float, y_front: float, r: float, bolts_
 		var s: float = e[1]
 		var ext: float = e[2]
 		var len := maxf(ext, 0.35)
+		if back_comp != "":
+			g.comp(back_comp if s < 0.0 else front_comp)
 		sh.use("steel", "identify")
 		sh.cyl(Vector3(0, y0, za), Vector3(0, y0 + s * len, za), r, -1.0, 16)
 		if ext > 0.0:   # the coupling half at the meeting point
@@ -209,6 +214,10 @@ static func gas_turbine(_part: String, g) -> void:
 	g.solid_box(Vector3(-pw, y0, za - D * 0.6), Vector3(pw, ya.call(0.11), top_in))
 	g.axis_line = [Vector3(0, y0, za), Vector3(0, -y0, za)]
 
+## A generator on its plinth: the stator frame (hydrogen-cooled: a drum; air-cooled: a box with its coolers on top),
+## the bearings at both ends, the exciter at the non-drive end. The Workshop's tree (WORKSHOP.md §4, milestone K6;
+## kit/README.md "Workshop: the generator") is the air-cooled generator's: every piece it adds is a "workshop" piece
+## or the split of the plant's stand-in, so plant mode draws what it drew before.
 static func generator(_part: String, g) -> void:
 	var m = g.m
 	var L: float = g.num("length", 10)
@@ -217,6 +226,12 @@ static func generator(_part: String, g) -> void:
 	var hyd: bool = g.p.get("cooling", "air") == "hydrogen"
 	var hw := d * 0.62
 	var zb := za - d * 0.55
+	var tree := not hyd   # (a hydrogen-cooled generator has no tree yet)
+	var top := za + d * 0.5
+	if tree and g.workshop:
+		_gen_comps(g, L, d, za, hw, zb, top)
+	if tree:
+		g.comp("plinth")
 	m.use("concrete", "form")
 	m.box_lh(Vector3(-hw - 0.2, -L * 0.5 - 0.3, 0), Vector3(hw + 0.2, L * 0.5 + 0.3, maxf(zb, 0.3)))
 	if hyd:
@@ -228,15 +243,22 @@ static func generator(_part: String, g) -> void:
 		g.solid_cyl(Vector3(0, -L * 0.5, za), Vector3(0, L * 0.5, za), d * 0.55)
 	else:
 		# the stator frame: a box with chamfered top edges, the coolers' housing on top (TEWAC)
-		var top := za + d * 0.5
 		var pts := [Vector2(-hw, zb), Vector2(hw, zb), Vector2(hw, top - d * 0.18), Vector2(hw - d * 0.18, top), Vector2(-hw + d * 0.18, top), Vector2(-hw, top - d * 0.18)]
+		g.comp("stator")
+		g.only("plant", GEN_STANDIN)
 		m.use("paint_machine", "identify")
 		m.prism(Vector3(0, L * 0.5, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), pts, L)
+		if g.workshop:
+			_gen_frame(g, m, L, d, za, hw, zb, top, pts)
+		g.only()
+		g.comp("cooler")
 		m.use("paint_machine", "form")
 		m.box_lh(Vector3(-hw * 0.8, -L * 0.4, top), Vector3(hw * 0.8, L * 0.4, top + d * 0.35))
+		g.comp("cw_pipes")
 		m.use("galvanised", "detail", 0.1)   # cooling water to the coolers
 		for f: float in [-0.25, 0.25]:
 			m.pipe_path([Vector3(hw * 0.8, L * f, top + d * 0.2), Vector3(hw + 0.3, L * f, top + d * 0.2), Vector3(hw + 0.3, L * f, 0.5)], 0.06, 0.2)
+		g.comp("stator")
 		m.use("paint_machine", "detail", 0.08)
 		for i in 9:   # the frame's ribs
 			var y := -L * 0.5 + L * (i + 0.5) / 9.0
@@ -244,19 +266,228 @@ static func generator(_part: String, g) -> void:
 			m.box(Vector3(-hw - 0.03, y, za), Vector3(0.06, 0.1, d * 0.9))
 		g.solid_box(Vector3(-hw, -L * 0.5, 0), Vector3(hw, L * 0.5, top + d * 0.35))
 	# end bearings, the exciter at the non-drive end, the terminal box under it
+	if tree:
+		g.only("plant", GEN_STANDIN)
 	m.use("paint_machine", "identify")
 	for s: float in [-1.0, 1.0]:
-		m.box_lh(Vector3(-d * 0.22, s * (L * 0.5) + (0.0 if s > 0 else -0.4), maxf(zb, 0.3)), Vector3(d * 0.22, s * (L * 0.5) + (0.4 if s > 0 else 0.0), za + d * 0.12))
+		var lo := Vector3(-d * 0.22, s * (L * 0.5) + (0.0 if s > 0 else -0.4), maxf(zb, 0.3))
+		var hi := Vector3(d * 0.22, s * (L * 0.5) + (0.4 if s > 0 else 0.0), za + d * 0.12)
+		if tree:
+			g.comp("ped_te" if s > 0 else "ped_ee")
+			g.only("plant", GEN_STANDIN)
+			m.use("paint_machine", "identify")
+		m.box_lh(lo, hi)
+		if tree and g.workshop:   # the pedestal and its cap (the bearing's top half), split at the shaft line
+			g.only("workshop", "split")
+			m.box_lh(lo, Vector3(hi.x, hi.y, za))
+			g.comp("brg_cap_te" if s > 0 else "brg_cap_ee")
+			m.box_lh(Vector3(lo.x, lo.y, za), hi)
+			g.only("plant", GEN_STANDIN)
+			m.use("paint_machine", "identify")
+	if tree:
+		g.comp("exc_cover")
 	m.use("paint_machine", "identify")
 	m.cyl(Vector3(0, -L * 0.5 - 0.4, za), Vector3(0, -L * 0.5 - 0.4 - d * 0.4, za), d * 0.24)
+	if tree and g.workshop:
+		g.only("workshop", "split")
+		m.cyl(Vector3(0, -L * 0.5 - 0.4, za), Vector3(0, -L * 0.5 - 0.4 - d * 0.4, za), d * 0.24)
+	if tree:
+		g.only()
+		g.comp("exc_grille")
 	m.use("dark", "detail", 0.1)
 	m.disk(Vector3(0, -L * 0.5 - 0.41 - d * 0.4, za), Vector3(0, -1, 0), d * 0.18, 24)
+	if tree:
+		g.comp("terminal_box")
 	m.use("paint_grey", "identify")
 	m.box_lh(Vector3(-hw * 0.7, -L * 0.45, maxf(zb - 0.9, 0.35)), Vector3(hw * 0.7, -L * 0.2, zb))   # the phase terminals' box
+	if tree:
+		g.comp("cooler")
 	C.lug(m, Vector3(hw * 0.6, 0, za + d * 0.5), Vector3(0, 0, 1), 0.4)
-	_shaft(g, za, -L * 0.5 - 0.4 - d * 0.4, L * 0.5 + 0.4, 0.18)
+	if tree:
+		g.comp("rotor")
+	_shaft(g, za, -L * 0.5 - 0.4 - d * 0.4, L * 0.5 + 0.4, 0.18, "coupling_bolts" if tree and g.workshop else "",
+		"exc_rotor" if tree else "")
+	if tree and g.workshop:
+		_gen_insides(g, L, d, za, top)
 	g.plate("side", Vector3(hw + 0.07, L * 0.15, za + d * 0.1), Vector3(1, 0, 0), "large")
 	g.axis_line = [Vector3(0, -L * 0.5, za), Vector3(0, L * 0.5, za)]
+
+# ------------------------------------------------------------------ the generator in the Workshop (K6)
+# An air-cooled (TEWAC) turbo-generator as BHEL's overhaul scope and WEG's S line manual take one apart: the coolers and
+# their pipes, the bearings' top halves, the exciter's hood and the exciter off its bed, the end shields in halves and
+# the fan shields at both ends, the bearings' bottom halves, the rotor threaded out of the stator's bore. What is
+# simplified: kit/README.md "Workshop: the generator". Every piece here is a Workshop piece or the split of the plant's
+# one stand-in (the frame, the bearing pedestals and the exciter's hood, all its identify-class paint): plant mode
+# draws what it drew before.
+const GEN_STANDIN := ["stator", "es_te_up", "es_te_lo", "es_ee_up", "es_ee_lo", "ped_te", "brg_cap_te", "ped_ee",
+	"brg_cap_ee", "exc_cover"]
+const GEN_SHIELD := 0.15   # the end shields' thickness (m)
+const GEN_WALL := 0.05     # the frame's wall
+
+## The stator's and the rotor's sizes from the frame's d (radii, m) and where things sit along the axis from the
+## middle (y, m): the core's end, the end windings, the rotor's fans and their shields.
+static func _gen_r(L: float, d: float) -> Dictionary:
+	var yc := L * 0.36
+	var yf := yc + d * 0.12 + 0.12
+	return {"core": d * 0.45, "bore": d * 0.2, "body": d * 0.19, "ring": d * 0.195, "fan_in": d * 0.12,
+		"fan": d * 0.19, "fs_in": d * 0.197, "fs_out": d * 0.23, "shaft": 0.18, "turn_R": d * 0.3, "turn_r": d * 0.06,
+		"yc": yc, "yr": yc + d * 0.12, "yf": yf, "fw": 0.05, "fsw": 0.085}
+
+## The tree. The plinth, the stator and the terminal box stay; the coolers lift, their pipes come off sideways, the
+## exciter's hood lifts and the exciter is lifted off its bed under it, the end shields' upper halves lift and
+## their lower halves and the bearing pedestals move aside (the bearings' top halves then lift off the pedestals); last
+## the fan shields slide out along the shaft and the rotor is threaded out of the bore through the drive end.
+static func _gen_comps(g, L: float, d: float, za: float, hw: float, zb: float, top: float) -> void:
+	var Z := Vector3(0, 0, 1)
+	var X := Vector3(1, 0, 0)
+	var Y := Vector3(0, 1, 0)
+	var ped_x := d * 0.22 + 0.25 + d * 0.19   # (the pedestals aside, clear of the rotor's body)
+	g.comp("plinth", {"explode": [Z, 0.0]})
+	g.comp("stator", {"explode": [Z, 0.0]})
+	g.comp("terminal_box", {"explode": [Z, 0.0]})
+	g.comp("cooler", {"explode": [Z, 2.5]})
+	g.comp("cw_pipes", {"explode": [X, 1.5], "thin": true})
+	g.comp("es_te_up", {"explode": [Z, 2.5]})
+	g.comp("es_ee_up", {"explode": [Z, 2.5]})
+	g.comp("es_te_lo", {"explode": [X, hw * 2.0 + 0.6]})
+	g.comp("es_ee_lo", {"explode": [X, hw * 2.0 + 0.6]})
+	g.comp("ped_te", {"explode": [X, ped_x]})
+	g.comp("ped_ee", {"explode": [X, ped_x]})
+	g.comp("brg_cap_te", {"parent": "ped_te", "explode": [Z, 1.0]})
+	g.comp("brg_cap_ee", {"parent": "ped_ee", "explode": [Z, 1.0]})
+	g.comp("exc_cover", {"explode": [Z, 3.5], "sym": [Y, 0]})
+	g.comp("exc_grille", {"parent": "exc_cover", "explode": [Z, 0.0], "thin": true})
+	g.comp("exciter", {"explode": [Z, 2.0], "sym": [Y, 0]})
+	g.comp("exc_rotor", {"parent": "exciter", "sym": [Y, 0], "pivot": Vector3(0, -L * 0.5 - 0.4 - d * 0.2, za)})
+	g.comp("rotor", {"parent": "stator", "explode": [Y, L + 1.5], "anim": "shaft", "sym": [Y, 0],
+		"pivot": Vector3(0, 0, za)})
+	g.comp("fan_shield_te", {"parent": "stator", "explode": [Y, 2.0], "sym": [Y, 0]})
+	g.comp("fan_shield_ee", {"parent": "stator", "explode": [-Y, 2.0], "sym": [Y, 0]})
+
+## A convex polygon face (its points in any order round it) facing n.
+static func _gen_face(m, pts: Array, n: Vector3) -> void:
+	var p: Array = pts.duplicate()
+	if (p[1] - p[0]).cross(p[2] - p[0]).dot(n) < 0.0:
+		p.reverse()
+	m.poly(p, n)
+
+## The frame split: the plant's prism without its ends (the end shields are its ends), closed by a wall inside and a
+## ring at each end; the end shields in halves at the shaft line, each a slab whose outer face is the plant's end
+## (split) and whose inner face and sides are hidden. Then the stator's core with its bore and the winding's end turns.
+static func _gen_frame(g, m, L: float, d: float, za: float, hw: float, zb: float, top: float, pts: Array) -> void:
+	var w := GEN_WALL
+	var n := pts.size()
+	var inn := [Vector2(-hw + w, zb + w), Vector2(hw - w, zb + w), Vector2(hw - w, top - d * 0.18),
+		Vector2(hw - d * 0.18, top - w), Vector2(-hw + d * 0.18, top - w), Vector2(-hw + w, top - d * 0.18)]
+	var p3 := func(q: Vector2, y: float) -> Vector3: return Vector3(q.x, y, q.y)
+	var mid := Vector3(0, 0, (zb + top) * 0.5)
+	g.only("workshop", "split")
+	m.use("paint_machine", "identify")
+	for i in n:   # the outer walls, as the plant's prism's sides
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[(i + 1) % n]
+		var out := Vector3(b.y - a.y, 0, -(b.x - a.x)).normalized()
+		if out.dot(p3.call((a + b) * 0.5, 0.0) - mid) < 0.0:
+			out = -out
+		m.quad_n(p3.call(a, L * 0.5), p3.call(b, L * 0.5), p3.call(b, -L * 0.5), p3.call(a, -L * 0.5), out)
+	g.only("workshop")
+	for i in n:   # the inner walls, facing in; the end rings, facing out
+		var a: Vector2 = inn[i]
+		var b: Vector2 = inn[(i + 1) % n]
+		var into := Vector3(-(b.y - a.y), 0, b.x - a.x).normalized()
+		if into.dot(mid - p3.call((a + b) * 0.5, 0.0)) < 0.0:
+			into = -into
+		m.quad_n(p3.call(a, L * 0.5), p3.call(b, L * 0.5), p3.call(b, -L * 0.5), p3.call(a, -L * 0.5), into)
+		for s: float in [-1.0, 1.0]:
+			m.quad_n(p3.call(pts[i], s * L * 0.5), p3.call(pts[(i + 1) % n], s * L * 0.5),
+				p3.call(inn[(i + 1) % n], s * L * 0.5), p3.call(inn[i], s * L * 0.5), Vector3(0, s, 0))
+	# the end shields' halves
+	var upper := [Vector2(-hw, za), Vector2(hw, za), pts[2], pts[3], pts[4], pts[5]]
+	var lower := [Vector2(-hw, zb), Vector2(hw, zb), Vector2(hw, za), Vector2(-hw, za)]
+	for e in [["es_te_up", upper, 1.0], ["es_te_lo", lower, 1.0], ["es_ee_up", upper, -1.0], ["es_ee_lo", lower, -1.0]]:
+		g.comp(e[0])
+		var q: Array = e[1]
+		var s: float = e[2]
+		var yo := s * L * 0.5
+		var yi := s * (L * 0.5 - GEN_SHIELD)
+		var c := Vector3(0, 0, 0)
+		for v in q:
+			c += p3.call(v, 0.0)
+		c /= q.size()
+		g.only("workshop", "split")
+		m.use("paint_machine", "identify")
+		_gen_face(m, q.map(func(v): return p3.call(v, yo)), Vector3(0, s, 0))
+		g.only("workshop")
+		_gen_face(m, q.map(func(v): return p3.call(v, yi)), Vector3(0, -s, 0))
+		for i in q.size():
+			var a: Vector3 = p3.call(q[i], 0.0)
+			var b: Vector3 = p3.call(q[(i + 1) % q.size()], 0.0)
+			var out := Vector3(b.z - a.z, 0, -(b.x - a.x)).normalized()
+			if out.dot((a + b) * 0.5 - c) < 0.0:
+				out = -out
+			m.quad_n(a + Vector3(0, yo, 0), b + Vector3(0, yo, 0), b + Vector3(0, yi, 0), a + Vector3(0, yi, 0), out)
+	# the stator's core (its bore the rotor's) and the winding's end turns
+	var k := _gen_r(L, d)
+	g.comp("stator")
+	m.use("steel_dark", "identify")
+	m.tube(Vector3(0, -k.yc, za), Vector3(0, k.yc, za), k.core, k.bore, 48)
+	m.use("brass", "identify")
+	for s: float in [-1.0, 1.0]:
+		m.torus(Vector3(0, s * (k.yc + k.turn_r), za), Vector3(1, 0, 0), Vector3(0, 0, 1), k.turn_R, k.turn_r, TAU, 32, 8)
+	# the fan shields (the air guides round the rotor's fans), the coolers' bundles in their housing, the exciter's
+	# stator in its hood
+	m.use("paint_darkgrey", "identify")
+	for s: float in [-1.0, 1.0]:
+		g.comp("fan_shield_te" if s > 0 else "fan_shield_ee")
+		m.tube(Vector3(0, s * (k.yf - k.fsw), za), Vector3(0, s * (k.yf + k.fsw), za), k.fs_out, k.fs_in, 32)
+	g.comp("cooler")
+	m.use("steel_dark", "identify")
+	for f: float in [-0.2, 0.2]:
+		m.box(Vector3(0, L * f, top + d * 0.17), Vector3(hw * 1.4, L * 0.3, d * 0.25))
+	g.comp("exciter")
+	m.use("steel_dark", "identify")
+	m.tube(Vector3(0, -L * 0.5 - 0.5, za), Vector3(0, -L * 0.5 - 0.3 - d * 0.4, za), d * 0.22, d * 0.155, 32)
+	g.comp("stator")
+	g.only()
+
+## What turns, in the `shaft` node: the rotor (its shaft stopping at the end shields' inner faces, which the plant
+## draws closed; its journals are not drawn in the pedestals, which are the plant's boxes cut at the shaft line; the body in the stator's bore, the retaining
+## rings over its end windings, a fan of straight blades at each end), and the exciter's rotor in its hood.
+static func _gen_insides(g, L: float, d: float, za: float, top: float) -> void:
+	var k := _gen_r(L, d)
+	var Y := Vector3(0, 1, 0)
+	var sh = g.move("shaft", Vector3(0, 0, za), Y, "rotate", 0.0)
+	var at := func(y: float) -> Vector3: return Vector3(0, y, za)
+	g.only("workshop")
+	g.comp("rotor")
+	sh.use("steel", "identify")
+	var ye := L * 0.5 - GEN_SHIELD - 0.01
+	sh.cyl(at.call(-ye), at.call(ye), k.shaft, -1.0, 16)
+	sh.use("steel_dark", "identify")
+	sh.cyl(at.call(-k.yc), at.call(k.yc), k.body, -1.0, 32)   # the body (its slots and wedges not drawn)
+	sh.use("chrome", "identify")
+	for s: float in [-1.0, 1.0]:   # the retaining rings
+		sh.cyl(at.call(s * (k.yc + 0.01)), at.call(s * k.yr), k.ring, -1.0, 32)
+	sh.use("paint_darkgrey", "identify")
+	var ax: Array = sh.across(Y)
+	for s: float in [-1.0, 1.0]:   # the fans: a hub and twelve straight blades (it cools whichever way it turns)
+		sh.cyl(at.call(s * (k.yf - k.fw)), at.call(s * (k.yf + k.fw)), k.fan_in, -1.0, 16)
+		for i in 12:
+			var a := TAU * i / 12.0
+			var rad: Vector3 = ax[0] * cos(a) + ax[1] * sin(a)
+			sh.box(at.call(s * k.yf) + rad * (k.fan_in + k.fan) * 0.5, Vector3(0.02, k.fw * 2.0, k.fan - k.fan_in + 0.02),
+				Basis(Y.cross(rad).normalized(), Y, rad))
+	# the exciter's rotor: its shaft, the armature in the exciter's stator and the diode wheel
+	g.comp("exc_rotor")
+	sh.use("steel", "identify")
+	var y0 := -L * 0.5 - 0.41
+	var y1 := -L * 0.5 - 0.39 - d * 0.4
+	sh.cyl(at.call(y0), at.call(y1), 0.12, -1.0, 16)
+	sh.use("steel_dark", "identify")
+	sh.cyl(at.call(-L * 0.5 - 0.55), at.call(-L * 0.5 - 0.25 - d * 0.4), d * 0.135, -1.0, 32)
+	sh.use("chrome", "identify")
+	sh.cyl(at.call(-L * 0.5 - 0.44), at.call(-L * 0.5 - 0.5), d * 0.1, -1.0, 24)
+	g.only()
 
 static func turning_gear(_part: String, g) -> void:
 	var m = g.m

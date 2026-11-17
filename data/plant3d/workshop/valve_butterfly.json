@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "valve_butterfly",
+ "title": "Butterfly valve",
  "params": {"dn": 250, "actuator": "electric"},
  "sources": [
   {"id": "bray_bf", "cite": "Bray International, resilient seated butterfly valves, installation, operation and maintenance manual EN_BR_IOM_BF_ALL_20250604 (2025): Series 35/36 (appendix H), disassembly §13.1 and assembly §13.2 p. 28, exploded view and parts list p. 29", "url": "https://www.bray.com/docs/default-source/manuals-guides/iom-manuals/en_br_iom_bf_all_8-16-2023.pdf"},

@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "valve_control",
+ "title": "Control valve",
  "params": {"dn": 150, "actuator": "pneumatic"},
  "sources": [
   {"id": "fisher_es", "cite": "Emerson, Fisher ES and EAS easy-e valves CL125-CL600, instruction manual D100397X012 (2025): replacing packing pp. 8-13, trim disassembly §3.3 pp. 14-15 (plug and stem, cage, seat ring), assembly pp. 17-19, figure 8 p. 28, cross section figure 13 p. 32", "url": "https://www.emerson.com/is/content/emerson/en/final-control/flow-controls/documents/instruction-manual-fisher-es-eas-easy-e-valves-cl125-through-cl600-en-11745482.pdf"},

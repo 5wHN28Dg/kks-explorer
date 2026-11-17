@@ -16,18 +16,31 @@ extends RefCounted
 const Kit = preload("res://kit/kit.gd")
 const WB = preload("res://builder/workshop_build.gd")
 const Explode = preload("res://workshop/explode.gd")
+const Workshop = preload("res://workshop/workshop.gd")
 ## The way the working fluid flows along the shaft, per kind with blade rows (Godot's axes: the generator's +y is -z):
 ## the steam turbine's steam from its inlet end to its exhaust end (generator -y), the gas turbine's air and gas from
 ## the compressor to the exhaust (generator +y). Every kind whose drawn faces lean about a shaft is listed here.
 ## A kind whose flow leaves the shaft radially (a centrifugal pump's impeller, a motor's fan) says "radial", with the
 ## number of its moving rows whose vanes lean (RADIAL_ROWS): an impeller's vanes curve back against its turn, a
 ## motor's fan has straight radial blades (it cools whichever way the motor turns), so it has none.
+## A cooling tower's fan pushes its air up out of the stack (Godot's +y); a generator's rotor fans have straight
+## blades, as a motor's.
 const FLOW := {"steam_turbine": Vector3(0, 0, 1), "gas_turbine": Vector3(0, 0, -1), "pump_horizontal": "radial",
-	"motor": "radial", "pump_vertical": "radial"}
-const RADIAL_ROWS := {"pump_horizontal": 1, "motor": 0, "pump_vertical": 2}
+	"motor": "radial", "pump_vertical": "radial", "fan_axial": Vector3(0, 1, 0), "generator": "radial"}
+const RADIAL_ROWS := {"pump_horizontal": 1, "motor": 0, "pump_vertical": 2, "generator": 0}
+## Axial kinds with one moving row and no stationary one (a fan in its stack: no guide vanes). Their blades must lean as
+## a moving row's, pushing the flow its way as the shaft turns; the same blades with the shaft turning the other way
+## must fail it; and what turns is checked as the radial kinds' are (_turning).
+const ROTOR_ONLY := ["fan_axial"]
 ## Pairs of a turning component and a standing one that may meet as it turns ("kind|turning|standing", standing may
 ## end in "*"), each with its reason (_turning).
-const RUBS := {}
+const RUBS := {
+	"fan_axial|hub|gb_case": "the plant draws the gear case's top 0.1 m up inside the hub (a real hub sits on the gear "
+		+ "drive's output shaft above the case): the Workshop keeps the plant's outline: every standing part inside "
+		+ "the case stays clear of the hub, and the output shaft that reaches up into it turns with it",
+	"generator|exc_rotor|exc_grille": "the plant draws the exciter hood's end grille as a disc 10 mm off the hood, "
+		+ "across the shaft's end where it leaves the hood",
+}
 const RUB := 0.002   # how far (m) a turning surface may reach into a standing one's band (a polygon's flats, a fit)
 const TURN_SMALL := 0.05   # the longest edge (m) of the pieces a triangle is halved into for it
 ## Pairs of components whose explode may pass through each other ("kind|a|b", either order; b may end in "*" for
@@ -47,6 +60,13 @@ const PASSES := {
 	"steam_turbine|valve_r|ctrl_r": "the same chest on the other side",
 	"motor|end_shield_de|rotor": "the plant draws the drive-end shield's face closed and the shaft's stub standing on it: "
 		+ "the shield comes off forwards over the stub, as a real one does through its bore",
+	"shell_tube_hx|saddles|tubesheet_f": "the plant draws the saddles as boxes reaching 0.3 m up into the shell (a "
+		+ "real saddle is a cradle under it): the bundle's floating tubesheet passes the front one's top as the bundle "
+		+ "is drawn out (its lowest tubes, baffles and tie rods stand in their tops already, assembled)",
+	"fan_axial|gb_case|gb_*": "the plant draws the gear case as one closed box: a real one's top is its vertical "
+		+ "cover and the input shaft's carrier sits in its side, so what is inside comes out through them",
+	"generator|exc_cover|exc*": "the plant draws the exciter's hood as a closed drum round the shaft's end: lifted "
+		+ "off, it passes over the exciter as if its ends were open round the shaft, as a real hood's are",
 	"test_gadget|base|core": "the fixture's core is drawn inside its closed base on purpose (a hidden piece) and "
 		+ "comes out through its wall",
 }
@@ -58,6 +78,13 @@ const WEDGES := {"valve_gate": ["wedge", "seat_rings", "stem"]}
 ## A butterfly valve's disc, its seat (the liner) and the moving piece that turns it ("kind": [disc, seat, moving])
 ## (_discs).
 const DISCS := {"valve_butterfly": ["disc", "liner", "disc"]}
+## A plate heat exchanger's frame plate, pressure plate, plates (in order from the pressure plate's side) and bolt
+## groups ("kind": {...}): the plates lie square between the two plates and the bolts span them (_packs).
+const PACKS := {"plate_hx": {"frame": "frame_plate", "pressure": "pressure_plate",
+	"plates": ["end_plate_1", "plates", "end_plate_2"], "bolts": ["tightening_bolts", "locking_bolts"]}}
+## A shell-and-tube exchanger's tubes, its tubesheets (stationary, floating) and its shell ("kind": {...}): the tubes
+## run straight from one tubesheet to the other inside the shell's bore (_bundles).
+const BUNDLES := {"shell_tube_hx": {"tubes": "tubes", "sheets": ["bundle", "tubesheet_f"], "shell": "shell"}}
 const CELL := 0.25   # the cells' width (m) in which the explode's paths are compared
 const SMALL := 0.1   # the longest edge of a small triangle there (m)
 const FIXTURE := "res://tests/fixtures/workshop_gadget.gd"
@@ -96,6 +123,9 @@ func run(_tree: SceneTree) -> Array:
 			bs.free()
 		_kind(part, data, params, ctx)
 		_built(part, data)
+		# its title in the Workshop's lists and title bar is its data file's (UI-UX-POLICY X1: the kind's name, not its id)
+		check(data.get("title") is String and Workshop.title_of(part) == data.title, "%s: the Workshop's title is the data file's %s (got %s)" % [
+			part, str(data.get("title")), Workshop.title_of(part)])
 	check(kinds >= 1, "a kind with Workshop data (the pressure transmitter)")
 	_fixture()
 	_misuse()
@@ -141,6 +171,8 @@ func _kind(part: String, data: Dictionary, params: Dictionary, ctx := {}) -> voi
 	_seats(part, ws)
 	_wedge(part, ws)
 	_discs(part, ws)
+	_packs(part, ws)
+	_bundles(part, ws)
 	if r.scene != null:
 		_explode_paths(part, r.scene)
 	print("workshop: %s %d components, %d fastener groups, %d triangles (plant %d)" % [part, ws.components.size(),
@@ -408,6 +440,18 @@ func _blade_lean(part: String, ws: Dictionary) -> void:
 			problems = kept
 			check(caught, "%s: the vane check misses an impeller turning the wrong way" % part)
 		return
+	_axial_lean(part, ws, shaft)
+	if part in ROTOR_ONLY:   # the check itself: the same blades with the shaft turning the other way fail
+		var kept := problems.duplicate()
+		var back: Dictionary = shaft.duplicate()
+		back.axis = -(shaft.axis as Vector3)
+		_axial_lean(part, ws, back)
+		var caught := problems.size() > kept.size()
+		problems = kept
+		check(caught, "%s: the blade check misses a fan turning the wrong way" % part)
+
+## The axial rows' lean (_blade_lean), with the shaft turning about `shaft.axis`.
+func _axial_lean(part: String, ws: Dictionary, shaft: Dictionary) -> void:
 	var f: Vector3 = FLOW[part]
 	var ax: Vector3 = shaft.axis
 	check(absf(ax.dot(f)) > 0.999, "%s: the shaft turns about the flow's line (%s, %s)" % [part, ax, f])
@@ -448,7 +492,11 @@ func _blade_lean(part: String, ws: Dictionary) -> void:
 		check((lean > 0.0) == bool(acc[2]), "%s: %s (%s) leans %s the rotor's turn (%.2f): a %s row leans %s it" % [part, id,
 			"moving" if acc[2] else "stationary", "with" if lean < 0.0 else "against", lean,
 			"moving" if acc[2] else "stationary", "against" if acc[2] else "with"])
-	check(rows[0] > 0 and rows[1] > 0, "%s: blade rows found, stationary and moving (%d, %d)" % [part, rows[0], rows[1]])
+	if part in ROTOR_ONLY:
+		check(rows[0] == 0 and rows[1] > 0, "%s: moving blade rows found and no stationary one (%d, %d)" % [part, rows[0],
+			rows[1]])
+	else:
+		check(rows[0] > 0 and rows[1] > 0, "%s: blade rows found, stationary and moving (%d, %d)" % [part, rows[0], rows[1]])
 
 ## A radial machine's vanes, from the faces of what turns with the shaft (its `shaft` node): with the flow f the
 ## radial direction at each face, a vane curved back against the turn t (its tip trailing) has faces whose normals n
@@ -505,13 +553,13 @@ func _radial_lean(part: String, ws: Dictionary, shaft: Dictionary) -> void:
 ## triangle sweeps round the axis: a triangle of each is reduced to its span along the axis and its nearest and
 ## farthest distance from it (corners and edges' midpoints: a chord's nearest point), and a standing one whose span
 ## meets a turning one's by more than RUB along the axis and RUB across it (an impeller wider than its bowl, a rotor off
-## its line), or crosses it (_across: a shaft drawn through a closed face), is cut by it as it turns. The centrifugal kinds (FLOW "radial").
+## its line), or crosses it (_across: a shaft drawn through a closed face), is cut by it as it turns. The centrifugal kinds (FLOW "radial") and ROTOR_ONLY's.
 func _turning(part: String, ws: Dictionary) -> void:
 	var shaft = null
 	for mv in ws.moving:
 		if mv.name == "shaft":
 			shaft = mv
-	if shaft == null or not FLOW.get(part, null) is String:
+	if shaft == null or not (FLOW.get(part, null) is String or part in ROTOR_ONLY):
 		return   # (the turbines' rows turn in their carriers' grooves: their tens of thousands of triangles are left)
 	var ax: Vector3 = (shaft.axis as Vector3).normalized()
 	var piv: Vector3 = shaft.pivot
@@ -902,6 +950,245 @@ func _discs(part: String, ws: Dictionary) -> void:
 		turned = maxf(turned, absf((rot * (p - o) + o - cs).dot(across)))
 	check(mv.travel > 0.0 and turned <= thick + 0.001, "%s: turning %s by its travel lays %s edge-on in the bore (%.1f mm across it, %.1f mm thick)" % [
 		part, who[2], who[0], turned * 1000.0, thick * 1000.0])
+
+## A component's triangles in the part's frame (Godot's axes), every layer: [[a, b, c], ...]; `tags` limits the layers.
+func _tris_of(ws: Dictionary, comp: String, tags := []) -> Array:
+	var out: Array = []
+	for pr in _all_layers(ws):
+		var L: Dictionary = pr[0]
+		if L.comp != comp or (not tags.is_empty() and not L.tag in tags):
+			continue
+		var arr := (L.mesh as ArrayMesh).surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		for t in range(0, idx.size(), 3):
+			out.append([v[idx[t]] + pr[1], v[idx[t + 1]] + pr[1], v[idx[t + 2]] + pr[1]])
+	return out
+
+## The span [lo, hi] of triangles along the axis a.
+func _span(tris: Array, a: Vector3) -> Vector2:
+	var lo := INF
+	var hi := -INF
+	for t in tris:
+		for p: Vector3 in t:
+			lo = minf(lo, p.dot(a))
+			hi = maxf(hi, p.dot(a))
+	return Vector2(lo, hi)
+
+## The plane across the axis a in which a component's faces looking along `side` (+1 or -1 times a) have the most
+## area: a plate's face that way.
+func _face_at(tris: Array, a: Vector3, side: float) -> float:
+	var area := {}
+	for t in tris:
+		var n: Vector3 = (t[2] - t[0]).cross(t[1] - t[0])   # outwards (Godot's front faces are clockwise)
+		if n.length() < 1e-12 or n.normalized().dot(a) * side < 0.9999:
+			continue
+		var k := snappedf((t[0] as Vector3).dot(a), 0.0001)
+		area[k] = area.get(k, 0.0) + n.length() * 0.5
+	var best := 0.0
+	var at := NAN
+	for k in area:
+		if area[k] > best:
+			best = area[k]
+			at = k
+	return at
+
+## Triangles split into their connected pieces (joined by their corners, to 0.01 mm): [[triangles], ...].
+func _pieces_of(tris: Array) -> Array:
+	var parent := {}
+	var find := func(k: String) -> String:
+		while parent[k] != k:
+			k = parent[k]
+		return k
+	for t in tris:
+		var ks: Array = []
+		for p: Vector3 in t:
+			var k := _q(p)
+			if not parent.has(k):
+				parent[k] = k
+			ks.append(k)
+		for j in range(1, 3):
+			var x: String = find.call(ks[0])
+			var y: String = find.call(ks[j])
+			if x != y:
+				parent[y] = x
+	var groups := {}
+	for t in tris:
+		var k: String = find.call(_q(t[0]))
+		if not groups.has(k):
+			groups[k] = []
+		groups[k].append(t)
+	return groups.values()
+
+## A plate heat exchanger's pack (PACKS): every plate's faces lie square to the line from the pressure plate to the
+## frame plate (or along it); the plates follow each other along it without a gap or an overlap (1 mm), from the
+## pressure plate's inner face to the frame plate's; every bolt of the groups runs along that line, from beyond the
+## pressure plate's outer face to beyond the frame plate's, beside the plates (never through them).
+func _packs(part: String, ws: Dictionary) -> void:
+	if not PACKS.has(part):
+		return
+	var w: Dictionary = PACKS[part]
+	var frame := _tris_of(ws, w.frame)
+	var press := _tris_of(ws, w.pressure)
+	var plates: Array = []
+	for c in w.plates:
+		plates.append(_tris_of(ws, c))
+	for x in [frame, press] + plates:
+		check(not (x as Array).is_empty(), "%s: a part of the plate pack is drawn" % part)
+		if (x as Array).is_empty():
+			return
+	var box := func(tris: Array) -> AABB:
+		var b := AABB(tris[0][0], Vector3.ZERO)
+		for t in tris:
+			for p: Vector3 in t:
+				b = b.expand(p)
+		return b
+	var pack: AABB = box.call(plates[0])
+	for x in plates:
+		pack = pack.merge(box.call(x))
+	# the pack's line: the normal of the pressure plate's largest face towards the pack
+	var a := Vector3.ZERO
+	var towards: Vector3 = pack.get_center() - (box.call(press) as AABB).get_center()
+	var most := 0.0
+	for t in press:
+		var n: Vector3 = (t[2] - t[0]).cross(t[1] - t[0])   # outwards
+		if n.length() * 0.5 > most and n.dot(towards) > 0.0:
+			most = n.length() * 0.5
+			a = n.normalized()
+	var f_in: float = _face_at(frame, a, -1.0)
+	var f_out: float = _face_at(frame, a, 1.0)
+	var p_in: float = _face_at(press, a, 1.0)
+	var p_out: float = _face_at(press, a, -1.0)
+	var at := p_in
+	for i in plates.size():
+		var bad := 0
+		for t in plates[i]:
+			var n: Vector3 = (t[1] - t[0]).cross(t[2] - t[0])
+			if n.length() > 1e-12 and absf(n.normalized().dot(a)) > 0.0001 and absf(n.normalized().dot(a)) < 0.9999:
+				bad += 1
+		check(bad == 0, "%s: %s: %d faces lie neither square to the pack's line nor along it" % [part, w.plates[i], bad])
+		var sp := _span(plates[i], a)
+		check(absf(sp.x - at) <= 0.001, "%s: %s starts %.1f mm from where the one before it ends (%s)" % [part,
+			w.plates[i], (sp.x - at) * 1000.0, "the pressure plate" if i == 0 else w.plates[i - 1]])
+		at = sp.y
+		# plate by plate: its faces across the line lie in planes; between two plates two faces share a plane (twice
+		# a plate's face area there), at the component's ends one; no two planes closer than half a millimetre (a
+		# plate of no thickness, or one drawn over another, shows here)
+		var planes := {}
+		for t in plates[i]:
+			var n: Vector3 = (t[1] - t[0]).cross(t[2] - t[0])
+			if n.length() > 1e-12 and absf(n.normalized().dot(a)) >= 0.9999:
+				var k := snappedf((t[0] as Vector3).dot(a), 0.0001)
+				planes[k] = planes.get(k, 0.0) + n.length() * 0.5
+		var ks: Array = planes.keys()
+		ks.sort()
+		var one: float = planes[ks[0]] if not ks.is_empty() else 0.0
+		for j in ks.size():
+			var want := one if j == 0 or j == ks.size() - 1 else one * 2.0
+			check(absf(planes[ks[j]] - want) <= one * 0.01, "%s: %s: the faces at %.4f have %.3f m² where %.3f are a plate's (each plate once, between its neighbours)" % [
+				part, w.plates[i], ks[j], planes[ks[j]], want])
+			check(j == 0 or ks[j] - ks[j - 1] >= 0.0005, "%s: %s: two faces %.2f mm apart (a plate of no thickness or drawn twice)" % [
+				part, w.plates[i], (ks[j] - ks[j - 1]) * 1000.0 if j > 0 else 0.0])
+	check(absf(at - f_in) <= 0.001, "%s: the pack ends %.1f mm from the frame plate's face" % [part, (at - f_in) * 1000.0])
+	for gid in w.bolts:
+		var found := false
+		for f in ws.fasteners:
+			if f.id != gid:
+				continue
+			found = true
+			for t in f.items:
+				var bb := AABB()
+				var first := true
+				for k in f.layers:
+					var b: AABB = (t as Transform3D) * ((f.layers[k].mesh as ArrayMesh).get_aabb())
+					bb = b if first else bb.merge(b)
+					first = false
+				var lo := INF
+				var hi := -INF
+				var wide := 0.0
+				for j in 8:
+					var c: Vector3 = bb.get_endpoint(j)
+					lo = minf(lo, c.dot(a))
+					hi = maxf(hi, c.dot(a))
+				var along := bb.size.dot(a.abs())
+				wide = (bb.size - a.abs() * along).length()
+				check(along > 10.0 * wide, "%s: a bolt of %s runs along the pack's line" % [part, gid])
+				check(lo < p_out and hi > f_out, "%s: a bolt of %s spans the pack from the pressure plate's outer face to the frame plate's (%.3f to %.3f against %.3f to %.3f)" % [
+					part, gid, lo, hi, p_out, f_out])
+				check(not bb.grow(-0.0005).intersects(pack), "%s: a bolt of %s passes beside the plates, not through them" % [part, gid])
+		check(found, "%s: the bolt group %s" % [part, gid])
+
+## A shell-and-tube exchanger's bundle (BUNDLES): each tube (a connected piece of the tubes' mesh) runs straight along
+## the line from the stationary tubesheet to the floating one, from the one's outer face to the other's (expanded
+## into both, their ends flush, within 1 mm), and lies inside the floating tubesheet's rim and the shell's bore.
+func _bundles(part: String, ws: Dictionary) -> void:
+	if not BUNDLES.has(part):
+		return
+	var w: Dictionary = BUNDLES[part]
+	var tubes := _tris_of(ws, w.tubes)
+	var s0 := _tris_of(ws, w.sheets[0])
+	var s1 := _tris_of(ws, w.sheets[1])
+	var shell := _tris_of(ws, w.shell, ["hidden"])   # its bore
+	for x in [tubes, s0, s1, shell]:
+		check(not (x as Array).is_empty(), "%s: a part of the bundle is drawn" % part)
+		if (x as Array).is_empty():
+			return
+	var centre := func(tris: Array) -> Vector3:
+		var b := AABB(tris[0][0], Vector3.ZERO)
+		for t in tris:
+			for p: Vector3 in t:
+				b = b.expand(p)
+		return b.get_center()
+	var c0: Vector3 = centre.call(s0)
+	var a: Vector3 = ((centre.call(s1) as Vector3) - c0).normalized()
+	var off := func(p: Vector3) -> float: return ((p - c0) - a * (p - c0).dot(a)).length()
+	var sp0 := _span(s0, a)
+	var sp1 := _span(s1, a)
+	var rim := 0.0
+	for t in s1:
+		for p: Vector3 in t:
+			rim = maxf(rim, off.call(p))
+	var bore := INF
+	for t in shell:
+		for p: Vector3 in t:
+			bore = minf(bore, off.call(p))
+	# the tubes one by one
+	var groups := {}
+	var gi := 0
+	for pc in _pieces_of(tubes):
+		groups[gi] = pc
+		gi += 1
+	check(groups.size() >= 2, "%s: the tubes are drawn (%d)" % [part, groups.size()])
+	var bad := {}
+	for k in groups:
+		var tr: Array = groups[k]
+		var sp := _span(tr, a)
+		# its centre line at each end: the middle of its points there, across the line
+		var ends := [Vector3.ZERO, Vector3.ZERO]
+		var cnt := [0, 0]
+		var reach := 0.0
+		for t in tr:
+			for p: Vector3 in t:
+				var q: float = p.dot(a)
+				for e in 2:
+					if absf(q - (sp.x if e == 0 else sp.y)) <= 0.0001:
+						ends[e] += (p - c0) - a * (p - c0).dot(a)
+						cnt[e] += 1
+				reach = maxf(reach, off.call(p))
+		var e0: Vector3 = ends[0] / maxi(cnt[0], 1)
+		var e1: Vector3 = ends[1] / maxi(cnt[1], 1)
+		if e0.distance_to(e1) > 0.001:
+			bad["a tube leans off the bundle's line (%.1f mm over its length)" % (e0.distance_to(e1) * 1000.0)] = true
+		if absf(sp.x - sp0.x) > 0.001:
+			bad["a tube's end is not at the stationary tubesheet's outer face (%.1f mm from it)" % ((sp.x - sp0.x) * 1000.0)] = true
+		if absf(sp.y - sp1.y) > 0.001:
+			bad["a tube's end is not at the floating tubesheet's outer face (%.1f mm from it)" % ((sp.y - sp1.y) * 1000.0)] = true
+		if reach > rim + 0.0005 or reach > bore + 0.0005:
+			bad["a tube reaches %.1f mm from the axis, past the floating tubesheet's rim (%.1f) or the shell's bore (%.1f)" % [
+				reach * 1000.0, rim * 1000.0, bore * 1000.0]] = true
+	for b in bad:
+		check(false, "%s: %s" % [part, b])
+	print("workshop: %s %d tubes from %s to %s" % [part, groups.size(), w.sheets[0], w.sheets[1]])
 
 ## Two unit vectors across d.
 func _perp(d: Vector3) -> Array:

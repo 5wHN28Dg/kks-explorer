@@ -466,6 +466,16 @@ class Gnome(Plant):
                 break
             time.sleep(0.5)
         self.assertEqual(subs[0]['status'], 'approved')
+        # History shows each change in words with who made it (before 2026-11-15 it read fields /api/revisions never
+        # sent and showed "#" alone)
+        atspi.click(atspi.find(a, 'button', name='Back'))
+        atspi.click(atspi.find(a, 'button', name='History'))
+        line = atspi.find(a, 'label', contains='11LAB70AA501: floor ', timeout=15)
+        self.assertTrue(line.get_state_set().contains(atspi.Atspi.StateType.FOCUSABLE),
+                        "History's line (it holds the code) can be selected and copied (a selectable label is focusable)")
+        width = line.get_component_iface().get_extents(atspi.Atspi.CoordType.WINDOW).width
+        self.assertGreaterEqual(width, 120, f"History's line is {width} px wide: a code breaks inside itself (UI audit GNOME-3)")
+        atspi.find(a, 'label', contains=' · 20', timeout=5)        # who · yyyy-mm-dd hh:mm
         # a second device joins with an invite (QR text)
         atspi.click(atspi.find(a, 'button', name='Back'))
         atspi.click(atspi.find(a, 'button', name='Devices'))

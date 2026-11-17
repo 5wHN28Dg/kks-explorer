@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "gas_turbine",
+ "title": "Gas turbine",
  "context": [
   "axis_z",
   "shaft_lo",

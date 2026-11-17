@@ -19,6 +19,7 @@ var _rows: Array = []           # [row control, alarm position] (flashing)
 var _t := 0.0
 var _blink := 0.0
 var _tabs := {}
+var ack_all_btn: Button          # "Acknowledge all (N)": N the alarms it acknowledges (unacked)
 
 
 func setup(u) -> void:
@@ -39,7 +40,9 @@ func setup(u) -> void:
 		b.toggle_mode = true
 		bar.add_child(b)
 		_tabs[t[0]] = b
-	bar.add_child(W.button("Acknowledge all", _ack_all))
+	ack_all_btn = W.button("Acknowledge all", _ack_all)
+	ack_all_btn.name = "ack_all"
+	bar.add_child(ack_all_btn)
 	bar.add_child(W.button("Events", func(): ui.open_debrief()))      # the run's debrief (ui/debrief_panel.gd)
 	visible = false
 
@@ -72,12 +75,21 @@ func open() -> void:
 func _ack_all() -> void:
 	var e = ui.clock.engine
 	var any := false
-	for k in e._al.size():
-		if e.shelved[k] == -1 and (e.astate[k] == "active_unack" or e.astate[k] == "cleared_unack"):
-			ui.ack(e._al[k][0], false)
-			any = true
+	for k in unacked():
+		ui.ack(e._al[k][0], false)
+		any = true
 	if any:
 		ui.sounds.once("horn_ack")           # one acknowledge, one sound
+
+
+## The alarms "Acknowledge all" acknowledges (above); its button says how many (B1).
+func unacked() -> Array:
+	var e = ui.clock.engine
+	var out := []
+	for k in e._al.size():
+		if e.shelved[k] == -1 and (e.astate[k] == "active_unack" or e.astate[k] == "cleared_unack"):
+			out.append(k)
+	return out
 
 
 static func suppressed(e, k: int) -> bool:
@@ -151,6 +163,7 @@ func refresh() -> void:
 	for k in e._tr.size():
 		tripped += e.latched[k]
 	(_tabs["trips"] as Button).text = "Trips (%d)" % tripped
+	ack_all_btn.text = "Acknowledge all (%d)" % unacked().size()
 	_tick_times(e)
 	var sig := tab + "|" + str(since.size())
 	if tab == "trips":

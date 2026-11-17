@@ -141,7 +141,7 @@ static func motor_h(m, front: Vector3, dir: Vector3, kw: float, floor_z: float, 
 	m.use("steel_dark", "detail", 0.03)
 	m.cyl(tb + side * r * 0.3 + up * r * 0.12, tb + side * r * 0.45 + up * r * 0.12, 0.02, -1.0, 6)   # cable gland
 	if ws:
-		_motor_rotor(g, front, F0, B0, dir, r, l, md.h)
+		_motor_rotor(g, front, F0, B0, dir, r, l, md.h, root_spec.get("rotor_node", "shaft"))
 		g.comp(root)
 	return {"r": r, "l": l, "back": back}
 
@@ -193,6 +193,7 @@ static func _motor_comps(g, root: String, root_spec: Dictionary, front: Vector3,
 	var spec := root_spec.duplicate()
 	var ranim: String = spec.get("rotor_anim", "")   # the motor kind's rotor is its `shaft` node (in a pump, the coupling)
 	spec.erase("rotor_anim")
+	spec.erase("rotor_node")
 	spec["anchors"] = {"vib_nde": front - dir * l * 0.78 + up * r * 0.92}
 	g.comp(root, spec)
 	var axis := front - dir * l * 0.5
@@ -299,11 +300,14 @@ static func _motor_cowl(g, m, mat: String, B0: Vector3, dir: Vector3, r: float, 
 
 ## The rotor in the `shaft` node (it turns with the shaft): its shaft from the fan to the drive end, the core in the
 ## stator's bore, the bearings in the end shields' housings, the fan on the shaft's non-drive end in the cowl. All
-## hidden inside the motor.
-static func _motor_rotor(g, front: Vector3, F0: Vector3, B0: Vector3, dir: Vector3, r: float, l: float, h: float) -> void:
+## hidden inside the motor. `node` "" (the root spec's `rotor_node`): drawn standing in the static builder, for a
+## machine whose own `shaft` node turns about another axis (the cooling tower fan's motor drives it by a shaft at
+## right angles).
+static func _motor_rotor(g, front: Vector3, F0: Vector3, B0: Vector3, dir: Vector3, r: float, l: float, h: float,
+		node := "shaft") -> void:
 	var k := _motor_r(r, h)
-	var sh = g.move("shaft", Vector3(front.x, 0.0, front.z) if absf(dir.y) > 0.5 else Vector3(0.0, front.y, front.z),
-		dir, "rotate", 0.0)
+	var sh = g.m if node == "" else g.move(node, Vector3(front.x, 0.0, front.z) if absf(dir.y) > 0.5 else
+		Vector3(0.0, front.y, front.z), dir, "rotate", 0.0)
 	g.comp("rotor")
 	g.only("workshop")
 	sh.use("steel", "identify")

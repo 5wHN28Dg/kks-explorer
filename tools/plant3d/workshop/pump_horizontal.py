@@ -171,7 +171,7 @@ ASSEMBLY = [
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'pump_horizontal',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'pump_horizontal', 'title': 'Horizontal pump',
         'params': PARAMS,
         'sources': SOURCES + motor.SOURCES,
         'components': components(),

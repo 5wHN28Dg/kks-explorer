@@ -189,7 +189,7 @@ ASSEMBLY = [
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'valve_control',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'valve_control', 'title': 'Control valve',
         'params': PARAMS,
         'sources': SOURCES,
         'components': components(),

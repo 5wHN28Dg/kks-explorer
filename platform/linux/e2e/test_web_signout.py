@@ -453,7 +453,7 @@ class WebSignOut(unittest.TestCase):
             page.route(re.compile(r'.*/api/join-requests.*'), answer)
             # (the list is asked for again every 2 s: the stand-in comes with the next round)
             page.evaluate("() => { window.asked = [] }")
-            own = page.locator('#lobby > div', has_text='123 456')
+            own = page.locator('#lobby > div', has_text='123456')
             expect(own).to_have_count(1, timeout=15000)
             # a change elsewhere whose rebuild of the page began just before the form was opened (its answer slow),
             # and the answer to something else pressed just before (act: the page is rebuilt with it), do not close
@@ -479,29 +479,29 @@ class WebSignOut(unittest.TestCase):
             lobby['requests'].append({'device': 'dev-3', 'code': '111222', 'request': {'full_name': 'Third', 'username': 'third', 'label': 'x'},
                                       'existing': None, 'needs_position': False})
             page.wait_for_timeout(4500)
-            self.assertEqual((field.input_value(), page.locator('#lobby', has_text='111 222').count()), ('not the password', 0))
+            self.assertEqual((field.input_value(), page.locator('#lobby', has_text='111222').count()), ('not the password', 0))
             field.press('Enter')
             expect(page.locator('#toast')).to_have_text('Wrong username or password.')
             self.assertEqual(field.input_value(), 'not the password')
             field.fill(PW)
             own.get_by_role('button', name='Accept').click()
             expect(page.locator('#toast')).to_have_text('Accepted sara: their device gets the plant over the Wi-Fi now')
-            expect(page.locator('#lobby')).to_contain_text('111 222')
-            expect(page.locator('#lobby')).not_to_contain_text('123 456')
+            expect(page.locator('#lobby')).to_contain_text('111222')
+            expect(page.locator('#lobby')).not_to_contain_text('123456')
             # the rebuilds put off while the form was open (the change elsewhere, "Something else done") come now that
             # it is gone, within about a second (0.3 s here): a press on the next device's Accept across one still
             # lands. Before, the page and the waiting list were made anew, and a press whose mouse-down and mouse-up fell
             # on either side was lost (#199: Accept for ali did nothing, a WebKit run on CI). Mouse down, the page
             # rebuilt (one more asked for here, so that one surely comes while the button is held) and the list there
             # again, and two more rounds of the list's poll (the device's `seen` new in each), mouse up.
-            accept = page.locator('#lobby > div', has_text='654 321').get_by_role('button', name='Accept')
+            accept = page.locator('#lobby > div', has_text='654321').get_by_role('button', name='Accept')
             box = accept.bounding_box()
             page.evaluate("() => { document.querySelector('#main > .card').dataset.before = '1' }")
             page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
             page.mouse.down()
             page.evaluate("() => K.listeners.forEach(f => f('synced'))")
             page.wait_for_function("""() => !document.querySelector('#main > .card[data-before]')
-                && document.querySelector('#lobby')?.textContent.includes('654 321')""", timeout=15000)
+                && document.querySelector('#lobby')?.textContent.includes('654321')""", timeout=15000)
             n = polls[0]
             for _ in range(200):
                 if polls[0] >= n + 2: break
@@ -516,7 +516,7 @@ class WebSignOut(unittest.TestCase):
             # Cancel puts the buttons back
             lobby['requests'].append(dict(lobby['requests'][0], device='dev-own2', code='333444',
                                           existing={'username': 'sara', 'full_name': 'Sara Admin', 'role': 'admin'}))
-            own2 = page.locator('#lobby > div', has_text='333 444')
+            own2 = page.locator('#lobby > div', has_text='333444')
             own2.get_by_role('button', name='Accept').click()
             own2.get_by_role('button', name='Cancel').click()
             expect(own2.locator('input')).to_have_count(0)

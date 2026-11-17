@@ -106,7 +106,7 @@ ASSEMBLY = [
 
 def data():
     return {
-        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'valve_gate',
+        'format': 'walkdown-plant-workshop', 'version': 1, 'part': 'valve_gate', 'title': 'Gate valve',
         'params': PARAMS,
         'sources': SOURCES,
         'components': components(),

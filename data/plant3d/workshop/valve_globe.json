@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "valve_globe",
+ "title": "Globe valve",
  "params": {"dn": 50, "rating": "pn160", "actuator": "electric"},
  "sources": [
   {"id": "crane_csv", "cite": "Crane ChemPharma & Energy, Pacific CSV cast steel valves, IOM manual CPE-PACIFIC-CSV-IOM-EN-LT (2018): globe valve figure p. 16, parts list, disassembly and reassembly p. 18; gear or motor operated valves §J p. 42 (the operator unscrewed off the stem with its handwheel)", "url": "https://cranecpe.com/wp-content/uploads/CPE-PACIFIC-CSV-IOM-EN-LT-2018_23_10.pdf"},

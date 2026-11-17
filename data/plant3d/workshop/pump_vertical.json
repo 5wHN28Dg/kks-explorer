@@ -2,6 +2,7 @@
  "format": "walkdown-plant-workshop",
  "version": 1,
  "part": "pump_vertical",
+ "title": "Vertical pump",
  "params": {"flow_m3h": 550, "head_m": 30, "motor_kw": 75, "pit_depth": 6.5},
  "sources": [
   {"id": "goulds_vit", "cite": "Goulds Water Technology (Xylem), Model VIT vertical industrial turbine pumps, IOM IOMGWVITR02 (2018): p. 6 bowl assembly (impellers on taperlocks), figs 1-4 pp. 7-10, installation pp. 13-19, impeller adjustment p. 20, couplings pp. 20-21, disassembly §6 p. 31, reassembly pp. 32-33, parts §7 p. 34", "url": "https://www.mitchellewis.com/wp-content/uploads/2021/08/Xylem_ShortSet_Turbine_Manual.pdf"},

@@ -120,7 +120,8 @@ A part kind's Workshop data comes from two places, joined by the builder:
 - **the generator** (`kit/parts_*.gd`, R5): everything that is geometry or depends on the parameters: the
   components, their pivots and boxes, explode directions and distances, fastener positions, anchors, flow-path
   points, symmetry for snapping;
-- **the data file** `data/plant3d/workshop/<part>.json`: everything that is words, order or choice: names, what
+- **the data file** `data/plant3d/workshop/<part>.json`: everything that is words, order or choice: the kind's
+  title (`title`, at most 60 characters, shown in the Workshop's title bar and lists), names, what
   each does, materials as text, sealing, the assembly order and its sentences, the cutaway, which parts the X-ray
   takes, the bench model it runs, the sources.
 
@@ -1047,6 +1048,106 @@ addition (both engines, vectors) made in K6.
 
   The APK is 148.5 MB (the second pull request's was 148.3 MB).
 
+### 6.11 The cooling tower fan and the generator (K6, fourth pull request)
+
+**As built (K6, 2026-11-14).**
+- **The cooling tower fan** (`kit/parts_rotating.gd fan_axial`, `_fan_*`; the data file names the plant's fan, 9.5 m,
+  eight blades, 200 kW, a 3 m stack): the stack, the support beams, the hub with its blades, their 32 clamp bolts and
+  the seal disc on six bolts (Hudson's Tuf-Lite 6000 series hub), a double reduction right-angle gear drive inside the
+  plant's gear case (its vertical cover, seal carrier and intermediate bearing cover, the input shaft in its horizontal
+  carrier with its pinion, bearing cones and oil seal plate, the intermediate shaft with its spiral bevel gear and
+  cones, the output shaft with its helical gear and cones turning with the fan, the lower bearing covers: Amarillo's
+  repair instructions), the drive shaft and its guard, and the motor kind's tree. 36 components, 4 fastener groups,
+  40 guided steps, 7,245 triangles (the plant's 1,282). **The fan and the drive shaft come apart in the reverse of
+  their makers' installation steps, the motor in the order derived from its build** (the user, 2026-11-14): each step
+  says which; the gear drive follows Amarillo's own disassembly order.
+- **The generator** (`kit/parts_machines.gd generator`, `_gen_*`; the plant's first generator, the gas turbine's, an
+  air-cooled machine built with its shaft line): the plinth, the stator (frame, core, end windings), the terminal box,
+  the coolers and their pipes, the end shields in halves and the fan shields at both ends, the bearing pedestals and
+  their upper halves, the rotor (body, retaining rings, two fans), the coupling's 12 bolts (the plant's bolt ring), the
+  exciter's hood with its grille and the brushless exciter with its rotor. 20 components, 1 fastener group, 21 guided
+  steps, 4,832 triangles (the plant's 1,364). **The order is BHEL's overhaul tender's, a contract scope and not a
+  maker's manual** (the user, 2026-11-14; the data file and every step say so), with WEG's S line manual (§8) as the
+  second source; the hydrogen seals of BHEL's machine have no counterpart in this air-cooled one.
+- **The plant unchanged** (`test_kit_frozen`); what is simplified is in the kit README. The fan's gear reducer oil
+  sample (REALISM.md §2.19) now names the gear case, a component of the new tree.
+- **New checks** (`tests/test_workshop.gd`): `ROTOR_ONLY`: an axial kind with no stationary row (the fan) has its
+  blades checked as a moving row pushing the air up as the shaft turns, the same blades turning the other way must
+  fail it, and what turns is held to `_turning`. Two plant drawings need a listed exception each, with its reason:
+  the plant draws the fan's gear case reaching up inside the hub (`RUBS`), and the exciter hood's end grille across
+  the shaft's end (`RUBS`); the gear case and the exciter's hood are closed solids that their insides leave through
+  (`PASSES`).
+- **The Note 9** (`lean+vis`, a test-signed release build of this pull request, `probe=1`, SAMPLE=1, battery 26.9–27.4 °C
+  at the start, the kernel reclaiming in 0.63 / 0.16 % of the samples; earlier walks with reclaim over 1 % or a start
+  above 30 °C were walked again):
+
+  | | cooling tower fan | generator |
+  |---|---|---|
+  | first entry (after the plant's warm-up) | 187 ms (load 45 ms) | 128 ms (load 44 ms) |
+  | second entry | 35 ms | 34 ms |
+  | back to the plant | 13–15 ms | 13–17 ms |
+  | guided steps | all walked, 0 loose | all walked, 0 loose |
+  | longest frame / over 100 ms after the first 5 s | 44.6 ms / 0 | 44.8 ms / 0 |
+  | frames at ≥ 30 fps | **99.89 %** | **99.81 %** |
+  | median / p95 frame | 16.7 / 32.0 ms | 16.8 / 36.1 ms |
+  | peak PSS | 1,156 MB | 1,162 MB |
+
+  The APK is 148.7 MB (the third pull request's was 148.5 MB).
+- **UI/UX audit** (docs/UI-UX-POLICY.md, two passes on the PR): the change adds words to the Workshop's existing panels
+  only. The audit found the Workshop's panels collapsed on the phone (their root control has no size: the parts tree a
+  sliver, the tools off screen) for every kind, and their text not fitting at 150 %, the step line without a panel behind it and the titles
+  made from the kinds' ids: on main before this pull request, filed as #388-#391 (and #392: the policy's frame rule
+  against §8's for the Workshop).
+
+### 6.12 The plate and shell-and-tube heat exchangers (K6, fifth pull request)
+
+**As built (K6, 2026-11-14).**
+- **The plate heat exchanger** (`kit/parts_heat.gd plate_hx`, `_phe_*`; the data file names the plant's plate heat
+  exchanger, 300 plates, 2.5 m): the frame plate with its four nozzles, the pressure plate, the carrying and guiding
+  bars, the support column, the plate package as End plate II, the channel plates and End plate I (46 plates drawn, a
+  picture), the four tightening bolts and the two locking bolts. 8 components, 2 fastener groups, 10 guided steps,
+  1,940 triangles (the plant's 1,812). The order is Alfa Laval's (the Grundfos by Alfa Laval maintenance manual: opening
+  pp. 45-48, closing pp. 50-52, plates p. 55, the bolt layout p. 35).
+- **The shell-and-tube heat exchanger** (`shell_tube_hx`, `_ste_*`, horizontal; the plant has none, so the data file
+  names the kit's defaults, 1.2 m by 5 m): a removable bundle with bonnets at both ends and a packed floating
+  tubesheet with a lantern ring (TEMA BEW), the type the generator draws and the public manuals take apart: the shell
+  and its saddles, the sealed bundle (the stationary and floating tubesheets, 117 tubes, five segmental baffles, the
+  tie rods), the inner packing rings, the lantern ring, the outer packing rings, the rear and front bonnets and the
+  front bonnet's 32 studs. 12 components, 1 fastener group, 13 guided steps, 7,342 triangles (the plant's 2,844). The
+  order is the Xylem Standard Xchange CPK manual's (items 3-19) with API Heat Transfer's Basco guide as a second source.
+- **The plant unchanged** (`test_kit_frozen`); what is simplified and the trees' limits are in the kit README.
+- **The UI audit** (docs/UI-UX-POLICY.md) brought two fixes for every kind: each data file has a `title` ("Plate heat
+  exchanger", "Horizontal pump"), which the Workshop's title bar and lists show instead of a name made from the id
+  (#391; `test_workshop` and `test_plant3d_workshop` check every kind has one); and the panels' root fills the screen
+  (#388: it kept zero offsets, so the parts tree was a sliver and the tools were off screen; `test_workshop_mode` checks
+  its size).
+- **New checks** (`tests/test_workshop.gd`): `_packs` (the plates lie square to the line from the pressure plate to
+  the frame plate and follow each other plate by plate without a gap between their faces; every bolt runs along that line beside the
+  plates, from beyond the pressure plate's outer face to beyond the frame plate's) and `_bundles` (every tube runs
+  straight along the bundle's line from the stationary tubesheet's outer face to the floating one's, inside the floating
+  tubesheet's rim and the shell's bore). Each made to fail once: a gap of 10 mm before End plate I, the locking bolts
+  0.3 m short, the tubes ending 50 mm before the floating tubesheet.
+- **The Note 9** (`lean+vis`, a test-signed release build of the pull request's head with the title and panel fixes,
+  a fresh install for each kind, `probe=1`, SAMPLE=1, battery 26.3 / 29.0 °C at the start, the kernel reclaiming in
+  0.33 / 0.00 % of the samples; the Workshop's own rule, §8). The panels are drawn now (#388), so the walks before the
+  fix (99.75 / 99.84 % with the panels collapsed) were made again; the first shell-and-tube walk after it had the
+  kernel reclaiming in 1.46 % of its samples and was walked again:
+
+  | | plate heat exchanger | shell-and-tube |
+  |---|---|---|
+  | first entry (after the plant's warm-up) | 126 ms (load 45 ms) | 128 ms (load 61 ms) |
+  | second entry | 28 ms | 29 ms |
+  | back to the plant | 12–15 ms | 17 ms |
+  | guided steps | all walked, 0 loose | all walked, 0 loose |
+  | longest frame / over 100 ms | 55.1 ms / 0 | 41.9 ms / 0 |
+  | frames at ≥ 30 fps | **99.84 %** | **99.73 %** |
+  | median / p95 frame | 17.0 / 36.7 ms | 16.9 / 36.5 ms |
+  | draw calls in the Workshop (most) | 117 | 125 |
+  | peak PSS | 1,163 MB | 1,167 MB |
+  | pipelines after the first 5 s | 0 | 0 |
+
+  The APK is 148.8 MB (the third pull request's was 148.5 MB).
+
 ## 7. Shaders and cut faces
 
 Decision 0060: one lit shader and one vertex format; each lit ubershader is 0.6–0.9 s of serial compile on the Note
@@ -1206,6 +1307,14 @@ Starting sources (to be checked page by page in each milestone):
   (50033244) and Innomotics' SIMOTICS 1LE1 operating instructions (A5E38483075A: IC 411, IM B3, the fan and the end
   shields). None of them gives a numbered dismantling order: the motor's order is **derived from how it is built, not
   from a manual** (the user, 2026-11-09), and its data says so in every step's reason.
+- **Cooling tower fan (K6):** Hudson's Tuf-Lite 6000 series hub installation manual (R8, 2018), Amarillo's double
+  reduction fan drive repair instructions (DRR 6/09) and its composite drive shaft installation instructions (OMDS
+  03/14). Hudson and the drive shaft give installation steps only: the fan and the drive shaft come apart in **the
+  reverse of their installation** (the user, 2026-11-14), the gear drive in Amarillo's own disassembly order, the motor
+  as the motor kind's; every step says which.
+- **Generator (K6):** BHEL's overhaul tender for a hydrogen-cooled 250 MW turbo-generator (PSER:PUR:MJA-S670:26,
+  2026: section B's order), **a contract scope, not a maker's manual** (the user, 2026-11-14: the data file and every
+  step say so), with WEG's turbogenerator manual (S line, horizontal, 10174576 §8) as the second source.
 
 ## 12. Milestones
 
