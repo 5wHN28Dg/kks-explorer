@@ -453,6 +453,23 @@ proc layout*(p: Page) =
                       nPage: UINT(r.bottom), nPos: int32(p.scroll))
   SetScrollInfo(p.hwnd, SB_VERT, addr si, 1)
 
+proc isEmpty*(p: Page): bool = p == nil or p.items.len == 0
+
+proc placeColumn*(head, body: Page, x, w, h: int, headOn: bool): int =
+  ## a column of two pages at `x`: `head` on top, as tall as what it holds (at most half the column), and `body`
+  ## under it, which scrolls on its own: what is in `head` stays in view however far `body` is scrolled (the tag
+  ## panel's code, Copy and Close; the user, 2026-11-15). Without `headOn` (or with nothing in it), `head` is hidden
+  ## and `body` takes the whole column. -> the height `head` took
+  if headOn and not head.isEmpty and w > 0:
+    MoveWindow(head.hwnd, int32(x), 0, int32(w), int32(h), 0)
+    head.layout()
+    # (one pixel more than what it holds: at exactly that height Windows still showed the page's scroll bar)
+    result = min(head.contentH + 1, h div 2)
+    MoveWindow(head.hwnd, int32(x), 0, int32(w), int32(result), 1)
+    head.layout()            # (at its own height: no scroll bar when all of it fits)
+  ShowWindow(head.hwnd, if result > 0: SW_SHOW else: SW_HIDE)
+  MoveWindow(body.hwnd, int32(x), int32(result), int32(max(w, 0)), int32(h - result), 1)
+
 proc relayoutIfWanted(p: Page) =
   if relayoutWanted:
     relayoutWanted = false

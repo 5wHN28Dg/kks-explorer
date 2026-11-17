@@ -33,6 +33,7 @@
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
 //                           what a person's keyboard does there (an edit or list of that name before any other
 //                           element of it; `keys` posts to the first element, which may be the window or a label)
+//   clipboard <text>        wait (10 s) until the clipboard holds exactly this text (CF_UNICODETEXT; ASCII)
 //   sleep <ms>
 //   dump                    log every element (type, name)
 // Exits 0 when every line passed, 1 at the first failure (logged).
@@ -317,6 +318,25 @@ int wmain(int argc, wchar_t **argv) {
         say("> " + line);
         if (cmd == "sleep") { Sleep(std::stoi(arg)); continue; }
         if (cmd == "dump") { find(pid, "", true); continue; }
+        if (cmd == "clipboard") {
+            std::string got = "(nothing)";
+            for (int t = 0; t < 10000; t += 300) {
+                if (OpenClipboard(nullptr)) {
+                    HANDLE h = GetClipboardData(CF_UNICODETEXT);
+                    if (h) {
+                        const wchar_t *w = (const wchar_t *)GlobalLock(h);
+                        got.clear();
+                        if (w) for (; *w; w++) got += *w < 128 ? (char)*w : '?';
+                        GlobalUnlock(h);
+                    }
+                    CloseClipboard();
+                }
+                if (got == arg) break;
+                Sleep(300);
+            }
+            if (got != arg) { say("ERROR: the clipboard holds " + got + ", not " + arg); return 1; }
+            continue;
+        }
         if (cmd == "gone") {
             bool gone = false;
             for (int t = 0; t < 30000 && !gone; t += 300) { auto *e = find(pid, arg); if (e) { e->Release(); Sleep(300); } else gone = true; }

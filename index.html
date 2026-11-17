@@ -80,7 +80,7 @@ dialog.multi::backdrop{background:rgba(0,0,0,.6)}
 dialog.multi h2{font-size:16px;margin:0 0 4px}
 dialog.multi ul{list-style:none;padding:0;margin:8px 0;max-height:52vh;overflow:auto}
 dialog.multi li label{display:flex;gap:8px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--chrome3);cursor:pointer}
-dialog.multi .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+dialog.multi .btns{display:flex;gap:8px;justify-content:flex-end;margin:10px -16px -14px;padding:10px 16px 14px;position:sticky;bottom:-14px;background:var(--chrome2);border-top:1px solid var(--chrome3)}
 #markbox{position:absolute;outline:2px dashed var(--accent);background:rgba(255,122,26,.18);pointer-events:none}
 #viewer.marking,#viewer.marking .hs{cursor:crosshair}
 .zoom button.on{border-color:var(--accent);color:var(--accent)}
@@ -105,6 +105,10 @@ body.hide-review .hs.review{display:none}
 .drawer .head h2{font-size:15px;margin:0;flex:1}
 .drawer .body{overflow:auto;flex:1;padding:6px 10px 20px}
 .x{background:none;border:0;font-size:20px;cursor:pointer;color:var(--muted);padding:0 4px}
+.phead .x,.drawer .head .x{min-width:40px;min-height:40px;margin:-6px -6px 0 0;border-radius:6px;font-size:24px;line-height:1}
+.phead .x:hover,.drawer .head .x:hover{color:var(--ink);background:var(--chrome3)}
+.copy{flex:none;background:none;border:1px solid var(--muted);border-radius:6px;padding:0 10px;min-height:34px;min-width:72px;cursor:pointer;color:var(--muted);font-size:13px}
+.copy:hover{color:var(--accent);border-color:var(--accent)}
 #panel{position:absolute;top:12px;right:12px;width:410px;max-height:calc(100% - 24px);overflow:auto;background:var(--chrome2);border:1px solid var(--line);border-radius:10px;z-index:25;display:none;box-shadow:0 8px 30px rgba(0,0,0,.35)}
 #panel.open{display:block}
 .grip{display:none}
@@ -179,7 +183,10 @@ dialog.multi label.radio input{width:20px;height:20px;margin:0}
   .brand small{display:none}
   header{gap:6px}
   #panel{top:auto;bottom:0;left:0;right:0;width:auto;max-height:72%;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
-  .grip{display:block;width:44px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 0}
+  /* the grip stays at the top with the heading under it: nothing above Close moves while the panel scrolls */
+  .grip{display:block;position:sticky;top:0;z-index:3;height:13px;margin:0;background:linear-gradient(var(--line),var(--line)) center 8px/44px 5px no-repeat,var(--chrome2)}
+  .phead{top:13px}
+  .phead .x,.drawer .head .x,.copy{min-width:48px;min-height:48px}
   .drawer{width:100%}
 }
 .app .app-hide{display:none}

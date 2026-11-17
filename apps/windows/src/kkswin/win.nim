@@ -21,6 +21,7 @@ type Win* = ref object
   v*: Viewer
   side*: Page               ## the left column: search, sheets, procedures, review, manage
   panel*: Page              ## the right column: the selected tag
+  panelHead*: Page          ## above it, not scrolled with it: the tag's code, Copy and Close (always in view)
   status*: HWND             ## the status line (last message, sync state)
   tab*: string              ## "drawings" | "procedures" | "review" | "manage"
   tabButtons*: seq[HWND]
@@ -91,7 +92,8 @@ proc panelHeld*(w: Win, anyFocus = true): bool =
   ## keyboard is by then, in another window too), or the keyboard is in it (`anyFocus`; else only in a text field)
   if w.panel.edited: return true
   let f = GetFocus()
-  if f == nil or GetParent(f) != w.panel.hwnd: return false
+  # (the heading's Copy and Close are in a page of their own: focus there holds the panel too)
+  if f == nil or (GetParent(f) != w.panel.hwnd and (w.panelHead == nil or GetParent(f) != w.panelHead.hwnd)): return false
   anyFocus or isEdit(f)
 
 proc panelChanged*(w: Win, anyFocus = true) =

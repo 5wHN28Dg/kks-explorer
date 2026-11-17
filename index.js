@@ -53,11 +53,15 @@ function locRows(b,sfx){
       r.cabinet?[h('dt',null,'Cabinet'),h('dd',{class:'mono'},r.cabinet)]:null,r.desc?[h('dt',null,'Description'),h('dd',null,r.desc)]:null,
       r.direction?[h('dt',null,'Direction'),h('dd',null,r.direction)]:null,h('dt',null,'Source'),h('dd',{class:'sub'},`${LOCSRC}, page ${r.page}`))));
 }
-const closeX=()=>h('button',{class:'x',onclick:()=>closePanel(),'aria-label':'Close the panel'},'×');
+const closeX=()=>h('button',{class:'x',onclick:()=>closePanel(),'aria-label':'Close the panel',title:'Close'},'×');
+// the panel's heading: the code (selectable), a Copy button beside it when there is a code, then Close (the heading stays
+// in view while the panel scrolls: .phead is sticky)
+const phead=(code,kksKids,sub)=>h('div',{class:'phead'},h('div',{style:'flex:1;min-width:0'},
+    h('div',{class:'kks',tabindex:'-1',role:'heading','aria-level':'2'},kksKids),h('div',{class:'sub'},sub)),
+  code?K.copyButton(code):null,closeX());
 function selectLoc(b){
   selId=null; selTag=null; drawTags();
-  put($('#panelBody'),h('div',{class:'phead'},h('div',{style:'flex:1'},h('div',{class:'kks',tabindex:'-1',role:'heading','aria-level':'2'},b),
-      h('div',{class:'sub'},KKS.components[b.slice(5,7)]||'')),closeX()),
+  put($('#panelBody'),phead(b,b,KKS.components[b.slice(5,7)]||''),
     h('div',{class:'sec'},h('div',{class:'warn'},((LOC[b]||[]).length?'In the location list':'In a list of instrument points')+' but not found on any loaded drawing: on a sheet not loaded yet, misread by the tag reader, or mistyped in the list.')),
     locSec(b));
   $('#panel').classList.add('open'); $('#panel').scrollTop=0;
@@ -598,9 +602,8 @@ function select(t){
   const procs=[...new Set(STATE.links.filter(l=>l.kks===k).map(l=>l.proc))];
   const photos=STATE.photos.filter(p=>p.kks===k);
   const sheetName=id=>SHEETS.find(s=>s.id===id)?.name||id;
-  const out=[h('div',{class:'phead'},h('div',{style:'flex:1'},
-      h('div',{class:'kks',tabindex:'-1',role:'heading','aria-level':'2'},k?[t.kks,t.suffix?h('span',{class:'sfx'},t.suffix):null]:h('span',{style:'color:var(--review)'},'Unread tag')),
-      h('div',{class:'sub'},t.isa?t.isa+' · ':'',kindName(t))),closeX()),
+  const out=[phead(k,k?[t.kks,t.suffix?h('span',{class:'sfx'},t.suffix):null]:h('span',{style:'color:var(--review)'},'Unread tag'),
+      [t.isa?t.isa+' · ':'',kindName(t)]),
     h('div',{id:'pendingSec'},pendingSec(t)),descSec(t)];
   if(t.status==='review'){
     const s=t.suggestion||{};

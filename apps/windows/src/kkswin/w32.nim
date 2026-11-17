@@ -212,6 +212,11 @@ proc GetWindowTextLengthW*(h: HWND): int32 {.importc, stdcall, header: H.}
 proc MoveWindow*(h: HWND, x, y, w, hh: int32, repaint: BOOL): BOOL {.importc, stdcall, header: H, discardable.}
 proc GetClientRect*(h: HWND, r: ptr RECT): BOOL {.importc, stdcall, header: H, discardable.}
 proc InvalidateRect*(h: HWND, r: ptr RECT, erase: BOOL): BOOL {.importc, stdcall, header: H, discardable.}
+proc RedrawWindow*(h: HWND, r: ptr RECT, rgn: pointer, flags: UINT): BOOL {.importc, stdcall, header: H, discardable.}
+const
+  RDW_INVALIDATE* = UINT(0x0001)
+  RDW_ERASE* = UINT(0x0004)
+  RDW_ALLCHILDREN* = UINT(0x0080)
 proc SetTimer*(h: HWND, id: uint, ms: UINT, f: pointer): uint {.importc, stdcall, header: H, discardable.}
 proc KillTimer*(h: HWND, id: uint): BOOL {.importc, stdcall, header: H, discardable.}
 proc IsWindow*(h: HWND): BOOL {.importc, stdcall, header: H.}

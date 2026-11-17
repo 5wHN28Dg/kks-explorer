@@ -773,6 +773,8 @@ proc gtk_widget_set_overflow*(w: W, o: cint) {.importc, header: HA.}
 var GTK_OVERFLOW_HIDDEN* {.importc, header: HA, nodecl.}: cint
 proc gtk_button_new*(): W {.importc, header: HA.}
 proc gtk_button_set_child*(b, c: W) {.importc, header: HA.}
+proc gtk_button_get_child*(b: W): W {.importc, header: HA.}
+proc gtk_box_set_homogeneous*(b: W, v: cint) {.importc, header: HA.}
 proc adw_banner_new*(title: cstring): W {.importc, header: HA.}
 proc adw_banner_set_title*(b: W, t: cstring) {.importc, header: HA.}
 proc adw_banner_set_button_label*(b: W, t: cstring) {.importc, header: HA.}
