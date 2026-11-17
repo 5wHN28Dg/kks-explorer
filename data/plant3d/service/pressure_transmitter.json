@@ -7,7 +7,9 @@
   {"id": "liptak", "cite": "B. G. Lipták (ed.), Instrument Engineers' Handbook, vol. 1, Process Measurement and Analysis, 4th ed., CRC Press (2003), ch. 5: impulse lines, their plugging and the reading a plugged line freezes; venting and blowing lines through; manifolds", "url": "https://www.routledge.com/Instrument-Engineers-Handbook-Volume-One-Process-Measurement-and-Analysis/Liptak/p/book/9780849310836"},
   {"id": "iec60079_14", "cite": "IEC 60079-14 and the cable gland makers' installation notes: a gland seals only with its insert sized to the cable and in good condition; water past a gland collects in the terminal compartment", "url": "https://webstore.iec.ch/en/publication/62999"},
   {"id": "iec62382", "cite": "IEC 62382, Control systems in the process industry: electrical and instrumentation loop check (the output simulated at points across the range, each confirmed at the control system)", "url": "https://webstore.iec.ch/en/publication/59597"},
-  {"id": "fluke771", "cite": "Fluke 771 Milliamp Process Clamp Meter, users manual (2006): the clamp round one conductor of the loop; round both the currents cancel", "url": "https://dam-assets.fluke.com/s3fs-public/771_____umeng0100.pdf"}
+  {"id": "fluke771", "cite": "Fluke 771 Milliamp Process Clamp Meter, users manual (2006): the clamp round one conductor of the loop; round both the currents cancel", "url": "https://dam-assets.fluke.com/s3fs-public/771_____umeng0100.pdf"},
+  {"id": "ne43", "cite": "NAMUR NE 43, Standardization of the signal level for the failure information of digital transmitters: the measurement within 3.8–20.5 mA, a failure signalled at or below 3.6 mA (or at or above 21 mA)"},
+  {"id": "hart", "cite": "FieldComm Group, HART protocol specifications: the field device status in every reply and the device-specific status a host reads for the cause (here a sensor failure)", "url": "https://www.fieldcommgroup.org/technologies/hart"}
  ],
  "equipment": [
   {"kks": "30MAG10CP002", "alias": "cpt2", "loop": "cond_p2"},
@@ -28,7 +30,10 @@
   ["manifold", "block", "The impulse line is blocked at the manifold: the transmitter sees the pressure trapped behind the blockage"],
   ["manifold", "shut", "The manifold's block valve is shut: the transmitter is cut off from the process"],
   ["manifold", "pass", "The manifold's test/vent valve is passing: air leaks in to the transmitter's side of the line"],
-  ["electronics", "lt", "The communicator's loop test holds the output at a fixed current"]
+  ["electronics", "lt", "The communicator's loop test holds the output at a fixed current"],
+  ["sensor_module", "fail", "The sensor module has failed: the output sits at the low alarm current (at most 3.6 mA) and HART reports a sensor failure"],
+  ["flange_bolts", "off", "The flange bolts are out: the transmitter is off its manifold"],
+  ["electronics", "urv", "The upper range value set in the transmitter, kPa (0: the data sheet's, as commissioned)"]
  ],
  "values": [
   ["$_wired", {"not": "$_terminal_block_lift"}],
@@ -37,7 +42,11 @@
   ["$_hart_ok", {"and": ["$_terminal_block_hart", "$_wired"]}],
   ["$_live", {"not": "$_terminal_block_ohm"}],
   ["$_shut", {"not": "$_drain_vents_open"}],
-  ["$_open", {"not": "$_manifold_shut"}]
+  ["$_open", {"not": "$_manifold_shut"}],
+  ["$_sensor_ok", {"not": "$_sensor_module_fail"}],
+  ["$_bolted", {"not": "$_flange_bolts_off"}],
+  ["$_leads", {"or": ["$_terminal_block_hart", "$_terminal_block_dmm", "$_terminal_block_clamp", "$_terminal_block_ohm"]}],
+  ["$_no_leads", {"not": "$_leads"}]
  ],
  "consts": [
   ["hand_no", 0]
@@ -68,7 +77,10 @@
   {"action": "blow_line", "title": "Undo the impulse line at the manifold and blow it through with instrument air", "component": "manifold", "tools": ["spanner_17"], "minutes": 15, "needs": [["$_shut", "Close the flange's drain/vent valve first: the line is blown through from the manifold towards the process"]], "set": {"$_manifold_block": 0}, "sources": ["liptak"]},
   {"action": "shut_test", "title": "Shut the manifold's test/vent valve firmly by its handle", "component": "manifold", "minutes": 0.5, "wrong": {"spanner_17": "A manifold valve is shut by its handle: a spanner on it crushes the seat"}, "set": {"$_manifold_pass": 0}, "sources": ["r3051", "liptak"]},
   {"action": "loop_test", "title": "Loop test: hold the output at a current (the communicator's loop test)", "component": "electronics", "tools": ["hart"], "minutes": 0.25, "needs": [["$_hart_ok", "No device found: the communicator is not on the signal terminals, or a lifted wire leaves the transmitter without loop power"]], "input": "$_electronics_lt", "range": [3.6, 23], "sources": ["r3051", "iec62382"]},
-  {"action": "end_loop_test", "title": "End the loop test: the output follows the pressure again", "component": "electronics", "tools": ["hart"], "minutes": 0.25, "set": {"$_electronics_lt": 0}, "sources": ["r3051"]}
+  {"action": "end_loop_test", "title": "End the loop test: the output follows the pressure again", "component": "electronics", "tools": ["hart"], "minutes": 0.25, "set": {"$_electronics_lt": 0}, "sources": ["r3051"]},
+  {"action": "remove_tx", "title": "Unbolt the transmitter from its manifold (the four flange bolts)", "component": "process_flange", "tools": ["spanner_17"], "minutes": 5, "wrong": {"spanner_24": "A 24 mm spanner is too big for the flange bolts: it rounds their heads"}, "needs": [["$_terminal_block_lift", "Lift the loop's wires first: the cable comes off with the old transmitter"], ["$_no_leads", "Take the communicator's and the meter's leads off first"], ["$_manifold_shut", "Shut the manifold's block valve first: unbolted under the process the flange would let air into the condenser"], ["$_drain_vents_open", "Vent the transmitter first (its flange's drain/vent valve cracked open with the block valve shut): nothing may be trapped behind the flange"]], "set": {"$_flange_bolts_off": 1}, "sources": ["r3051"]},
+  {"action": "fit_tx", "title": "Fit the new transmitter on the manifold and bolt it up", "component": "process_flange", "tools": ["spanner_17"], "minutes": 10, "part": "pt_unit_a3", "wrong": {"spanner_24": "A 24 mm spanner is too big for the flange bolts: it rounds their heads"}, "needs": [["$_flange_bolts_off", "Take the old transmitter off first: it is still bolted to the manifold"]], "set": {"$_flange_bolts_off": 0, "$_sensor_module_fail": 0, "$_electronics_urv": 248, "$_electronics_lt": 0, "$_drain_vents_open": 0, "$_cover_back_off": 0, "$_terminal_block_wet": 0, "$_terminal_block_loose": 0}, "sources": ["r3051"]},
+  {"action": "set_range", "title": "Set the range with HART: the upper range value from the data sheet (kPa)", "component": "electronics", "tools": ["hart"], "minutes": 1, "needs": [["$_hart_ok", "No device found: the communicator is not on the signal terminals, or a lifted wire leaves the transmitter without loop power"]], "input": "$_electronics_urv", "range": [1, 248], "sources": ["r3051", "hart"]}
  ],
  "meters": [
   {"id": "$_dmm", "title": "Multimeter, mA DC, at the test terminals", "point": "test_terminals", "tool_kind": "meter", "mode": "ma_dc", "value": "$_ma", "needs": ["$_terminal_block_dmm"], "else": 0, "unit": "mA"},
@@ -76,7 +88,8 @@
   {"id": "$_clamp2", "title": "mA clamp round the whole cable", "point": "cable_both", "tool_kind": "meter", "mode": "ma_clamp", "value": "hand_no", "needs": ["$_cable_gland_clamp"], "else": 0, "unit": "mA"},
   {"id": "$_pv", "title": "HART: primary variable", "point": "terminals_sig", "tool_kind": "communicator", "mode": "hart", "value": "@_tx", "needs": ["$_hart_ok"], "else": 0, "unit": "kPa(a)"},
   {"id": "$_ao", "title": "HART: the loop current the transmitter sets", "point": "terminals_sig", "tool_kind": "communicator", "mode": "hart", "value": "$_ma_tx", "needs": ["$_hart_ok"], "else": 0, "unit": "mA"},
-  {"id": "$_ohm", "title": "Multimeter, ohms, signal terminals to the housing's earth", "point": "terminals_earth", "tool_kind": "meter", "mode": "ohm", "value": "$_ohm_v", "needs": ["$_terminal_block_ohm"], "else": 100000000.0, "unit": "kΩ"}
+  {"id": "$_ohm", "title": "Multimeter, ohms, signal terminals to the housing's earth", "point": "terminals_earth", "tool_kind": "meter", "mode": "ohm", "value": "$_ohm_v", "needs": ["$_terminal_block_ohm"], "else": 100000000.0, "unit": "kΩ"},
+  {"id": "$_status", "title": "HART: device status (1: sensor failure)", "point": "terminals_sig", "tool_kind": "communicator", "mode": "hart", "value": "$_sensor_module_fail", "needs": ["$_hart_ok"], "else": 0}
  ],
  "hart": [
   {"do": "set", "title": "Sensor trim: the offset that brings the PV to the reference", "input": "@_trim", "range": [-5, 5], "hart": "$_terminal_block_hart", "needs": [["$_wired", "No device found: a lifted wire leaves the transmitter without loop power"]], "unit": "kPa", "sources": ["r3051"]}
@@ -86,7 +99,8 @@
   {"id": "loose", "title": "A loose signal terminal", "component": "terminal_block", "found": "A signal terminal's screw was short of tight: the wire's poor contact took the loop current down", "sources": ["r3051"]},
   {"id": "blocked", "title": "A blocked impulse line", "component": "manifold", "found": "Sludge had built up in the impulse line at the manifold's process connection: the transmitter saw only what was trapped behind it", "bench": "impulse_blocked", "sources": ["liptak"]},
   {"id": "passing", "title": "The manifold's test/vent valve passing", "component": "manifold", "found": "The test/vent valve was not shut tight: air leaked past its seat into the transmitter's side of the line", "sources": ["r3051", "liptak"]},
-  {"id": "wet", "title": "Water in the terminal side", "component": "cable_gland", "found": "The gland's seal insert had hardened and cracked: water ran down the cable into the terminal side and bridged the return terminal to the housing", "sources": ["iec60079_14"]}
+  {"id": "wet", "title": "Water in the terminal side", "component": "cable_gland", "found": "The gland's seal insert had hardened and cracked: water ran down the cable into the terminal side and bridged the return terminal to the housing", "sources": ["iec60079_14"]},
+  {"id": "failed", "title": "The sensor module failed", "component": "sensor_module", "found": "The sensing cell's module failed: the electronics drove the output to the low alarm current and reported a sensor failure over HART. It is not repaired in the field: the transmitter is replaced", "sources": ["r3051", "ne43", "hart"]}
  ],
  "tests": [
   {"meter": "$_pv", "title": "The PV read with the communicator, against the partners", "shows": ["drift", "blocked", "passing"]},
@@ -95,7 +109,9 @@
   {"meter": "$_ohm", "title": "The ohms from the terminals to the housing's earth", "shows": ["wet"]},
   {"action": "open_cover", "title": "The terminal side looked into with the cover off", "shows": ["wet"]},
   {"action": "open_block", "title": "The vent test: the PV after the flange was vented, shut and the block valve opened again", "shows": ["blocked"]},
-  {"action": "shut_test", "title": "The manifold's test/vent valve shut firmly", "shows": ["passing"]}
+  {"action": "shut_test", "title": "The manifold's test/vent valve shut firmly", "shows": ["passing"]},
+  {"meter": "$_status", "title": "The HART device status: a sensor failure", "shows": ["failed"]},
+  {"meter": "$_ao", "title": "The output the transmitter reports: at the low alarm current", "shows": ["failed"]}
  ],
  "fixes": [
   ["tighten_terms", ["loose"]],
@@ -103,9 +119,11 @@
   ["reseal_gland", ["wet"]],
   ["blow_line", ["blocked"]],
   ["shut_test", ["passing"]],
-  ["hart:set", ["drift"]]
+  ["hart:set", ["drift"]],
+  ["fit_tx", ["failed"]]
  ],
  "parts": [
-  ["reseal_gland", "gland_seal", "A cable gland seal insert"]
+  ["reseal_gland", "gland_seal", "A cable gland seal insert"],
+  ["fit_tx", "pt_unit_a3", "A complete pressure transmitter, range 3 (WDP-PT-UNIT-A3)"]
  ]
 }

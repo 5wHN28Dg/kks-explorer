@@ -77,6 +77,7 @@ import train_ageing  # noqa: E402  (the wear items' failures, milestone AG2)
 import train_wx  # noqa: E402  (the weather's faults, milestone WX2)
 import train_hse  # noqa: E402  (the hazard library and each work's job kind, milestone HS1)
 import train_discussions  # noqa: E402  (the discussions' tasks, works and findings, milestone DC3)
+import train_stores  # noqa: E402  (the storekeeper's reorders, milestone WM2)
 LIFT_POINTS = [f'p_lift{i}' for i in range(len(train_lift.ZS))]
 for _i, _z in enumerate(train_lift.ZS):
     POINTS[LIFT_POINTS[_i]] = (round(train_lift.GATE_X - 1.0, 6), train_lift.AT[1], _z)
@@ -236,6 +237,9 @@ MESSAGES = {
     'phone_out': 'Phone out of the Ex zone: left with the supervisor',
     **wtp_staff.MESSAGES,
     **train_discussions.MESSAGES,      # milestone DC3 (REALISM.md §6.3.1)
+    # milestone WM2 (REALISM.md §2.24): the transmitter's replacement waiting for its spare
+    'held_for_parts': 'Job held for parts: no spare transmitter issued against the work order yet, the old one stays in '
+                      'until it is',
 }
 
 
@@ -371,7 +375,7 @@ def roles():
         role('ic_tech', 'I&C technician', 'inst', ['operate_local', 'accept', 'lock_instrument', 'operate_hart'], 'tech_days', True,
              'coverall_inst'),
         role('maint_sup', 'Maintenance supervisor', 'mech', ['request', 'accept', 'stop_work', 'jsa', 'plan_work',
-                                                           'close_work'], 'ms_mech', True,
+                                                           'close_work', 'order_parts'], 'ms_mech', True,
              'supervisor'),
         role('hse_officer', 'HSE officer', 'hse', ['stop_work', 'jsa'], 'hse_days1', True, 'hse',
              ['helmet', 'boots', 'glasses', 'ear', 'vest']),
@@ -768,8 +772,12 @@ def staff(models, layout):
             'places': places, 'ways': ways, 'next': nxt, 'zones': zones, 'roles': rl,
             'rosters': rosters() + camp_staff.rosters(),
             'people': everyone, 'routines': rts,
-            'tasks': T + camp_staff.tasks() + AUDIO_TASKS + WO_TASKS + train_discussions.tasks(),     # (DC3 last)
-            'reactions': reactions(model_reacts) + AUDIO_REACTIONS + WO_REACTIONS + train_discussions.reactions(),
+            # (DC3's, then WM2's stores: the storekeeper's reorders, REALISM.md §2.23, appended last so that no earlier
+            # task's or reaction's index moves)
+            'tasks': T + camp_staff.tasks() + AUDIO_TASKS + WO_TASKS + train_discussions.tasks() + train_stores.tasks()
+            + train_hands.tasks(),      # (WM2: the transmitter's replacement, REALISM.md §2.24)
+            'reactions': reactions(model_reacts) + AUDIO_REACTIONS + WO_REACTIONS + train_discussions.reactions()
+            + train_stores.reactions(),
             'vehicles': camp_staff.vehicles(),
             'messages': MESSAGES, 'put_right': {'ppe': 'put_on_ppe', 'permit': 'ask_permit',
                                                 'unsafe': 'leave_shortcut', 'audio': 'music_off',

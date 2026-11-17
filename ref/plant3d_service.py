@@ -73,7 +73,7 @@ def check(s, workshop, tools, rel):
     acts = set()
     for a in s['actions']:
         keys(a, ('action', 'title', 'component'), ('set', 'input', 'range', 'tools', 'wrong', 'needs', 'minutes',
-                                                   'anchors', 'sources'), f'{rel}: action')
+                                                   'anchors', 'sources', 'part'), f'{rel}: action')
         w = f'{rel}: action {a["action"]}'
         ident(a['action'], w)
         need((a['action'], a['component']) not in acts and a['action'] not in {x for x, _ in acts}, 'dup_id', w)
@@ -98,6 +98,8 @@ def check(s, workshop, tools, rel):
                  and a['range'][0] <= a['range'][1], 'bad_number', f'{w}: range')
         for x in a.get('sources', []):
             need(x in srcs, 'bad_ref', f'{w}: source {x}')
+        if 'part' in a:     # REALISM.md §2.23: the stores' part it fits (check_files looks it up in stores.json)
+            ident(a['part'], f'{w}: part')
     ids = set()
     for mt in s['meters']:
         keys(mt, ('id', 'title', 'point', 'tool_kind', 'mode', 'value', 'needs', 'else'), ('unit',), f'{rel}: meter')

@@ -1224,6 +1224,12 @@ def hrsg1():
 # it); the ohms a wet terminal side reads to earth, kΩ, and an open circuit's (OL)
 ATM, AIR_IN, AIR_K, LEAK, WET_KOHM, OL = 101.3, 2.0, 0.05, 0.6, 40, 1e8
 WOBBLE = [[0, 0], [1.5, 0.4], [2.5, 0.05], [4, 0.3], [5, 0.1], [6, 0.35], [7, 0]]
+# (milestone WM2, REALISM.md §2.24) a failed sensor module drives the output to NAMUR NE 43's low alarm current; a
+# new transmitter's span is its upper range value (URV, kPa: the factory's is the sensor's limit, 248 kPa, until the
+# data sheet's is set with HART): the output's gain 16 / URV mA per kPa, a table over whole kPa (there is no
+# division node)
+ALARM_LO, URV_MAX = 3.6, 248
+RANGE_K = [[u, round(16 / u, 12)] for u in range(1, URV_MAX + 1)]
 ST_TRIPS = ['st_trip_lube', 'st_trip_cond_p', 'st_trip_os', 'st_trip_axial', 'st_trip_vib', 'st_trip_steam_t',
             'st_trip_oil_temp']
 VIB_F = [0.8, 0.9, 1.0, 1.1, 0.95, 0.85, 0.7, 0.75]
@@ -1317,12 +1323,20 @@ def st():
             tx = m.sum(f'cond_p{k}_tx', [f'{a}_p_line', f'cond_p{k}_drift', f'cond_p{k}_trim'] +
                        ([age3] if k == 3 else []) + [f'{a}_air'], 'kPa(a)')
             m.prod(f'{a}_ma_s', [tx, round(16 / 120, 12)])
-            m.sum(f'{a}_ma_r', [f'{a}_ma_s', 4])
+            # (WM2) a range set in the transmitter (its URV state above 0: a new one's) scales by its own span; the
+            # commissioned one (0) keeps the data sheet's, that very node, so every earlier value stands
+            m.cmp(f'{a}_rng_on', f'{a}_electronics_urv', '>', 0)
+            m.tab(f'{a}_rng_k', f'{a}_electronics_urv', RANGE_K)
+            m.prod(f'{a}_ma_sf', [tx, f'{a}_rng_k'])
+            m.sel(f'{a}_ma_s2', f'{a}_rng_on', [f'{a}_ma_s', f'{a}_ma_sf'])
+            m.sum(f'{a}_ma_r', [f'{a}_ma_s2', 4])
             m.min(f'{a}_ma_h', [f'{a}_ma_r', 20.5])
             m.max(f'{a}_ma_n', [f'{a}_ma_h', 3.8], 'mA')
+            # (WM2) a failed sensor module: the output at the low alarm current
+            m.sel(f'{a}_ma_f', f'{a}_sensor_module_fail', [f'{a}_ma_n', ALARM_LO], 'mA')
             # the communicator's loop test holds the output at the current typed in (HW3)
             m.cmp(f'{a}_lt_on', f'{a}_electronics_lt', '>', 0)
-            m.sel(f'{a}_ma_tx', f'{a}_lt_on', [f'{a}_ma_n', f'{a}_electronics_lt'], 'mA')
+            m.sel(f'{a}_ma_tx', f'{a}_lt_on', [f'{a}_ma_f', f'{a}_electronics_lt'], 'mA')
             m.prod(f'{a}_drop', [f'{a}_terminal_block_loose', 0.3])
             m.diff(f'{a}_ma_l', f'{a}_ma_tx', f'{a}_drop')
             m.prod(f'{a}_ma', [f'{a}_ma_l', f'{a}_wired'], 'mA')
@@ -1334,8 +1348,9 @@ def st():
             m.prod(f'{a}_leak', [f'{a}_leak_b', f'{a}_terminal_block_wet'], 'mA')
             m.diff(f'{a}_ma_rx', f'{a}_ma', f'{a}_leak', 'mA')
             m.sel(f'{a}_ohm_v', f'{a}_terminal_block_wet', [OL, WET_KOHM], 'kΩ')
+            # (WM2: and a failed sensor, a range of its own: the control system shows what the current stands for)
             m.OR(f'{a}_bad', [f'{a}_terminal_block_lift', f'{a}_terminal_block_loose', f'{a}_terminal_block_wet',
-                              f'{a}_lt_on'])
+                              f'{a}_lt_on', f'{a}_sensor_module_fail', f'{a}_rng_on'])
             m.diff(f'{a}_rx_m', f'{a}_ma_rx', 4)
             m.prod(f'{a}_rx_k', [f'{a}_rx_m', 7.5])
             tx = m.sel(f'cond_p{k}_rx', f'{a}_bad', [tx, f'{a}_rx_k'], 'kPa(a)')

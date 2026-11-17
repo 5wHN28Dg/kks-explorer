@@ -46,8 +46,8 @@ const CHUNK := 1000
 const DIGEST_EVERY := 50        # a state digest every 50 steps (§17.14), step 0's first
 ## the water treatment plant's runs in plant3d-v2.json, each a start by its procedure with forks (W2, W3)
 const WTP_RUNS := ["wtp", "wtp_cip", "wtp_regen"]
-## the realism file's parts after `staff`, each as `staff` (AG1, WX1, HW1, HS7, AG3, HS1, WM1)
-const REALISM_PARTS := ["wear", "weather", "hands", "audio", "lab", "hse", "wo"]
+## the realism file's parts after `staff`, each as `staff` (AG1, WX1, HW1, HS7, AG3, HS1, WM1, WM2)
+const REALISM_PARTS := ["wear", "weather", "hands", "audio", "lab", "hse", "wo", "stores"]
 
 var repo := ""
 var opts := {}

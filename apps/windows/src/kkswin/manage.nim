@@ -2,7 +2,7 @@
 ## devices (join requests, invites with a QR code, request files, bundles, removal), and the account (details, sync,
 ## the root key backup). Everything goes through the core's local API, like admin.html.
 
-import std/[strutils, tables, times, sequtils, asyncdispatch, math]
+import std/[strutils, tables, times, sequtils, asyncdispatch, math, algorithm]
 import kks/[json, api, node, extras, util]
 import kksl/[dbstore, passphrase]
 import kks/model
@@ -66,6 +66,136 @@ proc photoButton(w: Win, sub: JNode, specs: var seq[(string, proc ())]) =
       let cap = s(sub["payload"], "caption")
       specs.add ("Show the photo", proc () = w.showPhoto(data, cap))
 
+# Approvals, several at once (the user, 2026-11-15: "accept/deny multiple requests at once"): a tick per proposal and,
+# at the top, Select all, how many are ticked, Approve selected and Reject selected (Reject asks once). The ticks are
+# kept by id over the page's rebuilds (a sync rebuilds it); the ones no longer waiting are dropped.
+var
+  picked: seq[int64]                ## the ticked proposals' ids
+  pickCompeting: seq[int64]       ## photos of one kind that compete for their code (Pick): never approved by the batch
+  pickSubs: seq[JNode]              ## the waiting proposals as last drawn, oldest first
+  pickChecks: seq[(int64, HWND)]    ## each one's tick
+  pickAll, pickCount, pickOk, pickNo: HWND
+  pickPage: Page                    ## their page (laid out again when a button's label grows with its count)
+  pickWide = -1                     ## the length of the labels the page was last laid out for
+  pickBusy = false                  ## a batch is running (one proposal per turn of the message loop)
+  lastSaid = ""                     ## the last batch's result, on the page until the next batch (the status line is one line)
+  lastSaidAt = 0.0                  ## when it was said
+
+proc pickGone() =
+  ## the bar's controls went with their page (another page was opened, or this one is being made again)
+  if pickAll != nil and IsWindow(pickAll) == 0:
+    pickAll = nil
+    pickCount = nil
+    pickOk = nil
+    pickNo = nil
+    pickPage = nil
+
+proc pickShow() =
+  let n = picked.len
+  pickGone()
+  if pickAll == nil: return
+  SendMessageW(pickAll, BM_SETCHECK, WPARAM(ord(n > 0 and n == pickSubs.len)), 0)
+  pickCount.setText(if n > 0: $n & " selected" else: "None selected")
+  pickOk.setText("Approve selected" & (if n > 0: " (" & $n & ")" else: ""))
+  pickNo.setText("Reject selected" & (if n > 0: " (" & $n & ")" else: ""))
+  EnableWindow(pickOk, BOOL(n > 0 and not pickBusy))
+  EnableWindow(pickNo, BOOL(n > 0 and not pickBusy))
+  # A button is as wide as its label when the page is laid out ("(20)" was cut): laid out again when the count takes
+  # more or fewer characters, not at every tick. The two buttons are a line each, so nothing under them moves; the
+  # page and its controls are painted again all the same (a control laid over another's old place left pieces behind).
+  let wide = (if n > 0: len($n) else: 0)
+  if pickPage != nil and wide != pickWide:
+    pickWide = wide
+    pickPage.layout()
+    RedrawWindow(pickPage.hwnd, nil, nil, RDW_INVALIDATE or RDW_ERASE or RDW_ALLCHILDREN)
+
+proc runBatch(w: Win, action: string, chosen: seq[JNode])
+
+proc decideMany(w: Win, action: string) =
+  ## every ticked proposal, oldest first, each as its own button sends it (approve without force, reject). A held one
+  ## (it clashes with the value as it is now) is not approved here: its own "Approve anyway" does that.
+  var chosen: seq[JNode]
+  for sub in pickSubs:
+    if sub["id"].i in picked: chosen.add sub
+  if chosen.len == 0:
+    w.toast("Nothing selected")
+    return
+  if action == "reject":
+    # one question, in a window of the app's own: the button names the action, Cancel has the focus, Escape cancels
+    # (standard buttons a screen reader and UI Automation reach as anywhere else in the app)
+    let what = if chosen.len == 1: "1 proposal" else: $chosen.len & " proposals"
+    # The app's window takes no input while the question is open (as under any dialog), so the page isn't left with
+    # the question open; whatever still gets through (another window of the app) meets the checks below: only what
+    # was asked about and is still ticked is rejected, and one batch at a time.
+    var hw: HWND
+    let (h, p) = popup(w.hwnd, "Reject " & what & "?", 460, 220, proc () =
+      EnableWindow(w.hwnd, 1)
+      SetForegroundWindow(w.hwnd), escape = true)
+    hw = h
+    p.title("Reject " & what & "?")
+    p.dim("Each one is rejected as its own Reject button does. The submitters see that it was rejected.")
+    let ids = chosen.mapIt(it["id"].i)
+    # (the app's window is enabled before the question goes: Windows would otherwise activate another app's)
+    let bs = p.buttons(("Cancel", proc () =
+                         EnableWindow(w.hwnd, 1)
+                         DestroyWindow(hw)),
+                       ("Reject " & what, proc () =
+                         EnableWindow(w.hwnd, 1)
+                         DestroyWindow(hw)
+                         w.runBatch("reject", pickSubs.filterIt(it["id"].i in ids and it["id"].i in picked))))
+    p.layout()
+    EnableWindow(w.hwnd, 0)
+    ShowWindow(h, SW_SHOW)
+    SetFocus(bs[0])
+    return
+  w.runBatch(action, chosen)
+
+proc runBatch(w: Win, action: string, chosen: seq[JNode]) =
+  if chosen.len == 0: return
+  if pickBusy: return
+  pickBusy = true
+  pickShow()       # (both buttons off while it runs; nothing if their page has gone)
+  # one proposal per turn of the message loop, saying how far it got: the window stays live during a long batch
+  var done, i = 0
+  var held, competing, failed: seq[string]
+  var step: proc ()
+  step = proc () =
+    if i < chosen.len:
+      let sub = chosen[i]
+      inc i
+      let id = sub["id"].i
+      if action == "approve" and sub["status"].s == "conflict":
+        held.add "#" & $id
+      elif action == "approve" and id in pickCompeting:
+        competing.add "#" & $id
+      else:
+        pickGone()
+        if pickCount != nil:
+          pickCount.setText((if action == "approve": "Approving " else: "Rejecting ") & $i & " of " & $chosen.len & "…")
+        try:
+          discard w.a.call("POST", "/api/submissions/" & $id & "/" & action, newObj())
+          inc done
+          picked.keepItIf(it != id)
+        except CatchableError as e:      # (anything else than the server's answer too: the batch must end and say so)
+          failed.add "#" & $id & ": " & e.msg
+      later(step)
+      return
+    pickBusy = false
+    var msg = (if action == "approve": "Approved " else: "Rejected ") & $done & " of " & $chosen.len & "."
+    if held.len > 0:
+      msg.add " Not approved: " & held.join(", ") & (if held.len == 1: " clashes" else: " clash") &
+              " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
+    if competing.len > 0:
+      msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
+              (if competing.len == 1: "its" else: "their") & " code; choose with “Use this one”."
+    if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
+    lastSaid = msg
+    lastSaidAt = epochTime()
+    w.toast(msg)
+    pickShow()          # (the bar as it is now, should the page wait for the keyboard to leave one of its fields)
+    w.sideChanged()     # (not rebuildSide: the person may be typing on another page by now, #168)
+  later(step)
+
 proc approvals(w: Win, p: Page) =
   ## the user's "Approvals page clean-up" (2026-10-08): one card per code (or per tag without one), the proposals in it
   ## by kind (/api/submissions?group=code); "Use this one" and votes only where several photos of one kind compete
@@ -76,10 +206,47 @@ proc approvals(w: Win, p: Page) =
   except ApiError as e:
     p.dim(e.msg)
     return
+  pickChecks.setLen(0)
+  pickSubs.setLen(0)
+  pickAll = nil
+  pickCount = nil
+  pickOk = nil
+  pickNo = nil
+  pickPage = nil
+  pickCompeting.setLen(0)
+  for grp in groups:
+    for k in grp["kinds"].elems:
+      for sub in k["items"].elems:
+        pickSubs.add sub
+        if k.get("pick") != nil and k["pick"].kind == jBool and k["pick"].b: pickCompeting.add sub["id"].i
+  pickSubs.sort(proc (a, b: JNode): int = cmp(a["created"].i, b["created"].i))
+  var open: seq[int64]
+  for sub in pickSubs: open.add sub["id"].i
+  picked.keepItIf(it in open)
   if groups.len == 0:
     p.dim("Nothing waits for approval.")
+    # (the batch that emptied the list: what it did, for the next two minutes; said once it went at the next sync's
+    # rebuild, a second later, and kept for good it stood there stale)
+    if w.isAdmin and lastSaid.len > 0 and epochTime() - lastSaidAt < 120: p.label(lastSaid)
     return
-  p.dim("One card per tag. Approving applies the change and records it in History, where it can be reverted.")
+  p.dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. " &
+        "Tick several to approve or reject them at once.")
+  if w.isAdmin:
+    pickAll = p.check("Select all (" & $pickSubs.len & ")", false, proc (on: bool) =
+      picked.setLen(0)
+      if on:
+        for sub in pickSubs: picked.add sub["id"].i
+      for (_, cb) in pickChecks: SendMessageW(cb, BM_SETCHECK, WPARAM(ord(on)), 0)
+      pickShow())
+    pickCount = p.dim("None selected")
+    # (a line each: side by side they took a second line when the count made them wider, and everything under
+    # them, the tick just pressed too, moved down)
+    pickOk = p.buttons(("Approve selected", proc () = w.decideMany("approve")))[0]
+    pickNo = p.buttons(("Reject selected", proc () = w.decideMany("reject")))[0]
+    pickPage = p
+    pickWide = -1
+    if lastSaid.len > 0: p.label(lastSaid)
+    pickShow()
   for gi in 0 ..< groups.len:
     closureScope:
       let grp = groups[gi]
@@ -106,11 +273,19 @@ proc approvals(w: Win, p: Page) =
               let votes = if sub.get("votes") != nil and sub["votes"].kind == jInt: sub["votes"].i else: 0
               let who = if s(sub, "by_name").len > 0: s(sub, "by_name") else: s(sub, "by")
               p.label(proposalTitle(sub))
-              p.dim("by " & who & " · " & sub.at("created") &
+              p.dim("#" & $id & " · by " & who & " · " & sub.at("created") &
                     (if pick: " · " & $votes & (if votes == 1: " vote" else: " votes") else: "") &
                     (if s(sub, "request_note").len > 0: " · note: " & s(sub, "request_note") else: ""))
               for (lab2, v) in proposalRows(sub): p.field(lab2, v, readonly = true)
               if conflict: p.field("Held", "It clashes with the current value or another proposal: " & s(sub, "note"), readonly = true)
+              if w.isAdmin:
+                let cb = p.check("Select #" & $id, id in picked, proc (on: bool) =
+                  if on:
+                    if id notin picked: picked.add id
+                  else: picked.keepItIf(it != id)
+                  pickShow())
+                pickChecks.add (id, cb)
+                p.space(2)      # (8 px between the tick and the row with Reject under it)
               var specs: seq[(string, proc ())]
               w.photoButton(sub, specs)
               if w.isAdmin:

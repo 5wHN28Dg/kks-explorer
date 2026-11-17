@@ -1624,7 +1624,10 @@ class Phone(unittest.TestCase):
             return [x for x in c if x['k'] == 'Description']
         self.assertEqual(self.wait_server(confirmed, 'the confirmed description never reached the server')[0]['v'],
                          'Feed water isolation valve')
-        ui.find('Confirmed by The Manager', timeout=20)
+        # the line takes the place of "Draft description (unchecked)", above the description: with Confirm scrolled into
+        # view under the pinned heading it can be just above the panel's visible top
+        ui.find('Feed water isolation valve', exact=True, timeout=20)
+        ui.scroll_to('Confirmed by The Manager', up=True, tries=12)
         # the instrument point beside the location row; the platform's 14 m stays the elevation (no conflict)
         ui.scroll_to('Instrument point', exact=True)
         ui.scroll_to('33 m · grid K16 F08', exact=True)
@@ -1875,6 +1878,199 @@ class Phone(unittest.TestCase):
         finally:
             ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
 
+    def test_copy_close_batch(self):
+        """the user's requests of 2026-11-15: Copy beside the code in the tag panel (it says "Copied"); the panel's
+        heading with Close stays in view while the panel scrolls (it scrolled away with the content before); in
+        Approvals, Select all and Approve selected, and ticked ones rejected with one question"""
+        # enough in the panel that it scrolls far
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'base': {}, 'changes': {
+            'custom': [{'k': 'Field %02d' % i, 'v': 'value %d' % i} for i in range(30)]}}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        omar = self.member('omar', 'Omar Fullname', 'omar password 1')
+        for f in ('near', 'area', 'loc'):
+            r = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {f: 'by omar ' + f}, 'base': {}}})
+            self.assertEqual(r.get('status'), 'pending', r)
+        # a held one (its submitter saw notes "old", which the manager has changed since): the batch never approves it
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'old'}, 'base': {}}})['status'], 'approved')
+        held = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'theirs'}, 'base': {'notes': 'old'}}})['id']
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'newer'}, 'base': {'notes': 'old'}}})['status'], 'approved')
+        self.assertEqual({x['id']: x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
+        self.join()
+        self.open_tag()
+        ui.tap('Copy', exact=True)
+        ui.find('Copied', exact=True, timeout=5)
+        # (no snackbar of our own on Android 13 and later, which show their own preview of the clipboard)
+        if int(ui.sh('getprop', 'ro.build.version.sdk').strip() or 0) < 33:
+            ui.find('Copied 11LAB70AA501', exact=True, timeout=5)
+        # scrolled to the last field, the heading is still there: the code, Copy and Close
+        ui.scroll_to('Field 29', exact=True, tries=20)
+        self.assertFalse(ui.present('Plant unit', exact=True), 'the panel did not scroll')
+        for t in ('11LAB70AA501', 'Close'):
+            self.assertTrue(ui.present(t, exact=True), t + ' scrolled out of view')
+        ui.tap('Close', exact=True)
+        time.sleep(1)
+        self.assertFalse(ui.present('Field 29', exact=True), 'Close did not close the panel')
+        # what was copied, pasted into the app's own search field: exactly the code
+        ui.tap('Search KKS or description', exact=True)
+        time.sleep(0.3)
+        ui.sh('input', 'keycombination', '113', '29')     # Ctrl+A
+        ui.sh('input', 'keyevent', '279')                 # Paste
+        time.sleep(0.5)
+        field = [n for n in ui.nodes() if n.get('focused') == 'true' and n.get('class', '').endswith('EditText')]
+        self.assertEqual([n.get('text') for n in field], ['11LAB70AA501'])
+        ui.hide_keyboard()
+        # Approvals: all at once; the three plain ones are approved, the held one is not
+        ui.tap('Manage', exact=True)
+        ui.tap('Approvals', exact=True)
+        ui.find('None selected', exact=True, timeout=20)
+        ui.tap('Select all (4)', exact=True)
+        ui.find('4 selected', exact=True)
+        ui.tap('Approve selected (4)', exact=True)
+
+        def all_approved():
+            st = [x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions'] if x['id'] != held]
+            return st if st and all(x == 'approved' for x in st) else None
+        self.assertEqual(len(self.wait_server(all_approved, 'Approve selected never reached the server')), 3)
+        ui.find('Select all (1)', exact=True, timeout=20)
+        ui.find('Approved 3 of 4.', timeout=20)
+        time.sleep(3)       # (a sync round: had the batch approved the held one too, the server would know by now)
+        self.assertEqual({x['id']: x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
+        self.boss.req('POST', f'/api/submissions/{held}/reject', {})
+        # two more: tick one, Reject selected asks once, the other stays
+        ids = []
+        for f in ('near', 'area'):
+            ids.append(omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {f: 'again ' + f}, 'base': {}}})['id'])
+        ui.sh('input', 'keyevent', '4')
+        ui.tap('Drawings', exact=True)
+        ui.tap('Sync', exact=True)
+        time.sleep(3)
+        ui.tap('Manage', exact=True)
+        ui.tap('Approvals', exact=True)
+        ui.find('Select all (2)', exact=True, timeout=20)
+        # (named by the app's own number for each proposal, not the server's)
+        tick = [n for n in ui.nodes() if (n.get('content-desc') or '').startswith('Select #')]
+        self.assertEqual(len(tick), 2, 'one tick per proposal, named by it')
+        x, y = ui.center(tick[0])
+        ui.sh('input', 'tap', str(x), str(y))
+        ui.find('1 selected', exact=True)
+        ui.tap('Reject selected (1)', exact=True)
+        ui.find('Reject 1 proposal?', exact=True)
+        ui.tap('Reject 1 proposal', exact=True)
+        st = self.wait_server(lambda: (lambda d: d if 'rejected' in (d[ids[0]], d[ids[1]]) else None)(
+            {x['id']: x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}), 'Reject selected never reached the server')
+        self.assertEqual(sorted(('waiting' if x in ('pending', 'conflict') else x) for x in (st[ids[0]], st[ids[1]])), ['rejected', 'waiting'])
+        ui.find('Select all (1)', exact=True, timeout=20)
+
+    def test_panel_keyboard(self):
+        """the UI/UX audit of #363 (R3): with the keyboard up in the tag panel's form, upright and on its side, the
+        heading (the code, Copy, Close) stays whole between the status bar and the keyboard, and so does the field
+        being typed in. Before, the window was panned up: on its side the heading went under the status bar."""
+        def frame(kind):
+            # dumpsys lists the insets of several windows: the visible, non-empty one of this kind
+            ms = [(tuple(map(int, m.groups()[:4])), m.group(5) == 'true') for m in re.finditer(
+                r'type=' + kind + r' frame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\][^\n]*?visible=(true|false)', ui.sh('dumpsys', 'window'))]
+            ms = [x for x in ms if x[0][3] > x[0][1]]
+            return next((x for x in ms if x[1]), ms[0] if ms else (None, False))
+
+        def box(n):
+            return tuple(map(int, re.findall(r'\d+', n.get('bounds'))))
+
+        def reach(text):
+            # upright: the usual slow swipes; on its side the panel's own strip is short: swipes inside it
+            w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+            if ui.sh('settings', 'get', 'system', 'user_rotation').strip() == '0':
+                return ui.scroll_to(text, exact=True, tries=25)
+            w, h = max(w, h), min(w, h)
+            for _ in range(80):
+                if ui.present(text, exact=True):
+                    return
+                ui.sh('input', 'swipe', str(w // 3), str(int(h * 0.80)), str(w // 3), str(int(h * 0.66)), '400')
+            ui.find(text, exact=True, timeout=2)
+
+        self.join()
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
+        auto = ui.sh('settings', 'get', 'system', 'accelerometer_rotation').strip()
+        if auto in ('0', '1'):
+            self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', auto)
+        ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
+        for turn in ('0', '1'):
+            with self.subTest('upright' if turn == '0' else 'on its side'):
+                if ui.present('Close', exact=True):         # (a panel left open by the step before)
+                    ui.hide_keyboard()
+                    ui.tap('Close', exact=True)
+                    time.sleep(1)
+                ui.sh('settings', 'put', 'system', 'user_rotation', turn)
+                time.sleep(3)
+                # (open_tag's check reads a line far down the panel: on its side it may be below the panel's edge)
+                ui.type_into('Search KKS or description', 'LAB70AA501')
+                ui.tap('11LAB70AA501', exact=True)
+                ui.find('Copy 11LAB70AA501', exact=True, timeout=10)
+                head = {t: box(ui.find(t, exact=True)) for t in ('11LAB70AA501', 'Close')}
+                title = box(ui.find('Sample sheet', exact=True))      # the app's bar: the window must not be panned
+                # typing in the drawing's search leaves the panel where it is (it would cover the results). Upright only:
+                # on its side the panel covers the search field (#376)
+                grip = box(ui.find('Panel size: drag to resize', exact=True))
+                q = sorted((x for x in ui.nodes() if x.get('class', '').endswith('EditText')), key=lambda x: box(x)[1])
+                if turn == '0':
+                    self.assertTrue(q, 'the search field')
+                    ui.sh('input', 'tap', *map(str, ui.center(q[0])))
+                    for _ in range(20):
+                        if ui.keyboard_shown():
+                            break
+                        time.sleep(0.5)
+                    self.assertTrue(ui.keyboard_shown(), 'no keyboard for the search field')
+                    time.sleep(1.5)
+                    g = [x for x in ui.nodes() if ui.label(x) == 'Panel size: drag to resize']
+                    self.assertEqual([box(x) for x in g], [grip], 'the panel moved for the search field\'s keyboard')
+                    ui.hide_keyboard()
+                    time.sleep(0.5)
+                reach('Edit')
+                ui.tap('Edit', exact=True)
+                reach('Notes')
+                ui.tap('Notes', exact=True)
+                for _ in range(20):
+                    ime, shown = frame('ime')
+                    if shown and ui.keyboard_shown():
+                        break
+                    time.sleep(0.5)
+                self.assertTrue(shown, 'the keyboard did not come up')
+                time.sleep(1.5)
+                bar, _ = frame('statusBars')
+                png = subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout
+                os.makedirs(SHOTS, exist_ok=True)
+                with open(os.path.join(SHOTS, 'panel-keyboard-' + ('upright' if turn == '0' else 'side') + '.png'), 'wb') as f:
+                    f.write(png)
+                dp = int(re.findall(r'(\d+)', ui.sh('wm', 'density'))[-1]) / 160
+                ns = ui.nodes()
+                self.assertEqual([box(x) for x in ns if ui.label(x) == 'Sample sheet'], [title],
+                                 'the window was panned: the app\'s bar went up under the status bar')
+                for t in ('11LAB70AA501', 'Close'):
+                    n = [x for x in ns if ui.label(x) == t]
+                    self.assertTrue(n, f'{t} is not on screen with the keyboard up')
+                    b = box(n[0])
+                    self.assertGreaterEqual(b[1], bar[3], f'{t} is under the status bar: {b}, the bar ends at {bar[3]}')
+                    self.assertLessEqual(b[3], ime[1], f'{t} is under the keyboard: {b}, the keyboard starts at {ime[1]}')
+                    # (its text's box may lose a pixel or three as the row is laid out again: a cut one loses far more)
+                    # (its box's height is not compared: uiautomator's boxes of the heading's texts come out shorter while the
+                    # keyboard is up although the screenshot, saved above, shows them whole)
+                    self.assertGreaterEqual(b[3] - b[1], 8 * dp, f'{t} is hidden: {b}')
+                field = [x for x in ns if x.get('focused') == 'true' and x.get('class', '').endswith('EditText')]
+                self.assertEqual(len(field), 1, 'no field being typed in')
+                f = box(field[0])
+                # the field starts under the heading, and its line being typed in is above the keyboard: on its side (448 dp
+                # high, the keyboard 238 of them) the panel has about 100 dp, so a tall field may end under the keyboard
+                code = box([x for x in ns if ui.label(x) == '11LAB70AA501'][0])
+                self.assertGreaterEqual(f[1], code[3], f'the field is under the heading: {f}, the code ends at {code[3]}')
+                self.assertGreaterEqual(min(f[3], ime[1]) - f[1], 32 * dp, f'too little of the field is above the keyboard: {f}, the keyboard starts at {ime[1]}')
+                if turn == '0':
+                    self.assertLessEqual(f[3], ime[1], f'the field is under the keyboard: {f}, the keyboard starts at {ime[1]}')
+                ui.hide_keyboard()
+                time.sleep(1)
+                # the keyboard gone, the panel is back down with its grip
+                self.assertTrue(ui.present('Panel size: drag to resize', exact=True), 'the grip did not come back')
+                ui.tap('Close', exact=True)
+                time.sleep(1)
+
     def test_position_required(self):
         """request 7: a new member's join forms need a position; an admin's Add a person too"""
         ui.tap('Join with a file', exact=True)
@@ -2118,10 +2314,11 @@ class Phone(unittest.TestCase):
 # that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
 # test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 3: at the
 # end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
-# test_photo_size (a 12 MP picture through the app's own scaling) is in part 1: at the end of part 2 it took the
-# emulator from 6.68 to 7.34 GiB (2026-11-17).
-PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing',
-          'in_app_camera', 'photo_size'),
+# test_copy_close_batch (2026-11-16) is in part 1: at the end of part 2 it took the emulator from 7.14 to 7.67 GiB;
+# part 1 had ended at 5.92 GiB. test_photo_size (a 12 MP picture through the app's own scaling) is in part 1 too: at
+# the end of part 2 it took the emulator from 6.68 to 7.34 GiB (2026-11-17).
+PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
+          'panel_keyboard', 'in_app_camera', 'photo_size'),
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures', 'app_links'))

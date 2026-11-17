@@ -281,8 +281,11 @@ MANUAL = {
                  'No loop power: a lifted wire, an open terminal, a blown fuse, reversed wires',
                  'Measure the voltage at the terminals; trace the loop; land the wires the right way round'),
                 ('`3.6 mA` or less, or `21 mA` or more',
-                 'The transmitter has found a fault in itself and driven its output to its alarm level',
-                 'Read its status with the communicator; replace the part it names'),
+                 'The transmitter has found a fault in itself and driven its output to its alarm level; a failed '
+                 'sensor module drives it low, and the status reports a sensor failure',
+                 'Read its status with the communicator. A failed sensor module is not repaired in the field: '
+                 '[take the transmitter off](work:remove_tx), [fit a new one](work:fit_tx) drawn against the work '
+                 'order, [set its range](work:set_range) from the data sheet and make a loop check', 'failed'),
                 ('The current is right but the screen is wrong',
                  'The control system\'s range or input card does not match',
                  'Check the range in the control system against the transmitter\'s LRV and URV'),

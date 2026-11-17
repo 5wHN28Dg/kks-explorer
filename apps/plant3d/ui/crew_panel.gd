@@ -24,6 +24,8 @@ const W = preload("res://ui/widgets.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
 const Debrief = preload("res://ui/debrief.gd")
 const Discussions = preload("res://ui/discussions.gd")     # the discussion panel and its radio lines (REALISM.md §6.3.1)
+const WoPanel = preload("res://ui/wo_panel.gd")            # a work order step's words
+const StoresPanel = preload("res://ui/stores_panel.gd")    # the jump's rule, the store counter (REALISM.md §2.23)
 
 var ui                          # ui/plant_ui.gd
 var body: VBoxContainer
@@ -83,11 +85,18 @@ func open() -> void:
 			b.grab_focus.call_deferred()
 
 
+## The control the focus goes to in n: its first button or field that acts (the current step's, UI-UX-POLICY A1), a
+## part number's Copy button only when there is nothing else (the task's copy row sits above its steps).
 func _first(n: Node) -> Control:
+	var f := _first_of(n, false)
+	return f if f != null else _first_of(n, true)
+
+
+func _first_of(n: Node, copies: bool) -> Control:
 	for c in n.get_children():
-		if (c is Button and not c.disabled) or c is LineEdit:
+		if ((c is Button and not c.disabled) or c is LineEdit) and (copies or not String(c.name).begins_with("copy_part_")):
 			return c
-		var f := _first(c)
+		var f := _first_of(c, copies)
 		if f:
 			return f
 	return null
@@ -276,7 +285,9 @@ func refresh(spread := false) -> void:
 		for sid in ui.model.scenarios:
 			if ui.model.scenarios[sid].has("staff"):
 				var s := sid as String
-				body.add_child(W.button("Start: " + ui.model.scenarios[s].get("title", s), func(): ui.start_shift(s)))
+				var sb := W.button("Start: " + ui.model.scenarios[s].get("title", s), func(): ui.start_shift(s))
+				sb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART     # (UI-UX-POLICY L2)
+				body.add_child(sb)
 		ui.phone.build(body)
 		return
 	_roles(e, sm)
@@ -334,12 +345,11 @@ func _keys(e, sm) -> Dictionary:
 	var dk := ""
 	if di != -1:
 		dk = "%s|%d|%d" % [Discussions.sig(e, pi, _disc_closed), _disc_lines.get(sm.discuss["list"][di]["id"], []).size(), pi]
-	var open_permit := false
-	for st in e.pstate:
-		open_permit = open_permit or (st >= 1 and st <= 7)
+	var open_permit := StoresPanel.jump_blocked(e)
 	return {"head": "%d|%d|%d" % [pi, e.sp_on[pi], e.unacked(ui.inputs.slot)], "disc": dk, "task": _base_sig(e),
 			"queue": q, "day": day, "safety": _safety_sig(e), "reads": "%d|%d" % [pi, _reads.get(p["id"], []).size()],
-			"phone": ui.phone.sig(), "radio": "%d|%s|%s|%s" % [pi, _next_shift(e), str(e.fast_forward()), str(open_permit)]}
+			"phone": ui.phone.sig(), "radio": "%d|%s|%s|%s|%s" % [pi, _next_shift(e), str(e.fast_forward()), open_permit,
+			str(ui.stores != null and ui.stores.available() and ui.stores.at_counter())]}
 
 
 ## One part built again in its box (the focus given back, and a reading being typed kept, when its control went).
@@ -508,12 +518,47 @@ func _task(e, sm, cur: Dictionary) -> void:
 	var t: Dictionary = sm.tasks[cur["task"]]
 	body.add_child(W.label("Now: " + t["title"], 22, Color(1.0, 0.85, 0.4)))
 	var steps: Array = t["steps"]
+	# (UI-UX-POLICY C1) every part number the task's lines name, copied from one row under the title: the numbers
+	# stay on the screen in the done and coming steps too, whichever step is current
+	var cr = task_copy(e, steps)
+	if cr != null:
+		body.add_child(cr)
 	for k in steps.size():
 		var mark := "▶ " if k == cur["step"] else ("✓ " if k < cur["step"] else "· ")
 		var l := W.label(mark + describe(e, sm, cur, steps[k]), 18, Color.WHITE if k == cur["step"] else W.DIM)
 		body.add_child(l)
 		if k == cur["step"]:
 			_controls(e, sm, cur, steps[k])
+
+
+## The part numbers a task's steps name (a wait for an issue, an issue, an order), each once in the steps' order, as a
+## row of Copy buttons (UI-UX-POLICY C1), or null.
+func task_copy(e, steps: Array):
+	var nums: Array = []
+	for st in steps:
+		var id = null
+		if st.has("wait") and typeof(st["wait"]) == TYPE_DICTIONARY and st["wait"].has("issued"):
+			id = st["wait"]["issued"][0]
+		elif st.has("issue"):
+			id = st["issue"]
+		elif st.has("order"):
+			id = st["order"]
+		if id == null:
+			continue
+		var pn: String = StoresPanel.part_of(e, String(id)).get("number", "")
+		if pn != "" and not nums.has(pn):
+			nums.append(pn)
+	return StoresPanel.copy_row(ui, nums, "copy_part_")
+
+
+## A wait on one of the stores' values in words (the replacement job's: the spare on the shelf, its work order open);
+## "" for any other value, which still shows by its name (#396).
+static func wait_words(until: String) -> String:
+	if until.ends_with("_spare_shelf"):
+		return "Wait for the spare to be on the store's shelf (a delivery)"
+	if until.ends_with("_wo_open"):
+		return "Wait for the work order to be open (planned, not closed)"
+	return ""
 
 
 ## A step in words.
@@ -554,6 +599,12 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 		var k := "lock" if s.has("lock") else "unlock"
 		return "%s point %s of %s" % [k.capitalize(), str(s[k]["point"]), str(cur["work"] if s[k]["work"] == "$" else s[k]["work"])]
 	if s.has("wait"):
+		if s["wait"].has("issued"):     # (REALISM.md §2.24)
+			var sp := StoresPanel.part_of(e, String(s["wait"]["issued"][0]))
+			return "Wait for %s to be issued against the work order" % (sp.get("number", s["wait"]["issued"][0]))
+		var ww := wait_words(String(s["wait"].get("until", "")))
+		if ww != "":
+			return ww
 		return "Wait: " + (str(s["wait"].get("until")) if s["wait"].has("until") else "permit %s" % str(s["wait"]["permit"]))
 	if s.has("meet"):
 		return "Meet in the %s" % String(s["meet"]["room"]).replace("_", " ")
@@ -589,6 +640,15 @@ func describe(e, sm, cur: Dictionary, s: Dictionary) -> String:
 				names.append(e._iso[key.x][1][key.y][0])
 			what += ": " + (", ".join(names) if not names.is_empty() else "none left")
 		return what
+	if s.has("wo"):                 # a work order's step in words (as the work order panel's buttons), not its record
+		return "%s the work order" % WoPanel.ACTION_WORDS.get(String(s["wo"].get("action", "")), "Update")
+	if s.has("issue"):              # the stores' steps (REALISM.md §2.23), in words
+		var ip := StoresPanel.part_of(e, String(s["issue"]))
+		return "Issue %d × %s at the counter against the work order" % [int(s["qty"]), ip.get("number", s["issue"])]
+	if s.has("order"):
+		var op := StoresPanel.part_of(e, String(s["order"]))
+		return ("Order %d × %s" % [int(s["qty"]), op.get("number", s["order"])]) if s.has("qty") \
+				else "Order %s up to its maximum stock" % op.get("number", s["order"])
 	return str(s)
 
 
@@ -690,7 +750,10 @@ func _controls(e, sm, cur: Dictionary, s: Dictionary) -> void:
 	if s.has("choose"):
 		for k in s["choose"].size():
 			var kk: int = k
-			row.add_child(W.button(sm.tasks[s["choose"][k][1]]["title"], func(): ui.inputs.pick(kk)))
+			# (a whole line each, wrapped: a long title must not widen the panel, UI-UX-POLICY L2)
+			var cb := W.button(sm.tasks[s["choose"][k][1]]["title"], func(): ui.inputs.pick(kk))
+			cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			body.add_child(cb)
 	if s.has("ack") and cur["alarm"] != null:
 		var a: String = cur["alarm"]
 		row.add_child(W.button("Acknowledge", func(): ui.ack(a)))
@@ -858,15 +921,28 @@ func _radio_log(e, sm) -> void:
 		var task := parts[2]
 		row.add_child(W.button("Call %s: %s" % [role.replace("_", " "), sm.tasks[task]["title"]],
 				func(): ui.inputs.radio_call(role, task, null)))
+	if ui.stores != null and ui.stores.available() and ui.stores.at_counter():     # (REALISM.md §2.23)
+		var sb := W.button("At the store counter: draw parts", func(): ui.open_stores("issue"))
+		sb.name = "store_counter"
+		body.add_child(sb)
 	var nxt := _next_shift(e)
 	var b := W.button("Sleep to %s" % nxt, func(): ui.inputs.jump(nxt))
-	var open_permit := false
-	for s in e.pstate:
-		open_permit = open_permit or (s >= 1 and s <= 7)
-	b.disabled = not e.fast_forward() or open_permit
+	# the engine's rule (§17.6; in a scenario with `world`, §7.4's amendment: REALISM.md §2.23)
+	var blocked := StoresPanel.jump_blocked(e)
+	b.disabled = not e.fast_forward() or blocked != ""
 	body.add_child(b)
-	if open_permit:
-		body.add_child(W.label("(no sleeping while a permit is open)", 16, W.DIM))
+	# a jump to a date (REALISM.md §2.23): the next shift's time, days on
+	var drow := HFlowContainer.new()
+	drow.name = "jump_days"
+	body.add_child(drow)
+	for d in [1, 2, 7]:
+		var dd: int = d
+		var db := W.button("%s, %d day%s on" % [nxt, d, "" if d == 1 else "s"], func(): ui.inputs.jump(nxt, dd))
+		db.name = "jump_days_%d" % d
+		db.disabled = b.disabled
+		drow.add_child(db)
+	if blocked != "":
+		body.add_child(W.label("(%s)" % blocked.replace("no jump", "no sleeping"), 16, W.DIM))
 
 
 ## The radio's last lines written into its labels (new messages, nothing else changed): no rebuild of the panel,

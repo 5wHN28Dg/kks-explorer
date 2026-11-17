@@ -33,6 +33,7 @@ const ProcedurePanel = preload("res://ui/procedure_panel.gd")
 const TrainerPanel = preload("res://ui/trainer_panel.gd")
 const PermitPanel = preload("res://ui/permit_panel.gd")
 const WoPanel = preload("res://ui/wo_panel.gd")
+const StoresPanel = preload("res://ui/stores_panel.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const DebriefPanel = preload("res://ui/debrief_panel.gd")
 const Debrief = preload("res://ui/debrief.gd")
@@ -93,6 +94,7 @@ var procedure
 var trainer
 var permits                     # ui/permit_panel.gd: the permits to work and their isolations (PLANT3D §15)
 var work_orders                 # ui/wo_panel.gd: the work orders and each code's history (REALISM.md §2.20)
+var stores                      # ui/stores_panel.gd: the stores' catalogue, the counter and orders (REALISM.md §2.23)
 var autosave                    # ui/autosave.gd: the run saved to user://, offered again at start
 var debrief
 var screens                     # ui/screens_model.gd: the control room screens made from the model (PLANT3D §7.11)
@@ -136,6 +138,7 @@ var _hint: Label
 var _toast: Label
 var _toast_t := 0.0
 var _toast_beside_card := false
+var _toast_side := false        # a side panel was open when the notice was laid out
 var _alarm_btn: Button
 var _time: Label
 var _ff_btn: Button
@@ -320,6 +323,10 @@ func _build() -> void:
 	work_orders.name = "work_orders"
 	root.add_child(work_orders)
 	work_orders.setup(self)
+	stores = StoresPanel.new()
+	stores.name = "stores"
+	root.add_child(stores)
+	stores.setup(self)
 	crew = CrewPanel.new()
 	crew.name = "crew"
 	root.add_child(crew)
@@ -413,6 +420,8 @@ func _layout() -> void:
 	permits.size = card.size
 	work_orders.position = card.position
 	work_orders.size = card.size
+	stores.position = card.position
+	stores.size = card.size
 	debrief.position = card.position
 	debrief.size = card.size
 	session_panel.position = procedure.position
@@ -431,10 +440,10 @@ func _layout_toast() -> void:
 	var vs: Vector2 = root.get_viewport_rect().size
 	# between the side panels when they are open (on a phone it may reach over them: it has its own background)
 	var side := 0.0
-	if card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible
-			or permits.visible):
+	if _side_open():
 		side = card.size.x + 32.0
 	_toast_beside_card = card != null and card.visible
+	_toast_side = _side_open()
 	var w := clampf(vs.x - 2.0 * side, 360.0, minf(vs.x * 0.5, 900.0))
 	var x := (vs.x - w) * 0.5
 	if screens_open():
@@ -445,7 +454,14 @@ func _layout_toast() -> void:
 	_toast.position = Vector2(x, 0.0)
 	_toast.size = Vector2(w, 0)
 	var h := _toast.get_combined_minimum_size().y
-	_toast.position.y = (vs.y - h - 16.0) if screens_open() else vs.y - 200.0 * W.scale
+	# (its bottom never below the screen's: a narrow notice between panels grows taller, and moves up)
+	_toast.position.y = (vs.y - h - 16.0) if screens_open() else minf(vs.y - 200.0 * W.scale, vs.y - h - 16.0)
+
+
+## A panel open at the card's place (the notice keeps clear of it).
+func _side_open() -> bool:
+	return card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible
+			or permits.visible or (work_orders != null and work_orders.visible) or (stores != null and stores.visible))
 
 
 ## The layer's rows in the settings panel (app/hud.gd), kept in the app's settings file.
@@ -492,11 +508,13 @@ func open_workshop(kind: String, code := "", mirror := false) -> bool:
 
 
 ## A job's failed part opened in the Workshop from the debrief's diagnosis tab (REALISM.md §3.5, milestone HW3):
-## the kind's machine with the cause's component picked, what was found there, and the cause's bench fault.
+## the kind's machine with the cause's component picked, what was found there, and the cause's bench fault. Writable
+## only when the job removed the part (milestone WM2: a fitting replaced it); read only otherwise.
 func open_failed_part(r: Dictionary) -> bool:
 	if main == null or main.workshop == null:
 		return false
-	main.workshop.failed = {"component": r.component, "title": r.cause_title, "found": r.found, "bench_fault": r.bench}
+	main.workshop.failed = {"component": r.component, "title": r.cause_title, "found": r.found, "bench_fault": r.bench,
+			"writable": bool(r.get("removed", false))}   # (WM2: writable for a part the job removed, §3.5)
 	if not open_workshop(String(r.kind), String(r.kks)):
 		main.workshop.failed = {}
 		return false
@@ -1447,7 +1465,7 @@ func toast(text: String, seconds := 4.0) -> void:
 
 ## The right-hand side holds one of the card, the alarm list and the instructor's panel; procedures stay on the left.
 func _right_open(p) -> void:
-	for q in [card, alarms, trainer, debrief, permits, work_orders]:
+	for q in [card, alarms, trainer, debrief, permits, work_orders, stores]:
 		if q != p and q.visible:
 			if q == card:
 				close_card()
@@ -1502,7 +1520,7 @@ func close_procedure() -> void:
 func open_permits(wid := "", code := "") -> void:
 	if card.visible:
 		close_card()
-	for q in [alarms, trainer, debrief, work_orders]:
+	for q in [alarms, trainer, debrief, work_orders, stores]:
 		q.visible = false
 	if code != "":
 		permits.open_for_code(code)
@@ -1801,7 +1819,7 @@ func close_permits() -> void:
 func open_work_orders(wid := "", code := "") -> void:
 	if card.visible:
 		close_card()
-	for q in [alarms, trainer, debrief, permits]:
+	for q in [alarms, trainer, debrief, permits, stores]:
 		q.visible = false
 	if code != "":
 		work_orders.open_for_code(code)
@@ -1812,6 +1830,22 @@ func open_work_orders(wid := "", code := "") -> void:
 
 func close_work_orders() -> void:
 	work_orders.visible = false
+	mimic.take_focus()
+
+
+## The stores (REALISM.md §2.23): the catalogue ("list"), the counter's issue form ("issue", a work's order given) or
+## a part's order form ("order", the part given).
+func open_stores(view := "list", id := "") -> void:
+	if card.visible:
+		close_card()
+	for q in [alarms, trainer, debrief, permits, work_orders]:
+		q.visible = false
+	stores.open(view, id)
+	_release_mouse()
+
+
+func close_stores() -> void:
+	stores.visible = false
 	mimic.take_focus()
 
 
@@ -1850,6 +1884,8 @@ func close_top() -> bool:
 		close_trainer()
 	elif work_orders.visible:
 		work_orders.close()
+	elif stores.visible:
+		stores.close()
 	elif permits.visible:
 		close_permits()
 	elif debrief.visible:
@@ -1981,6 +2017,7 @@ func _sync_events() -> void:
 		alarms.on_events(evs, from)
 		permits.on_events(evs, from)
 		work_orders.on_events(evs, from)
+		stores.on_events(evs, from)
 		_follow_events(evs, from)
 		if work != null:
 			work.on_events(evs, from)
@@ -2074,9 +2111,8 @@ func _fit() -> void:
 
 func _toast_tick(delta: float) -> void:
 	if _toast_t > 0.0:
-		if card != null and card.visible != _toast_beside_card:
-			_toast_beside_card = card.visible
-			_layout_toast()                  # a card opened under the word: the word moves clear of it
+		if (card != null and card.visible != _toast_beside_card) or _side_open() != _toast_side:
+			_layout_toast()                  # a card or panel opened under the word: the word moves clear of it
 		_toast_t -= delta
 		if _toast_t <= 0.0:
 			_toast.text = ""

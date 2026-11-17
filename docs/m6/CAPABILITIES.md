@@ -28,6 +28,7 @@ missing.
 | Accessibility API | ✅ UI Automation [K] | ✅ AT-SPI (GTK 4 accessibility) [K] | ✅ TalkBack / accessibility framework [K] | ✅ native elements + ARIA → VoiceOver [K] |
 | Right-to-left and mixed text (Arabic in notes) | ✅ DirectWrite / Uniscribe [K] | ✅ Pango [K] | ✅ framework text stack [K] | ✅ Unicode bidi in CSS/HTML [K] |
 | Embedded web engine the app can use | ✅ WebView2: part of Windows 11, installed on eligible Windows 10 devices [D] | ✅ WebKitGTK 6.0 (2.52) [V] | ✅ Android System WebView [K] | — (the page *is* the browser) |
+| Copy text to the clipboard (a KKS code, 2026-11-15) | ✅ `OpenClipboard`/`SetClipboardData(CF_UNICODETEXT)` [K]; read back in the VM by the UIA driver's `clipboard` step | ✅ `gdk_clipboard_set_text` [K]; pasted back into the search field over AT-SPI [V, 2026-11-15, headless] | ✅ `ClipboardManager` (Compose); Android 13+ shows its own confirmation [D]; pasted back into the search field [V, 2026-11-15, emulator] | ✅ `navigator.clipboard.writeText` in a secure context; on plain http only `document.execCommand('copy')` inside the click, which Safari still allows [D]; both paths in Playwright's WebKit [V, 2026-11-15] |
 
 ## 2. Drawings and images (R1, R9)
 

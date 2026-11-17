@@ -62,8 +62,14 @@ var exit_ms := -1.0             # Back to the plant's first frame (last exit)
 var load_ms := -1.0
 var note := ""                  # the last refusal or hint (shown by the panels)
 ## The failed part a job found (REALISM.md §3.5, milestone HW3: the debrief's diagnosis tab opens it): {component,
-## title, found, bench_fault}; empty otherwise. Set before open(); cleared on close.
+## title, found, bench_fault, writable}; empty otherwise. Set before open(); cleared on close. Writable (milestone WM2)
+## only for a part a job removed (the transmitter replaced): it is on the bench and may be taken apart; a part still
+## in the plant opens read only (looked at, picked, hidden; not taken apart).
 var failed := {}
+const READ_ONLY_WHY := "Read only: this part is still in the plant. Only a part a job removed can be taken apart here."
+
+func read_only() -> bool:
+	return not failed.is_empty() and not bool(failed.get("writable", false))
 var _loading := ""
 var _t0 := 0
 var _prev_speed := -1
@@ -619,6 +625,12 @@ func apply() -> void:
 func set_slider(v: float) -> void:
 	if guide.on():
 		return   # (the slider waits while the steps are on: Reset or Reassemble all ends them)
+	if read_only() and v > s:
+		note = READ_ONLY_WHY   # (WM2: a part still in the plant is not taken apart)
+		if panels != null:
+			panels.sync_slider()
+			panels.selected_changed()
+		return
 	if bench_running() and _takes_apart(clampf(v, 0.0, 1.0), root_id):
 		note = running_why()   # (back towards assembled is allowed: it opens nothing)
 		if panels != null:
@@ -689,6 +701,10 @@ func select(id: String) -> void:
 func show_failed() -> void:
 	select(String(failed.get("component", "")))
 	note = "Failed: %s. %s" % [String(failed.get("title", "")), String(failed.get("found", ""))]
+	if bool(failed.get("writable", false)):
+		note += " Removed in the job: on the bench, yours to take apart."
+	else:
+		note += " " + READ_ONLY_WHY
 	if panels != null:
 		panels.selected_changed()
 	var bf := String(failed.get("bench_fault", ""))
@@ -773,6 +789,8 @@ func _ancestor_of(a: String, id: String) -> bool:
 func why_not_free(id: String) -> String:
 	if id == "" or not (comps.has(id) or groups.has(id)):
 		return ""
+	if read_only():
+		return READ_ONLY_WHY
 	if bench_running() and not open_running(id):
 		return running_why()
 	if comps.has(id) or (groups.has(id) and not spec.groups[id].get("beyond", false)):   # (a sealed part's
@@ -812,6 +830,11 @@ func _at_home(id: String, off: Dictionary, foff := {}) -> bool:
 ## are cleared first; the slider waits until Reset or Reassemble all ends the steps.
 func start_guide(mode: String, from := "exploded") -> bool:
 	if machine == null or words.get("assembly", []).is_empty() or not mode in ["assemble", "disassemble"]:
+		return false
+	if read_only():
+		note = READ_ONLY_WHY
+		if panels != null:
+			panels.selected_changed()
 		return false
 	if bench_running():   # (assembling starts from the machine taken apart: that opens it up too)
 		note = running_why()

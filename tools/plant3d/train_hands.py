@@ -141,7 +141,7 @@ def parts(m, code):
     a, loop = e['alias'], e['loop']
     for x in s['actions']:
         h = {'kks': code, 'action': x['action'], 'component': x['component']}
-        for k in ('tools', 'wrong', 'needs', 'set', 'input', 'range', 'minutes'):
+        for k in ('tools', 'wrong', 'needs', 'set', 'input', 'range', 'minutes', 'part'):   # (part: the stores', REALISM.md §2.23)
             if k in x:
                 h[k] = _sub(x[k], a, loop)
         m.hands.append(h)
@@ -167,6 +167,10 @@ def parts(m, code):
 # HW2; the three of HW3 weigh by a value (`cpt2_w_*`, 0 unless a scenario sets it), so every earlier scenario draws
 # what it drew before (the shift_tx scenario sets them to 1: five causes, equally likely).
 W_NEW = ('cpt2_w_block', 'cpt2_w_pass', 'cpt2_w_wet')
+# milestone WM2 (REALISM.md §2.23–§2.24): a sixth cause, the sensor module failed (the output at NAMUR NE 43's low alarm
+# current, HART reporting a sensor failure), put right only by a new transmitter from the stores; weighed by a value at
+# 0 in every scenario but shift_fail and shift_nospare, so every earlier draw stands
+W_FAIL = 'cpt2_w_fail'
 FAULT = {'id': 'cond_p2_low', 'text': 'Condenser pressure transmitter 2 reads apart from its partners',
          'kks': '30MAG10CP002', 'set': {'cond_p2_low': 1}, 'repair': {'cond_p2_low': 0},
          'causes': [{'id': 'drift', 'weight': 1, 'set': {'cond_p2_drift': -1.5},
@@ -185,7 +189,11 @@ FAULT = {'id': 'cond_p2_low', 'text': 'Condenser pressure transmitter 2 reads ap
                      'set': {'cpt2_terminal_block_wet': 1, 'cpt2_cable_gland_worn': 1},
                      'repair': {'cpt2_terminal_block_wet': 0, 'cpt2_cable_gland_worn': 0}, 'fixed': 'cpt2_sound',
                      'text': "Water past the cable gland's worn seal in the terminal side: a leak to earth takes "
-                             '0.6–1.0 mA, jumping, past the control system'}]}
+                             '0.6–1.0 mA, jumping, past the control system'},
+                    {'id': 'failed', 'weight': W_FAIL, 'set': {'cpt2_sensor_module_fail': 1},
+                     'repair': {'cpt2_sensor_module_fail': 0}, 'fixed': 'cpt2_sound',
+                     'text': 'The sensor module has failed: the output sits at the low alarm current (3.6 mA) and '
+                             'HART reports a sensor failure; only a new transmitter puts it right'}]}
 WORK = ('wo_cond_p2_fix', '30MAG10CP002', 'Condenser pressure transmitter 2 reads apart: find the cause and put it right',
         'inst', 'general', 'iso_cond_p2', 'cond_p2_low')
 CP2 = '30MAG10CP002'
@@ -198,6 +206,11 @@ TRIM = -FAULT['causes'][0]['set']['cond_p2_drift']
 ERR_TOL, MA_TOL, PV_TOL, STUCK = 0.3, 0.15, 0.5, 5
 TOL = 0.01      # a reading written down to two decimals (the screens show two) is a reading of the value
 LOOP_CHECK = (4, 8, 12, 16, 20)     # mA, the loop check's points (IEC 62382; the manual's commissioning section)
+# (WM2) the data sheet's upper range value (0–120 kPa(a)) and how near a range set must come to it; the output that
+# says the sensor failed (below NE 43's measuring range, 3.8 mA); the spare and its look-alike (stores.json)
+URV, URV_TOL, FAIL_SEEN = 120, 0.05, 3.7
+SPARE, LOOKALIKE = 'pt_unit_a3', 'pt_unit_a4'
+STORE_FRONT = 'p_store'     # (the point in front of the store counter: the counter is the storekeeper's place)
 
 
 def fault_values(m):
@@ -206,7 +219,7 @@ def fault_values(m):
     manifold's valve shut, the vent shut, no loop test left on), and what the technician sees at the transmitter (the
     loop current below the AO the transmitter says it sets; the PV apart from its partners' mean on the screens; the
     PV left near the air's after the vent test)."""
-    for w in W_NEW:
+    for w in W_NEW + (W_FAIL,):
         m.state(w, 0)
     m.sum('cond_p2_err', ['cond_p2_drift', 'cond_p2_trim'], 'kPa')
     m.cmp('cond_p2_err_lo', 'cond_p2_err', '>', -ERR_TOL)
@@ -223,8 +236,16 @@ def fault_values(m):
     # side dry with the gland sealed, the line clear, the manifold's valve and the flange's vent shut, no loop test
     # holding the output (HW3)
     m.NOT('cpt2_lt_off', 'cpt2_lt_on')
+    # (WM2) and a sensor that works, the transmitter bolted to its manifold and its range the data sheet's (a new
+    # one's set with HART: 120 kPa; the commissioned one's, 0, is the data sheet's)
+    m.cmp('cpt2_urv_lo', 'cpt2_electronics_urv', '>', URV - URV_TOL)
+    m.cmp('cpt2_urv_hi', 'cpt2_electronics_urv', '<', URV + URV_TOL)
+    m.AND('cpt2_urv_ok', ['cpt2_urv_lo', 'cpt2_urv_hi'])
+    m.NOT('cpt2_rng_own', 'cpt2_rng_on')
+    m.OR('cpt2_rng_ok', ['cpt2_rng_own', 'cpt2_urv_ok'])
     m.AND('cpt2_sound', ['cond_p2_trim_ok', 'cpt2_tight', 'cpt2_wired', 'cpt2_cover_on', 'cpt2_dry', 'cpt2_sealed',
-                         'cpt2_line_ok', 'cpt2_valve_ok', 'cpt2_shut', 'cpt2_open', 'cpt2_lt_off'])
+                         'cpt2_line_ok', 'cpt2_valve_ok', 'cpt2_shut', 'cpt2_open', 'cpt2_lt_off', 'cpt2_sensor_ok',
+                         'cpt2_bolted', 'cpt2_rng_ok'])
     m.diff('cpt2_ma_short', 'cpt2_ma_tx', 'cpt2_ma', 'mA')
     m.cmp('cpt2_loop_low', 'cpt2_ma_short', '>', MA_TOL)
     m.sum('cpt2_partners', ['cond_p1', 'cond_p3'])
@@ -240,6 +261,20 @@ def fault_values(m):
     m.cmp('cpt2_pv_lo1', 'cpt2_dev1', '<', -PV_TOL)
     m.OR('cpt2_pv_apart', ['cpt2_pv_lo1', 'cpt2_pv_high'])
     m.cmp('cpt2_vent_held', 'cpt2_dev1', '>', STUCK)
+    # (WM2) the technician sees the failure: the output the transmitter reports at the low alarm current
+    m.cmp('cpt2_failed_seen', 'cpt2_ma_tx', '<', FAIL_SEEN)
+    m.NOT('cpt2_alive', 'cpt2_failed_seen')
+
+
+def store_nodes():
+    """(WM2, REALISM.md §2.24) What the replacement's job reads of the stores and the work order, in the store's area
+    (model/admin.json, after its parts' nodes): a spare on the shelf; the work's order open for issues (planned,
+    scheduled or in progress: §2.23's `work` reason)."""
+    w = WORK[0]
+    return [['cpt2_spare_shelf', {'cmp': [f'{SPARE}_stock', '>=', 1]}],
+            ['cpt2_wo_planned', {'cmp': [f'{w}_wo', '>=', 2]}],
+            ['cpt2_wo_live', {'cmp': [f'{w}_wo', '<=', 4]}],
+            ['cpt2_wo_open', {'and': ['cpt2_wo_planned', 'cpt2_wo_live']}]]
 
 
 def job_steps():
@@ -278,6 +313,10 @@ def job_steps():
         hand('open_cover'), hand('connect_hart', 'hart'), hand('connect_dmm', 'dmm'), {'work': 1},
         {'read': CP2, 'via': 'cpt2_pv', 'tol': TOL}, {'read': CP2, 'via': 'cpt2_ao', 'tol': TOL},
         {'read': CP2, 'via': 'cpt2_dmm', 'tol': TOL}]
+    # (WM2) the output at the low alarm current: the sensor failed, the transmitter is replaced (its own task, the
+    # last step's choice: this one is at the step limit). A sound sensor goes on at once (no minute waited)
+    steps.append({'wait': {'until': 'cpt2_alive', 'minutes': 1, 'else': 'failed'}})
+    skips.append(steps[-1]['wait'])
     skip_unless('cpt2_terminal_block_wet', 'wet')
     steps += [hand('lift_wires', 'sd_term'), hand('dry_terms'), hand('reseal_gland', 'spanner_24'),
               hand('land_wires', 'sd_term'), {'work': 1}]
@@ -299,16 +338,125 @@ def job_steps():
     skip_unless('cpt2_pv_lo1', 'low')
     steps.append({'op': {'kks': CP2, 'do': 'set', 'where': 'hart', 'value': TRIM}})
     label('low')
-    for ma in LOOP_CHECK:
-        steps += [hand('loop_test', 'hart', value=ma), {'work': 1}, {'read': CP2, 'tol': TOL}]
-    steps += [hand('end_loop_test', 'hart'), {'work': 1},
-              {'read': CP2, 'via': 'cpt2_dmm', 'tol': TOL}, hand('disconnect_dmm', 'dmm'), hand('disconnect_hart', 'hart'),
-              {'wait': {'until': 'cpt2_clear', 'minutes': 1}}, {'read': CP2, 'tol': TOL}, hand('close_cover'),
-              {'permit': {'work': '$', 'action': 'done'}},
-              {'permit': {'work': '$', 'action': 'return'}}, {'say': 'cal_done', 'to': 'shift_sup'},
-              {'go': TOOLBOX}, {'tool': 'off'}]
+    steps += close_steps()
+    # (WM2) the job's last three steps (the report, the tools back) are a task of their own, so that the replacement
+    # (chosen after them, never reached from them) fits within the step limit
+    steps.append({'choose': [[1, END]]})
+    label('failed')
+    steps.append({'choose': [[1, TX]]})
     assert all(isinstance(w['else'], int) for w in skips)
     return steps
+
+
+def _hand(action, tool=None, **kw):
+    s = {'hand': action, 'kks': CP2}
+    if tool:
+        s['tool'] = tool
+    s.update(kw)
+    return s
+
+
+def close_steps():
+    """The loop check with the control room (the output held at 4, 8, 12, 16 and 20 mA by the communicator's loop test,
+    the screen's value read back over the radio at each), everything off, the display read and the cover on, the
+    permit done and handed back."""
+    steps = []
+    for ma in LOOP_CHECK:
+        steps += [_hand('loop_test', 'hart', value=ma), {'work': 1}, {'read': CP2, 'tol': TOL}]
+    return steps + [
+        _hand('end_loop_test', 'hart'), {'work': 1},
+        {'read': CP2, 'via': 'cpt2_dmm', 'tol': TOL}, _hand('disconnect_dmm', 'dmm'), _hand('disconnect_hart', 'hart'),
+        {'wait': {'until': 'cpt2_clear', 'minutes': 1}}, {'read': CP2, 'tol': TOL}, _hand('close_cover'),
+        {'permit': {'work': '$', 'action': 'done'}}, {'permit': {'work': '$', 'action': 'return'}}]
+
+
+# (WM2, REALISM.md §2.24) the job's tasks after its first: the end (the report and the tools back), the replacement
+# (the failed transmitter taken off and a new one fitted), its second half (the wires, the range, the loop check)
+# and the storekeeper's issue against the work order (only a storekeeper issues as an NPC, §2.24), then the shelf
+# topped up to its max (an order without qty: refused when nothing is missing; a shelf set empty by a scenario's
+# `stock` makes no edge for the reorder reaction, so this is the order that brings the spare)
+JOB = 'job_cond_p2_fix'
+END, TX, FIT, ISSUE = f'{JOB}_end', f'{JOB}_tx', f'{JOB}_fit', 'issue_cond_p2_fix'
+SWAP, SEEN = f'{JOB}_swap', 'issue_cond_p2_fix_seen'      # (part 4, 2026-11-16: the spare in hand first)
+ISSUE_DO = 'issue_cond_p2_fix_do'
+
+
+def tx_steps():
+    """The replacement (REALISM.md §2.24, part 4): the device status read with the communicator (a sensor failure), the
+    work order notified (if it isn't open already) so that the spare can be issued against it, the storekeeper called
+    to issue the spare, the technician in front of the counter until the order is open, then up to an hour for the
+    spare issued against it: with it in hand, the swap (the plant is touched only then). Without it, held for parts:
+    the maintenance supervisor told, another hour for a slow issue (no second call while the first may still come),
+    then a wait until a spare is on the shelf (held overnight with the permit's lock on, §17.10) and the order open
+    (the storekeeper issues only against an open one), the storekeeper called again and the technician at the counter
+    until it is issued (held there, the transmitter not taken off, while nobody issues it), then the swap."""
+    spare = {'issued': [SPARE, '$']}
+    return [{'read': CP2, 'via': 'cpt2_status', 'tol': TOL}, {'wo': {'work': '$', 'action': 'notify'}, 'else': 2},
+            {'call': {'role': 'store', 'task': ISSUE}}, {'go': STORE_FRONT},
+            {'wait': {'until': 'cpt2_wo_open', 'minutes': 60, 'else': 5}},
+            {'wait': dict(spare, minutes=60, **{'else': 7})}, {'choose': [[1, SWAP]]},
+            {'say': 'held_for_parts', 'to': 'maint_sup'},
+            {'wait': dict(spare, minutes=60, **{'else': 10})}, {'choose': [[1, SWAP]]},
+            {'wait': {'until': 'cpt2_spare_shelf'}}, {'wait': {'until': 'cpt2_wo_open'}},
+            {'call': {'role': 'store', 'task': ISSUE}}, {'go': STORE_FRONT},
+            {'wait': dict(spare)}, {'choose': [[1, SWAP]]}]
+
+
+def swap_steps():
+    """The spare in hand: at the counter (again after a night's hold), three minutes' writing; back at the
+    transmitter the leads off, the wires
+    lifted, the manifold's block valve shut and the transmitter vented through its flange, unbolted; the new one fitted
+    (the part check), then its second half."""
+    return [{'go': STORE_FRONT}, {'work': 3, 'anim': 'write'}, {'go': {'kks': CP2}},
+            _hand('open_cover'),        # (as the readings left it, unless someone closed it while the job waited)
+            _hand('disconnect_dmm', 'dmm'),
+            _hand('disconnect_hart', 'hart'), _hand('lift_wires', 'sd_term'), _hand('shut_block'),
+            _hand('crack_vent', 'spanner_17'), {'work': 1}, _hand('remove_tx', 'spanner_17'),
+            _hand('fit_tx', 'spanner_17'), {'choose': [[1, FIT]]}]
+
+
+def fit_steps():
+    """The new transmitter's second half: the cover off, the wires landed, the manifold's block valve opened, the
+    communicator on and the range set from the data sheet (0–120 kPa(a): the factory's is the sensor's limit), the
+    multimeter on, the PV and the status read; then the loop check and the close (as the job's own), and its end."""
+    return [_hand('open_cover'), _hand('land_wires', 'sd_term'), _hand('open_block'), _hand('connect_hart', 'hart'),
+            {'work': 1}, _hand('set_range', 'hart', value=URV), _hand('connect_dmm', 'dmm'), {'work': 1},
+            {'read': CP2, 'via': 'cpt2_pv', 'tol': TOL}, {'read': CP2, 'via': 'cpt2_status', 'tol': TOL}] + \
+        close_steps() + [{'choose': [[1, END]]}]
+
+
+def end_steps():
+    return [{'say': 'cal_done', 'to': 'shift_sup'}, {'go': TOOLBOX}, {'tool': 'off'}]
+
+
+def tasks():
+    """The job's further tasks (appended after every earlier task, so no index moves), each under the job's work (the
+    choice keeps it), held overnight as the job is."""
+    w = WORK[0]
+    kw = {'work': w, 'resume': 'next_duty'}
+    return [dict({'id': END, 'title': 'Report the job done and put the tools back', 'steps': end_steps()}, **kw),
+            dict({'id': TX, 'title': 'Replace the failed transmitter: call for the spare and wait for it at the counter',
+                  'steps': tx_steps()}, **kw),
+            dict({'id': FIT, 'title': 'The new transmitter: wires, range, loop check', 'steps': fit_steps()}, **kw),
+            {'id': ISSUE, 'title': 'Issue the spare transmitter against its work order', 'priority': 2, 'work': w,
+             # (part 4) the ledger first: a spare issued against the order and not yet fitted is not issued again,
+             # nor one once the failed transmitter is out (a call kept until the storekeeper's duty may come after
+             # the fitting, which empties the ledger)
+             # nor during the fitting ("fitting": the wait counts a part a fitting under way has taken: it leaves the ledger
+             # when the fitting starts, the sensor is cured when it ends). An order that never opened goes through
+             # the same checks (it may open on the way to the counter).
+             'steps': [{'wait': {'until': 'cpt2_wo_open', 'minutes': 120, 'else': 1}},
+                       {'wait': {'issued': [SPARE, '$'], 'fitting': True, 'minutes': 1, 'else': 3}},
+                       {'choose': [[1, SEEN]]},
+                       {'wait': {'until': 'cpt2_sensor_module_fail', 'minutes': 1, 'else': 5}},
+                       {'choose': [[1, ISSUE_DO]]}, {'choose': [[1, SEEN]]}]},
+            {'id': ISSUE_DO, 'title': 'Hand over the spare transmitter and write it on the work order', 'priority': 2, 'work': w,
+             'steps': [{'issue': SPARE, 'qty': 1, 'for': '$', 'else': 1}, {'work': 1, 'anim': 'write'},
+                       {'order': SPARE}]},
+            dict({'id': SWAP, 'title': 'The spare in hand: take the old transmitter off and fit the new one',
+                  'steps': swap_steps()}, **kw),
+            {'id': SEEN, 'title': 'No spare to issue: one is on the work order already, or the failed one is replaced', 'priority': 2,
+             'work': w, 'steps': [{'work': 1, 'anim': 'write'}]}]
 
 
 TX_SEED, VAC_SEED = 6, 7     # (distinct from every other scenario's; 6 draws the blocked line)
@@ -341,6 +489,45 @@ def scenario(base):
     for f in s['faults']:
         if f['id'] == FAULT['id']:
             f['when'] = {'cmp': ['cond_p', '<', 60]}
+    return s
+
+
+FAIL_SEED, NOSPARE_SEED, ABSENT_SEED = 13, 15, 21     # (WM2: each draws the failed sensor among the six causes, weights 1)
+
+
+def fail_scenario(base):
+    """`shift_fail` (milestone WM2, REALISM.md §2.24): shift_tx (above) with the sixth cause weighed 1 too and its own
+    world seed, which draws the failed sensor module: the output at the low alarm current from the moment the
+    condenser passes 60 kPa(a); the spare transmitter on the shelf, issued by the storekeeper against the work order."""
+    s = scenario(base)
+    s['id'] = 'shift_fail'
+    s['title'] = 'Day shift: a condenser pressure transmitter has failed (choose a role)'
+    s['init'] = dict(s['init'], **{W_FAIL: 1})
+    s['world'] = dict(s['world'], seed=FAIL_SEED)
+    return s
+
+
+def nospare_scenario(base):
+    """`shift_nospare` (milestone WM2): shift_fail without the spare on the shelf (the scenario's `stock`: none of the
+    range 3 transmitter, only its look-alike of range 4), its own seed (the failed sensor again): the storekeeper
+    reorders it (42 days' lead time), the job is held for parts, and a jump to a date brings the delivery."""
+    s = fail_scenario(base)
+    s['id'] = 'shift_nospare'
+    s['title'] = 'Day shift: a condenser transmitter failed, no spare (choose a role)'
+    s['stock'] = {SPARE: 0}
+    s['world'] = dict(s['world'], seed=NOSPARE_SEED)
+    return s
+
+
+def absent_scenario(base):
+    """`shift_fail_absent` (REALISM.md §2.24, part 4): shift_fail with the storekeeper absent (the scenario's
+    `staff.absent`): nobody to issue the spare, so the job is held for parts at the counter, the old transmitter not
+    taken off, until the trainer issues it in free mode (the store's role is not played)."""
+    s = fail_scenario(base)
+    s['id'] = 'shift_fail_absent'
+    s['title'] = 'Day shift: a condenser transmitter failed, the storekeeper away (choose a role)'
+    s['staff'] = dict(s['staff'], absent=['store1'])
+    s['world'] = dict(s['world'], seed=ABSENT_SEED)     # (every scenario its own world seed)
     return s
 
 
