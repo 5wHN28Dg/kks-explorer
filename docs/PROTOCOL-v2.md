@@ -350,7 +350,9 @@ Errors, crashes and sync failures a device saw, for the manager only (decision 0
   purpose `kks-report`. Plaintext = canonical JSON of `{"device", "app", "version", "platform", "model", "from",
   "to", "events": [{"at", "kind", "text", "n"}, …]}`:
   - `app`: `android`, `gnome`, `windows` or `server`; `platform`/`model`: free text ≤ 80;
-  - `from`/`to`: wall-clock ms of the first and last event; `kind`: `crash`, `error` or `sync`; `text` ≤ 4 000;
+  - `from`/`to`: wall-clock ms of the first and last event; `kind`: `crash`, `error`, `sync` or
+    `device` (what the device offers, such as its camera's Extensions; from 2026-11, decision 0075: readers show an
+    unknown kind as it is); `text` ≤ 4 000;
   - `n`: how many times the same `kind` + `text` happened since the last report (optional, 1 when absent; `at` is
     the latest time);
   - no plant data, no passwords, no names beyond the device's label.

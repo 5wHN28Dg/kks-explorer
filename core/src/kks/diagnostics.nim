@@ -26,9 +26,10 @@ proc pending*(n: Node): JNode =
   try: parseStrict(raw) except JsonError: newArr()
 
 proc record*(n: Node, kind, text: string, wall: int64) =
-  ## Keep one event for the next report: `kind` crash, error or sync. The same kind + text again only counts up.
+  ## Keep one event for the next report: `kind` crash, error, sync or device (what the device offers, e.g. its
+  ## camera's Extensions: decision 0075). The same kind + text again only counts up.
   ## Kept whether reports are on or not (the newest 200), so switching them on also sends what came before.
-  if kind notin ["crash", "error", "sync"]: return
+  if kind notin ["crash", "error", "sync", "device"]: return
   let t = if text.len > MaxText: text[0 ..< MaxText] else: text
   var a = n.pending
   for ev in a.elems:

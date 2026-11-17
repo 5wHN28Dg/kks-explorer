@@ -268,7 +268,7 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
     var picked by remember { mutableStateOf<Bitmap?>(null) }
     var fromCamera by remember { mutableStateOf(true) }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
-    val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
+    val camUri = remember { FileProvider.getUriForFile(ctx, ctx.packageName + ".files", camFile) }
     fun load(uri: Uri) = scope.launch {
         picked = withContext(Dispatchers.IO) {
             val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
@@ -278,7 +278,8 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
         if (picked == null) onSaid("Could not read that picture")
     }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u: Uri? -> if (u != null) load(u) }
-    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) load(camUri) }
+    // "Take a photo": the in-app camera or the phone's camera app, as the setting says (decision 0075)
+    val camera = rememberLauncherForActivityResult(InAppCamera.TakePhoto()) { ok -> if (ok) load(camUri) }
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) camera.launch(camUri) else onSaid("Without the camera permission, pick a photo from the gallery")
     }

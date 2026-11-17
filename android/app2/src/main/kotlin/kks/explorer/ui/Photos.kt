@@ -145,7 +145,7 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         if (floorNow.isBlank() && floor.isEmpty()) askFloor = then else then()
     }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
-    val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
+    val camUri = remember { FileProvider.getUriForFile(ctx, ctx.packageName + ".files", camFile) }
     fun load(uri: Uri) = scope.launch {
         picked = withContext(Dispatchers.IO) {
             val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
@@ -156,7 +156,8 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         if (picked == null) snack.showSnackbar("Could not read that picture")
     }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u: Uri? -> if (u != null) load(u) else awaiting = false }
-    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) load(camUri) else awaiting = false }
+    // "Take a photo": the in-app camera or the phone's camera app, as the setting says (decision 0075)
+    val camera = rememberLauncherForActivityResult(InAppCamera.TakePhoto()) { ok -> if (ok) load(camUri) else awaiting = false }
     // the CAMERA permission is declared (QR scanning), so the camera app may only be asked once it is granted
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) camera.launch(camUri) else scope.launch { awaiting = false; snack.showSnackbar("Without the camera permission, pick a photo from the gallery") }

@@ -17,6 +17,9 @@ class App : Application() {
         Core.listeners.add { why -> if (why.startsWith("wiped:")) removed(this, why.removePrefix("wiped:")) }
         kks.explorer.sync.SyncWorker.schedule(this)
         kks.explorer.sync.PhotoQueue.init(this)
+        // what the camera offers (Extensions, sizes), once per app version, well after the start: for the setting's
+        // default and the diagnostics log (decision 0075)
+        android.os.Handler(mainLooper).postDelayed({ runCatching { kks.explorer.ui.InAppCamera.probeForDiagnostics(this) } }, 15_000)
     }
 
     companion object {

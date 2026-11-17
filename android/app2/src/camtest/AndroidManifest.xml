@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The camera trial build (decision 0075): it opens on the camera test screen. Walkdown's own screens and its
+     walkdown:// links are left out, so it never looks like, or answers for, the real app. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <activity android:name="kks.explorer.MainActivity" tools:node="merge">
+            <intent-filter tools:node="removeAll" />
+        </activity>
+        <activity android:name="kks.explorer.LinkActivity" tools:node="merge">
+            <intent-filter tools:node="removeAll" />
+        </activity>
+        <activity android:name="kks.explorer.CamTestActivity" android:exported="true" android:label="@string/app_name"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

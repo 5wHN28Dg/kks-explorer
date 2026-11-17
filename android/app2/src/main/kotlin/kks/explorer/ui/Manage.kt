@@ -494,6 +494,20 @@ private fun Account(rev: Int, say: (String) -> Unit) {
             OutlinedTextField(pos, { pos = it }, label = { Text("Position") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Button(onClick = { val r = call("POST", "/api/profile", JSONObject().put("full_name", fn.trim()).put("position", pos.trim())); say(r.error ?: "Saved") }) { Text("Save") }
         }
+        Section("Photos") {
+            // decision 0075: Walkdown's own camera (with the phone's own processing where it offers it) or the camera app
+            var inApp by remember { mutableStateOf(InAppCamera.chosen(ctx)) }
+            val offered = remember { InAppCamera.offered(ctx) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Take photos with Walkdown's own camera", Modifier.weight(1f))
+                Switch(inApp, { inApp = it; InAppCamera.choose(ctx, it) })
+            }
+            Dim(when {
+                offered == null -> "Which camera modes this phone offers (such as HDR or Night) is not known yet."
+                offered.isEmpty() -> "This phone offers no camera modes to other apps (such as HDR or Night): its camera app may take better photos."
+                else -> "This phone offers " + offered.joinToString(", ") { InAppCamera.modeName(it) } + " to Walkdown's camera."
+            } + if (inApp) " Its camera screen can still open the camera app." else " Off: \"Take a photo\" opens the phone's camera app.")
+        }
         Section("Sync", "Devices on the same Wi-Fi find each other; others can be reached by address.") {
             key(tick) {
                 val last = Sync.peers.values.maxOfOrNull { it.lastOk } ?: 0L

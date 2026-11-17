@@ -31,7 +31,10 @@ suite "diagnostics reports":
     phone.record("sync", "sync with 192.0.2.1:8421: refused", tick())
     phone.record("sync", "sync with 192.0.2.1:8421: refused", tick())
     phone.record("crash", "IndexError at foo", tick())
+    phone.record("bogus", "not a kind", tick())        # an unknown kind is dropped
     check phone.pending.len == 2 and phone.pending[0]["n"].i == 2
+    phone.record("device", "CameraX Extensions on the back camera: Auto, Night", tick())   # what the phone offers (0075)
+    check phone.pending.len == 3 and phone.pending[2]["kind"].s == "device"
     check not phone.maybeReport("android", "0.9.0", "Android 10", "SM-N960F", tick())
 
   test "only the manager switches them on":
@@ -53,7 +56,7 @@ suite "diagnostics reports":
     let r = laptop.readReports
     check r.len == 2
     check r[0]["report"]["events"][0]["text"].s == "photo encode failed"
-    check r[1]["report"]["events"].len == 2 and r[1]["report"]["model"].s == "SM-N960F"
+    check r[1]["report"]["events"].len == 3 and r[1]["report"]["model"].s == "SM-N960F"
     check r[1]["label"].s == "phone" and r[1]["username"].s == "bob"
     share(laptop, server)
     check not server.canRead and server.readReports[0]["report"].kind == jNull

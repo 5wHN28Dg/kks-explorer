@@ -89,6 +89,17 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (signing != null) signingConfig = signingConfigs.getByName("release")
         }
+        // the camera trial (decision 0075): its own application ID and name, so it installs beside the real app and
+        // never touches its data; signed with the debug key (never the release key); opens on the camera test screen
+        // (src/camtest), which keeps what both cameras took in Downloads/Walkdown camera test. arm64 only (phones).
+        create("camtest") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".camtest"
+            versionNameSuffix = "-camtest"
+            ndk { abiFilters.clear(); abiFilters += listOf("arm64-v8a") }
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("debug")
+        }
         // the release as shipped (R8 shrinking and all) but signed with the debug key and with the debug-only test
         // receivers: the e2e tests run on it before a release (assembleRehearsal)
         create("rehearsal") {
@@ -233,4 +244,12 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.11.2")
     // used directly (Dispatchers, launch, withContext): declared at the version Compose and WorkManager resolve to (#71)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // the in-app camera (decision 0075): CameraX with the phone's Extensions (HDR, night) where it offers them; the
+    // viewfinder through camera-compose (camera-view's PreviewView would bring appcompat, fragment and camera-video)
+    val camerax = "1.6.2"
+    implementation("androidx.camera:camera-core:$camerax")
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.camera:camera-extensions:$camerax")
+    implementation("androidx.camera:camera-compose:$camerax")
 }
