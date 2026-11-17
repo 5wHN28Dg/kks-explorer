@@ -1086,7 +1086,10 @@ class Phone(unittest.TestCase):
         ui.find('11LAB70AA501', exact=True)
         marks = [n.get('content-desc') for n in ui.nodes() if n.get('content-desc') in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos')]
         self.assertEqual(marks[:1], ['equipment and tag plate photos'])
-        ui.tap('Clear the search', exact=True)
+        ui.tap('11LAB70AA501', exact=True)                 # the result opens its panel and empties the search
+        ui.find('Feed water piping system', timeout=10)
+        ui.sh('input', 'keyevent', '4')                    # Back closes the panel
+        time.sleep(1)
         # delete one: the confirm dialog sent an empty photo id ("bad photo id") before the fix
         ui.tap('11LAB70AA501, equipment and tag plate photos')
         ui.scroll_to('Delete', exact=True)
