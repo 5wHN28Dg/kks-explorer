@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -180,7 +181,7 @@ private fun SysItem(j: JSONObject, indent: Int, onOpen: () -> Unit) {
  *  ([coverWords]) unless [named]. */
 @Composable
 fun PhotoMark(photos: String, modifier: Modifier = Modifier, named: Boolean = false) {
-    val hue = Color(coverColor(photos))
+    val hue = Color(markColor(photos, MaterialTheme.colorScheme.surface.luminance() > 0.5f))
     val line = LocalContentColor.current
     val words = coverWords(photos)
     androidx.compose.foundation.Canvas(modifier.size(14.dp).then(if (named) Modifier.semantics { contentDescription = words } else Modifier)) {
@@ -201,6 +202,15 @@ fun PhotoMark(photos: String, modifier: Modifier = Modifier, named: Boolean = fa
             androidx.compose.ui.geometry.Size(2 * r + thin, 2 * r + thin), style = outer)
         else drawCircle(line, r + thin / 2, style = outer)
     }
+}
+
+/** the photo mark's fill: the coverage colour, except on a light background, where the green and the amber are darker
+ *  (#2EA043 and #E69600 are 2.86:1 and 2.04:1 on the light results' surface; these 3.7:1 and 3.5:1, UI/UX audit of
+ *  #401). The same on every client (GNOME systems.markColor, Windows ui.photoRgb). */
+fun markColor(photos: String, light: Boolean): Int = when {
+    light && photos == "both" -> android.graphics.Color.rgb(0x2B, 0x8A, 0x3E)
+    light && photos == "equipment" -> android.graphics.Color.rgb(0xB3, 0x6B, 0x00)
+    else -> coverColor(photos)
 }
 
 /** what the photo marks mean: the last line under the search results (not a result) */

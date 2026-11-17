@@ -760,6 +760,21 @@ proc photoRgb*(photos: string): uint32 =
   of "plate": 0x1E78E6'u32
   else: 0xDC2828'u32
 
+proc markRgb*(photos: string, light: bool): uint32 =
+  ## the photo mark's fill: the coverage colour, except on a light background, where the green and the amber are
+  ## darker (the drawings' are 3.4:1 and 2.4:1 on white; these 4.4:1 and 4.2:1, UI/UX audit of #401). The same on
+  ## every client.
+  if light and photos == "both": 0x2B8A3E'u32
+  elif light and photos == "equipment": 0xB36B00'u32
+  else: photoRgb(photos)
+
+proc lightRgb(c: DWORD): bool =
+  ## a COLORREF (0x00BBGGRR) light enough that dark text goes on it
+  let r = float(c and 0xFF)
+  let g = float((c shr 8) and 0xFF)
+  let b = float((c shr 16) and 0xFF)
+  0.299 * r + 0.587 * g + 0.114 * b > 128
+
 proc drawPhotoMark*(dc: HDC, r: RECT, photos: string, selected: bool) =
   ## the photo mark at the start of an owner-drawn row `r` (search results): the coverage colour and a shape of its
   ## own per state, so it reads without colour: none = an empty ring, equipment only = a half-filled disc, tag plate
@@ -768,7 +783,7 @@ proc drawPhotoMark*(dc: HDC, r: RECT, photos: string, selected: bool) =
   let d = px(12)
   let l = r.left + px(7)
   let t = r.top + (r.bottom - r.top - d) div 2
-  let hue = colorRef(photoRgb(photos))
+  let hue = colorRef(markRgb(photos, lightRgb(GetSysColor(if selected: COLOR_HIGHLIGHT else: int32(COLOR_WINDOW)))))
   let line = CreatePen(0, 1, GetSysColor(if selected: COLOR_HIGHLIGHTTEXT else: COLOR_WINDOWTEXT))
   let ring = CreatePen(6, max(2, px(2)), hue)          # PS_INSIDEFRAME: the ring stays inside its box
   let fill = CreateSolidBrush(hue)

@@ -433,6 +433,14 @@ proc coverColor*(photos: string): (float, float, float) =
   of "plate": (0.12, 0.47, 0.9)
   else: (0.86, 0.16, 0.16)
 
+proc markColor*(photos: string, light: bool): (float, float, float) =
+  ## the photo mark's fill (search results, equipment by system): the coverage colour, except on a light background,
+  ## where the green and the amber are darker (the drawings' are 2.9:1 and 2.0:1 on white; these 4.4:1 and 4.2:1,
+  ## UI/UX audit of #401). The same on every client.
+  if light and photos == "both": (0x2B / 255, 0x8A / 255, 0x3E / 255)
+  elif light and photos == "equipment": (0xB3 / 255, 0x6B / 255, 0.0)
+  else: coverColor(photos)
+
 proc tagColor(status: string): (float, float, float) =
   case status
   of "verified": (0.15, 0.6, 0.25)

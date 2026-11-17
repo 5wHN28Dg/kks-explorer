@@ -32,7 +32,6 @@ proc photoMark*(photos: string, named = true): W =
   if named:
     setAccessibleLabel(result, coverWords(photos))
     gtk_widget_set_tooltip_text(result, coverWords(photos).cstring)
-  let (r, g, b) = coverColor(photos)
   let me = result
   result.onDraw(proc (c: Cairo, w, h: int) =
     let cx = w / 2
@@ -40,6 +39,8 @@ proc photoMark*(photos: string, named = true): W =
     let rad = min(w, h) / 2 - 2.0        # the coloured shape; the outline runs just outside it
     var fg: GdkRGBA
     gtk_widget_get_color(me, addr fg)
+    # dark text: a light background, where the green and the amber are darker (viewer.markColor)
+    let (r, g, b) = markColor(photos, 0.2126 * fg.red + 0.7152 * fg.green + 0.0722 * fg.blue < 0.5)
     proc shape(grow: float) =
       cairo_new_path(c)
       if photos == "plate": cairo_rectangle(c, cx - rad - grow, cy - rad - grow, 2 * (rad + grow), 2 * (rad + grow))

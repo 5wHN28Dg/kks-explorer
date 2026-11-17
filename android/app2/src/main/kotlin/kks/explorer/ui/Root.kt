@@ -355,8 +355,12 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     if (current != null) DropdownMenuItem(text = { Text("Colour tags by photos" + if (ui.coverage) " ✓" else "") },
                         onClick = { ui.coverage = !ui.coverage; floorMenu = false })
                     // a setting with three choices (its dialog); the item says the one in force
-                    if (current != null) DropdownMenuItem(text = { Text("Dark drawings") },
-                        trailingIcon = { Text(darkModeLabel(ui.darkMode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    // (the choice on a line of its own under the name: beside it, "Dark drawings" broke mid-word at
+                    // the largest text size, #401's UI/UX audit)
+                    if (current != null) DropdownMenuItem(text = { Column {
+                            Text("Dark drawings")
+                            Text(darkModeLabel(ui.darkMode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } },
                         onClick = { darkAsk = true; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
                         onClick = { marking = !marking; selecting = false; selection = emptySet(); ui.selected = ""; floorMenu = false })
@@ -466,10 +470,12 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface))
                 if (!ui.fullView && query.trim().length >= 2) {
                     val res = remember(query, rev) { call("GET", "/native/search", query = mapOf("q" to query.trim())).json.optJSONArray("results").objects() }
-                    // the results scroll within 320 dp; what the photo marks mean stays in view under them
-                    Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) { Column {
+                    // the results scroll within 320 dp, or the room left on a low screen; what the photo marks mean
+                    // stays in view under them (weighted, the list is measured after the legend: in landscape the
+                    // legend was cut off below a 320 dp list, #401's UI/UX audit)
+                    Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) { Column {
                         if (res.isEmpty()) Text("Nothing found", Modifier.padding(16.dp))
-                        LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                        LazyColumn(Modifier.weight(1f, fill = false).heightIn(max = 320.dp)) {
                             items(res) { r ->
                                 val code = r.getString("code")
                                 // the code's photos, as a mark before it and in words for TalkBack
@@ -642,7 +648,7 @@ private fun DarkDrawingsDialog(mode: String, onPick: (String) -> Unit, onClose: 
     AlertDialog(onDismissRequest = onClose, title = { Text("Dark drawings") },
         text = {
             Column {
-                Text("Light lines on dark paper, like a PDF reader's dark mode. Remembered on this phone.", style = MaterialTheme.typography.bodyMedium)
+                Text("Light lines on dark paper, like a PDF reader's dark mode. Remembered on this device.", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
                 Column(Modifier.selectableGroup()) {
                     for ((m, label) in DARK_MODES) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)

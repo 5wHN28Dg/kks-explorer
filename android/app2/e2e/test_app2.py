@@ -1270,6 +1270,71 @@ class Phone(unittest.TestCase):
         ui.find('Feed water piping system', timeout=15)
         self.assertFalse(ui.present('Equipment by system', exact=True), 'the screen stayed open')
 
+    def test_photo_marks(self):
+        """#401's UI/UX audit: in the light theme the photo marks' amber half and green disc stand 3:1 from the results'
+        surface (the drawings' amber and green were 2.04:1 and 2.86:1 there); in landscape the legend under four
+        results is on screen (the list took 320 dp and cut it off); at the largest text size the ⋮ menu's "Dark
+        drawings" is on one line (the choice in force beside it broke it mid-word)"""
+        import io
+        from PIL import Image
+        for i, caps in enumerate(([], [''], ['Tag plate'], ['the pump', 'Tag plate · north'])):
+            code = '11LCB50AA10%d' % (i + 1)
+            r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [600 + 130 * i, 900, 720 + 130 * i, 960], 'kks': code, 'isa': '', 'note': ''}})
+            self.assertEqual(r.get('status'), 'approved', r)
+            for c in caps:
+                r = self.boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': code, 'caption': c, 'dataUrl': self.jxl(code + c)}})
+                self.assertEqual(r.get('status'), 'approved', r)
+        was = 'yes' if 'yes' in ui.sh('cmd', 'uimode', 'night') else 'no'
+        self.addCleanup(ui.sh, 'cmd', 'uimode', 'night', was)
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', '1.0')
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
+        ui.sh('cmd', 'uimode', 'night', 'no')
+        ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
+        self.join()
+        dp = int(re.findall(r'(\d+)', ui.sh('wm', 'density'))[-1]) / 160
+        ui.type_into('Search KKS or description', 'LCB50AA10')
+        ui.find('11LCB50AA104', exact=True, timeout=30)       # (the marked tags arrive with a sync)
+        ui.hide_keyboard()
+        time.sleep(1)
+
+        def lum(p):
+            c = [v / 255 for v in p]
+            c = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4 for v in c]
+            return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+        ns = ui.nodes()
+        im = Image.open(io.BytesIO(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)).convert('RGB')
+        for words, dx in (('equipment photo only', -2.5), ('equipment and tag plate photos', 0)):
+            n = next(n for n in ns if n.get('text') == words)          # the legend's words; its mark is before them
+            a, b, c, d = map(int, re.findall(r'\d+', n.get('bounds')))
+            cy = (b + d) // 2
+            mx = a - (6 + 7) * dp                     # the mark's centre: 14 dp wide, 6 dp before its words
+            fill = im.getpixel((int(mx + dx * dp), cy))
+            bg = im.getpixel((int(a - 3 * dp), cy))
+            hi, lo = sorted((lum(fill), lum(bg)), reverse=True)
+            self.assertGreaterEqual((hi + 0.05) / (lo + 0.05), 3.0, (words, fill, bg))
+        # on its side: the legend still under the results
+        ui.sh('settings', 'put', 'system', 'user_rotation', '1')
+        time.sleep(4)
+        ui.find('11LCB50AA101', exact=True)
+        ui.hide_keyboard()
+        texts = [n.get('text') for n in ui.nodes()]
+        for words in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos'):
+            self.assertIn(words, texts)
+        ui.sh('settings', 'put', 'system', 'user_rotation', '0')
+        time.sleep(4)
+        # the largest text size: "Dark drawings" as tall as the one-line "Coverage"
+        ui.sh('settings', 'put', 'system', 'font_scale', '2.0')
+        time.sleep(3)
+        ui.tap('More', exact=True)
+        ui.find('Follow theme', exact=True)
+        ns = ui.nodes()
+
+        def height(t):
+            a, b, c, d = map(int, re.findall(r'\d+', next(n for n in ns if n.get('text') == t).get('bounds')))
+            return d - b
+        self.assertLess(height('Dark drawings'), 1.5 * height('Coverage'), [(n.get('text'), n.get('bounds')) for n in ns if n.get('text')])
+        ui.sh('input', 'keyevent', '4')
+
     def test_coverage(self):
         """the coverage dashboard (core coverageView): totals on the test plant; a sheet row opens that sheet with the
         photo colours on; a system row opens Equipment by system showing that system only"""
@@ -2243,7 +2308,7 @@ class Phone(unittest.TestCase):
 # part 1 had ended at 5.92 GiB.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
           'panel_keyboard'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'photo_marks'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures', 'app_links'))
 
