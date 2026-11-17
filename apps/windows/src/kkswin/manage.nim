@@ -79,6 +79,7 @@ var
   pickWide = -1                     ## the length of the labels the page was last laid out for
   pickBusy = false                  ## a batch is running (one proposal per turn of the message loop)
   lastSaid = ""                     ## the last batch's result, on the page until the next batch (the status line is one line)
+  lastSaidAt = 0.0                  ## when it was said
 
 proc pickGone() =
   ## the bar's controls went with their page (another page was opened, or this one is being made again)
@@ -189,6 +190,7 @@ proc runBatch(w: Win, action: string, chosen: seq[JNode]) =
               (if competing.len == 1: "its" else: "their") & " code; choose with “Use this one”."
     if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
     lastSaid = msg
+    lastSaidAt = epochTime()
     w.toast(msg)
     pickShow()          # (the bar as it is now, should the page wait for the keyboard to leave one of its fields)
     w.sideChanged()     # (not rebuildSide: the person may be typing on another page by now, #168)
@@ -223,9 +225,9 @@ proc approvals(w: Win, p: Page) =
   picked.keepItIf(it in open)
   if groups.len == 0:
     p.dim("Nothing waits for approval.")
-    if w.isAdmin and lastSaid.len > 0:     # (the batch that emptied the list: what it did, said here once)
-      p.label(lastSaid)
-      lastSaid = ""
+    # (the batch that emptied the list: what it did, for the next two minutes; said once it went at the next sync's
+    # rebuild, a second later, and kept for good it stood there stale)
+    if w.isAdmin and lastSaid.len > 0 and epochTime() - lastSaidAt < 120: p.label(lastSaid)
     return
   p.dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. " &
         "Tick several to approve or reject them at once.")
