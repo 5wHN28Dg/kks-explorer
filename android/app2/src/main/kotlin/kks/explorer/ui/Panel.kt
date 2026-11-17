@@ -241,8 +241,8 @@ private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: 
     var copied by remember(code) { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(2500); copied = false } }
     // (16 dp under the grip: its touch area reaches 12 dp below it, and Close, which drops a form being typed, keeps
-    // 8 dp from the grip and from Copy: policy T2)
-    Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = if (compact) 4.dp else 16.dp, bottom = if (compact) 0.dp else 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+    // 8 dp from the grip, from Copy and from a field scrolled up to the heading's line: policy T2)
+    Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = if (compact) 4.dp else 16.dp, bottom = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             if (code.isNotEmpty()) androidx.compose.foundation.text.selection.SelectionContainer {
                 Text(code, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace)
