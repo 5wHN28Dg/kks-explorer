@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -51,6 +52,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import kks.explorer.Jxl
+import kks.explorer.Resample
 import kks.explorer.core.Core
 import kks.explorer.sync.PhotoQueue
 import kotlinx.coroutines.Dispatchers
@@ -70,12 +72,20 @@ private fun photoBitmap(file: String): Bitmap? = Core.file("photos/$file")?.let 
 @Composable
 fun PhotoOf(file: String, caption: String = "", height: Int = 90) {
     if (file.isEmpty()) return
-    val bmp by produceState<ImageBitmap?>(null, file) { value = withContext(Dispatchers.IO) { photoBitmap(file)?.asImageBitmap() } }
+    // the thumbnail is kept small (a 2560 px photo is 20 MB of pixels, and Manage lists many); the whole photo is
+    // decoded again only while it is open
+    val px = (height * LocalDensity.current.density * 2).toInt()
+    val bmp by produceState<ImageBitmap?>(null, file) {
+        value = withContext(Dispatchers.IO) { photoBitmap(file)?.let { Resample.thumbnail(it, px) }?.asImageBitmap() }
+    }
     var open by remember { mutableStateOf(false) }
     val b = bmp
     if (b == null) { Dim("Not on this phone yet (it arrives with the next sync)"); return }
     Image(b, "Open photo" + if (caption.isNotEmpty()) ": $caption" else "", Modifier.height(height.dp).clickable { open = true }, contentScale = ContentScale.Fit)
-    if (open) PhotoViewer(b, caption) { open = false }
+    if (open) {
+        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(Dispatchers.IO) { photoBitmap(file)?.asImageBitmap() } }
+        PhotoViewer(whole ?: b, caption) { open = false }
+    }
 }
 
 /** pinch to zoom, drag to pan (R6) */
@@ -221,13 +231,17 @@ fun photoCredit(p: JSONObject): String {
     return listOf(if (who.isNotEmpty()) "by $who" else "", at).filter { it.isNotEmpty() }.joinToString(", ")
 }
 
-/** decoded, turned upright (EXIF), and at most 1600 px on the longer side (the size the other clients send) */
+/** decoded, turned upright (EXIF), and at most [Resample.PHOTO_SIDE] (2560) px on the longer side, the size every
+ *  client stores (decision 0074): decoded at the largest power-of-two reduction that keeps it at least that large,
+ *  then scaled with Lanczos (Android's own scaling is bilinear) */
 internal fun orientedBitmap(raw: ByteArray): Bitmap? {
     val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(raw, 0, raw.size, opts)
     var sample = 1
-    while (maxOf(opts.outWidth, opts.outHeight) / (sample * 2) >= 1600) sample *= 2
+    while (maxOf(opts.outWidth, opts.outHeight) / (sample * 2) >= Resample.PHOTO_SIDE) sample *= 2
     var bmp = BitmapFactory.decodeByteArray(raw, 0, raw.size, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }) ?: return null
+    val (fw, fh) = Resample.fit(bmp.width, bmp.height)
+    if (fw != bmp.width || fh != bmp.height) bmp = Resample.scale(bmp, fw, fh).also { bmp.recycle() }
     val turn = runCatching {
         when (android.media.ExifInterface(raw.inputStream()).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
             android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90; android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
@@ -235,8 +249,6 @@ internal fun orientedBitmap(raw: ByteArray): Bitmap? {
         }
     }.getOrDefault(0)
     if (turn != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(turn.toFloat()) }, true)
-    val side = maxOf(bmp.width, bmp.height)
-    if (side > 1600) bmp = Bitmap.createScaledBitmap(bmp, bmp.width * 1600 / side, bmp.height * 1600 / side, true)
     return bmp
 }
 

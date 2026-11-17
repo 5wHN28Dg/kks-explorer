@@ -325,10 +325,11 @@ class Gnome(Plant):
     def test_photo_editor(self):
         """the photo editor's controls (line sizes, zoom) are reachable; a photo goes to the server; the drawing can be
         coloured by photos. KKS_PHOTO_FILE stands in for the file chooser. (Drawing and the touch loupe need a pointer
-        or a finger: not driven here.)"""
+        or a finger: not driven here.) The picture is larger than a stored photo may be: it arrives at 2560 px on its
+        longer side (decision 0074)."""
         from PIL import Image
         pic = os.path.join(self.dir, 'valve.png')
-        Image.new('RGB', (640, 480), (128, 128, 128)).save(pic)
+        Image.new('RGB', (3200, 2400), (128, 128, 128)).save(pic)
         a = self.start_app('photographer', KKS_PHOTO_FILE=pic)
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
         atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
@@ -351,6 +352,14 @@ class Gnome(Plant):
                 break
             time.sleep(0.5)
         self.assertTrue(any(p['kks'] == '11LAB70AA501' for p in self.boss.req('GET', '/api/state')['photos']))
+        ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501'][0]
+        for _ in range(60):   # the entry can arrive before its file
+            if ph.get('file'): break
+            time.sleep(0.5)
+            ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501'][0]
+        from jxl_header import jxl_size
+        blob = self.boss.op.open(self.boss.base + '/photos/' + ph['file']).read()
+        self.assertEqual(jxl_size(blob), (2560, 1920), 'the stored photo of a 3200 × 2400 picture')
         tb = atspi.find(a, 'toggle button', name='Colour tags by photos')
         atspi.click(tb)
         for _ in range(20):

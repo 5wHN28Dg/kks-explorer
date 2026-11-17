@@ -731,8 +731,9 @@ async function photoCanvas(f){
   const img=new Image(), url=URL.createObjectURL(f);
   try{ await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(new Error('That file could not be read as a picture.'));img.src=url}) }
   catch(e){ toast(e.message); return null } finally{ URL.revokeObjectURL(url) }
-  const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
-  c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  const m=K.PHOTO_SIDE,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
+  c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
+  const g=c.getContext('2d'); g.imageSmoothingQuality='high'; g.drawImage(img,0,0,c.width,c.height);   // (the best scaling filter the browser has)
   return K.annotate(c.toDataURL('image/png'),!canApprove());   // mark what matters, or just "Use photo"
 }
 // a picture file → marked up and encoded as the server wants it, for a photo of several codes at once (sent at once,

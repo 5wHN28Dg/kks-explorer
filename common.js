@@ -974,6 +974,7 @@ K.jxl.watch();
 
 // A photo from this browser becomes JPEG XL here, before it is sent (decision 0018: no JPEG anywhere): our libjxl
 // build in a worker, so the page stays responsive. canvas → a data: URL of the JXL codestream.
+K.PHOTO_SIDE = 2560;   // the longest side a stored photo may have, on every client (decision 0074)
 K.jxlEncode = (canvas, distance = 1.9, effort = 7) => new Promise((res, rej) => {
   const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
   if (!K.jxlWorker) {   // a worker whose module could not load (offline, before it was ever fetched) answers nothing: drop it

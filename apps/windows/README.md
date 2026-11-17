@@ -67,7 +67,7 @@ which the `config.nims` of core/, platform/linux/, platform/windows/ and apps/wi
     `aboutinfo.nim` holds the logic without Win32 (`tests/test_about.nim`). Links open in the default browser, https
     only;
   - `photos.nim` + `kks_img.cpp`: thumbnails with who took each, a viewer, adding from a file (the floor first when
-    the code has none; WIC → upright → 1600 px → `annotate.nim`, the mark-up editor with arrow, box and circle in four
+    the code has none; WIC → upright → 2560 px → `annotate.nim`, the mark-up editor with arrow, box and circle in four
     colours plus undo, the marks burned in by Direct2D → the photo queue, kept on disk (`apps/common/photoqueue.nim`:
     each photo's pixels and job as sealed rows in the device's store, whose key DPAPI protects; removed only once
     the core accepted or refused it; a restart sends what is left, in order, with the same client_id; a removed

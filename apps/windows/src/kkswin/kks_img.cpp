@@ -1,6 +1,6 @@
 // Photos on Windows (decisions 0018, 0033): read a picture with WIC (JPEG, PNG, … whatever Windows decodes), turned
 // upright by its EXIF orientation and scaled to at most `maxSide`; encode JPEG XL with libjxl at the photo settings
-// (distance 1.9, effort 9, the same as every client); make a GDI bitmap for a thumbnail.
+// (distance 1.9, effort 7, the same as every client: decision 0074); make a GDI bitmap for a thumbnail.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <wincodec.h>

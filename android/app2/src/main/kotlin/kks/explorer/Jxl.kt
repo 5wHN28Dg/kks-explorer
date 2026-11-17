@@ -8,16 +8,16 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * JPEG XL through libjxl (src/main/cpp): photos are stored as JXL at distance 1.9, effort 9 (the same settings as
- * server/photos.py). The WebView can't show JXL, so the app decodes it and hands the page the pixels as a BMP (no
+ * JPEG XL through libjxl (src/main/cpp): photos are stored as JXL at distance 1.9, effort 7, at most 2560 px (the
+ * same settings on every client, decision 0074). The WebView can't show JXL, so the app decodes it and hands the page the pixels as a BMP (no
  * lossy re-encoding, nothing cached on disk).
  */
 object Jxl {
     const val DISTANCE = 1.9f
-    const val EFFORT = 9
-    const val MAX_SIDE = 4096          // the page sends ≤ 1600 px; bigger is scaled down
+    const val EFFORT = 7
+    const val MAX_SIDE = 4096          // fromImage's limit (photos themselves are scaled to Resample.PHOTO_SIDE first)
     /** How long encoding took on this phone lately, per megapixel (the progress bar's estimate); kept across starts. */
-    @Volatile var msPerMp: Long = 8000
+    @Volatile var msPerMp: Long = 1500
 
     init { System.loadLibrary("kksjxl") }
 

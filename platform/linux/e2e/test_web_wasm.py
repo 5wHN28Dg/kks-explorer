@@ -10,6 +10,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 sys.path.insert(0, os.path.dirname(__file__))
 from test_web_v2 import start_server, Client, CSP_WATCH
+from jxl_header import jxl_size  # noqa: E402  (tests/, on the path through test_web_v2)
 
 PAGE_JS = r"""async () => {
   const W = await import('/kks-wasm.js');
@@ -89,6 +90,22 @@ class WebWasm(unittest.TestCase):
               const lum = new Uint8Array(n * s * n * s);
               for (let y = 0; y < n * s; y++) for (let x = 0; x < n * s; x++) lum[y * n * s + x] = dark.has(Math.floor(x / s) + ',' + Math.floor(y / s)) ? 0 : 255;
               return W.qrRead(lum, n * s, n * s) }""")
+            # a picture from the camera or a file, through index.html's own path (scaled, the editor, JPEG XL): one
+            # larger than 2560 px is stored at 2560 on its longer side (decision 0074), a smaller one as it is
+            page.goto(self.base + '/')
+            page.wait_for_function("() => typeof photoCanvas === 'function' && typeof K !== 'undefined' && K.me")
+            sized = {}
+            for w, h in ((4000, 3000), (1500, 2000)):
+                page.evaluate("""([w, h]) => { const c = document.createElement('canvas'); c.width = w; c.height = h;
+                    const g = c.getContext('2d'); g.fillStyle = '#3c5a96'; g.fillRect(0, 0, w, h); g.fillStyle = '#f0f0f0'; g.fillRect(w / 4, h / 4, w / 2, h / 2);
+                    window.__pc = new Promise(ok => c.toBlob(b => ok(photoCanvas(new File([b], 'big.png', {type: 'image/png'}))), 'image/png'))
+                      .then(async a => K.api('/api/submit', {kind: 'photo', payload: {kks: '11LAB70AA501', caption: 'size ' + w,
+                                                                                      dataUrl: await K.jxlEncode(a.canvas, 1.9, 7)}}))
+                      .then(r => window.__pr = r, e => window.__pr = {error: String(e)}) }""", [w, h])
+                page.wait_for_selector('[data-a="ok"]', timeout=60000)
+                page.evaluate("document.querySelector('[data-a=ok]').click()")   # (the empty plant's overlay is over it)
+                page.wait_for_function('() => window.__pr', timeout=120000)
+                sized[w] = page.evaluate('() => { const r = window.__pr; window.__pr = null; return r }')
             page.goto(self.base + '/learning.html')
             page.wait_for_function("() => typeof K !== 'undefined' && K.me")
             refused = page.evaluate("""() => K.api('/api/submit', {kind: 'photo', payload: {kks: '11LAB70AA501',
@@ -113,6 +130,11 @@ class WebWasm(unittest.TestCase):
             ident = subprocess.run(['python3', '-c', 'import struct,sys; d=open(sys.argv[1],"rb").read(); print(struct.unpack(">II", d[16:24]))', png],
                                    capture_output=True, text=True).stdout.strip()
             self.assertEqual(ident, '(640, 480)')
+        for w, want in ((4000, (2560, 1920)), (1500, (1500, 2000))):
+            self.assertIn(sized[w].get('status'), ('approved', 'pending'), sized[w])
+            ph = [x for x in self.boss.req('GET', '/api/state')['photos'] if x.get('caption') == 'size %d' % w][-1]
+            blob = self.boss.op.open(self.boss.base + '/photos/' + ph['file']).read()
+            self.assertEqual(jxl_size(blob), want, name + ': the stored photo of a %d px picture' % w)
         print('%s: encode 640×480 at effort 7 took %.0f ms; QR %d modules' % (name, out['encodeMs'], out['qrSide']))
 
     def test_chromium(self): self.run_engine('chromium')
