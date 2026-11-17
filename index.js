@@ -756,7 +756,7 @@ async function addPhoto(input,k,plate){
   // no floor for this code yet: the one typed above the buttons goes with the photo (written first, PROTOCOL-v2 §9)
   const fl=floorKnown(k)?'':($('#phFloor')?.value||'').trim();
   if(!floorKnown(k)&&!/^(\d|10)$/.test(fl)){ toast('The floor first: a whole number from 0 to 10'); return }
-  const a=await photoCanvas(f); if(!a) return;
+  const a=await photoCanvas(f,plate?'Add a tag plate photo':'Add an equipment photo'); if(!a) return;
   // queued at once (kept on this device), converted in the background, sent in order: closing the panel stops nothing
   try{ await K.queuePhoto(a.canvas,{kks:k,...(plate?{caption:'Tag plate'}:{}),...(fl?{floor:fl}:{})},a.note) }
   catch(e){ toast('Not saved: '+e.message); return }
@@ -764,13 +764,13 @@ async function addPhoto(input,k,plate){
   if(selTag&&full(selTag)===k&&!$('#panel').querySelector('.editing')) reselect();
 }
 // a picture file → scaled and marked up in the editor -> {canvas, note} or null
-async function photoCanvas(f){
+async function photoCanvas(f,title=''){
   const img=new Image(), url=URL.createObjectURL(f);
   try{ await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(new Error('That file could not be read as a picture.'));img.src=url}) }
   catch(e){ toast(e.message); return null } finally{ URL.revokeObjectURL(url) }
   const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
   c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-  return K.annotate(c.toDataURL('image/png'),!canApprove());   // mark what matters, or just "Use photo"
+  return K.annotate(c.toDataURL('image/png'),!canApprove(),title);   // mark what matters, or just "Use photo"
 }
 // a picture file → marked up and encoded as the server wants it, for a photo of several codes at once (sent at once,
 // not queued: /api/submit-many) -> {dataUrl, note} or null

@@ -180,6 +180,7 @@ class WebRequests(unittest.TestCase):
         page.fill('#phFloor', '3')
         page.set_input_files('#phAdd input[data-plate="1"]', files=[{'name': 'plate.png', 'mimeType': 'image/png', 'buffer': png(320, 240)}])
         page.wait_for_selector('[data-a="ok"]')
+        self.assertEqual(page.text_content('.atitle'), 'Add a tag plate photo')      # the editor says which kind
         page.wait_for_function("() => document.querySelector('[data-a=arrow]').style.borderColor !== ''")   # (the photo is in the editor)
         # offline from here (WebKit's offline emulation refuses even blob: URLs, so not before the photo is read)
         ctx.set_offline(True)

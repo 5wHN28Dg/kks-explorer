@@ -98,6 +98,8 @@ proc drawingsTab(w: Win, p: Page) =
         w.v.centerOn(t.bbox[0] / sc, t.bbox[1] / sc, t.bbox[2] / sc, t.bbox[3] / sc)
       w.togglePick(t.id)
     else: w.selectTag(results[i].id, true)), openLabel = (if w.picking: "Select or unselect" else: "Show on the drawing"))
+  # what the mark before a result means (its text ends with the same in words)
+  p.dim("Photo marks: ring no photos · half disc equipment photo only · square tag plate photo only · disc equipment and tag plate photos")
   p.dim(if w.picking: "Select tags: Enter or double-click a result to select or unselect its code, on any drawing (this one stays)."
         else: "Enter or double-click a result to show it on its drawing.")
   p.buttons(("Equipment by system…", proc () = w.openSystems()),   # every code, block → system → kind

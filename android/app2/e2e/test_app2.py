@@ -1036,7 +1036,7 @@ class Phone(unittest.TestCase):
         ui.tap('Floor 5')
         ui.tap('Continue', exact=True)
         snap()
-        ui.find('Equipment photo', exact=True)      # the editor says which kind too
+        ui.find('Add an equipment photo', exact=True)      # the editor says which kind too
         for b in ('Undo', 'Retake', 'Cancel', 'Send', 'Arrow', 'Circle', 'White'):
             bottom = int(re.findall(r'\d+', ui.find(b, exact=b != 'White').get('bounds'))[3])
             self.assertLessEqual(bottom, h - nav, f'{b} is under the navigation bar or off the screen')
@@ -1069,7 +1069,7 @@ class Phone(unittest.TestCase):
         ui.find('And its tag plate?', exact=True, timeout=60)
         ui.tap('Take it', exact=True)
         snap()
-        ui.find('Tag plate photo', exact=True)
+        ui.find('Add a tag plate photo', exact=True)
         ui.tap('Send', exact=True)
         def caps():
             c = sorted(p['caption'] for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501')
@@ -1081,6 +1081,12 @@ class Phone(unittest.TestCase):
         ui.tap('More', exact=True)
         ui.tap('Colour tags by photos', exact=True)
         ui.find('11LAB70AA501, equipment and tag plate photos', timeout=20)
+        # the search result's mark says the same (the core's searchView, through the JNI)
+        ui.type_into('Search KKS or description', 'LAB70AA501')
+        ui.find('11LAB70AA501', exact=True)
+        marks = [n.get('content-desc') for n in ui.nodes() if n.get('content-desc') in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos')]
+        self.assertEqual(marks[:1], ['equipment and tag plate photos'])
+        ui.tap('Clear the search', exact=True)
         # delete one: the confirm dialog sent an empty photo id ("bad photo id") before the fix
         ui.tap('11LAB70AA501, equipment and tag plate photos')
         ui.scroll_to('Delete', exact=True)
@@ -1323,8 +1329,9 @@ class Phone(unittest.TestCase):
         ui.find('11LAB70AA501', exact=True)
         row = [n for n in ui.nodes() if n.get('content-desc') in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos')]
         self.assertGreaterEqual(len(row), 1, [(n.get('text'), n.get('content-desc')) for n in ui.nodes()])
+        legend = [n.get('text') for n in ui.nodes()]          # (the legend's words are texts; a row's mark is a description)
         for words in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos'):
-            self.assertTrue(ui.present(words, exact=True), words)
+            self.assertIn(words, legend)
         ui.tap('11LAB70AA501', exact=True)
         ui.find('Feed water piping system', timeout=10)
         # edit a field; the change reaches the server by the automatic sync

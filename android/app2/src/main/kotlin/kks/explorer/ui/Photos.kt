@@ -293,7 +293,7 @@ internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () 
         FullScreenDialogWindow()
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (plate) "Tag plate photo" else "Equipment photo", style = MaterialTheme.typography.titleMedium)
+                Text(if (plate) "Add a tag plate photo" else "Add an equipment photo", style = MaterialTheme.typography.titleMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.Center) {
                     for ((k, lab) in listOf("arrow" to "Arrow", "box" to "Box", "circle" to "Circle"))
                         FilterChip(kind == k, { kind = k }, label = { Text(lab) })

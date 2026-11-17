@@ -237,13 +237,18 @@ class WebV2(unittest.TestCase):
             page.goto(self.base + '/')
             loaded = "() => { const i = document.getElementById('sheetimg'); return i && i.complete && i.naturalWidth > 0 }"
             page.wait_for_function(loaded, timeout=30000)
+            # (the setting's three choices are in test_web_coverage; here: what Always dark does to the drawing)
             button = page.get_by_role('button', name='Dark drawings')
-            self.assertEqual(button.get_attribute('aria-pressed'), 'false')
+            def choose(label):
+                button.click()
+                page.get_by_role('radio', name=label).check()
+                page.get_by_role('button', name='Done').click()
+            self.assertEqual(button.get_attribute('aria-label'), 'Dark drawings: Follow theme')
             light_img = page.evaluate(stats, '#sheetimg')
             self.assertEqual(light_img['bg'], '255,255,255', name)
             # on: the overview becomes a transformed level (a blob: URL from the worker), the sharp layer redraws dark
-            button.click()
-            self.assertEqual(button.get_attribute('aria-pressed'), 'true')
+            choose('Always dark')
+            self.assertEqual(button.get_attribute('aria-label'), 'Dark drawings: Always dark')
             page.wait_for_function("(was) => document.getElementById('sheetimg').src !== was", arg=light_img['src'], timeout=30000)
             page.wait_for_function(loaded, timeout=30000)
             img = page.evaluate(stats, '#sheetimg')
@@ -267,15 +272,20 @@ class WebV2(unittest.TestCase):
             page.reload()
             page.wait_for_function("() => document.getElementById('sheetimg').src.startsWith('blob:')", timeout=30000)
             page.wait_for_function(loaded, timeout=30000)
-            self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-pressed'), 'true')
+            self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-label'), 'Dark drawings: Always dark')
             self.assertEqual(page.evaluate(stats, '#sheetimg')['bg'], '18,18,18', name + ': not dark after a reload')
             # off: the light drawing again, at once
             page.evaluate("() => zoomAt(8)")
             page.wait_for_function(sharp_drawn, timeout=30000)
             self.assertEqual(page.evaluate(stats, '#sharp')['bg'], '18,18,18', name)
-            page.get_by_role('button', name='Dark drawings').focus()   # by keyboard this time
+            # by keyboard this time: Space opens the choices with the focus on the one in force, the arrow key moves
+            # to Always light (and chooses it), Escape closes
+            page.get_by_role('button', name='Dark drawings').focus()
             page.keyboard.press('Space')
-            self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-pressed'), 'false')
+            page.wait_for_selector('dialog[open]')
+            page.keyboard.press('ArrowDown')
+            page.keyboard.press('Escape')
+            self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-label'), 'Dark drawings: Always light')
             for _ in range(100):   # the light level (native, or K.jxl's cached decode) and a new frame
                 page.wait_for_timeout(100)
                 off, offimg = page.evaluate(stats, '#sharp'), page.evaluate(stats, '#sheetimg')
@@ -286,10 +296,12 @@ class WebV2(unittest.TestCase):
             errors.leave()
             page.reload()
             page.wait_for_function(loaded, timeout=30000)
-            self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-pressed'), 'false')
+            self.assertEqual(page.get_by_role('button', name='Dark drawings').get_attribute('aria-label'), 'Dark drawings: Always light')
             # dark, but the worker can't make the overview dark: the sheet still opens, fits and draws its tags, with
             # the light level (before the fix img.src was never set and the sheet stayed blank)
             page.get_by_role('button', name='Dark drawings').click()
+            page.get_by_role('radio', name='Always dark').check()
+            page.get_by_role('button', name='Done').click()
             page.evaluate("""() => { const w = sharp.worker, pm = w.postMessage.bind(w);
               w.postMessage = m => { if (m.t === 'level') { const x = dark.wait.get(m.id); dark.wait.delete(m.id); x.rej(new Error('test: no dark level')); return } pm(m) };
               dark.levels.clear(); dark.sheet = null; window.__opened = false; openSheet(cur.id, () => { window.__opened = true }) }""")

@@ -722,7 +722,7 @@ proc addPhoto*(w: Win, kks: string, plate = false) =
             w.addPhoto(kks, plate = true)),
       askNote = not w.isAdmin,
       captionMax = if plate: MaxCaption - (PlateCaption & " · ").runeLen else: MaxCaption,
-      title = if plate: "Mark up the tag plate photo" else: "Mark up the equipment photo")
+      title = if plate: "Add a tag plate photo" else: "Add an equipment photo")
   if w.floorKnown(kks): go("")
   else: w.askFloor(kks, go)
 

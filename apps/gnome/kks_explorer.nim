@@ -77,8 +77,20 @@ proc fillSheets(w: Win) =
       gtk_list_box_append(w.sheetList, navRow(name, sub, "Open " & name, proc () = w.showSheet(id)))
   w.sheetsKey = key
 
+var
+  followTheme: proc ()        ## the open main screen's "the theme changed" (Dark drawings set to follow it)
+  themeWatched = false
+
+proc resultsKey(w: Win, q: string): string =
+  ## what the search results show for `q`: the tags found and each code's photo mark
+  if q.len == 0: return ""
+  let covers = w.m.photoCovers
+  for t in w.m.search(q): result.add t.id & "\x1f" & t.full & "\x1f" & covers.getOrDefault(t.full, "none") & "\x1e"
+  result.add $w.picking
+
 proc runSearch(w: Win) =
   let q = text(w.searchEntry).strip
+  w.resultsShown = w.resultsKey(q)
   leaveFocus(w.resultList)
   gtk_list_box_remove_all(w.resultList)
   w.v.hits.clear()
@@ -149,6 +161,10 @@ proc refresh(w: Win) =
   ## the data changed underneath (sync, an approval): reload, keep the open sheet and selection (R20)
   w.loadModel()
   w.fillSheets()
+  # the search results follow (a photo arrived: its code's mark changes), made again only when what they show changed
+  # (a list rebuilt at every sync round loses the presses on it, #147)
+  if w.searchEntry != nil and gtk_widget_get_visible(w.resultList) != 0 and
+     w.resultsKey(text(w.searchEntry).strip) != w.resultsShown: w.runSearch()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
     w.setLinks()
@@ -344,8 +360,13 @@ proc mainScreen(w: Win): W =
   discard margins(darkBox, 8)
   gtk_popover_set_child(darkPop, darkBox)
   gtk_menu_button_set_popover(darkBtn, darkPop)
-  # the theme changed while the app runs: the drawings follow at once when they are set to
-  styles.onPtr("notify::dark", proc (p: W) = applyDark())
+  # the theme changed while the app runs: the drawings follow at once when they are set to. One handler for the
+  # process, calling the main screen of the moment (the screen is made again after leaving a plant and joining one)
+  followTheme = applyDark
+  if not themeWatched:
+    themeWatched = true
+    styles.onPtr("notify::dark", proc (p: W) =
+      if followTheme != nil: followTheme())
   adw_header_bar_pack_end(contentHeader, darkBtn)
   # a toggle: its pressed state is what Orca reads (and what the Coverage page turns on)
   w.coverBtn = gtk_toggle_button_new()
