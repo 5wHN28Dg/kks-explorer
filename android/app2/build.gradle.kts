@@ -91,12 +91,12 @@ android {
         }
         // the camera trial (decision 0075): its own application ID and name, so it installs beside the real app and
         // never touches its data; signed with the debug key (never the release key); opens on the camera test screen
-        // (src/camtest), which keeps what both cameras took in Downloads/Walkdown camera test. arm64 only (phones).
+        // (src/camtest), which keeps what both cameras took in Downloads/Walkdown camera test. Both ABIs, as debug:
+        // phones and the emulator.
         create("camtest") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".camtest"
             versionNameSuffix = "-camtest"
-            ndk { abiFilters.clear(); abiFilters += listOf("arm64-v8a") }
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("debug")
         }

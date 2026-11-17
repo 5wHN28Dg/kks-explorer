@@ -19,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
@@ -498,9 +500,11 @@ private fun Account(rev: Int, say: (String) -> Unit) {
             // decision 0075: Walkdown's own camera (with the phone's own processing where it offers it) or the camera app
             var inApp by remember { mutableStateOf(InAppCamera.chosen(ctx)) }
             val offered = remember { InAppCamera.offered(ctx) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // the whole row is the switch (one target, named by its text, for touch and TalkBack)
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(inApp, role = Role.Switch) { inApp = it; InAppCamera.choose(ctx, it) },
+                verticalAlignment = Alignment.CenterVertically) {
                 Text("Take photos with Walkdown's own camera", Modifier.weight(1f))
-                Switch(inApp, { inApp = it; InAppCamera.choose(ctx, it) })
+                Switch(inApp, null)
             }
             Dim(when {
                 offered == null -> "Which camera modes this phone offers (such as HDR or Night) is not known yet."

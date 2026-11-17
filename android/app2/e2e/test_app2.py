@@ -1399,6 +1399,58 @@ class Phone(unittest.TestCase):
         ui.find('11LAB70AA599 is not on any drawing', timeout=10)
         n = main_activities(); self.assertTrue(n == 1, n)
 
+    def test_in_app_camera(self):
+        """decision 0075: the setting (Manage > Account > Photos) makes "Take a photo" open Walkdown's own camera
+        (CameraX); a shot goes through the editor to the server at no more than 2560 px; from that camera, "Use the
+        camera app instead" still reaches the phone's camera app. The emulator's camera offers no Extensions, which
+        the setting's line says once the phone has been looked at (15 s after the start)."""
+        w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+        self.join()
+        ui.find('Sample sheet', timeout=40)
+        time.sleep(16)                  # (the camera probe runs 15 s after the start)
+        ui.tap('Manage', exact=True)
+        ui.tap('Account', exact=True)
+        ui.scroll_to("Take photos with Walkdown's own camera", exact=True, tries=12)
+        ui.find('This phone offers no camera modes to other apps', timeout=10)
+        ui.tap("Take photos with Walkdown's own camera", exact=True)
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Sample sheet', timeout=20)
+        self.open_tag()
+        ui.scroll_to('Take a photo', exact=True)
+        ui.tap('Take a photo', exact=True)
+        ui.find('Which floor is it on?', exact=True)
+        ui.tap('Floor 2')
+        ui.tap('Continue', exact=True)
+        self.allow_camera()
+        ui.find('Use the camera app instead', exact=True, timeout=30)
+        self.assertFalse(ui.present('Standard', exact=True), 'mode chips shown on a camera with no Extensions')
+        time.sleep(3)                   # (the preview and the capture are bound)
+        ui.tap('Take the photo', exact=True)
+        ui.find('Send', exact=True, timeout=60)
+        ui.tap('Send', exact=True)
+        ui.find('And its tag plate?', exact=True, timeout=60)
+        ui.tap('Not now', exact=True)
+
+        def arrived():
+            ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501' and p.get('file')]
+            return ph if len(ph) == 1 else None
+        ph = self.wait_server(arrived, 'the in-app camera\'s photo never reached the server', tries=120)[0]
+        from jxl_header import jxl_size
+        pw, ph_ = jxl_size(self.boss.op.open(self.boss.base + '/photos/' + ph['file']).read())
+        self.assertTrue(0 < max(pw, ph_) <= 2560, (pw, ph_))
+        # the camera app from Walkdown's camera: its shutter, then confirm (the emulator's camera app)
+        ui.scroll_to('Take a photo', exact=True)
+        ui.tap('Take a photo', exact=True)
+        ui.tap('Use the camera app instead', exact=True, timeout=30)
+        time.sleep(5)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+        time.sleep(4)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+        ui.find('Send', exact=True, timeout=30)
+        ui.tap('Send', exact=True)
+        self.wait_server(lambda: (lambda n: n if n == 2 else None)(len([p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501'])),
+                         'the camera app\'s photo never reached the server', tries=120)
+
     def test_photo_size(self):
         """decision 0074: a picture larger than 2560 px is stored at 2560 on its longer side, a smaller one as it is;
         the reduction is Lanczos: 1-px black and white stripes become an even grey (bilinear scaling made bands)"""
