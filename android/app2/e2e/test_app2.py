@@ -1332,6 +1332,9 @@ class Phone(unittest.TestCase):
             self.assertTrue(ui.keyboard_shown() and ime_top(), f'no keyboard for the search field ({how})')
             time.sleep(1.5)
             top = ime_top()
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, 'search-keyboard-' + re.sub(r'\W+', '-', how) + '.png'), 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
             ns = ui.nodes()
             for words in ('no photos', 'equipment and tag plate photos'):
                 n = [n for n in ns if n.get('text') == words]
