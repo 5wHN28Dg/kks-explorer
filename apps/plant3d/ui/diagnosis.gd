@@ -6,7 +6,8 @@
 ## (`causes`, `tests`, `fixes`, `parts`), so it is a view only: nothing here is in the engine.
 extends RefCounted
 
-## [{fault, text, kks, kind, cause, cause_title, found, component, bench, made, repaired, found_at, rows, parts}]
+## [{fault, text, kks, kind, cause, cause_title, found, component, bench, made, repaired, found_at, rows, parts,
+## removed}]
 ## up to event `to`. `jobs`: work_view.gd's {code: {kind, alias, loop, service}}; `run_sc`: the run's scenario.
 static func review(engine, jobs: Dictionary, to: int, run_sc := {}) -> Array:
 	var out: Array = []
@@ -59,12 +60,15 @@ static func _one(engine, job: Dictionary, f: Dictionary, cause: String, at: int,
 	for x in s.get("parts", []):
 		parts[String(x[0])] = [String(x[1]), String(x[2])]
 	var acts := {}
+	var fits := {}                  # (WM2) the actions that fit a stores part: the old one is then removed
 	for a in s.get("actions", []):
 		acts[String(a["action"])] = String(a["title"])
+		if a.has("part"):
+			fits[String(a["action"])] = true
 	var r := {"fault": f["id"], "text": String(f.get("text", f["id"])), "kks": kks, "kind": job["kind"],
 			"cause": cause, "cause_title": titles.get(cause, cause), "found": String(c.get("found", "")),
 			"component": String(c.get("component", "")), "bench": String(c.get("bench", "")),
-			"made": int(evs[at][0]), "repaired": -1, "found_at": -1, "rows": [], "parts": []}
+			"made": int(evs[at][0]), "repaired": -1, "found_at": -1, "rows": [], "parts": [], "removed": false}
 	var inputs: Array = engine.inputs
 	var vented := false
 	for i in range(at + 1, to):
@@ -90,6 +94,8 @@ static func _one(engine, job: Dictionary, f: Dictionary, cause: String, at: int,
 				vented = false
 			if fixes.has(act):
 				_fix(r, n, who, acts.get(act, act), fixes[act], cause)
+			if fits.has(act):
+				r.removed = true    # (a new part fitted: the old one is off, in the Workshop writable, §3.5)
 			if parts.has(act):
 				r.parts.append({"step": n, "who": who, "part": parts[act][1], "needed": cause in fixes.get(act, [])})
 		elif ev[1] == "op" and ev[2] == kks and ev.size() > 7 and ev[4] == "done" and ev[6] == "hart":

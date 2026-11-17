@@ -48,6 +48,16 @@ func run(tree: SceneTree) -> Array:
 		main.free()
 		return ["the host's session did not start: " + why]
 	var hs = ui.session
+	# a jump's days out of 0 to 30, or not a whole number: the vote is refused (never a plain jump in its place)
+	for bad in [45, -3, 2.5, "2", true]:
+		if Session.jump_days(bad) != -1:
+			p.append("a jump's days %s were taken as %d" % [str(bad), Session.jump_days(bad)])
+	if Session.jump_days(null) != 0 or Session.jump_days(7) != 7 or Session.jump_days(30.0) != 30:
+		p.append("a jump's good days were not taken")
+	var inbox0: int = hs._inbox.size()
+	hs.send_input(["jump", "06:00", 45])
+	if hs._jump_votes.has(Session.HOST_SLOT) or hs._inbox.size() != inbox0:
+		p.append("a jump 45 days on was voted or committed: %s" % str(hs._inbox.slice(inbox0)))
 	if not ui.clock.engine.st_session or ui.clock.scenario != "shift_cold":
 		p.append("the host's plant is not a session run of the day shift")
 	await tree.process_frame

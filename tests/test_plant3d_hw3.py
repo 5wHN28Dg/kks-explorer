@@ -22,6 +22,7 @@ import train_hands  # noqa: E402
 DATA = os.path.join(ROOT, 'data', 'plant3d')
 CP2 = '30MAG10CP002'
 CAUSES = ('drift', 'loose', 'blocked', 'passing', 'wet')
+ALL = CAUSES + ('failed',)          # (WM2's sixth: tests/test_plant3d_wm2_tx.py)
 
 
 def files():
@@ -205,7 +206,9 @@ class Weights(unittest.TestCase):
             sid = rel.split('/')[1][:-5]
             e = P.Engine(b, sid)
             ws = [e.cur[b.model.index[w]] for w in train_hands.W_NEW]
-            self.assertEqual(ws, [1, 1, 1] if sid in ('shift_tx', 'shift_vac') else [0, 0, 0], sid)
+            self.assertEqual(ws, [1, 1, 1] if sid in ('shift_tx', 'shift_vac', 'shift_fail', 'shift_nospare',
+                                                           'shift_fail_absent')
+                             else [0, 0, 0], sid)
         sc = json.loads(F['scenarios/shift_tx.json'].decode())
         f = next(x for x in sc['faults'] if x['id'] == 'cond_p2_low')
         self.assertEqual(f['when'], {'cmp': ['cond_p', '<', 60]})
@@ -229,10 +232,10 @@ class Diagnosis(unittest.TestCase):
 
     def test_every_cause_told_apart_and_fixed(self):
         self.check(self.s)
-        self.assertEqual([c['id'] for c in self.s['causes']], list(CAUSES))
+        self.assertEqual([c['id'] for c in self.s['causes']], list(ALL))
         # every two causes are told apart by a test that shows one and not the other (REALISM.md §13)
-        for a in CAUSES:
-            for b in CAUSES:
+        for a in ALL:
+            for b in ALL:
                 if a < b:
                     self.assertTrue(any((a in t['shows']) != (b in t['shows']) for t in self.s['tests']), (a, b))
 
@@ -244,13 +247,14 @@ class Diagnosis(unittest.TestCase):
                 self.check(s)
             self.assertEqual(cm.exception.code, code)
         bad(lambda s: s['causes'][0].update(component='nope'), 'bad_ref')
-        bad(lambda s: s['tests'][0].update(shows=list(CAUSES)), 'bad_ref')       # a test showing all tells nothing
+        bad(lambda s: s['tests'][0].update(shows=list(ALL)), 'bad_ref')          # a test showing all tells nothing
         bad(lambda s: s['tests'][0].update(shows=['nope']), 'bad_ref')
         bad(lambda s: s['tests'][0].update(action='open_cover'), 'missing_key')  # an action and a meter
         bad(lambda s: s['fixes'].append(['nope', ['wet']]), 'bad_ref')
         bad(lambda s: s.update(fixes=[x for x in s['fixes'] if x[0] != 'blow_line']), 'bad_ref')   # blocked unfixed
         bad(lambda s: s['causes'].append(dict(s['causes'][0])), 'dup_id')
-        bad(lambda s: s['actions'][-1].pop('set'), 'missing_key')                 # neither set nor input
+        bad(lambda s: next(a for a in s['actions'] if a['action'] == 'end_loop_test').pop('set'),
+            'missing_key')                                                         # neither set nor input
         bad(lambda s: next(a for a in s['actions'] if a['action'] == 'loop_test').pop('range'), 'missing_key')
 
 
