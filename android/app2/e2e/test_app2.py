@@ -1405,6 +1405,14 @@ class Phone(unittest.TestCase):
         camera app instead" still reaches the phone's camera app. The emulator's camera offers no Extensions, which
         the setting's line says once the phone has been looked at (15 s after the start)."""
         w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+
+        def evidence(name):     # for the UI audit (docs/UI-UX-POLICY.md): the screen and its accessibility tree
+            os.makedirs(SHOTS, exist_ok=True)
+            with open(os.path.join(SHOTS, f'camera-{name}.png'), 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+            ui.sh('uiautomator', 'dump', '/sdcard/kks-audit.xml')
+            with open(os.path.join(SHOTS, f'camera-{name}.xml'), 'wb') as f:
+                f.write(subprocess.run(ui.ADB + ['exec-out', 'cat', '/sdcard/kks-audit.xml'], capture_output=True).stdout)
         self.join()
         ui.find('Sample sheet', timeout=40)
         time.sleep(16)                  # (the camera probe runs 15 s after the start)
@@ -1413,6 +1421,11 @@ class Phone(unittest.TestCase):
         ui.scroll_to("Take photos with Walkdown's own camera", exact=True, tries=12)
         ui.find('This phone offers no camera modes to other apps', timeout=10)
         ui.tap("Take photos with Walkdown's own camera", exact=True)
+        time.sleep(1)
+        evidence('setting-light')
+        ui.sh('cmd', 'uimode', 'night', 'yes'); time.sleep(2); evidence('setting-dark')
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.3'); time.sleep(2); evidence('setting-dark-font130')
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.0'); ui.sh('cmd', 'uimode', 'night', 'no'); time.sleep(2)
         ui.sh('input', 'keyevent', '4')
         ui.find('Sample sheet', timeout=20)
         self.open_tag()
@@ -1425,6 +1438,12 @@ class Phone(unittest.TestCase):
         ui.find('Use the camera app instead', exact=True, timeout=30)
         self.assertFalse(ui.present('Standard', exact=True), 'mode chips shown on a camera with no Extensions')
         time.sleep(3)                   # (the preview and the capture are bound)
+        evidence('screen')
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.3'); time.sleep(2); evidence('screen-font130')
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
+        ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0'); ui.sh('settings', 'put', 'system', 'user_rotation', '1')
+        time.sleep(3); evidence('screen-landscape')
+        ui.sh('settings', 'put', 'system', 'user_rotation', '0'); time.sleep(3)
         ui.tap('Take the photo', exact=True)
         ui.find('Send', exact=True, timeout=60)
         ui.tap('Send', exact=True)
