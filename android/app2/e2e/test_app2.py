@@ -1871,7 +1871,10 @@ class Phone(unittest.TestCase):
                     time.sleep(1)
                 ui.sh('settings', 'put', 'system', 'user_rotation', turn)
                 time.sleep(3)
-                self.open_tag()
+                # (open_tag's check reads a line far down the panel: on its side it may be below the panel's edge)
+                ui.type_into('Search KKS or description', 'LAB70AA501')
+                ui.tap('11LAB70AA501', exact=True)
+                ui.find('Copy 11LAB70AA501', exact=True, timeout=10)
                 head = {t: box(ui.find(t, exact=True)) for t in ('11LAB70AA501', 'Close')}
                 title = box(ui.find('Sample sheet', exact=True))      # the app's bar: the window must not be panned
                 # typing in the drawing's search leaves the panel where it is (it would cover the results). Upright only:
