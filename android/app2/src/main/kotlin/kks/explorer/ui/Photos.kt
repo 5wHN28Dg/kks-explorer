@@ -90,7 +90,7 @@ fun PhotoOf(file: String, caption: String = "", height: Int = 90) {
     if (b == null) { Dim("Not on this phone yet (it arrives with the next sync)"); return }
     Image(b, "Open photo" + if (caption.isNotEmpty()) ": $caption" else "", Modifier.height(height.dp).clickable { open = true }, contentScale = ContentScale.Fit)
     if (open) {
-        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(photoDecode) { photoBitmap(file)?.asImageBitmap() } }
+        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(Dispatchers.IO) { photoBitmap(file)?.asImageBitmap() } }   // (not behind the thumbnails)
         PhotoViewer(whole ?: b, caption) { open = false }
     }
 }
@@ -248,7 +248,13 @@ internal fun orientedBitmap(raw: ByteArray): Bitmap? {
     while (maxOf(opts.outWidth, opts.outHeight) / (sample * 2) >= Resample.PHOTO_SIDE) sample *= 2
     var bmp = BitmapFactory.decodeByteArray(raw, 0, raw.size, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }) ?: return null
     val (fw, fh) = Resample.fit(bmp.width, bmp.height)
-    if (fw != bmp.width || fh != bmp.height) bmp = Resample.scale(bmp, fw, fh).also { bmp.recycle() }
+    if (fw != bmp.width || fh != bmp.height) {
+        // Lanczos needs ~60 MB of heap for its passes; a phone short of it gets Android's own (bilinear) scaling
+        // rather than a crash
+        val src = bmp
+        bmp = try { Resample.scale(src, fw, fh) } catch (_: OutOfMemoryError) { Bitmap.createScaledBitmap(src, fw, fh, true) }
+        if (bmp !== src) src.recycle()
+    }
     val turn = runCatching {
         when (android.media.ExifInterface(raw.inputStream()).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
             android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90; android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180

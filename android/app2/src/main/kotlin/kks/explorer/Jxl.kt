@@ -12,7 +12,7 @@ import java.nio.ByteOrder
 object Jxl {
     const val DISTANCE = 1.9f
     const val EFFORT = 7
-    /** How long encoding took on this phone lately, per megapixel (the progress bar's estimate); kept across starts. */
+    /** How long encoding took on this phone lately, per megapixel (the progress bar's estimate). */
     @Volatile var msPerMp: Long = 1500
 
     init { System.loadLibrary("kksjxl") }
