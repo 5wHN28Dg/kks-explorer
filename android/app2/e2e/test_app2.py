@@ -1467,6 +1467,8 @@ class Phone(unittest.TestCase):
         self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', auto)
         ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0'); ui.sh('settings', 'put', 'system', 'user_rotation', '1')
         time.sleep(3); evidence('screen-landscape')
+        ui.sh('settings', 'put', 'system', 'font_scale', '2.0'); time.sleep(3); evidence('screen-landscape-font200')
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
         ui.sh('settings', 'put', 'system', 'user_rotation', '0'); time.sleep(3)
         ui.tap('Take the photo', exact=True)
         ui.find('Send', exact=True, timeout=60)

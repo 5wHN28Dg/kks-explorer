@@ -69,6 +69,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -172,7 +174,7 @@ object InAppCamera {
         if (prefs(ctx).getString("camera_probed", "") == version) return
         probe(ctx) { text, ok ->
             kotlin.concurrent.thread {
-                val saved = runCatching { kks.explorer.sync.Diagnostics.record("device", text) }.isSuccess
+                val saved = kks.explorer.sync.Diagnostics.record("device", text)
                 if (ok && saved) prefs(ctx).edit().putString("camera_probed", version).apply()
             }
         }
@@ -221,7 +223,7 @@ class CameraActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
+            androidx.activity.SystemBarStyle.dark(0xCC000000.toInt()))   // (on its side the bar lies over the preview)
         @Suppress("DEPRECATION")
         out = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(MediaStore.EXTRA_OUTPUT, Uri::class.java) else intent.getParcelableExtra(MediaStore.EXTRA_OUTPUT)
         if (out == null) { setResult(RESULT_CANCELED); finish(); return }
@@ -230,8 +232,29 @@ class CameraActivity : ComponentActivity() {
         else if (savedInstanceState == null) ask.launch(Manifest.permission.CAMERA)   // (a recreated screen's request is still open)
     }
 
-    override fun onResume() { super.onResume(); if (held.canDetectOrientation()) held.enable() }
-    override fun onPause() { held.disable(); super.onPause() }
+    /** a turn by 180° changes no configuration: the preview follows the display itself */
+    private val turned = object : android.hardware.display.DisplayManager.DisplayListener {
+        override fun onDisplayAdded(id: Int) {}
+        override fun onDisplayRemoved(id: Int) {}
+        override fun onDisplayChanged(id: Int) {
+            @Suppress("DEPRECATION")
+            preview?.targetRotation = (if (Build.VERSION.SDK_INT >= 30) display?.rotation else windowManager.defaultDisplay.rotation) ?: return
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (held.canDetectOrientation()) held.enable()
+        getSystemService(android.hardware.display.DisplayManager::class.java).registerDisplayListener(turned, null)
+    }
+    override fun onPause() {
+        held.disable()
+        getSystemService(android.hardware.display.DisplayManager::class.java).unregisterDisplayListener(turned)
+        super.onPause()
+    }
+
+    /** Cancel and Back wait while a shot is being written into the caller's file */
+    private fun cancel() { if (!busy) { setResult(RESULT_CANCELED); finish() } }
 
     /** the screen turned (this activity handles the change itself): the preview follows the display */
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -242,7 +265,10 @@ class CameraActivity : ComponentActivity() {
 
     private fun log(what: String, e: Throwable) = android.util.Log.w("KKS", "camera: $what", e)
 
-    private fun useCameraApp() { out?.let { system.launch(it) } }
+    private fun useCameraApp() {
+        val o = out ?: return
+        runCatching { system.launch(o) }.onFailure { log("camera app", it); error = "The camera app could not be opened on this phone." }
+    }
 
     private fun start() {
         val main = ContextCompat.getMainExecutor(this)
@@ -291,6 +317,7 @@ class CameraActivity : ComponentActivity() {
     }
 
     private fun shoot() {
+        if (busy) return
         val c = capture ?: return
         val target = out ?: return
         val stream = runCatching { contentResolver.openOutputStream(target, "wt") }.getOrNull()
@@ -322,6 +349,8 @@ class CameraActivity : ComponentActivity() {
         }
     }
 
+    private var focusAt by mutableStateOf<androidx.compose.ui.geometry.Offset?>(null)
+
     private fun focus(x: Float, y: Float) {
         val r = request ?: return
         val pt = SurfaceOrientedMeteringPointFactory(r.resolution.width.toFloat(), r.resolution.height.toFloat()).createPoint(x, y)
@@ -332,32 +361,42 @@ class CameraActivity : ComponentActivity() {
     @Composable
     private fun Screen() {
         val transform = androidx.compose.runtime.remember { MutableCoordinateTransformer() }
+        androidx.activity.compose.BackHandler(enabled = busy) {}   // (Back waits for the shot, as Cancel does)
         Surface(Modifier.fillMaxSize(), color = Color.Black) {
             Box(Modifier.fillMaxSize()) {
                 request?.let { r ->
                     CameraXViewfinder(r, Modifier.fillMaxSize().semantics { contentDescription = "Camera preview" }
                         .pointerInput(r) {
-                            detectTapGestures { o -> with(transform) { val p = o.transform(); focus(p.x, p.y) } }
+                            detectTapGestures { o -> focusAt = o; with(transform) { val p = o.transform(); focus(p.x, p.y) } }
                         }, coordinateTransformer = transform)
+                }
+                // a ring where the person tapped, for a second: focusing there
+                focusAt?.let { at ->
+                    androidx.compose.runtime.LaunchedEffect(at) { kotlinx.coroutines.delay(1000); if (focusAt == at) focusAt = null }
+                    val d = androidx.compose.ui.platform.LocalDensity.current
+                    Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt() - with(d) { 32.dp.roundToPx() }, at.y.toInt() - with(d) { 32.dp.roundToPx() }) }
+                        .size(64.dp).border(2.dp, Color.White, CircleShape).clearAndSetSemantics {})
                 }
                 // the bars are dark enough for white text over the brightest scene (a tag plate in the sun): over white
                 // 80 % black leaves #333, 12.6:1 for white; they reach under the system bars, which are dark too
                 val onBar = ButtonDefaults.textButtonColors(contentColor = Color.White)
                 val live = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
-                Row(Modifier.fillMaxWidth().align(Alignment.TopCenter).background(BAR).windowInsetsPadding(WindowInsets.safeDrawing)
+                Row(Modifier.fillMaxWidth().align(Alignment.TopCenter).pointerInput(Unit) {}.background(BAR).windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (ready) "Walkdown camera · ${InAppCamera.modeName(mode)}" else "Opening the camera…", color = Color.White,
                         modifier = Modifier.weight(1f).then(live))
-                    TextButton(onClick = { setResult(RESULT_CANCELED); finish() }, colors = onBar) { Text("Cancel") }
+                    TextButton(onClick = { cancel() }, enabled = !busy, colors = onBar) { Text("Cancel") }
                 }
-                Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).background(BAR).windowInsetsPadding(WindowInsets.safeDrawing)
+                Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).pointerInput(Unit) {}.background(BAR).windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (error.isNotEmpty()) Text(error, color = Color.White, modifier = live)
+                    // one status line, always there, so that what it says next is announced
+                    val status = error.ifEmpty { if (busy) "Taking the photo: hold still" else "" }
+                    Text(status, color = Color.White, modifier = live)
                     if (modes.size > 1) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (m in modes) FilterChip(m == mode, { if (m != mode && !busy) { mode = m; bind() } }, enabled = !busy,
                             label = { Text(InAppCamera.modeName(m) + " mode") },
-                            leadingIcon = if (m == mode) { { Text("✓", color = Color.White) } } else null,
+                            leadingIcon = if (m == mode) { { Text("✓", color = Color.White, modifier = Modifier.clearAndSetSemantics {}) } } else null,
                             colors = FilterChipDefaults.filterChipColors(labelColor = Color.White, selectedLabelColor = Color.White,
                                 selectedContainerColor = Color(0xFF555555)),
                             border = FilterChipDefaults.filterChipBorder(!busy, m == mode, borderColor = Color.White, selectedBorderColor = Color.White,
@@ -370,7 +409,6 @@ class CameraActivity : ComponentActivity() {
                             modifier = Modifier.size(76.dp).border(4.dp, Color(0xFF9E9E9E), CircleShape)
                                 .semantics { contentDescription = "Take the photo" }) {}
                     }
-                    if (busy) Text("Taking the photo: hold still", color = Color.White, modifier = live)
                     TextButton(onClick = { useCameraApp() }, enabled = !busy, colors = onBar) { Text("Use the camera app instead") }
                 }
             }

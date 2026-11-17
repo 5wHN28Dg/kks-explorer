@@ -31,9 +31,9 @@ object Diagnostics {
         }.start()
     }
 
-    fun record(kind: String, text: String) {
-        runCatching { Core.api("POST", "/native/diag-record", JSONObject().put("kind", kind).put("text", text.take(4000))) }
-    }
+    /** true once the core took it */
+    fun record(kind: String, text: String): Boolean =
+        runCatching { Core.api("POST", "/native/diag-record", JSONObject().put("kind", kind).put("text", text.take(4000))).status < 400 }.getOrDefault(false)
 
     /** a report if the manager has them on and something new happened (at most every 6 h) */
     fun report(ctx: Context, force: Boolean = false) {

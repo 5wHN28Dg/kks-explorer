@@ -169,7 +169,7 @@ class CamTestActivity : ComponentActivity() {
                  "took it and as Walkdown would store it. This test app is separate from Walkdown: it has no account and " +
                  "sends nothing by itself.")
             Button(onClick = { ours.launch(shotUri) }, enabled = working.isEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Take with Walkdown's camera") }
-            OutlinedButton(onClick = { system.launch(shotUri) }, enabled = working.isEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Take with the camera app") }
+            OutlinedButton(onClick = { runCatching { system.launch(shotUri) }.onFailure { done.add(0, "The camera app could not be opened on this phone.") } }, enabled = working.isEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Take with the camera app") }
             if (working.isNotEmpty()) { Text(working); LinearProgressIndicator(Modifier.fillMaxWidth()) }
             OutlinedButton(onClick = { shareAll() }, enabled = done.isNotEmpty() && working.isEmpty(), modifier = Modifier.fillMaxWidth()) {
                 Text("Send the files taken now")
