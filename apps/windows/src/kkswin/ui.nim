@@ -767,6 +767,8 @@ proc drawPhotoMark*(dc: HDC, r: RECT, photos: string, selected: bool) =
     Ellipse(dc, l + 1, t + 1, l + d - 1, t + d - 1)
     if photos == "equipment":                          # the left half filled (from the top round to the bottom)
       SelectObject(dc, fill)
+      SelectObject(dc, GetStockObject(8))              # NULL_PEN: no line along the diameter (it all but filled the
+                                                       # empty half: UI/UX audit of #401)
       Pie(dc, l + 1, t + 1, l + d - 1, t + d - 1, l + d div 2, t, l + d div 2, t + d)
     SelectObject(dc, line)
     SelectObject(dc, hollow)

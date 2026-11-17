@@ -574,8 +574,12 @@ function photoAdd(k){
   // Each button says which kind of photo it adds and where it comes from (the user, 2026-11-16; the same words on
   // every client). On a phone or tablet: the camera (`capture`) or the gallery, for each kind; elsewhere `capture`
   // does nothing, so there is one button per kind, for a file.
-  const pick=(label,plate,cam)=>h('label',{class:'ghost',style:'display:inline-block;margin:8px 6px 0 0;cursor:pointer'},label,
-    h('input',{type:'file',accept:'image/*',capture:cam?'environment':null,style:'display:none','data-plate':plate?'1':null,'data-src':cam?'camera':'file',onchange:ev=>addPhoto(ev.currentTarget,k,plate)}));
+  // (a real button that opens its hidden file input: a label around the input could not be reached from the keyboard
+  // nor was it named a button: UI/UX audit of #401)
+  const pick=(label,plate,cam)=>{
+    const inp=h('input',{type:'file',accept:'image/*',capture:cam?'environment':null,style:'display:none','data-plate':plate?'1':null,'data-src':cam?'camera':'file',onchange:ev=>addPhoto(ev.currentTarget,k,plate)});
+    return h('span',null,h('button',{type:'button',class:'ghost',style:'margin:8px 6px 0 0',onclick:()=>inp.click()},label),inp);
+  };
   const btns=h('div',{id:'phAdd',style:need?'display:none':null},PHONE_CAMERA()
     ?[pick('Equipment: take photo',false,true),pick('Equipment: from gallery',false,false),pick('Tag plate: take photo',true,true),pick('Tag plate: from gallery',true,false)]
     :[pick('Equipment: from a file…',false,false),pick('Tag plate: from a file…',true,false)]);

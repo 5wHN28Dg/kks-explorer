@@ -191,6 +191,11 @@ These become decision records (docs/decisions/0014 and on):
     app's code, so any key a page holds is reachable by a server that misbehaves. Browser progress stays in that
     browser; the native apps share it between the person's paired devices.
 
+## Walkdown features not yet on every client (UI/UX policy X2)
+
+- **The photo mark in "Equipment by system" on Windows** (#402): the rows say the photo state in words only; the
+  search results draw the mark on every client, the systems view on the web, GNOME and Android.
+
 ## Measurements needed before deciding
 
 The policy says measure on the target.
