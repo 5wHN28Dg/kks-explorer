@@ -629,7 +629,11 @@ K.convertPhotos = async () => {
       let dataUrl = null, failed = null, timer;
       try {
         const img = await new Promise((ok, no) => { const i = K.h('img', {onload: () => ok(i), onerror: () => no(new Error('the saved photo could not be read')), src: it.raw}) });
-        const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0);
+        // JPEG XL from an ImageBitmap where the worker can read one (OffscreenCanvas): the pixels never pass the main thread
+        const bmp = up.type === 'image/jxl' && typeof OffscreenCanvas === 'function' && typeof createImageBitmap === 'function'
+          ? await createImageBitmap(img).catch(() => null) : null;
+        const c = bmp || document.createElement('canvas');
+        if (!bmp) { c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0) }
         // a worker the browser stopped without a word (memory, on phones) never answers: give up on this round
         const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error('the converter did not answer')), Math.max(120000, est * 20)) });
         dataUrl = up.type === 'image/jxl' ? await Promise.race([K.jxlEncode(c, up.distance || 1.9, up.effort || 7), late]) : c.toDataURL(up.type, up.q);
@@ -979,8 +983,21 @@ K.jxl.watch();
 // A photo from this browser becomes JPEG XL here, before it is sent (decision 0018: no JPEG anywhere): our libjxl
 // build in a worker, so the page stays responsive. canvas → a data: URL of the JXL codestream.
 K.PHOTO_SIDE = 2560;   // the longest side a stored photo may have, on every client (decision 0074)
+// a picture (Blob or image) decoded and scaled to w × h off the main thread (createImageBitmap's resize); null where the
+// browser can't (no createImageBitmap or no resize: the caller scales on a canvas instead)
+K.scaledBitmap = async (src, w, h) => {
+  if (typeof createImageBitmap !== 'function') return null;
+  try {
+    const b = await createImageBitmap(src, {resizeWidth: w, resizeHeight: h, resizeQuality: 'high', imageOrientation: 'from-image'});
+    if (b.width === w && b.height === h) return b;
+    b.close(); return null;
+  } catch (e) { return null }
+};
+// (an ImageBitmap goes to the worker as it is, which reads its pixels there: getImageData of a 2560 px canvas held the
+// main thread for over a second on a slow phone; a canvas is read here)
 K.jxlEncode = (canvas, distance = 1.9, effort = 7) => new Promise((res, rej) => {
-  const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  const bitmap = typeof ImageBitmap !== 'undefined' && canvas instanceof ImageBitmap;
+  const d = bitmap ? null : canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
   if (!K.jxlWorker) {   // a worker whose module could not load (offline, before it was ever fetched) answers nothing: drop it
     const w = K.jxlWorker = new Worker('/kks-wasm-worker.js', {type: 'module'}); w.wait = new Map();
     w.addEventListener('error', e => { e.preventDefault?.(); if (K.jxlWorker === w) K.jxlWorker = null; w.terminate();
@@ -996,7 +1013,8 @@ K.jxlEncode = (canvas, distance = 1.9, effort = 7) => new Promise((res, rej) => 
     res('data:image/jxl;base64,' + btoa(s));
   };
   w.addEventListener('message', on); w.wait.set(id, e => { w.removeEventListener('message', on); rej(e) });
-  w.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
+  if (bitmap) w.postMessage({id, bitmap: canvas, distance, effort}, [canvas]);
+  else w.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
 });
 
 

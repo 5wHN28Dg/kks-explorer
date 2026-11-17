@@ -46,6 +46,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -69,6 +71,8 @@ import kotlin.math.sin
 /** a photo's pixels, decoded from its JPEG XL blob; null while this phone doesn't hold it yet (on-demand photos) */
 private fun photoBitmap(file: String): Bitmap? = Core.file("photos/$file")?.let { Jxl.bitmap(it) }
 
+private object Missing
+
 /** photos are decoded two at a time: each whole one is up to 20 MB of pixels on the heap while it is made small, and a
  *  page of thumbnails (Manage) would otherwise decode them all at once */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -80,17 +84,21 @@ fun PhotoOf(file: String, caption: String = "", height: Int = 90) {
     // the thumbnail is kept small (a 2560 px photo is 20 MB of pixels, and Manage lists many); the whole photo is
     // decoded again only while it is open
     val px = (height * LocalDensity.current.density * 2).toInt()
-    val bmp by produceState<ImageBitmap?>(null, file) {
+    // null while it is decoded; Missing when this phone doesn't hold it (or it could not be decoded)
+    val bmp by produceState<Any?>(null, file) {
         value = withContext(photoDecode) {
-            photoBitmap(file)?.let { full -> Resample.thumbnail(full, px).also { if (it !== full) full.recycle() } }?.asImageBitmap()
+            try { photoBitmap(file)?.let { full -> Resample.thumbnail(full, px).also { if (it !== full) full.recycle() } }?.asImageBitmap() }
+            catch (_: OutOfMemoryError) { null } ?: Missing
         }
     }
     var open by remember { mutableStateOf(false) }
     val b = bmp
-    if (b == null) { Dim("Not on this phone yet (it arrives with the next sync)"); return }
+    if (b == null) { Dim("Loading the photo…"); return }
+    if (b !is ImageBitmap) { Dim("Not on this phone yet (it arrives with the next sync)"); return }
     Image(b, "Open photo" + if (caption.isNotEmpty()) ": $caption" else "", Modifier.height(height.dp).clickable { open = true }, contentScale = ContentScale.Fit)
     if (open) {
-        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(Dispatchers.IO) { photoBitmap(file)?.asImageBitmap() } }   // (not behind the thumbnails)
+        // (not behind the thumbnails; a phone short of memory keeps showing the small copy)
+        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(Dispatchers.IO) { try { photoBitmap(file)?.asImageBitmap() } catch (_: OutOfMemoryError) { null } } }
         PhotoViewer(whole ?: b, caption) { open = false }
     }
 }
@@ -198,12 +206,12 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         LinearProgressIndicator(Modifier.fillMaxWidth())
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { withFloor { shoot(false) } }) { Text("Take a photo") }
-        OutlinedButton(onClick = { withFloor { shoot(true) } }) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
-        OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; awaiting = true; gallery.launch("image/*") } }) { Text("From the gallery") }
+        OutlinedButton(onClick = { withFloor { shoot(false) } }, enabled = !preparing) { Text("Take a photo") }
+        OutlinedButton(onClick = { withFloor { shoot(true) } }, enabled = !preparing) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
+        OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; awaiting = true; gallery.launch("image/*") } }, enabled = !preparing) { Text("From the gallery") }
     }
     if (preparing) {
-        Text("Preparing the photo…")
+        Text("Preparing the photo…", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         LinearProgressIndicator(Modifier.fillMaxWidth())
     }
     picked?.let { bmp ->
@@ -305,6 +313,8 @@ internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () 
     var finger by remember { mutableStateOf<Offset?>(null) }       // where a finger draws (view px): the loupe
     var caption by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    val burnScope = rememberCoroutineScope()
     var box by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var centre by remember { mutableStateOf(Offset(src.width / 2f, src.height / 2f)) }   // the image point at the view's centre
@@ -424,7 +434,12 @@ internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () 
                     }
                     OutlinedButton(onClick = onRetake) { Text(retake) }
                     OutlinedButton(onClick = onCancel) { Text("Cancel") }
-                    Button(onClick = { onDone(burn(src, marks), caption.trim(), note.trim()) }) { Text("Send") }
+                    // the marks are burned in off the main thread (a 2560 px copy); Send waits meanwhile
+                    Button(onClick = {
+                        sending = true
+                        val m = marks.toList()
+                        burnScope.launch { val out = withContext(Dispatchers.Default) { burn(src, m) }; onDone(out, caption.trim(), note.trim()) }
+                    }, enabled = !sending) { Text("Send") }
                 }
             }
         }
