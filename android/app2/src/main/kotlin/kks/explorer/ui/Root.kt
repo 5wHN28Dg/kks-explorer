@@ -463,9 +463,10 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface))
                 if (!ui.fullView && query.trim().length >= 2) {
                     val res = remember(query, rev) { call("GET", "/native/search", query = mapOf("q" to query.trim())).json.optJSONArray("results").objects() }
-                    Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                    // the results scroll within 320 dp; what the photo marks mean stays in view under them
+                    Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) { Column {
                         if (res.isEmpty()) Text("Nothing found", Modifier.padding(16.dp))
-                        LazyColumn {
+                        LazyColumn(Modifier.heightIn(max = 320.dp)) {
                             items(res) { r ->
                                 val code = r.getString("code")
                                 // the code's photos, as a mark before it and in words for TalkBack
@@ -484,9 +485,9 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                                     leadingContent = mark,
                                     modifier = Modifier.clickable { query = ""; ui.show(r.getString("id")) })
                             }
-                            if (res.any { it.optString("code").isNotEmpty() }) item { PhotoLegend() }
                         }
-                    }
+                        if (res.any { it.optString("code").isNotEmpty() }) PhotoLegend()
+                    } }
                 }
             }
             if (drawer) Surface(tonalElevation = 6.dp, modifier = Modifier.fillMaxHeight().width(300.dp).align(Alignment.CenterStart)) {
