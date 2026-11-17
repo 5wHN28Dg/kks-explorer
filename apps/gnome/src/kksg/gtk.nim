@@ -849,6 +849,7 @@ proc gtk_scale_set_draw_value*(s: W, v: cint) {.importc, header: HA.}
 proc gtk_range_get_value*(r: W): cdouble {.importc, header: HA.}
 proc gtk_range_set_value*(r: W, v: cdouble) {.importc, header: HA.}
 proc gtk_check_button_set_group*(b, g: W) {.importc, header: HA.}
+proc gtk_toggle_button_set_group*(b, g: W) {.importc, header: HA.}
 proc gtk_grid_new*(): W {.importc, header: HA.}
 proc gtk_grid_attach*(g, child: W, col, row, w, h: cint) {.importc, header: HA.}
 proc gtk_grid_set_row_spacing*(g: W, s: cuint) {.importc, header: HA.}

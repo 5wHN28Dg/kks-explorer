@@ -796,7 +796,8 @@ class Gnome(Plant):
         theme is (ADW_DEBUG_COLOR_SCHEME stands in for the system's setting)"""
         os.makedirs(SHOTS, exist_ok=True)
         shot = os.path.join(SHOTS, 'gnome-dark.png')
-        a = self.start_app('darkdrawings', KKS_SHOT_ON_SIGNAL=shot)
+        # (the theme is pinned for each start: the headless session's own may be either)
+        a = self.start_app('darkdrawings', KKS_SHOT_ON_SIGNAL=shot, ADW_DEBUG_COLOR_SCHEME='prefer-light')
         pid = self.apps[-1].pid
         self.join(a)
         med, light, dark, n = self.drawing_shot(a, pid, shot)
@@ -804,15 +805,15 @@ class Gnome(Plant):
         self.assertGreater(dark, 0, 'light theme: dark lines')
         def choose(a, mode, was=None):
             atspi.click(atspi.find(a, 'toggle button', name='Dark drawings'))
-            radios = {m: atspi.find(a, 'radio button', name=m, timeout=10) for m in ('Follow theme', 'Always dark', 'Always light')}
+            radios = {m: atspi.find(a, 'toggle button', name=m, timeout=10) for m in ('Follow theme', 'Always dark', 'Always light')}
             if was:
-                self.assertEqual([m for m, r in radios.items() if r.get_state_set().contains(Atspi.StateType.CHECKED)], [was])
+                self.assertEqual([m for m, r in radios.items() if self.pressed(r)], [was])
             atspi.click(radios[mode])
             for _ in range(20):
-                if radios[mode].get_state_set().contains(Atspi.StateType.CHECKED):
+                if self.pressed(radios[mode]):
                     break
                 time.sleep(0.3)
-            self.assertTrue(radios[mode].get_state_set().contains(Atspi.StateType.CHECKED), mode + ' is not chosen')
+            self.assertEqual([m for m, r in radios.items() if self.pressed(r)], [mode], mode + ' is not the one chosen')
         choose(a, 'Always dark', was='Follow theme')
         med, light, dark, n = self.drawing_shot(a, pid, shot)
         shutil.copy(shot, os.path.join(SHOTS, 'gnome-dark-on.png'))
@@ -824,11 +825,11 @@ class Gnome(Plant):
         choose(a, 'Always dark', was='Always light')
         time.sleep(1)
         # a restart keeps it (this device's store)
-        def restart(**env):
+        def restart(scheme='prefer-light'):
             p = self.apps.pop()
             p.terminate()
             p.wait(5)
-            a = self.start_app('darkdrawings', KKS_SHOT_ON_SIGNAL=shot, **env)
+            a = self.start_app('darkdrawings', KKS_SHOT_ON_SIGNAL=shot, ADW_DEBUG_COLOR_SCHEME=scheme)
             atspi.find(a, 'toggle button', name='Dark drawings', timeout=20)
             return a, self.apps[-1].pid
         a, pid = restart()
@@ -839,7 +840,7 @@ class Gnome(Plant):
         # always light holds against a dark theme; following it, the drawings are dark with it
         choose(a, 'Always light', was='Always dark')
         time.sleep(1)
-        a, pid = restart(ADW_DEBUG_COLOR_SCHEME='prefer-dark')
+        a, pid = restart('prefer-dark')
         med, light, dark, n = self.drawing_shot(a, pid, shot)
         self.assertGreater(med, 200, 'always light under a dark theme: white paper')
         choose(a, 'Follow theme', was='Always light')

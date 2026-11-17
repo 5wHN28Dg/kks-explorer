@@ -4,6 +4,7 @@ import std/[strutils, tables, sets]
 import kks/[json, api]
 import kks/model
 import appstate
+import kksl/dbstore
 from std/os import getEnv
 import w32, ui, viewer, darkcolor
 

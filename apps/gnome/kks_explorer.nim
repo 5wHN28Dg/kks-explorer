@@ -329,11 +329,13 @@ proc mainScreen(w: Win): W =
   for m in DarkMode:
     closureScope:
       let mode = m
-      let rb = gtk_check_button_new_with_label(DarkModeLabels[mode].cstring)
-      if firstRadio == nil: firstRadio = rb else: gtk_check_button_set_group(rb, firstRadio)
-      gtk_check_button_set_active(rb, cint(mode == darkMode))
+      # toggle buttons in one group (one is always pressed): unlike GTK 4's check buttons they can be pressed
+      # through AT-SPI, by a screen reader's own action and by the e2e
+      let rb = gtk_toggle_button_new_with_label(DarkModeLabels[mode].cstring)
+      if firstRadio == nil: firstRadio = rb else: gtk_toggle_button_set_group(rb, firstRadio)
+      gtk_toggle_button_set_active(rb, cint(mode == darkMode))
       rb.on("toggled", proc () =
-        if gtk_check_button_get_active(rb) == 0 or darkMode == mode: return
+        if gtk_toggle_button_get_active(rb) == 0 or darkMode == mode: return
         darkMode = mode
         w.a.store.setMeta("dark_drawings", storedAs(mode))
         applyDark()

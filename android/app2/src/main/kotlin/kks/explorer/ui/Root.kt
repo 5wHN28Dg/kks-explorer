@@ -154,9 +154,6 @@ fun MainScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val ui = remember { Ui().also { it.darkMode = storedDarkMode(ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE)) } }
-    // the drawings follow the system's theme until the person says always dark or always light (the user, 2026-11-16)
-    val darkDrawings = darkNow(ui.darkMode, androidx.compose.foundation.isSystemInDarkTheme())
-    var darkAsk by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
     val rev = Changes.rev
     val admin = remember(rev) { Sync.config().optBoolean("admin") }
@@ -248,6 +245,9 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     var systemsOnly by remember { mutableStateOf<String?>(null) }       // from Coverage: one system
     var coverageOpen by remember { mutableStateOf(false) }
     var view by remember { mutableStateOf<SheetView?>(null) }
+    // the drawings follow the system's theme until the person says always dark or always light (the user, 2026-11-16)
+    val darkDrawings = darkNow(ui.darkMode, androidx.compose.foundation.isSystemInDarkTheme())
+    var darkAsk by remember { mutableStateOf(false) }
     val current = list.firstOrNull { it.id == ui.sheet }
     val boxes = remember(ui.sheet, rev) { if (current != null) tagBoxes(current.id, current.scale) else emptyList() }
     var marking by remember { mutableStateOf(false) }
