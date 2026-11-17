@@ -1314,6 +1314,38 @@ class Phone(unittest.TestCase):
             bg = im.getpixel((int(a - 3 * dp), cy))
             hi, lo = sorted((lum(fill), lum(bg)), reverse=True)
             self.assertGreaterEqual((hi + 0.05) / (lo + 0.05), 3.0, (words, fill, bg))
+        # with the keyboard up (upright, at text sizes 1.0 and 2.0, and on its side) the legend is above it: the list
+        # gives up its room (#401's UI/UX audit, R3)
+        def ime_top():
+            ms = [(tuple(map(int, m.groups()[:4])), m.group(5) == 'true') for m in re.finditer(
+                r'type=ime frame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\][^\n]*?visible=(true|false)', ui.sh('dumpsys', 'window'))]
+            ms = [x for x in ms if x[1] and x[0][3] > x[0][1]]
+            return ms[0][0][1] if ms else None
+
+        def legend_above_keyboard(how):
+            field = next(n for n in ui.nodes() if n.get('class', '').endswith('EditText'))
+            ui.sh('input', 'tap', *map(str, ui.center(field)))
+            for _ in range(20):
+                if ui.keyboard_shown() and ime_top():
+                    break
+                time.sleep(0.5)
+            self.assertTrue(ui.keyboard_shown() and ime_top(), f'no keyboard for the search field ({how})')
+            time.sleep(1.5)
+            top = ime_top()
+            ns = ui.nodes()
+            for words in ('no photos', 'equipment and tag plate photos'):
+                n = [n for n in ns if n.get('text') == words]
+                self.assertTrue(n, f'{words!r} is not on screen with the keyboard up ({how})')
+                b = list(map(int, re.findall(r'\d+', n[0].get('bounds'))))
+                self.assertLessEqual(b[3], top, f'{words!r} is under the keyboard ({how}): {b}, the keyboard starts at {top}')
+            ui.hide_keyboard()
+            time.sleep(1)
+        legend_above_keyboard('upright, text size 1.0')
+        ui.sh('settings', 'put', 'system', 'font_scale', '2.0')
+        time.sleep(3)
+        legend_above_keyboard('upright, text size 2.0')
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
+        time.sleep(3)
         # on its side: the legend still under the results
         ui.sh('settings', 'put', 'system', 'user_rotation', '1')
         time.sleep(4)
@@ -1322,6 +1354,7 @@ class Phone(unittest.TestCase):
         texts = [n.get('text') for n in ui.nodes()]
         for words in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos'):
             self.assertIn(words, texts)
+        legend_above_keyboard('on its side')
         ui.sh('settings', 'put', 'system', 'user_rotation', '0')
         time.sleep(4)
         # the largest text size: "Dark drawings" as tall as the one-line "Coverage"

@@ -443,7 +443,9 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     Icon(Glyphs.FIT, contentDescription = null)
                 }
             }
-            Column(Modifier.fillMaxWidth().padding(8.dp)) {
+            // the search and its results end above the keyboard (by what it covers of the bottom bar), so the list
+            // shrinks and the photo legend under it stays in view while typing (#401's UI/UX audit, R3)
+            Column(Modifier.fillMaxWidth().consumeWindowInsets(PaddingValues(bottom = LocalBottomBars.current)).imePadding().padding(8.dp)) {
                 if (marking) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                     Row(Modifier.padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Drag a box around the tag the app missed (two fingers move the drawing)", Modifier.weight(1f))
