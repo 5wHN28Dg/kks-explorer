@@ -215,9 +215,18 @@ proc buildPanel*(w: Win, t: Tag) =
   w.panelStale = false
   let m = w.m
   let k = t.full
-  p.title((if k.len > 0: k else: "Unread tag"))
-  p.dim((if t.isa.len > 0: t.isa & " · " else: "") & m.kindName(t))
-  p.buttons(("Close", proc () = w.selectTag("", false)))
+  # the heading: its own page above this one, so it stays in view while the panel scrolls; the code, Copy (the user,
+  # 2026-11-15: "copy kks code from the sheet that shows tag info") and Close
+  let hd = w.panelHead
+  hd.clear()
+  hd.title((if k.len > 0: k else: "Unread tag"))
+  hd.dim((if t.isa.len > 0: t.isa & " · " else: "") & m.kindName(t))
+  if k.len > 0:
+    hd.buttons(("Copy", proc () =
+      w.toast(if copyToClipboard(w.hwnd, k): "Copied " & k else: "The clipboard is busy: try again")),
+      ("Close", proc () = w.selectTag("", false)))
+  else: hd.buttons(("Close", proc () = w.selectTag("", false)))
+  w.relayout()
   var mine: seq[string]
   let myOpenSubs = w.myOpen()
   for sub in myOpenSubs:

@@ -10,6 +10,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.ui.composed
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -78,14 +83,32 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
     val screen = LocalConfiguration.current.screenHeightDp.toFloat()
     // resizable (the user, 2026-10-05: it took most of the screen): drag the handle, or tap it to go between a low
     // panel (the code and Close, the drawing above free to move around) and the usual height
-    val low = 104f; val high = screen * 0.85f; val usual = screen * 0.45f
+    // low: the grip and the heading as tall as they are (a long code wraps, large text grows): never cut short
+    var headDp by remember { mutableFloatStateOf(80f) }
+    val low = maxOf(104f, 44f + headDp); val high = maxOf(screen * 0.85f, low); val usual = maxOf(screen * 0.45f, low)
     var height by remember { mutableFloatStateOf(if (PanelSize.dp > 0) PanelSize.dp else usual) }
     val dens = androidx.compose.ui.platform.LocalDensity.current.density
     var editing by remember(id) { mutableStateOf(false) }
-    Surface(modifier.fillMaxWidth().height(height.dp), tonalElevation = 6.dp, shadowElevation = 8.dp,
+    // The keyboard (UI/UX audit of #363, R3): while the panel is open the window is not panned up under the status bar
+    // (the system's default, which put the heading, Copy and Close under it in landscape); the panel rises above the
+    // keyboard and shrinks to what is left (imePadding before height: the height is held within it), the grip giving
+    // its place up while the keyboard is shown. Only while the panel is open: the other screens keep the pan. And only
+    // for a field of the panel's own: typing in the drawing's search leaves the panel where it is (it would cover the
+    // results, and on its side the search field itself).
+    val window = (androidx.compose.ui.platform.LocalContext.current as? android.app.Activity)?.window
+    DisposableEffect(window) {
+        val before = window?.attributes?.softInputMode
+        window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+            ((before ?: 0) and android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_STATE))
+        onDispose { if (before != null) window.setSoftInputMode(before) }
+    }
+    var typingHere by remember { mutableStateOf(false) }
+    val keyboard = typingHere && WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+    val bars = LocalBottomBars.current
+    Surface((if (keyboard) modifier.consumeWindowInsets(PaddingValues(bottom = bars)).imePadding() else modifier).fillMaxWidth().height(maxOf(height, low).dp), tonalElevation = 6.dp, shadowElevation = 8.dp,
         shape = MaterialTheme.shapes.large) {
-        Column {
-        Box(Modifier.fillMaxWidth()
+        Column(Modifier.onFocusChanged { typingHere = it.hasFocus }) {
+        if (!keyboard) Box(Modifier.fillMaxWidth()
             .draggable(rememberDraggableState { d -> height = (height - d / dens).coerceIn(low, high); PanelSize.dp = height },
                 orientation = androidx.compose.foundation.gestures.Orientation.Vertical)
             .clickable(onClickLabel = if (height > low + 1) "Make the panel small" else "Make the panel bigger") {
@@ -95,15 +118,11 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
             .padding(vertical = 10.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
             Box(Modifier.size(width = 40.dp, height = 4.dp).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), MaterialTheme.shapes.small))
         }
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(t.optString("code").ifEmpty { "Unread tag" }, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace)
-                    Text((if (t.optString("isa").isNotEmpty()) t.optString("isa") + " · " else "") + t.optString("kind"),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                TextButton(onClick = onClose) { Text("Close") }
-            }
+        // the heading stays above what scrolls (the user, 2026-11-15: "Close button shouldn't be hidden or move away
+        // when I scroll down"): the code (selectable), Copy, Close
+        PanelHeading(t.optString("code"), (if (t.optString("isa").isNotEmpty()) t.optString("isa") + " · " else "") + t.optString("kind"),
+            onClose, snack, Modifier.onSizeChanged { if (!keyboard) headDp = it.height / dens }, compact = keyboard)
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = if (keyboard) 0.dp else 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (t.optString("status") == "review") ReviewSection(t, snack)
             t.optJSONObject("decoded")?.let { d ->
                 Heading("From the drawing")
@@ -157,8 +176,8 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                 } else {
                     val values = remember(id) { mutableStateMapOf<String, String>().apply { FIELDS.forEach { (f, _) -> put(f, eq.optString(f)) } } }
                     var note by remember(id) { mutableStateOf("") }
-                    for ((f, title) in FIELDS) OutlinedTextField(values[f] ?: "", { values[f] = it }, label = { Text(title) }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(note, { note = it }, label = { Text("Note for the approver (optional)") }, modifier = Modifier.fillMaxWidth())
+                    for ((f, title) in FIELDS) OutlinedTextField(values[f] ?: "", { values[f] = it }, label = { Text(title) }, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
+                    OutlinedTextField(note, { note = it }, label = { Text("Note for the approver (optional)") }, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
                             val changes = JSONObject(); val base = JSONObject()
@@ -196,6 +215,54 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
     }
 }
 
+/** The panel's heading, outside its scrolling part: the code (selectable: a long press copies part of it), a Copy
+ *  button that puts the whole code on the clipboard and says "Copied", and Close. */
+/** the height of the bars under the screen's content (the bottom navigation bar and the system's), set by Root: the
+ *  tag panel already stands above them, so it rises only by the rest of the keyboard */
+val LocalBottomBars = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
+/** A field of the panel's that keeps itself in view once the keyboard has come up and the panel has shrunk above it
+ *  (Compose brings a focused field into view when it gets the focus, before the panel is made smaller: on its side
+ *  the field's lower part then stood under the keyboard) */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun Modifier.inViewAboveKeyboard(): Modifier = composed {
+    val req = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+    var focused by remember { mutableStateOf(false) }
+    val ime = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
+    LaunchedEffect(focused, ime) { if (focused && ime > 0) { kotlinx.coroutines.delay(100); req.bringIntoView() } }
+    Modifier.bringIntoViewRequester(req).onFocusEvent { focused = it.isFocused }
+}
+
+@Composable
+private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: SnackbarHostState, modifier: Modifier = Modifier,
+                         compact: Boolean = false) {
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    var copied by remember(code) { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(2500); copied = false } }
+    // (16 dp under the grip: its touch area reaches 12 dp below it, and Close, which drops a form being typed, keeps
+    // 8 dp from the grip, from Copy and from a field scrolled up to the heading's line: policy T2)
+    Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = if (compact) 4.dp else 16.dp, bottom = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            if (code.isNotEmpty()) androidx.compose.foundation.text.selection.SelectionContainer {
+                Text(code, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace)
+            } else Text("Unread tag", style = MaterialTheme.typography.headlineSmall)
+            // (while the keyboard is up in the panel's form: one line, so that on its side the field has room above it)
+            if (!compact) Text(sub, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (code.isNotEmpty()) TextButton(onClick = {
+            clip.setText(androidx.compose.ui.text.AnnotatedString(code))
+            copied = true
+            // Android 13 and later show their own preview of what was copied: then no second message (the button
+            // still says "Copied")
+            if (android.os.Build.VERSION.SDK_INT < 33) scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("Copied $code") }
+        }, modifier = Modifier.semantics { contentDescription = if (copied) "Copied $code" else "Copy $code" }) { Text(if (copied) "Copied" else "Copy") }
+        if (code.isNotEmpty()) Spacer(Modifier.width(8.dp))
+        TextButton(onClick = onClose) { Text("Close") }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
 @Composable
 private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
@@ -207,8 +274,8 @@ private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
     val read = t.optJSONArray("read")
     Text("Check this tag", style = MaterialTheme.typography.titleMedium)
     Text("The reader saw ${read?.optString(0)} / ${read?.optString(1)}, confidence ${(t.optDouble("conf") * 100).toInt()} %")
-    OutlinedTextField(code, { code = it }, label = { Text("KKS (with suffix)") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(isa, { isa = it }, label = { Text("Function letters (instruments)") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(code, { code = it }, label = { Text("KKS (with suffix)") }, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
+    OutlinedTextField(isa, { isa = it }, label = { Text("Function letters (instruments)") }, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(onClick = {
             val c = code.uppercase().filterNot { it.isWhitespace() }
@@ -258,7 +325,7 @@ private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snac
             if (!draft && d.optBoolean("draft_differs")) Dim("The plant data's draft says something else.")
             if (editing) {
                 HoldLinks()
-                OutlinedTextField(text, { text = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                OutlinedTextField(text, { text = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard(), minLines = 2)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
                         val v = text.trim()
@@ -333,7 +400,7 @@ private fun ValveSection(vt: JSONObject, rev: Int, snack: SnackbarHostState) {
                     Button(onClick = { send(vt.str("text")) }, enabled = !busy) { Text("Confirm type") }
                     OutlinedButton(onClick = { correcting = true; value = vt.str("text") }, enabled = !busy) { Text("Correct type") }
                 } else {
-                    OutlinedTextField(value, { value = it }, label = { Text("Valve type (as it really is)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value, { value = it }, label = { Text("Valve type (as it really is)") }, singleLine = true, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
                             val v = value.trim()
