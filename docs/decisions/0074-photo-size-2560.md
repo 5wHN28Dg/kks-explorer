@@ -35,7 +35,8 @@ the app's own pipeline (the 1600 px limit, the codec setting, the scaling filter
 about 2.2× for a browser's offline copy of the photos (its storage quota on iPhones). 2.5× the pixels in each client's
 queue while a photo waits (a 2560 × 1920 photo is 19.7 MB of RGBA). Decoding a photo for display takes about 2.5× the
 time and memory; browsers without JPEG XL keep each shown photo decoded as a BMP (14.7 MB, was 5.8 MB) for as long as
-the page is open. Android decodes thumbnails two at a time and keeps only the small copy.
+the page is open, and a photo taken offline waits in the browser's outbox as a PNG data URL (roughly 13–20 MB for a
+real 2560 px photo, was 5–8 MB) that the page holds in memory until it is converted. Android decodes thumbnails two at a time and keeps only the small copy.
 
 **Supersedes in part:** 0018 and 0037 (effort 9 on the native apps), 0049's first estimate of 8 s per megapixel.
 

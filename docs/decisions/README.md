@@ -70,6 +70,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0072](0072-plant-workshop.md) | Walkdown Plant's Workshop mode: component trees from the kit's generators, pre-built scenes, a bench format of its own, one new lit shader | proposed (K0, 2026-11-01); built through K3 (the pressure transmitter) |
 | [0073](0073-plant-realism-programme.md) | Walkdown Plant's realism programme: everything that changes the plant in the deterministic engine (format 2 additions, their own vectors), hands-on jobs generated from the Workshop's component trees, seeded wear and weather, generated P&IDs and manuals; no new dependency | accepted (the user's answers of 2026-11-01: add every area) |
 | [0074](0074-photo-size-2560.md) | Photos stored at up to 2560 px (was 1600), JPEG XL d1.9 effort 7 on every client (replaces effort 9 of 0018/0037); Android scales with its own Lanczos-3 | decided (the user, 2026-11-17) |
+| [0075](0075-android-in-app-camera.md) | Android: an in-app camera (CameraX 1.6 with the phone's Extensions) beside the system camera, for a trial on the Honor 600; a one-line hint if it does not help | decided for a trial (the user, 2026-11-17) |
 
 ## Audit of existing dependencies (2026-09-30)
 

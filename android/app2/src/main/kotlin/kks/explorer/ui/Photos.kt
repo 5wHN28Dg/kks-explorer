@@ -90,7 +90,7 @@ fun PhotoOf(file: String, caption: String = "", height: Int = 90) {
     if (b == null) { Dim("Not on this phone yet (it arrives with the next sync)"); return }
     Image(b, "Open photo" + if (caption.isNotEmpty()) ": $caption" else "", Modifier.height(height.dp).clickable { open = true }, contentScale = ContentScale.Fit)
     if (open) {
-        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(photoDecode) { photoBitmap(file)?.asImageBitmap() } }
+        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(Dispatchers.IO) { photoBitmap(file)?.asImageBitmap() } }   // (not behind the thumbnails)
         PhotoViewer(whole ?: b, caption) { open = false }
     }
 }
@@ -146,12 +146,16 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
     }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
     val camUri = remember { FileProvider.getUriForFile(ctx, ctx.packageName + ".files", camFile) }
+    var preparing by remember { mutableStateOf(false) }       // reading and scaling the picture (a second or more)
     fun load(uri: Uri) = scope.launch {
-        picked = withContext(Dispatchers.IO) {
-            val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
-            if (uri == camUri) camFile.delete()
-            orientedBitmap(raw)
-        }
+        preparing = true
+        picked = try {
+            withContext(Dispatchers.IO) {
+                val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
+                if (uri == camUri) camFile.delete()
+                orientedBitmap(raw)
+            }
+        } finally { preparing = false }
         awaiting = false
         if (picked == null) snack.showSnackbar("Could not read that picture")
     }
@@ -198,6 +202,10 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         OutlinedButton(onClick = { withFloor { shoot(true) } }) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
         OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; awaiting = true; gallery.launch("image/*") } }) { Text("From the gallery") }
     }
+    if (preparing) {
+        Text("Preparing the photo…")
+        LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
     picked?.let { bmp ->
         Annotate(bmp, plate, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { picked = null },
             onRetake = { picked = null; if (fromCamera) shoot(plate) else { awaiting = true; gallery.launch("image/*") } }) { out, caption0, note ->
@@ -243,13 +251,20 @@ fun photoCredit(p: JSONObject): String {
  *  client stores (decision 0074): decoded at the largest power-of-two reduction that keeps it at least that large,
  *  then scaled with Lanczos (Android's own scaling is bilinear) */
 internal fun orientedBitmap(raw: ByteArray): Bitmap? {
+    val t0 = System.nanoTime()
     val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(raw, 0, raw.size, opts)
     var sample = 1
     while (maxOf(opts.outWidth, opts.outHeight) / (sample * 2) >= Resample.PHOTO_SIDE) sample *= 2
     var bmp = BitmapFactory.decodeByteArray(raw, 0, raw.size, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }) ?: return null
     val (fw, fh) = Resample.fit(bmp.width, bmp.height)
-    if (fw != bmp.width || fh != bmp.height) bmp = Resample.scale(bmp, fw, fh).also { bmp.recycle() }
+    if (fw != bmp.width || fh != bmp.height) {
+        // Lanczos needs ~60 MB of heap for its passes; a phone short of it gets Android's own (bilinear) scaling
+        // rather than a crash
+        val src = bmp
+        bmp = try { Resample.scale(src, fw, fh) } catch (_: OutOfMemoryError) { Bitmap.createScaledBitmap(src, fw, fh, true) }
+        if (bmp !== src) src.recycle()
+    }
     val turn = runCatching {
         when (android.media.ExifInterface(raw.inputStream()).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
             android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90; android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
@@ -257,6 +272,7 @@ internal fun orientedBitmap(raw: ByteArray): Bitmap? {
         }
     }.getOrDefault(0)
     if (turn != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(turn.toFloat()) }, true)
+    android.util.Log.i("KKSTime", "photo ${opts.outWidth}x${opts.outHeight} -> ${bmp.width}x${bmp.height} in ${(System.nanoTime() - t0) / 1_000_000} ms")   // measurements
     return bmp
 }
 
