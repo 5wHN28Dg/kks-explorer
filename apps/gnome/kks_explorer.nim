@@ -363,7 +363,8 @@ proc mainScreen(w: Win): W =
   gtk_menu_button_set_popover(darkBtn, darkPop)
   # the theme changed while the app runs: the drawings follow at once when they are set to. One handler for the
   # process, calling the main screen of the moment (the screen is made again after leaving a plant and joining one)
-  followTheme = applyDark
+  followTheme = proc () =
+    if not w.gone: applyDark()       # (not into a window that has closed: adversarial review of #401)
   if not themeWatched:
     themeWatched = true
     styles.onPtr("notify::dark", proc (p: W) =

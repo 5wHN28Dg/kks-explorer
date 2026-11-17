@@ -1289,6 +1289,8 @@ class Phone(unittest.TestCase):
         self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', '1.0')
         self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
         ui.sh('cmd', 'uimode', 'night', 'no')
+        rot = ui.sh('settings', 'get', 'system', 'accelerometer_rotation').strip()
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', rot if rot in ('0', '1') else '0')
         ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
         self.join()
         dp = int(re.findall(r'(\d+)', ui.sh('wm', 'density'))[-1]) / 160
@@ -1334,6 +1336,21 @@ class Phone(unittest.TestCase):
             return d - b
         self.assertLess(height('Dark drawings'), 1.5 * height('Coverage'), [(n.get('text'), n.get('bounds')) for n in ns if n.get('text')])
         ui.sh('input', 'keyevent', '4')
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
+        # the old switch turned off (it stored false; never touched stored nothing) is Always light, not Follow theme
+        # (adversarial review of #401). The app's preferences are reached with run-as: debug builds only.
+        if ui.debuggable(PKG):
+            ui.sh('am', 'force-stop', PKG)
+            prefs = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'shared_prefs/app.xml'], capture_output=True, text=True).stdout
+            self.assertIn('</map>', prefs)
+            prefs = re.sub(r'\s*<(string|boolean) name="dark_drawings(_mode)?"[^>]*(/>|>[^<]*</string>)', '', prefs)
+            prefs = prefs.replace('</map>', '    <boolean name="dark_drawings" value="false" />\n</map>')
+            subprocess.run(ui.ADB + ['exec-in', 'run-as', PKG, 'sh', '-c', 'cat > shared_prefs/app.xml'], input=prefs.encode(), check=True)
+            ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
+            ui.find('Sample sheet', timeout=30)
+            ui.tap('More', exact=True)
+            ui.find('Always light', exact=True)
+            ui.sh('input', 'keyevent', '4')
 
     def test_coverage(self):
         """the coverage dashboard (core coverageView): totals on the test plant; a sheet row opens that sheet with the

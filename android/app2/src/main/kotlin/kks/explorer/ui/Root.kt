@@ -633,13 +633,15 @@ internal const val DARK_MODE_PREF = "dark_drawings_mode"
 internal val DARK_MODES = listOf("follow" to "Follow theme", "dark" to "Always dark", "light" to "Always light")
 internal fun darkModeLabel(mode: String) = DARK_MODES.firstOrNull { it.first == mode }?.second ?: DARK_MODES[0].second
 internal fun darkNow(mode: String, systemDark: Boolean) = mode == "dark" || (mode != "light" && systemDark)
-/** the stored choice; before it had three, a switch (`dark_drawings` true = on, which stays "always dark") */
+/** the stored choice; before it had three, a switch (`dark_drawings`: true = on, which stays "always dark"; false =
+ *  turned off by the person, which stays "always light"; never touched stored nothing and follows the theme) */
 internal fun storedDarkMode(p: android.content.SharedPreferences): String {
     val m = p.getString(DARK_MODE_PREF, null)
     return when {
         m != null && DARK_MODES.any { it.first == m } -> m
+        !p.contains("dark_drawings") -> "follow"
         p.getBoolean("dark_drawings", false) -> "dark"
-        else -> "follow"
+        else -> "light"
     }
 }
 
