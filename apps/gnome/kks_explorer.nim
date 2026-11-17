@@ -161,7 +161,10 @@ proc refresh(w: Win) =
   w.fillSheets()
   # the search results follow (a photo arrived: its code's mark changes), made again only when what they show changed
   # (a list rebuilt at every sync round loses the presses on it, #147)
+  # Not while the focus is on a result (a keyboard's or a screen reader's place would be lost: UI/UX audit of #401):
+  # the next round after it leaves makes them again.
   if w.searchEntry != nil and gtk_widget_get_visible(w.resultList) != 0 and text(w.searchEntry).strip.len > 0 and
+     not focusInside(w.resultList) and
      w.resultsKey(w.m.search(text(w.searchEntry).strip), w.m.photoCovers) != w.resultsShown: w.runSearch()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
@@ -634,6 +637,21 @@ proc activate(w: Win, app: W) =
         removeFile(staleFlag)
         w.rebuildPanel()
         stderr.writeLine "KKS_TEST_STALE_CLICK: the panel was rebuilt before a button's handler"
+  # tests: when the file KKS_TEST_MOVE_FOCUS names appears, the keyboard focus goes to the first search result
+  # ("result") or to the search field ("search"), and the file is removed (GTK 4's AT-SPI has no GrabFocus, and keys
+  # can't be typed into the headless session)
+  let moveFocus = getEnv("KKS_TEST_MOVE_FOCUS")
+  if moveFocus.len > 0:
+    timeout(100, proc (): bool =
+      if w.gone: return false
+      if fileExists(moveFocus):
+        let what = readFile(moveFocus).strip
+        removeFile(moveFocus)
+        if what == "result":
+          let r = gtk_list_box_get_row_at_index(w.resultList, 0)
+          if r != nil: gtk_widget_grab_focus(r)
+        elif what == "search" and w.searchEntry != nil: gtk_widget_grab_focus(w.searchEntry)
+      true)
   # tests: the file KKS_TEST_FOCUS names holds what has the window's keyboard focus (a button's label, else the
   # widget's type; "" for none), written when it changes. The headless test session has no keyboard, so its window
   # is never the active one and AT-SPI reports no widget as focused.

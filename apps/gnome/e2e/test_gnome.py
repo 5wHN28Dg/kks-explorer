@@ -329,7 +329,8 @@ class Gnome(Plant):
         from PIL import Image
         pic = os.path.join(self.dir, 'valve.png')
         Image.new('RGB', (640, 480), (128, 128, 128)).save(pic)
-        a = self.start_app('photographer', KKS_PHOTO_FILE=pic)
+        move, focus = os.path.join(self.dir, 'move-focus'), os.path.join(self.dir, 'focus')
+        a = self.start_app('photographer', KKS_PHOTO_FILE=pic, KKS_SYNC_EVERY='2000', KKS_TEST_MOVE_FOCUS=move, KKS_TEST_FOCUS=focus)
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
         atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
         atspi.set_text(atspi.find(a, 'text', name='Username'), 'boss')
@@ -367,6 +368,31 @@ class Gnome(Plant):
                 break
             time.sleep(0.5)
         self.assertIn(got and got[0], words[1::2], 'the search result does not show the equipment photo')
+        # not made again while the focus is on a result (a keyboard's or Orca's place would be lost): a tag plate photo
+        # arrives, the mark waits until the focus leaves the results (UI/UX audit of #401)
+        import base64
+        def focus_on(what, expect):
+            with open(move, 'w') as f: f.write(what)
+            for _ in range(30):
+                if not os.path.exists(move) and os.path.exists(focus) and expect(open(focus).read()):
+                    return
+                time.sleep(0.2)
+            self.fail(f'the focus did not move to the {what}: {open(focus).read() if os.path.exists(focus) else None!r}')
+        focus_on('result', lambda f: 'Row' in f)
+        data = open(os.path.join(REPO, 'data', 'courses', 'ppt-02.jxl'), 'rb').read()
+        r = self.boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'Tag plate',
+                          'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(data).decode()}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        time.sleep(8)        # rounds every 2 s
+        self.assertEqual(mark(), [got[0]], 'the results were made again under the focus')
+        self.assertIn('Row', open(focus).read(), 'the focused result lost the focus')
+        focus_on('search', lambda f: 'Row' not in f and f != '')
+        for _ in range(40):
+            got = mark()
+            if got == [words[3]]:
+                break
+            time.sleep(0.5)
+        self.assertEqual(got, [words[3]], 'the mark did not follow once the focus left the results')
         tb = atspi.find(a, 'toggle button', name='Colour tags by photos')
         atspi.click(tb)
         for _ in range(20):

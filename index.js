@@ -174,7 +174,7 @@ async function refreshState(){
   const SD=$('#sysDrawer');
   if(SD.classList.contains('open')){ if(SD.contains(document.activeElement)) sysStale=true; else renderSystems() }
   // the open search results' photo marks likewise (only when one of them changed: the list keeps its place otherwise)
-  if($('#results').style.display==='block'&&hits.length&&resultsKey()!==resKey) $('#q').dispatchEvent(new Event('input'));
+  followSearch();
   const CD=$('#covDrawer');   // the coverage numbers likewise
   // rebuilt at once unless the focus is on something the rebuild replaces (a row in #covBody; the heading stays)
   if(CD.classList.contains('open')){ if($('#covBody').contains(document.activeElement)) covStale=true; else renderCoverage() }
@@ -1035,6 +1035,16 @@ $('#q').addEventListener('input',()=>{
   R.style.display='block';
   $('#q').setAttribute('aria-expanded','true'); $('#q').setAttribute('aria-activedescendant', hits.length?'res-0':'');
 });
+// the open results follow a sync when what they show changed, the keyboard's place kept on the same result (made again,
+// the list went back to its first: Enter then opened another code than the one chosen; UI/UX audit of #401)
+function followSearch(){
+  if($('#results').style.display!=='block'||!hits.length||resultsKey()===resKey) return;
+  const id=x=>x&&(x.loc?'loc:'+x.loc:x.t.id), was=id(hits[hi]);
+  $('#q').dispatchEvent(new Event('input'));
+  const i=hits.findIndex(x=>id(x)===was); if(i<=0) return;
+  hi=i; [...$('#results').children].forEach((c,j)=>{ c.classList.toggle('on',j===hi); c.setAttribute('aria-selected',String(j===hi)) });
+  $('#q').setAttribute('aria-activedescendant','res-'+hi);
+}
 $('#q').addEventListener('keydown',e=>{ const R=$('#results');
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){ hi=Math.max(0,Math.min(hits.length-1,hi+(e.key==='ArrowDown'?1:-1)));
     [...R.children].forEach((c,i)=>{ c.classList.toggle('on',i===hi); c.setAttribute('aria-selected', String(i===hi)) });

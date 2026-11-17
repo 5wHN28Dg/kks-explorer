@@ -68,6 +68,19 @@ class WebCoverage(tws.WebSystems):
         page.screenshot(path=os.path.join(SHOTS, 'search-photos-' + name + '.png'))
         legend.click(force=True)             # not a result: nothing opens, the list stays
         self.assertTrue(page.is_visible('#results'))
+        # a photo arriving with a sync changes its mark; the keyboard's place stays on the same result
+        page.fill('#q', 'LAB7')
+        page.wait_for_function("() => document.querySelectorAll('#results .res[id^=res-]').length >= 5")
+        page.focus('#q')
+        for _ in range(2): page.keyboard.press('ArrowDown')
+        active = "(() => { const r = document.getElementById(document.querySelector('#q').getAttribute('aria-activedescendant')); return r.querySelector('.k').textContent + '|' + r.querySelector(':scope > .m').textContent })()"
+        before = page.evaluate(active)
+        code = before.split('|')[0].split()[0]
+        page.evaluate("c => { STATE.photos = [...STATE.photos, {id: 'p9', kks: c, caption: 'arrived'}, {id: 'p10', kks: c, caption: 'Tag plate'}]; followSearch() }", code)
+        after = page.evaluate(active)
+        self.assertEqual(after.split('|')[0], before.split('|')[0], 'the keyboard\'s place moved to another result')
+        self.assertTrue(after.endswith(' · equipment and tag plate photos'), after)
+        self.assertEqual(page.evaluate("full(hits[hi].t)"), code, 'Enter would open another code')
         # a result without a code has no mark; nothing found has no legend
         page.fill('#q', 'zzzz')
         page.wait_for_function("() => document.querySelector('#results').textContent.includes('No match')")

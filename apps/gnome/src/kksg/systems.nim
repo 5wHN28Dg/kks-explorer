@@ -72,9 +72,10 @@ proc photoLegend*(): W =
   let kinds = ["none", "equipment", "plate", "both"]
   for line in 0 .. 1:
     let hb = hbox(6)
+    # (the words wrap: unwrapped they set the sidebar's width, 80 px more at 1.0 and 150 at Large Text: #401's audit)
     if line == 0: hb.add label("Photos:", "dim-label caption", wrap = false)
     for k in kinds[2 * line .. 2 * line + 1]:
-      hb.add photoMark(k, named = false), label(coverWords(k), "dim-label caption", wrap = false)
+      hb.add photoMark(k, named = false), label(coverWords(k), "dim-label caption")
     result.add hb
   discard margins(result, 6)
 

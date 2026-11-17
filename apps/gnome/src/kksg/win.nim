@@ -97,7 +97,7 @@ proc noForm*(w: Win) =
   w.formNote = nil
   w.formSaid = ""
 
-proc focusInside(area: W): bool =
+proc focusInside*(area: W): bool =
   let root = gtk_widget_get_root(area)
   if root == nil: return false
   let f = gtk_root_get_focus(root)
