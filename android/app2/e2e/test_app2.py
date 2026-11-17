@@ -1430,7 +1430,15 @@ class Phone(unittest.TestCase):
         time.sleep(1)
         evidence('setting-light')
         ui.sh('cmd', 'uimode', 'night', 'yes'); time.sleep(2); evidence('setting-dark')
-        ui.sh('settings', 'put', 'system', 'font_scale', '1.3'); time.sleep(2); evidence('setting-dark-font130')
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', '1.0')
+        for scale in ('1.3', '2.0'):
+            ui.sh('settings', 'put', 'system', 'font_scale', scale); time.sleep(2)
+            if not ui.present("Take photos with Walkdown's own camera", exact=True):    # (the activity was recreated)
+                if not ui.present('Account', exact=True):
+                    ui.tap('Manage', exact=True)
+                ui.tap('Account', exact=True)
+                ui.scroll_to("Take photos with Walkdown's own camera", exact=True, tries=16)
+            evidence(f'setting-dark-font{scale.replace(".", "")}')
         ui.sh('settings', 'put', 'system', 'font_scale', '1.0'); ui.sh('cmd', 'uimode', 'night', 'no'); time.sleep(2)
         # back to the drawing (the text size change recreated the activity: Back can land anywhere, even outside)
         for _ in range(4):
@@ -1453,7 +1461,10 @@ class Phone(unittest.TestCase):
         time.sleep(3)                   # (the preview and the capture are bound)
         evidence('screen')
         ui.sh('settings', 'put', 'system', 'font_scale', '1.3'); time.sleep(2); evidence('screen-font130')
+        ui.sh('settings', 'put', 'system', 'font_scale', '2.0'); time.sleep(2); evidence('screen-font200')
         ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
+        auto = ui.sh('settings', 'get', 'system', 'accelerometer_rotation').strip() or '0'
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', auto)
         ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0'); ui.sh('settings', 'put', 'system', 'user_rotation', '1')
         time.sleep(3); evidence('screen-landscape')
         ui.sh('settings', 'put', 'system', 'user_rotation', '0'); time.sleep(3)

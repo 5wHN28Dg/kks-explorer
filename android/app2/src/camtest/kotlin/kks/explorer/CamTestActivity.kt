@@ -81,7 +81,7 @@ class CamTestActivity : ComponentActivity() {
         shotUri = FileProvider.getUriForFile(this, "$packageName.files", shot)
         if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             ask.launch(android.Manifest.permission.CAMERA)
-        InAppCamera.probe(this) { text ->
+        InAppCamera.probe(this) { text, _ ->
             phone = text
             if (!getSharedPreferences("camtest", MODE_PRIVATE).getBoolean("phone_saved", false)) {
                 kotlin.concurrent.thread {
