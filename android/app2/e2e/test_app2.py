@@ -134,6 +134,12 @@ class Phone(unittest.TestCase):
             ui.adb('reverse', f'tcp:{self.sport}', f'tcp:{self.sport}')
             self.addCleanup(ui.adb, 'reverse', '--remove', f'tcp:{self.sport}')
         self.addCleanup(ui.sh, 'am', 'force-stop', PKG)      # before the server goes (cleanups run last first)
+        # the screen as every test expects it: a test that changes the text size, dark mode or the rotation for the
+        # UI audit's pictures and was stopped half way left the emulator so for later runs (a run that was killed in
+        # test_in_app_camera left 130 % text: test_coverage, test_multi and test_multi_across failed in the next one)
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
+        ui.sh('cmd', 'uimode', 'night', 'no')
+        ui.sh('settings', 'put', 'system', 'user_rotation', '0')
         ui.fresh_app(PKG)
         time.sleep(3)
 
