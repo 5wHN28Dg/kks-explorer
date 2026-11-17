@@ -114,7 +114,8 @@ K.idb = (() => {
   });
   const tx = async (store, mode, fn) => { const db = await open(); return new Promise((res, rej) => {
     const t = db.transaction(store, mode), r = fn(t.objectStore(store));
-    t.oncomplete = () => res(r?.result); t.onerror = () => rej(t.error) }) };
+    t.oncomplete = () => res(r?.result); t.onerror = () => rej(t.error);
+    t.onabort = () => rej(t.error || new Error('the browser did not keep it')) }) };   // (an abort at commit: quota, a Blob it can't store)
   return {
     get: k => tx('kv', 'readonly', s => s.get(k)), set: (k, v) => tx('kv', 'readwrite', s => s.put(v, k)),
     clear: () => tx('kv', 'readwrite', s => s.clear()),
@@ -585,7 +586,7 @@ K.retryRefused = async id => {
 K.discardQueued = async id => { await K.idb.unqueue(id); await K.emit() };
 
 // ---------- photos: converted one at a time in the background, sent in the order they were taken ----------
-// A photo goes into the outbox at once, as a PNG (`raw`, a data: URL), before it is converted: closing the panel, or the page,
+// A photo goes into the outbox at once, as a PNG (`raw`, a Blob, or a data: URL), before it is converted: closing the panel, or the page,
 // loses nothing, and the next start carries on. One loop converts the photos oldest first (JPEG XL in the worker, or
 // the type the server asks for) and puts the result in place of the PNG; the outbox is then sent as usual, in order
 // (K.flush stops at a photo that is not converted yet). `fresh` marks a photo taken online, for the toast's words.
@@ -630,14 +631,15 @@ K.convertPhotos = async () => {
       let dataUrl = null, failed = null, timer;
       try {
         const src = typeof it.raw === 'string' ? it.raw : URL.createObjectURL(it.raw);
-        const img = await new Promise((ok, no) => { const i = K.h('img', {onload: () => ok(i), onerror: () => no(new Error('the saved photo could not be read')), src}) })
-          .catch(e => { if (src !== it.raw) URL.revokeObjectURL(src); throw e });
-        // JPEG XL from an ImageBitmap where the worker can read one (OffscreenCanvas): the pixels never pass the main thread
-        const bmp = up.type === 'image/jxl' && typeof OffscreenCanvas === 'function' && typeof createImageBitmap === 'function'
-          ? await img.decode().then(() => createImageBitmap(img)).catch(() => null) : null;   // (decode(): off the main thread)
-        const c = bmp || document.createElement('canvas');
-        if (!bmp) { c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0) }
-        if (src !== it.raw) URL.revokeObjectURL(src);
+        let c;
+        try {
+          const img = await new Promise((ok, no) => { const i = K.h('img', {onload: () => ok(i), onerror: () => no(new Error('the saved photo could not be read')), src}) });
+          // JPEG XL from an ImageBitmap where the worker can read one (OffscreenCanvas): the pixels never pass the main thread
+          const bmp = up.type === 'image/jxl' && typeof OffscreenCanvas === 'function' && typeof createImageBitmap === 'function'
+            ? await img.decode().then(() => createImageBitmap(img)).catch(() => null) : null;   // (decode(): off the main thread)
+          c = bmp || document.createElement('canvas');
+          if (!bmp) { c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0) }
+        } finally { if (src !== it.raw) URL.revokeObjectURL(src) }
         // a worker the browser stopped without a word (memory, on phones) never answers: give up on this round
         const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error('the converter did not answer')), Math.max(120000, est * 20)) });
         dataUrl = up.type === 'image/jxl' ? await Promise.race([K.jxlEncode(c, up.distance || 1.9, up.effort || 7), late]) : c.toDataURL(up.type, up.q);
