@@ -159,18 +159,20 @@ def hide_keyboard():
         time.sleep(0.4)
 
 
-def scroll_to(text, exact=False, tries=8):
+def scroll_to(text, exact=False, tries=8, up=False):
     """swipe the lower half up, slowly, until text is on screen. The speed matters: at 0.3 of the screen in 0.3 s
     (before #150) the content was flung on by a third of a screen and more after the finger left, and a line just
     below a short panel's edge went past its top in one step, depending on how much content lay below it
     (test_description_and_credit after tests that had filled in the code's fields). In 1.5 s the fling is a few dozen
-    pixels, so a step stays well under the height of the tag panel, the shortest area the tests scroll."""
+    pixels, so a step stays well under the height of the tag panel, the shortest area the tests scroll. up=True swipes
+    the other way, for a line above what is in view."""
     size = re.findall(r'(\d+)x(\d+)', sh('wm', 'size'))[-1]
     w, h = int(size[0]), int(size[1])
     for _ in range(tries):
         if present(text, exact):
             return
-        sh('input', 'swipe', str(w // 2), str(int(h * 0.8)), str(w // 2), str(int(h * 0.5)), '1500')
+        a, b = (0.6, 0.85) if up else (0.8, 0.5)   # up: below the tag panel's pinned heading
+        sh('input', 'swipe', str(w // 2), str(int(h * a)), str(w // 2), str(int(h * b)), '1500')
         time.sleep(0.5)
     find(text, timeout=2, exact=exact)
 
