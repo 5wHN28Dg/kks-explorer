@@ -203,7 +203,8 @@ private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: 
     val scope = rememberCoroutineScope()
     var copied by remember(code) { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(2500); copied = false } }
-    Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+    // (12 dp under the grip: its touch area reaches that far below it, and Copy and Close stood inside it)
+    Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             if (code.isNotEmpty()) androidx.compose.foundation.text.selection.SelectionContainer {
                 Text(code, style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace)
