@@ -81,16 +81,13 @@ var
   followTheme: proc ()        ## the open main screen's "the theme changed" (Dark drawings set to follow it)
   themeWatched = false
 
-proc resultsKey(w: Win, q: string): string =
-  ## what the search results show for `q`: the tags found and each code's photo mark
-  if q.len == 0: return ""
-  let covers = w.m.photoCovers
-  for t in w.m.search(q): result.add t.id & "\x1f" & t.full & "\x1f" & covers.getOrDefault(t.full, "none") & "\x1e"
+proc resultsKey(w: Win, found: seq[Tag], covers: Table[string, string]): string =
+  ## what the search results show: the tags found and each code's photo mark
+  for t in found: result.add t.id & "\x1f" & t.full & "\x1f" & covers.getOrDefault(t.full, "none") & "\x1e"
   result.add $w.picking
 
 proc runSearch(w: Win) =
   let q = text(w.searchEntry).strip
-  w.resultsShown = w.resultsKey(q)
   leaveFocus(w.resultList)
   gtk_list_box_remove_all(w.resultList)
   w.v.hits.clear()
@@ -101,6 +98,7 @@ proc runSearch(w: Win) =
   let found = w.m.search(q)
   let items2 = toSeq(found)
   let covers = w.m.photoCovers       # each result's photo mark (one pass over the photos)
+  w.resultsShown = w.resultsKey(found, covers)
   var marked = false
   for i2 in 0 ..< items2.len:
     closureScope:   # each pass gets its own copies of the captured variables
@@ -126,7 +124,7 @@ proc runSearch(w: Win) =
     gtk_list_box_row_set_activatable(lr, 0)
     gtk_list_box_row_set_selectable(lr, 0)
     gtk_widget_set_focusable(lr, 0)
-    setAccessibleLabel(lr, "Photo marks: ring no photos, half disc equipment photo only, square tag plate photo only, disc equipment and tag plate photos")
+    setAccessibleLabel(lr, "Photos: ring no photos, half disc equipment photo only, square tag plate photo only, disc equipment and tag plate photos")
     gtk_list_box_append(w.resultList, lr)
   gtk_widget_set_visible(w.resultList, 1)
   gtk_widget_queue_draw(w.v.widget)
@@ -163,8 +161,8 @@ proc refresh(w: Win) =
   w.fillSheets()
   # the search results follow (a photo arrived: its code's mark changes), made again only when what they show changed
   # (a list rebuilt at every sync round loses the presses on it, #147)
-  if w.searchEntry != nil and gtk_widget_get_visible(w.resultList) != 0 and
-     w.resultsKey(text(w.searchEntry).strip) != w.resultsShown: w.runSearch()
+  if w.searchEntry != nil and gtk_widget_get_visible(w.resultList) != 0 and text(w.searchEntry).strip.len > 0 and
+     w.resultsKey(w.m.search(text(w.searchEntry).strip), w.m.photoCovers) != w.resultsShown: w.runSearch()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
     w.setLinks()

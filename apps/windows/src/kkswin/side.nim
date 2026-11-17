@@ -86,7 +86,7 @@ proc drawingsTab(w: Win, p: Page) =
     if item < 0 or item >= shownRows.len: return
     let mark = if item < marks.len: marks[item] else: ""
     drawRow(dc, r, shownRows[item], selected, (if mark.len > 0: px(26) else: px(6)))
-    if mark.len > 0: drawPhotoMark(dc, r, mark, selected)), 180, onActivate = (proc (i: int) =
+    if mark.len > 0: drawPhotoMark(dc, r, mark, selected)), 264, onActivate = (proc (i: int) =
     if i >= results.len: return
     if w.picking:
       # the result's code joins (or leaves) the selection; the drawing stays (equipment in one place is often on
@@ -99,7 +99,7 @@ proc drawingsTab(w: Win, p: Page) =
       w.togglePick(t.id)
     else: w.selectTag(results[i].id, true)), openLabel = (if w.picking: "Select or unselect" else: "Show on the drawing"))
   # what the mark before a result means (its text ends with the same in words)
-  p.dim("Photo marks: ring no photos · half disc equipment photo only · square tag plate photo only · disc equipment and tag plate photos")
+  p.dim("Photos: ring no photos · half disc equipment photo only · square tag plate photo only · disc equipment and tag plate photos")
   p.dim(if w.picking: "Select tags: Enter or double-click a result to select or unselect its code, on any drawing (this one stays)."
         else: "Enter or double-click a result to show it on its drawing.")
   p.buttons(("Equipment by system…", proc () = w.openSystems()),   # every code, block → system → kind

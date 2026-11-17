@@ -72,6 +72,7 @@ proc photoLegend*(): W =
   let kinds = ["none", "equipment", "plate", "both"]
   for line in 0 .. 1:
     let hb = hbox(6)
+    if line == 0: hb.add label("Photos:", "dim-label caption", wrap = false)
     for k in kinds[2 * line .. 2 * line + 1]:
       hb.add photoMark(k, named = false), label(coverWords(k), "dim-label caption", wrap = false)
     result.add hb

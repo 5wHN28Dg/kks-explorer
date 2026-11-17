@@ -173,6 +173,8 @@ async function refreshState(){
   // the open systems list follows the sync too, but never redraws under the keyboard or a screen reader's focus
   const SD=$('#sysDrawer');
   if(SD.classList.contains('open')){ if(SD.contains(document.activeElement)) sysStale=true; else renderSystems() }
+  // the open search results' photo marks likewise (only when one of them changed: the list keeps its place otherwise)
+  if($('#results').style.display==='block'&&hits.length&&resultsKey()!==resKey) $('#q').dispatchEvent(new Event('input'));
   const CD=$('#covDrawer');   // the coverage numbers likewise
   // rebuilt at once unless the focus is on something the rebuild replaces (a row in #covBody; the heading stays)
   if(CD.classList.contains('open')){ if($('#covBody').contains(document.activeElement)) covStale=true; else renderCoverage() }
@@ -994,7 +996,9 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&multi.on&&!documen
   (e.target===document.body||e.target.closest?.('#viewer,#pickbar,.zoom'))){ pickMode(false); $('#zpick').focus() } });
 
 // ---------- search ----------
-let hits=[],hi=0;
+let hits=[],hi=0,resKey='';
+// what the open results show of the photos: when a sync changes it, they are made again (a photo arrived)
+const resultsKey=()=>{ const c=KSys.photoCovers(STATE.photos); return hits.map(x=>x.loc?'':x.k+':'+(c.get(x.k)||'none')).join() };
 $('#q').addEventListener('input',()=>{
   const q=$('#q').value.trim().toUpperCase().replace(/\s+/g,''), qr=$('#q').value.trim().toLowerCase(), R=$('#results');
   if(q.length<2){R.style.display='none';$('#q').setAttribute('aria-expanded','false');return}
@@ -1012,6 +1016,7 @@ $('#q').addEventListener('input',()=>{
     const text=[...(LOC[b]||[]).map(r=>[r.cabinet,r.desc,r.direction].join(' ')),...(PTS[b]||[]).map(r=>[r.desc,r.grid].join(' '))].join(' ').toLowerCase();
     const score=b===qb?90:b.startsWith(qb)?70:b.includes(qb)?50:qr.length>2&&text.includes(qr)?35:0; if(score)hits.push({loc:b,score,k:b}) }
   hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
+  resKey=resultsKey();
   const sn=id=>SHEETS.find(s=>s.id===id).name;
   const covers=KSys.photoCovers(STATE.photos), pc=k=>covers.get(k)||'none';   // one pass over the photos
   put(R,hits.length?hits.map((x,i)=>{ const opt={class:'res'+(i===0?' on':''),role:'option',id:'res-'+i,'aria-selected':String(i===0),onclick:()=>pick(i)};

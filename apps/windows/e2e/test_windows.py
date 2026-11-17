@@ -294,7 +294,11 @@ class Windows(unittest.TestCase):
         self.check('dark0.uia', ['wait\tDark drawings\t10', 'chosen\tFollow theme', 'shade\tDrawing\tlight',
                                  'choose\tAlways dark', 'chosen\tAlways dark', 'shade\tDrawing\tdark',
                                  'choose\tAlways light', 'chosen\tAlways light', 'shade\tDrawing\tlight',
-                                 'choose\tAlways dark', 'shade\tDrawing\tdark', 'sleep\t500'], env=light)
+                                 'choose\tAlways dark', 'shade\tDrawing\tdark',
+                                 # the choices are a group of their own: an arrow key on the check box after them
+                                 # does not move into it and choose another
+                                 'keys\tSelect tags\t0x26', 'sleep\t700', 'chosen\tAlways dark', 'shade\tDrawing\tdark',
+                                 'state\tSelect tags\toff', 'sleep\t500'], env=light)
         # zoomed in: the vector tiles (Direct2D on the workers) are dark too
         self.check('dark1.uia', ['keys\tDrawing\t0x6B,0x6B,0x6B,0x6B,0x6B,0x6B', 'sleep\t1500', 'shade\tDrawing\tdark',
                                  'click\tFit the sheet (0)'], env=light)
@@ -306,6 +310,19 @@ class Windows(unittest.TestCase):
                    restart=True, env=dark)
         self.check('dark4.uia', ['wait\t~Sample sheet\t60', 'chosen\tFollow theme', 'shade\tDrawing\tlight'],
                    restart=True, env=light)
+        # Windows' own setting, read from the registry (no stand-in): "Choose your default app mode" dark, then as it was
+        key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize'
+        was = vm('(Get-ItemProperty -Path %s -Name AppsUseLightTheme -ErrorAction SilentlyContinue).AppsUseLightTheme' % key).strip()
+        def app_mode(v):
+            vm('if (-not (Test-Path %s)) { New-Item -Path %s | Out-Null }; Set-ItemProperty -Path %s -Name AppsUseLightTheme -Value %s -Type DWord' % (key, key, key, v), check=True)
+        try:
+            app_mode(0)
+            self.check('dark5.uia', ['wait\t~Sample sheet\t60', 'chosen\tFollow theme', 'shade\tDrawing\tdark'], restart=True)
+            app_mode(1)
+            self.check('dark6.uia', ['wait\t~Sample sheet\t60', 'chosen\tFollow theme', 'shade\tDrawing\tlight'], restart=True)
+        finally:
+            if was in ('0', '1'): app_mode(was)
+            else: vm('Remove-ItemProperty -Path %s -Name AppsUseLightTheme -ErrorAction SilentlyContinue' % key)
         self.leave()
 
     def test_multi(self):

@@ -208,6 +208,7 @@ fun PhotoMark(photos: String, modifier: Modifier = Modifier, named: Boolean = fa
 @Composable
 fun PhotoLegend(modifier: Modifier = Modifier) {
     FlowRow(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Photos:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         for (k in listOf("none", "equipment", "plate", "both")) Row(verticalAlignment = Alignment.CenterVertically) {
             PhotoMark(k)
             Spacer(Modifier.width(6.dp))

@@ -152,8 +152,14 @@ proc newId(): int =
   nextId = if nextId >= 0xFFFF: 1001 else: nextId + 1
   nextId
 
+var groupEnds = false
+  ## set by `radios`: the next control made starts a group of its own (WS_GROUP). Without it the radios' group runs on
+  ## through the controls after them, and an arrow key on one of those moves to a radio and chooses it
+
 proc control*(parent: HWND, cls, text: string, style: uint32, ex = 0'u32, font: HFONT = nil): (HWND, int) =
   let id = newId()
+  let style = if groupEnds and (style and WS_GROUP) == 0: style or WS_GROUP else: style
+  groupEnds = false
   let shown = if cls == "BUTTON": buttonLabel(text) else: text      # a button's "&" is the character (labels.nim)
   let h = CreateWindowExW(ex, newWideCString(cls), newWideCString(shown), WS_CHILD or WS_VISIBLE or style, 0, 0, 10, 10,
                           parent, cast[HMENU](id), hinst, nil)
@@ -915,6 +921,7 @@ proc radios*(p: Page, labels: seq[string], selected: int, f: proc (i: int)): seq
       onClick(b, proc () = f(idx))
       p.items.add Item(kind: ikCheck, hwnds: @[b])
       res.add b
+  groupEnds = true
   res
 
 proc chips*(p: Page, labels: seq[string], selected: int, f: proc (i: int)): seq[HWND] {.discardable.} =

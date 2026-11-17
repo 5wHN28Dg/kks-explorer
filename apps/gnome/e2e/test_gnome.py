@@ -344,8 +344,8 @@ class Gnome(Plant):
             row = atspi.find(a, 'list item', name='11LAB70AA501', timeout=10)
             return [n.get_name() for n in atspi.walk(row) if n.get_role_name() == 'image' and n.get_name() in words]
         self.assertEqual(len(mark()), 1)
-        legend = atspi.find(a, 'list item', contains='Photo marks: ring no photos', timeout=10)
-        self.assertEqual([n.get_name() for n in atspi.walk(legend) if n.get_role_name() == 'label'], list(words))
+        legend = atspi.find(a, 'list item', contains='Photos: ring no photos', timeout=10)
+        self.assertEqual([n.get_name() for n in atspi.walk(legend) if n.get_role_name() == 'label'], ['Photos:'] + list(words))
         atspi.click(atspi.find(a, 'button', name='11LAB70AA501'))
         atspi.click(atspi.find(a, 'button', name='Equipment: from a file…', timeout=10))
         for b in ('Thick', 'Zoom in', 'Zoom out', 'Fit the photo'):
@@ -359,16 +359,13 @@ class Gnome(Plant):
                 break
             time.sleep(0.5)
         self.assertTrue(any(p['kks'] == '11LAB70AA501' for p in self.boss.req('GET', '/api/state')['photos']))
-        # the mark of a new search says so once the photo is back from the server
+        # the open results follow: the mark says so once the photo is back from the server (nothing typed again)
         got = []
-        for _ in range(40):
-            atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA50')
-            time.sleep(0.5)
-            atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA501')
-            time.sleep(0.5)
+        for _ in range(60):
             got = mark()
             if got and got[0] in words[1::2]:
                 break
+            time.sleep(0.5)
         self.assertIn(got and got[0], words[1::2], 'the search result does not show the equipment photo')
         tb = atspi.find(a, 'toggle button', name='Colour tags by photos')
         atspi.click(tb)
