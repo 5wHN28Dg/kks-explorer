@@ -1,9 +1,6 @@
 package kks.explorer
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.media.ExifInterface
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -15,7 +12,6 @@ import java.nio.ByteOrder
 object Jxl {
     const val DISTANCE = 1.9f
     const val EFFORT = 7
-    const val MAX_SIDE = 4096          // fromImage's limit (photos themselves are scaled to Resample.PHOTO_SIDE first)
     /** How long encoding took on this phone lately, per megapixel (the progress bar's estimate); kept across starts. */
     @Volatile var msPerMp: Long = 1500
 
@@ -23,30 +19,6 @@ object Jxl {
 
     @JvmStatic private external fun encodeRgba(rgba: ByteArray, width: Int, height: Int, distance: Float, effort: Int): ByteArray?
     @JvmStatic private external fun decodeRgba(data: ByteArray, dims: IntArray): ByteArray?
-
-    /** A PNG / JPEG / WebP -> JXL (orientation applied, metadata dropped). Throws if it can't be read. */
-    fun fromImage(bytes: ByteArray): ByteArray {
-        var bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
-            ?: throw IllegalArgumentException("unreadable image")
-        val turn = runCatching {
-            when (ExifInterface(bytes.inputStream()).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> 90; ExifInterface.ORIENTATION_ROTATE_180 -> 180
-                ExifInterface.ORIENTATION_ROTATE_270 -> 270; else -> 0
-            }
-        }.getOrDefault(0)
-        if (turn != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(turn.toFloat()) }, true)
-        val side = maxOf(bmp.width, bmp.height)
-        if (side > MAX_SIDE) bmp = Bitmap.createScaledBitmap(bmp, bmp.width * MAX_SIDE / side, bmp.height * MAX_SIDE / side, true)
-        if (bmp.config != Bitmap.Config.ARGB_8888) bmp = bmp.copy(Bitmap.Config.ARGB_8888, false)
-        val buf = ByteBuffer.allocate(bmp.byteCount)
-        bmp.copyPixelsToBuffer(buf)        // memory order R, G, B, A
-        val t0 = System.nanoTime()
-        val out = encodeRgba(buf.array(), bmp.width, bmp.height, DISTANCE, EFFORT) ?: throw IllegalStateException("JPEG XL encoding failed")
-        val took = (System.nanoTime() - t0) / 1e6 / maxOf(bmp.width.toLong() * bmp.height / 1e6, 0.01)
-        msPerMp = ((msPerMp + took) / 2).toLong()
-        android.util.Log.i("KKSTime", "jxl encode ${bmp.width}x${bmp.height} ${took.toLong()} ms/MP")   // measurements
-        return out
-    }
 
     /** A ready Bitmap (upright, scaled) -> JXL at the photo settings */
     fun fromBitmap(src: Bitmap): ByteArray {

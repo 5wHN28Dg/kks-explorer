@@ -69,6 +69,11 @@ import kotlin.math.sin
 /** a photo's pixels, decoded from its JPEG XL blob; null while this phone doesn't hold it yet (on-demand photos) */
 private fun photoBitmap(file: String): Bitmap? = Core.file("photos/$file")?.let { Jxl.bitmap(it) }
 
+/** photos are decoded two at a time: each whole one is up to 20 MB of pixels on the heap while it is made small, and a
+ *  page of thumbnails (Manage) would otherwise decode them all at once */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+private val photoDecode = Dispatchers.IO.limitedParallelism(2)
+
 @Composable
 fun PhotoOf(file: String, caption: String = "", height: Int = 90) {
     if (file.isEmpty()) return
@@ -76,14 +81,16 @@ fun PhotoOf(file: String, caption: String = "", height: Int = 90) {
     // decoded again only while it is open
     val px = (height * LocalDensity.current.density * 2).toInt()
     val bmp by produceState<ImageBitmap?>(null, file) {
-        value = withContext(Dispatchers.IO) { photoBitmap(file)?.let { Resample.thumbnail(it, px) }?.asImageBitmap() }
+        value = withContext(photoDecode) {
+            photoBitmap(file)?.let { full -> Resample.thumbnail(full, px).also { if (it !== full) full.recycle() } }?.asImageBitmap()
+        }
     }
     var open by remember { mutableStateOf(false) }
     val b = bmp
     if (b == null) { Dim("Not on this phone yet (it arrives with the next sync)"); return }
     Image(b, "Open photo" + if (caption.isNotEmpty()) ": $caption" else "", Modifier.height(height.dp).clickable { open = true }, contentScale = ContentScale.Fit)
     if (open) {
-        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(Dispatchers.IO) { photoBitmap(file)?.asImageBitmap() } }
+        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(photoDecode) { photoBitmap(file)?.asImageBitmap() } }
         PhotoViewer(whole ?: b, caption) { open = false }
     }
 }

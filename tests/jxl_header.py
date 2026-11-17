@@ -3,7 +3,10 @@ of a stored photo with it, decision 0074; no djxl needed)."""
 
 
 def jxl_size(blob):
-    """a JPEG XL codestream's width and height, from its size header (ISO/IEC 18181-1 SizeHeader)"""
+    """a JPEG XL codestream's width and height, from its size header (ISO/IEC 18181-1 SizeHeader); ValueError for
+    anything else (the container format included: photos are stored as bare codestreams)"""
+    if blob[:2] != b'\xff\x0a':
+        raise ValueError('not a JPEG XL codestream')
     bits = int.from_bytes(blob[2:12], 'little')
     pos = 0
     def u(n):

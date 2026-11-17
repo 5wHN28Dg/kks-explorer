@@ -24,14 +24,9 @@ class DebugPhotoReceiver : BroadcastReceiver() {
         val kks = intent.getStringExtra("kks") ?: return
         val side = intent.getIntExtra("side", 0)
         if (side > 0) {
-            val big = Bitmap.createBitmap(side, side * 3 / 4, Bitmap.Config.ARGB_8888)
-            big.eraseColor(Color.rgb(90, 140, 200))
-            val stripe = IntArray(side / 2) { if (it % 2 == 0) Color.BLACK else Color.WHITE }
-            for (y in 0 until big.height) big.setPixels(stripe, 0, stripe.size, 0, y, stripe.size, 1)
-            val png = java.io.ByteArrayOutputStream().also { big.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
-            big.recycle()
-            val bmp = orientedBitmap(png) ?: return
-            PhotoQueue.add(ctx, bmp, kks, intent.getStringExtra("caption") ?: "", "", intent.getStringExtra("floor") ?: "")
+            // made and scaled off the main thread (a 12 MP PNG and its Lanczos pass take a while on an emulator)
+            val done = goAsync()
+            kotlin.concurrent.thread { try { bigPhoto(ctx, intent, kks, side) } finally { done.finish() } }
             return
         }
         val bmp = Bitmap.createBitmap(1600, 1200, Bitmap.Config.ARGB_8888)
@@ -42,6 +37,17 @@ class DebugPhotoReceiver : BroadcastReceiver() {
         // a little noise, so the encoder has real work (a flat picture encodes in no time)
         val r = java.util.Random(kks.hashCode().toLong())
         for (i in 0 until 4000) { p.color = r.nextInt() or 0xff000000.toInt(); c.drawCircle(r.nextFloat() * 1600, r.nextFloat() * 1200, 6f, p) }
+        PhotoQueue.add(ctx, bmp, kks, intent.getStringExtra("caption") ?: "", "", intent.getStringExtra("floor") ?: "")
+    }
+
+    private fun bigPhoto(ctx: Context, intent: Intent, kks: String, side: Int) {
+        val big = Bitmap.createBitmap(side, side * 3 / 4, Bitmap.Config.ARGB_8888)
+        big.eraseColor(Color.rgb(90, 140, 200))
+        val stripe = IntArray(side / 2) { if (it % 2 == 0) Color.BLACK else Color.WHITE }
+        for (y in 0 until big.height) big.setPixels(stripe, 0, stripe.size, 0, y, stripe.size, 1)
+        val png = java.io.ByteArrayOutputStream().also { big.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        big.recycle()
+        val bmp = orientedBitmap(png) ?: return
         PhotoQueue.add(ctx, bmp, kks, intent.getStringExtra("caption") ?: "", "", intent.getStringExtra("floor") ?: "")
     }
 }

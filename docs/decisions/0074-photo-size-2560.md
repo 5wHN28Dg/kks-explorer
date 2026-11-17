@@ -31,9 +31,13 @@ the app's own pipeline (the 1600 px limit, the codec setting, the scaling filter
   use the canvas's own scaling.
 - **Thumbnails on Android** are decoded and kept at a small size; the full photo is decoded when it is opened.
 
-**Costs:** about 2.2× the storage and sync per photo (435 KB mean against 201 KB; the largest seen 810 KB), and 2.5×
-the pixels in each client's queue while a photo waits (a 2560 × 1920 photo is 19.7 MB of RGBA). Decoding a photo for
-display takes about 2.5× the time and memory.
+**Costs:** about 2.2× the storage and sync per photo (435 KB mean against 201 KB; the largest seen 810 KB), so also
+about 2.2× for a browser's offline copy of the photos (its storage quota on iPhones). 2.5× the pixels in each client's
+queue while a photo waits (a 2560 × 1920 photo is 19.7 MB of RGBA). Decoding a photo for display takes about 2.5× the
+time and memory; browsers without JPEG XL keep each shown photo decoded as a BMP (14.7 MB, was 5.8 MB) for as long as
+the page is open. Android decodes thumbnails two at a time and keeps only the small copy.
+
+**Supersedes in part:** 0018 and 0037 (effort 9 on the native apps), 0049's first estimate of 8 s per megapixel.
 
 **When to revisit:** if the plant's photo storage or the phones' sync time becomes a problem (then 2048 px), or if the
 in-app camera (0075) shows that the camera's processing, not the size, still limits the plate text (then 3200 px).
