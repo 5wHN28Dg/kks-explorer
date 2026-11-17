@@ -591,7 +591,11 @@ K.discardQueued = async id => { await K.idb.unqueue(id); await K.emit() };
 // (K.flush stops at a photo that is not converted yet). `fresh` marks a photo taken online, for the toast's words.
 K.queuePhoto = async (canvas, payload, note) => {
   // (a data: URL, not a Blob: nothing to read back that could fail, and IndexedDB keeps strings everywhere)
-  const raw = canvas.width && canvas.height ? canvas.toDataURL('image/png') : '';
+  // (a data: URL, made from toBlob: its PNG encoding runs off the main thread, unlike toDataURL's)
+  const raw = !(canvas.width && canvas.height) ? '' : await new Promise(ok => canvas.toBlob(b => {
+    if (!b) return ok(canvas.toDataURL('image/png'));
+    const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => ok(canvas.toDataURL('image/png')); r.readAsDataURL(b);
+  }, 'image/png'));
   if (!raw.startsWith('data:image/png')) throw new Error('The photo could not be kept.');
   const it = {client_id: K.uid(), kind: 'photo', payload, ...(note ? {note} : {}), user: K.me.user.id, ts: Date.now(),
               raw, mp: canvas.width * canvas.height / 1e6, fresh: true};

@@ -146,12 +146,16 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
     }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
     val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
+    var preparing by remember { mutableStateOf(false) }       // reading and scaling the picture (a second or more)
     fun load(uri: Uri) = scope.launch {
-        picked = withContext(Dispatchers.IO) {
-            val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
-            if (uri == camUri) camFile.delete()
-            orientedBitmap(raw)
-        }
+        preparing = true
+        picked = try {
+            withContext(Dispatchers.IO) {
+                val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
+                if (uri == camUri) camFile.delete()
+                orientedBitmap(raw)
+            }
+        } finally { preparing = false }
         awaiting = false
         if (picked == null) snack.showSnackbar("Could not read that picture")
     }
@@ -196,6 +200,10 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         OutlinedButton(onClick = { withFloor { shoot(false) } }) { Text("Take a photo") }
         OutlinedButton(onClick = { withFloor { shoot(true) } }) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
         OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; awaiting = true; gallery.launch("image/*") } }) { Text("From the gallery") }
+    }
+    if (preparing) {
+        Text("Preparing the photo…")
+        LinearProgressIndicator(Modifier.fillMaxWidth())
     }
     picked?.let { bmp ->
         Annotate(bmp, plate, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { picked = null },
@@ -242,6 +250,7 @@ fun photoCredit(p: JSONObject): String {
  *  client stores (decision 0074): decoded at the largest power-of-two reduction that keeps it at least that large,
  *  then scaled with Lanczos (Android's own scaling is bilinear) */
 internal fun orientedBitmap(raw: ByteArray): Bitmap? {
+    val t0 = System.nanoTime()
     val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(raw, 0, raw.size, opts)
     var sample = 1
@@ -262,6 +271,7 @@ internal fun orientedBitmap(raw: ByteArray): Bitmap? {
         }
     }.getOrDefault(0)
     if (turn != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(turn.toFloat()) }, true)
+    android.util.Log.i("KKSTime", "photo ${opts.outWidth}x${opts.outHeight} -> ${bmp.width}x${bmp.height} in ${(System.nanoTime() - t0) / 1_000_000} ms")   // measurements
     return bmp
 }
 
