@@ -1325,7 +1325,7 @@ class Phone(unittest.TestCase):
             ms = [x for x in ms if x[1] and x[0][3] > x[0][1]]
             return ms[0][0][1] if ms else None
 
-        def legend_above_keyboard(how):
+        def legend_above_keyboard(how, side=False):
             if not ui.present('11LCB50AA101', exact=True):     # (a new text size makes the screen again: the query is gone)
                 ui.type_into('Search KKS or description', 'LCB50AA10')
                 ui.find('11LCB50AA101', exact=True)
@@ -1342,8 +1342,16 @@ class Phone(unittest.TestCase):
             with open(os.path.join(SHOTS, 'search-keyboard-' + re.sub(r'\W+', '-', how) + '.png'), 'wb') as f:
                 f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
             ns = ui.nodes()
+            # the first result's code is above the keyboard; on its side the legend gives way to it when both don't fit
+            # (#401's UI/UX audit, pass 2: the legend left the list about 30 dp, under the code's line)
+            n = [n for n in ns if n.get('text') == '11LCB50AA101']
+            self.assertTrue(n, f'the first result is not on screen with the keyboard up ({how})')
+            b = list(map(int, re.findall(r'\d+', n[0].get('bounds'))))
+            self.assertLessEqual(b[3], top, f'the first result is under the keyboard ({how}): {b}, the keyboard starts at {top}')
             for words in ('no photos', 'equipment and tag plate photos'):
                 n = [n for n in ns if n.get('text') == words]
+                if side and not n:
+                    continue
                 self.assertTrue(n, f'{words!r} is not on screen with the keyboard up ({how})')
                 b = list(map(int, re.findall(r'\d+', n[0].get('bounds'))))
                 self.assertLessEqual(b[3], top, f'{words!r} is under the keyboard ({how}): {b}, the keyboard starts at {top}')
@@ -1365,7 +1373,9 @@ class Phone(unittest.TestCase):
         texts = [n.get('text') for n in ui.nodes()]
         for words in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos'):
             self.assertIn(words, texts)
-        legend_above_keyboard('on its side')
+        with self.subTest('on its side, the keyboard up'):
+            legend_above_keyboard('on its side', side=True)
+        ui.hide_keyboard()
         ui.sh('settings', 'put', 'system', 'user_rotation', '0')
         time.sleep(4)
         # the largest text size: "Dark drawings" as tall as the one-line "Coverage"
@@ -1380,7 +1390,28 @@ class Phone(unittest.TestCase):
             return d - b
         self.assertLess(height('Dark drawings'), 1.5 * height('Coverage'), [(n.get('text'), n.get('bounds')) for n in ns if n.get('text')])
         ui.sh('input', 'keyevent', '4')
+        # on its side at the largest text size the Dark drawings dialog is taller than the screen: it scrolls to its
+        # last choice, which can be chosen (#401's UI/UX audit, pass 2: the text slot was cut off)
+        ui.sh('settings', 'put', 'system', 'user_rotation', '1')
+        time.sleep(4)
+        ui.tap('More', exact=True)
+        ui.tap('Dark drawings', exact=True)
+        ui.find('Follow theme', exact=True)
+        os.makedirs(SHOTS, exist_ok=True)
+        with open(os.path.join(SHOTS, 'dark-dialog-on-its-side-2.0.png'), 'wb') as f:
+            f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+        x, y = ui.center(ui.find('Follow theme', exact=True))
+        for _ in range(4):
+            ui.sh('input', 'swipe', str(x), str(y), str(x), str(max(y - int(120 * dp), 0)), '1500')
+            time.sleep(0.5)
+        ui.tap('Always light', exact=True)
+        ui.tap('Done', exact=True)
+        ui.sh('settings', 'put', 'system', 'user_rotation', '0')
         ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
+        time.sleep(4)
+        ui.tap('More', exact=True)
+        ui.find('Always light', exact=True)                    # the menu says the choice in force
+        ui.sh('input', 'keyevent', '4')
         # the old switch turned off (it stored false; never touched stored nothing) is Always light, not Follow theme
         # (adversarial review of #401). The app's preferences are reached with run-as: debug builds only.
         if ui.debuggable(PKG):

@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -475,7 +476,13 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     // the results scroll within 320 dp, or the room left on a low screen; what the photo marks mean
                     // stays in view under them (weighted, the list is measured after the legend: in landscape the
                     // legend was cut off below a 320 dp list, #401's UI/UX audit)
-                    Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) { Column {
+                    Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) { BoxWithConstraints {
+                    // the legend only where a result row (72 dp) and a two-line legend fit with it: on its side with the
+                    // keyboard up the results keep what little room there is (#401's UI/UX audit, pass 2: the legend
+                    // left them about 30 dp); each mark still says its state to TalkBack, and the legend is back with
+                    // the keyboard down
+                    val legendFits = maxHeight >= 128.dp * LocalDensity.current.fontScale
+                    Column {
                         if (res.isEmpty()) Text("Nothing found", Modifier.padding(16.dp))
                         LazyColumn(Modifier.weight(1f, fill = false).heightIn(max = 320.dp)) {
                             items(res) { r ->
@@ -497,8 +504,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                                     modifier = Modifier.clickable { query = ""; ui.show(r.getString("id")) })
                             }
                         }
-                        if (res.any { it.optString("code").isNotEmpty() }) PhotoLegend()
-                    } }
+                        if (legendFits && res.any { it.optString("code").isNotEmpty() }) PhotoLegend()
+                    } } }
                 }
             }
             if (drawer) Surface(tonalElevation = 6.dp, modifier = Modifier.fillMaxHeight().width(300.dp).align(Alignment.CenterStart)) {
@@ -651,7 +658,9 @@ internal fun storedDarkMode(p: android.content.SharedPreferences): String {
 private fun DarkDrawingsDialog(mode: String, onPick: (String) -> Unit, onClose: () -> Unit) {
     AlertDialog(onDismissRequest = onClose, title = { Text("Dark drawings") },
         text = {
-            Column {
+            // scrolls: at the largest text size on its side the three choices are taller than the screen (#401's
+            // UI/UX audit, pass 2)
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text("Light lines on dark paper, like a PDF reader's dark mode. Remembered on this device.", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
                 Column(Modifier.selectableGroup()) {
