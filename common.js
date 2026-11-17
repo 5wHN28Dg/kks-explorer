@@ -1257,3 +1257,33 @@ K.ask = (title, text, askNote, okLabel = 'OK') => new Promise(done => {
   document.body.appendChild(o);
   note?.focus();
 });
+
+// ---------- copy text to the clipboard ----------
+// The Clipboard API where the page may use it (a secure context: https or localhost), else the old way that Safari and
+// plain-http pages still allow: a selected text area and execCommand('copy'), done at once, inside the person's click
+// (Safari refuses both outside a user gesture, so no await comes before either). -> Promise of true (copied) or false.
+K.copyText = text => {
+  const old = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.setAttribute('aria-hidden', 'true');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px';   // 16px: iOS zooms on smaller
+    const was = document.activeElement;
+    document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+    let ok = false; try { ok = document.execCommand('copy') } catch (e) { ok = false }
+    ta.remove(); was?.focus?.({preventScroll: true});
+    return ok;
+  };
+  if (window.isSecureContext && navigator.clipboard?.writeText)
+    return navigator.clipboard.writeText(text).then(() => true, () => old());
+  return Promise.resolve(old());
+};
+// A small "Copy" button for a code: says "Copied" for a moment (and in the page's status line for screen readers).
+K.copyButton = (text, label = 'Copy') => {
+  const b = K.h('button', {type: 'button', class: 'copy', title: `Copy ${text}`, 'aria-label': `Copy ${text}`,
+    onclick: async () => {
+      const ok = await K.copyText(text);
+      b.textContent = ok ? 'Copied' : 'Not copied'; clearTimeout(b._t); b._t = setTimeout(() => { b.textContent = label }, 1500);
+      K.toast?.(ok ? `Copied ${text}` : 'Could not copy: select the code and copy it by hand');
+    }}, label);
+  return b;
+};

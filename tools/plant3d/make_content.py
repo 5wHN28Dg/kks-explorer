@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
-import kit, train_discussions, train_workorders, train_ageing, train_hse, train_hands, train_monitoring, train_weather, train_wx, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
+import kit, train_discussions, train_workorders, train_stores, train_ageing, train_hse, train_hands, train_monitoring, train_weather, train_wx, train_areas, train_hoists, train_lift, train_model, train_content, train_screens, train_staff, site_areas, wtp_areas, wtp_content, wtp_model  # noqa: E402
 from workshop import pressure_transmitter as ws_pressure_transmitter  # noqa: E402
 from workshop import steam_turbine as ws_steam_turbine  # noqa: E402
 from workshop import gas_turbine as ws_gas_turbine  # noqa: E402
@@ -146,6 +146,8 @@ def build():
     for m in models:
         files[f'model/{m.area}.json'] = m.file()
     files['workorders.json'] = train_workorders.workorders(models)
+    files['stores.json'] = train_stores.stores()        # the stores (REALISM.md §2.23, milestone WM2)
+    files['model/admin.json'] = train_stores.model()    # (their content nodes, in the store's area)
     state_kks = {v[0]: v[1]['kks'] for m in models for v in m.values if 'state' in v[1] and 'kks' in v[1]}
     for s in train_content.scenarios(state_kks):
         files[f'scenarios/{s["id"]}.json'] = s
@@ -159,6 +161,9 @@ def build():
     files['scenarios/shift_aged.json'] = train_ageing.aged_scenario(files['scenarios/shift_cold.json'])
     files['scenarios/shift_vac.json'] = train_hands.vac_scenario(files['scenarios/shift_cold.json'])    # (HW3)
     files['scenarios/shift_tx.json'] = train_hands.scenario(files['scenarios/shift_cold.json'])
+    files['scenarios/shift_fail.json'] = train_hands.fail_scenario(files['scenarios/shift_cold.json'])    # (WM2)
+    files['scenarios/shift_nospare.json'] = train_hands.nospare_scenario(files['scenarios/shift_cold.json'])
+    files['scenarios/shift_fail_absent.json'] = train_hands.absent_scenario(files['scenarios/shift_cold.json'])
     for k in [k for k in files if k.startswith('scenarios/')]:
         files[k] = train_ageing.apply(files[k])
     files['staff.json'] = train_staff.staff(models, train_staff.load_layout())

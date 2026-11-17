@@ -6,6 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.triStateToggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,10 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -107,9 +111,24 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
     val r = remember(rev) { call("GET", "/api/submissions", query = mapOf("status" to "open", "group" to "code", "limit" to "500")) }
     if (!r.ok) { Dim(r.error!!); return }
     val groups = r.json.optJSONArray("groups").objects()
+    // several at once (the user, 2026-11-15: "accept/deny multiple requests at once"): ticked ones, kept over the list's
+    // reloads (the ones no longer waiting dropped), oldest first as the list shows them
+    val subs = remember(r) { groups.flatMap { g -> g.optJSONArray("kinds").objects().flatMap { it.optJSONArray("items").objects() } }.sortedBy { it.optLong("created") } }
+    val picked = Picked.ids
+    // photos of one kind that compete for their code: chosen with "Use this one", never approved by the batch
+    val competing = remember(r) { groups.flatMap { g -> g.optJSONArray("kinds").objects().filter { it.optBoolean("pick") }.flatMap { k -> k.optJSONArray("items").objects().map { it.optLong("id") } } }.toSet() }
+    LaunchedEffect(subs) { val open = subs.map { it.optLong("id") }.toSet(); picked.retainAll(open) }
     if (groups.isEmpty()) { Dim("Nothing waits for approval."); return }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Dim("One card per tag. Approving applies the change and records it in History, where it can be reverted.") }
+    Column {
+    // the bar above the list, in view; with little height (landscape, large text) it is the list's first item, so the
+    // list keeps room
+    val cfg = LocalConfiguration.current
+    val roomy = cfg.screenHeightDp >= 520 && cfg.fontScale < 1.5f
+    if (admin && roomy) PickBar(subs, picked, competing, say)
+    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (admin && !roomy) item { PickBar(subs, picked, competing, say) }
+        item { Dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. Tick several to approve or reject them at once.") }
+        if (Picked.said.value.isNotEmpty()) item { Text(Picked.said.value, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(groups) { g ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -126,21 +145,102 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
                         HorizontalDivider()
                         Text(k.str("label") + if (items.size > 1) " (${items.size})" else "", style = MaterialTheme.typography.titleSmall)
                         if (pick) Dim("Several proposed. “Use this one” approves it and rejects the other ${k.str("label").lowercase()}s; votes are only a hint.")
-                        for (sub in items) ApprovalItem(sub, admin, pick, say)
+                        for (sub in items) ApprovalItem(sub, admin, pick, say, picked)
                     }
                 }
             }
         }
     }
+    }
+}
+
+/** the ticked proposals of Approvals, kept while the app runs (a sync reloads the list under the person's ticks) */
+private object Picked { val ids = mutableStateListOf<Long>(); val busy = mutableStateOf(""); val said = mutableStateOf("") }
+
+/** Above the approvals: Select all, how many are ticked, Approve selected and Reject selected (Reject asks once). Each
+ *  goes as its own approve or reject, oldest first, exactly as its own button sends it; a held one (it clashes with the
+ *  value as it is now) is not approved here: it needs its own "Approve anyway". */
+@Composable
+private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, competing: Set<Long>, say: (String) -> Unit) {
+    // the batch runs in a scope of its own, not the screen's: leaving Approvals, or the list reloading after the last
+    // decision (which can remove this bar), neither stops it half-way nor loses what it says at the end
+    var busy by Picked.busy
+    var askReject by remember { mutableStateOf(false) }
+    val n = picked.size
+    val all = subs.isNotEmpty() && subs.all { it.optLong("id") in picked }
+    fun run(action: String) {
+        val chosen = subs.filter { it.optLong("id") in picked }
+        if (chosen.isEmpty()) { say("Nothing selected"); return }
+        if (busy.isNotEmpty()) return            // (a second tap before the first run started)
+        busy = (if (action == "approve") "Approving" else "Rejecting") + "…"
+        kotlinx.coroutines.MainScope().launch {
+            var done = 0; val held = mutableListOf<Long>(); val rivals = mutableListOf<Long>(); val failed = mutableListOf<String>()
+            for ((i, sub) in chosen.withIndex()) {
+                val id = sub.optLong("id")
+                if (action == "approve" && sub.str("status") == "conflict") { held.add(id); continue }
+                if (action == "approve" && id in competing) { rivals.add(id); continue }
+                busy = (if (action == "approve") "Approving " else "Rejecting ") + "${i + 1} of ${chosen.size}…"
+                val res = call("POST", "/api/submissions/$id/$action", JSONObject())
+                if (res.error == null) { done++; picked.remove(id) } else failed.add("#$id: ${res.error}")
+                kotlinx.coroutines.yield()
+            }
+            busy = ""
+            Picked.said.value = buildString {
+                append(if (action == "approve") "Approved" else "Rejected").append(" $done of ${chosen.size}.")
+                if (held.isNotEmpty()) append(" Not approved: ${held.joinToString { "#$it" }} clash${if (held.size == 1) "es" else ""} with the value as it is now; decide ${if (held.size == 1) "it" else "them"} on ${if (held.size == 1) "its" else "their"} own.")
+                if (rivals.isNotEmpty()) append(" Not approved: ${rivals.joinToString { "#$it" }}: several photos of one kind compete for ${if (rivals.size == 1) "its" else "their"} code; choose with “Use this one”.")
+                if (failed.isNotEmpty()) append(" Not done: ${failed.joinToString("; ")}.")
+            }
+            say(Picked.said.value)     // (and it stays above the list until the next batch)
+        }
+    }
+    Surface(tonalElevation = 3.dp, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+            // (tri-state: TalkBack says "partly checked" when some are ticked, as the box shows)
+            val state = if (all) androidx.compose.ui.state.ToggleableState.On else if (n > 0) androidx.compose.ui.state.ToggleableState.Indeterminate
+                else androidx.compose.ui.state.ToggleableState.Off
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).triStateToggleable(state = state, role = androidx.compose.ui.semantics.Role.Checkbox, enabled = busy.isEmpty()) {
+                    val on = !all; picked.clear(); if (on) picked.addAll(subs.map { it.optLong("id") }) },
+                verticalAlignment = Alignment.CenterVertically) {
+                TriStateCheckbox(state = if (all) androidx.compose.ui.state.ToggleableState.On else if (n > 0) androidx.compose.ui.state.ToggleableState.Indeterminate
+                    else androidx.compose.ui.state.ToggleableState.Off, onClick = null)
+                Text("Select all (${subs.size})", Modifier.padding(start = 8.dp).weight(1f))
+                Text(busy.ifEmpty { if (n > 0) "$n selected" else "None selected" }, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+            }
+            // (8 dp above: Reject selected's touch area did not keep off Select all's)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+                // (half the width each, the label wrapping inside: large text never pushes one off the screen)
+                Button(onClick = { run("approve") }, enabled = n > 0 && busy.isEmpty(), modifier = Modifier.weight(1f)) {
+                    Text("Approve selected" + if (n > 0) " ($n)" else "", textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+                OutlinedButton(onClick = { askReject = true }, enabled = n > 0 && busy.isEmpty(), modifier = Modifier.weight(1f)) {
+                    Text("Reject selected" + if (n > 0) " ($n)" else "", textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+            }
+        }
+    }
+    if (askReject) AlertDialog(onDismissRequest = { askReject = false },
+        title = { Text("Reject ${if (n == 1) "1 proposal" else "$n proposals"}?") },
+        text = { Text("Each one is rejected as its own Reject button does. The submitters see that it was rejected.") },
+        // the button names the action, in the error colour; Cancel first in reading order
+        confirmButton = { TextButton(onClick = { askReject = false; run("reject") },
+            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Reject " + if (n == 1) "1 proposal" else "$n proposals") } },
+        dismissButton = { TextButton(onClick = { askReject = false }) { Text("Cancel") } })
 }
 
 @Composable
-private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (String) -> Unit) {
+private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (String) -> Unit, picked: MutableList<Long>) {
     val id = sub.optLong("id")
     val conflict = sub.str("status") == "conflict"
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (admin) Row(Modifier.heightIn(min = 48.dp).toggleable(value = id in picked, role = androidx.compose.ui.semantics.Role.Checkbox) { on ->
+                if (on) picked.add(id) else picked.remove(id) }
+            .semantics { contentDescription = "Select #$id, " + proposalTitle(sub) }.padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = id in picked, onCheckedChange = null)
+            Text("Select", Modifier.padding(start = 4.dp))
+        }
         if (sub.str("kind") == "link") Text(proposalTitle(sub).substringBefore(" · "), style = MaterialTheme.typography.bodyMedium)
-        Dim("by " + sub.str("by_name").ifEmpty { sub.str("by") } + " · " + whenText(sub.optLong("created")) +
+        Dim("#$id · by " + sub.str("by_name").ifEmpty { sub.str("by") } + " · " + whenText(sub.optLong("created")) +
             if (pick) " · ${sub.optInt("votes")} vote${if (sub.optInt("votes") == 1) "" else "s"}" else "")
         sub.str("request_note").let { if (it.isNotEmpty()) Text("“$it”", fontStyle = androidx.compose.ui.text.font.FontStyle.Italic) }
         if (conflict) Text("Held: it clashes with the current value or another proposal. " + sub.str("note"), color = MaterialTheme.colorScheme.error)

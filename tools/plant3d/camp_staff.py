@@ -148,7 +148,8 @@ def roles():
         role('elec_eng', 'Electrical engineer', 'elec', ['request', 'accept', 'lock_electrical', 'jsa'], 'eng_days', True,
              'engineer', office),
         role('driver', 'Driver', 'transport', ['drive'], 'drv_shift', True, 'supervisor', []),
-        role('store', 'Storekeeper', 'mech', [], 'store_days', False, 'coverall_mech', []),
+        role('store', 'Storekeeper', 'mech', ['issue_parts', 'order_parts'], 'store_days', False, 'coverall_mech',
+             []),     # (issue_parts, order_parts: the stores, REALISM.md §2.23)
         role('camp', 'Camp staff', 'camp', [], 'camp_cook', False, 'supervisor', []),
     ]
 

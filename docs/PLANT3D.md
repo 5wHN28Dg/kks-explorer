@@ -1295,7 +1295,7 @@ Steps, each done by an NPC as said and by the trainee through the input named (�
 | `wo`: `{"work", "action", "data"}` (`data` optional; a plant with work orders, REALISM.md §2.20) | makes the work order input (without `data`, the action's defaults) | the same action on that work, from the work order panel (any data) |
 | `ppe`: `"role"`, a list, or `"off"` | puts it on or off (at a locker for on) | `ppe` inputs at a locker |
 | `say`: a message id, `to` a role, a person or `"channel"` | sends it (event; the radio log) | `say` from the radio panel |
-| `wait`: `{"until": value, "minutes": timeout, "else": step}` or `{"permit": [work, state], …}` (done when the permit is at that state or past it in the order 1 → 9; cancelled ends it as a timeout) | waits | waits |
+| `wait`: `{"until": value, "minutes": timeout, "else": step}` or `{"permit": [work, state], …}` (done when the permit is at that state or past it in the order 1 → 9; cancelled ends it as a timeout) or `{"issued": [part, work], …}` (done when the work, `"$"` the task's, holds at least one of that part of stores.json issued and not yet fitted; with `"fitting": true` also while a fitting under way under that work has taken it: docs/plant3d/REALISM.md §2.24) | waits | waits |
 | `call`: `{"role", "task", "work"}` | queues the task for a person of that role (§17.3, "Who gets a task") | the same, from the radio panel |
 | `meet`: `{"room", "with": [roles], "minutes"}` | goes to the room's first free `seat`, `desk` or `table` (else its door), waits for one on-duty person of each role (at most 15 clock minutes), then stays | the same |
 | `choose`: `[[weight, task], …]` (weights ≥ 1) | picks one by its random numbers and runs it in place of the rest of this task | `pick` among them (no draw) |

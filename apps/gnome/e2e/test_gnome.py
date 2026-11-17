@@ -1459,6 +1459,114 @@ class Gnome(Plant):
         atspi.find(f, 'label', name='founder', timeout=10)
         atspi.find(f, 'label', name='manager', timeout=10)
 
+    def test_zz_requests_copy_batch(self):
+        """the user's requests of 2026-11-15: Copy beside the code in the tag panel (a toast says it was copied; Close
+        the panel stays in the panel's own header bar); in Approvals, ticks one by one, Select all and none, Approve
+        selected, then one ticked proposal rejected with one question. On a code of its own (11LCB30AA101): the
+        proposals other tests left waiting are not touched."""
+        code = '11LCB30AA101'
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [800, 400, 920, 460],
+                                                  'kks': code, 'isa': '', 'note': ''}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        r = self.boss.req('POST', '/api/users', {'username': 'nadia', 'full_name': 'Nadia Batch', 'position': 'Technician', 'role': 'user'})
+        nadia = Client(self.base)
+        nadia.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'nadia password 1'})
+        nadia.req('POST', '/api/login', {'username': 'nadia', 'password': 'nadia password 1'})
+        mine = [nadia.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'by nadia ' + f}, 'base': {}}})
+                for f in ('near', 'area', 'loc')]
+        self.assertEqual([x.get('status') for x in mine], ['pending'] * 3, mine)
+        mine = [x['id'] for x in mine]
+        # a held one (its submitter saw notes "old", which the manager has changed since): the batch never approves it
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'notes': 'old'}, 'base': {}}})['status'], 'approved')
+        held = nadia.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'notes': 'theirs'}, 'base': {'notes': 'old'}}})['id']
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {'notes': 'newer'}, 'base': {'notes': 'old'}}})['status'], 'approved')
+        self.assertEqual({x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
+        waiting = len(self.boss.req('GET', '/api/submissions?status=open')['submissions'])
+        a = self.start_app('copybatch')
+        self.join(a)
+        q = atspi.find(a, 'entry', contains='Search equipment')
+        atspi.set_text(q, code[2:])
+        time.sleep(1)
+        atspi.click(atspi.find(a, 'button', name=code))
+        atspi.click(atspi.find(a, 'button', name='Copy ' + code, timeout=10))
+        atspi.find(a, 'label', name='Copied ' + code, timeout=10)
+        # what was copied, pasted into the search field: exactly the code
+        atspi.set_text(q, '')
+        q.get_editable_text_iface().paste_text(0)
+        for _ in range(20):
+            if Atspi.Text.get_text(q, 0, -1) == code: break
+            time.sleep(0.2)
+        self.assertEqual(Atspi.Text.get_text(q, 0, -1), code)
+        atspi.find(a, 'button', name='Close the panel', timeout=5)
+        # Approvals: the bar under the list
+        atspi.click(atspi.find(a, 'button', name='Manage'))
+        atspi.click(atspi.find(a, 'button', name='Approvals'))
+        atspi.find(a, 'label', name='None selected', timeout=15)
+
+        def tick(what, then):
+            for _ in range(5):          # the page rebuilds after a sync that brought data: a lost click is retried
+                atspi.click(atspi.find(a, 'toggle button', **what, timeout=10))
+                try:
+                    return atspi.find(a, 'label', name=then, timeout=4)
+                except AssertionError:
+                    pass
+            self.fail(f'{what} never gave {then!r}')
+        tick({'name': f'Select all ({waiting})'}, f'{waiting} selected')
+        tick({'name': f'Select all ({waiting})'}, 'None selected')
+        # (named by the app's own number for the proposal, which is not the server's: found by code and person)
+        for _ in range(10):         # (a page rebuilt after a sync while it is read gives buttons without a name: read again)
+            names = [b.get_name() for b in atspi.find_all(a, 'toggle button', contains=f'{code} by Nadia Batch')]
+            if len(names) == 4 and all(names): break
+            time.sleep(1)
+        self.assertEqual(len(names), 4, names)
+        self.assertTrue(all(names), names)
+        for i, nm in enumerate(names):
+            tick({'name': nm}, f'{i + 1} selected')
+        after = '1 selected'        # (the held one is not approved, and stays ticked)
+        for _ in range(5):          # (a press while the page is rebuilt after a sync is lost: again)
+            try:
+                if atspi.find_all(a, 'button', name='Approve selected (4)'):
+                    atspi.click(atspi.find(a, 'button', name='Approve selected (4)', timeout=2))
+                atspi.find(a, 'label', name=after, timeout=8)
+                break
+            except AssertionError:
+                pass
+        for _ in range(120):        # (the decisions reach the server with the app's next sync)
+            st = {x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}
+            if all(st.get(i) == 'approved' for i in mine):
+                break
+            time.sleep(0.5)
+        self.assertEqual([st[i] for i in mine], ['approved'] * 3)
+        time.sleep(3)       # (a sync round: had the batch approved the held one too, the server would know by now)
+        self.assertEqual({x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
+        atspi.find(a, 'label', contains='Approved 3 of 4.', timeout=10)
+        self.boss.req('POST', f'/api/submissions/{held}/reject', {})
+        # two more: one ticked, Reject selected asks once, the other stays
+        ids = [nadia.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': code, 'changes': {f: 'again ' + f}, 'base': {}}})['id']
+               for f in ('near', 'area')]
+        for _ in range(3):           # back to the side's first page, where Sync now is
+            if atspi.find_all(a, 'button', name='Sync now'): break
+            atspi.click(atspi.find(a, 'button', name='Back'))
+            time.sleep(1)
+        atspi.click(atspi.find(a, 'button', name='Sync now'))
+        time.sleep(3)
+        atspi.click(atspi.find(a, 'button', name='Manage'))
+        atspi.click(atspi.find(a, 'button', name='Approvals'))
+        atspi.find(a, 'toggle button', name=f'Select all ({waiting + 2 - 4})', timeout=30)
+        tick({'contains': f'{code} by Nadia Batch'}, '1 selected')
+        atspi.click(atspi.find(a, 'button', name='Reject selected (1)', timeout=10))
+        atspi.find(a, None, name='Reject 1 proposal?', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Reject 1 proposal', timeout=10))
+        for _ in range(40):
+            st = {x['id']: x['status'] for x in nadia.req('GET', '/api/submissions?status=all')['submissions']}
+            if 'rejected' in (st.get(ids[0]), st.get(ids[1])):
+                break
+            time.sleep(0.5)
+        self.assertEqual(sorted(('waiting' if x in ('pending', 'conflict') else x) for x in (st[ids[0]], st[ids[1]])), ['rejected', 'waiting'])
+        # (the other waits for the next test's approvals as it found them: decided here, on the server)
+        for i in ids:
+            if st[i] in ('pending', 'conflict'): self.boss.req('POST', f'/api/submissions/{i}/reject', {})
+
     def test_zzzz_kept_floor(self):
         """#144: a floor that only rides on a photo still in the queue is not a known floor for Photo for all. One
         photo of a code without a floor is queued with the floor asked for it and stays in the queue (not compressed:

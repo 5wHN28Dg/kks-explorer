@@ -12,7 +12,7 @@ PATH = os.path.join('ui', 'inputs.gd')
 SESSION = os.path.join('net', 'session.gd')      # the committed inputs, in a session (MP2)
 METHODS = ('op', 'ack', 'shelve', 'unshelve', 'fault', 'repair', 'repair_under', 'permit', 'lock', 'unlock',
            'remove_lock', 'role', 'release', 'task_ack', 'arrive', 'leave', 'read', 'say', 'pick', 'radio_call', 'jump',
-           'ppe', 'zone', 'stop_act', 'board', 'alight', 'audio', 'phone', 'apply_input', '_q')
+           'ppe', 'zone', 'stop_act', 'board', 'alight', 'audio', 'phone', 'issue', 'order', 'apply_input', '_q')
 # an engine as the app's scripts name it (the clock's, or a local `e`/`engine`/`eng`)
 CALL = re.compile(r'\b(?:engine|e|eng|_engine|clock\.engine|ui\.clock\.engine)\s*\.\s*(%s)\s*\(' % '|'.join(METHODS))
 QUEUE = re.compile(r'\b(?:engine|e|eng|_engine|clock\.engine)\s*\.\s*(queue|npc_queue)\s*\.\s*(append|push_back|insert|'
