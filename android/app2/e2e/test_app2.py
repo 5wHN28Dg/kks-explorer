@@ -1295,9 +1295,10 @@ class Phone(unittest.TestCase):
         self.join()
         dp = int(re.findall(r'(\d+)', ui.sh('wm', 'density'))[-1]) / 160
         ui.type_into('Search KKS or description', 'LCB50AA10')
-        ui.find('11LCB50AA104', exact=True, timeout=30)       # (the marked tags arrive with a sync)
+        ui.find('11LCB50AA101', exact=True, timeout=30)       # (the marked tags arrive with a sync)
         ui.hide_keyboard()
         time.sleep(1)
+        ui.find('11LCB50AA104', exact=True)                   # (with the keyboard up the list had less room)
 
         def lum(p):
             c = [v / 255 for v in p]
@@ -1323,6 +1324,9 @@ class Phone(unittest.TestCase):
             return ms[0][0][1] if ms else None
 
         def legend_above_keyboard(how):
+            if not ui.present('11LCB50AA101', exact=True):     # (a new text size makes the screen again: the query is gone)
+                ui.type_into('Search KKS or description', 'LCB50AA10')
+                ui.find('11LCB50AA101', exact=True)
             field = next(n for n in ui.nodes() if n.get('class', '').endswith('EditText'))
             ui.sh('input', 'tap', *map(str, ui.center(field)))
             for _ in range(20):
@@ -1352,6 +1356,8 @@ class Phone(unittest.TestCase):
         # on its side: the legend still under the results
         ui.sh('settings', 'put', 'system', 'user_rotation', '1')
         time.sleep(4)
+        if not ui.present('11LCB50AA101', exact=True):
+            ui.type_into('Search KKS or description', 'LCB50AA10')
         ui.find('11LCB50AA101', exact=True)
         ui.hide_keyboard()
         texts = [n.get('text') for n in ui.nodes()]
