@@ -193,7 +193,9 @@ object PhotoQueue {
         prefs(ctx).edit().clear().commit()
     }
 
-    /** set only by the debug builds' test receiver: jobs wait while it is on (at most 2 minutes) */
+    /** set only by the debug builds' test receiver: jobs wait while it is on (at most 5 minutes: test_multi_across
+     *  holds a job through ~2 minutes of other steps; at effort 9 the encode after a 2-minute cap still outlasted
+     *  them, at effort 7 (decision 0074) the job was done before the test looked at it) */
     @Volatile var holdForTest = false
     /** set only by the debug builds' test receiver: the next this many encodes fail as if out of memory */
     @Volatile var failEncodesForTest = 0
@@ -212,7 +214,7 @@ object PhotoQueue {
 
     /** one job: encode, submit, forget (sent, refused or unreadable: each ends it; anything else retries) */
     internal fun run(ctx: Context, id: String) {
-        val until = System.currentTimeMillis() + 120_000
+        val until = System.currentTimeMillis() + 300_000
         while (holdForTest && System.currentTimeMillis() < until) Thread.sleep(200)
         val jf = File(dir(ctx), "$id.json"); val px = File(dir(ctx), "$id.px")
         if (!jf.exists()) { px.delete(); refresh(ctx); return }      // already done (a rerun)
