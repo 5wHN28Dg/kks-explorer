@@ -44,6 +44,7 @@ missing.
 | Need | Windows | GNOME | Android | Safari |
 |---|---|---|---|---|
 | Take a photo | ✅ CameraCaptureUI / MediaCapture [K] | ✅ Camera portal → PipeWire [D]; PipeWire 1.6 [V] | ✅ camera intent / CameraX [K] | ✅ `getUserMedia`, `<input capture>` [D] |
+| The maker's photo processing (HDR, night) for an app's own camera | ❌ none for apps [K] | ❌ none (the portal hands over raw frames) [K] | 🟡 CameraX Extensions: only where the maker ships the vendor library (Google's list: recent Honor and Samsung; not the Honor 600 or the Note 9, to be checked on the phone); Camera2 Extensions on API 31+ (0075) [D] | ❌ none (`<input capture>` hands over the camera app's file) [K] |
 | Decode a QR code from the camera | 🟡 built-in camera barcode scanner with QR (Windows 10 1803+, WinRT point-of-service API; needs a package capability, so **probably requires MSIX packaging**, unverified) [D] | ❌ not in the GNOME platform; zxing-cpp 2.3 happens to be installed here [V] (a distribution library, not GNOME) | ❌ framework none; ML Kit through Play services is optional [D] | ❌ `BarcodeDetector` only behind a preference [D] |
 | Draw a QR code | ❌ | ❌ | ❌ | ❌ |
 
