@@ -1497,7 +1497,10 @@ class Phone(unittest.TestCase):
             return [x for x in c if x['k'] == 'Description']
         self.assertEqual(self.wait_server(confirmed, 'the confirmed description never reached the server')[0]['v'],
                          'Feed water isolation valve')
-        ui.find('Confirmed by The Manager', timeout=20)
+        # the line takes the place of "Draft description (unchecked)", above the description: with Confirm scrolled into
+        # view under the pinned heading it can be just above the panel's visible top
+        ui.find('Feed water isolation valve', exact=True, timeout=20)
+        ui.scroll_to('Confirmed by The Manager', up=True, tries=12)
         # the instrument point beside the location row; the platform's 14 m stays the elevation (no conflict)
         ui.scroll_to('Instrument point', exact=True)
         ui.scroll_to('33 m · grid K16 F08', exact=True)
