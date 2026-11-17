@@ -1303,9 +1303,13 @@ class Gnome(Plant):
             r = omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': cap,
                          'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(data).decode()}})
             self.assertEqual(r.get('status'), 'pending', r)
-        pic = os.path.join(self.dir, 'noisy.png')        # big and noisy: compressing takes a moment
+        pic = os.path.join(self.dir, 'noisy.png')
         Image.effect_noise((2400, 1800), 40).convert('RGB').save(pic)
-        a = self.start_app('requests', KKS_PHOTO_FILE=pic)
+        # the photos stay queued while this file exists (effort 7 compresses even a big noisy photo before the test
+        # can close the window: decision 0074), so the question on closing is sure to come
+        hold = os.path.join(self.dir, 'hold-photos')
+        open(hold, 'w').close()
+        a = self.start_app('requests', KKS_PHOTO_FILE=pic, KKS_TEST_PHOTO_HOLD=hold)
         self.join(a)
         q = atspi.find(a, 'entry', contains='Search equipment')
         # who set a field: the floor the manager set on the server
@@ -1374,6 +1378,7 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name='Close', timeout=5))
         ask = atspi.find(a, 'alert', contains='still being prepared', timeout=5)
         atspi.click(atspi.find(ask, 'button', name='Wait'))
+        os.remove(hold)
         caps = {}
         for _ in range(120):
             st = self.boss.req('GET', '/api/state')
