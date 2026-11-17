@@ -76,6 +76,7 @@ var
   pickChecks: seq[(int64, HWND)]    ## each one's tick
   pickAll, pickCount, pickOk, pickNo: HWND
   pickPage: Page                    ## their page (laid out again when a button's label grows with its count)
+  pickWide = -1                     ## the length of the labels the page was last laid out for
   pickBusy = false                  ## a batch is running (one proposal per turn of the message loop)
   lastSaid = ""                     ## the last batch's result, on the page until the next batch (the status line is one line)
 
@@ -98,10 +99,13 @@ proc pickShow() =
   pickNo.setText("Reject selected" & (if n > 0: " (" & $n & ")" else: ""))
   EnableWindow(pickOk, BOOL(n > 0 and not pickBusy))
   EnableWindow(pickNo, BOOL(n > 0 and not pickBusy))
-  if pickPage != nil:       # (a button is as wide as its label when the page is laid out: "(20)" was cut)
+  # A button is as wide as its label when the page is laid out ("(20)" was cut): laid out again when the count takes
+  # more or fewer characters, not at every tick. The two buttons are a line each, so nothing under them moves; the
+  # page and its controls are painted again all the same (a control laid over another's old place left pieces behind).
+  let wide = (if n > 0: len($n) else: 0)
+  if pickPage != nil and wide != pickWide:
+    pickWide = wide
     pickPage.layout()
-    # (the page and everything on it painted again: the controls under the bar move when its buttons take another
-    # line, and one moved over another's old place left pieces of it behind)
     RedrawWindow(pickPage.hwnd, nil, nil, RDW_INVALIDATE or RDW_ERASE or RDW_ALLCHILDREN)
 
 proc runBatch(w: Win, action: string, chosen: seq[JNode])
@@ -219,7 +223,9 @@ proc approvals(w: Win, p: Page) =
   picked.keepItIf(it in open)
   if groups.len == 0:
     p.dim("Nothing waits for approval.")
-    if w.isAdmin and lastSaid.len > 0: p.label(lastSaid)     # (the batch that emptied the list: what it did)
+    if w.isAdmin and lastSaid.len > 0:     # (the batch that emptied the list: what it did, said here once)
+      p.label(lastSaid)
+      lastSaid = ""
     return
   p.dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. " &
         "Tick several to approve or reject them at once.")
@@ -231,11 +237,12 @@ proc approvals(w: Win, p: Page) =
       for (_, cb) in pickChecks: SendMessageW(cb, BM_SETCHECK, WPARAM(ord(on)), 0)
       pickShow())
     pickCount = p.dim("None selected")
-    let bs = p.buttons(("Approve selected", proc () = w.decideMany("approve")),
-                       ("Reject selected", proc () = w.decideMany("reject")))
-    pickOk = bs[0]
-    pickNo = bs[1]
+    # (a line each: side by side they took a second line when the count made them wider, and everything under
+    # them, the tick just pressed too, moved down)
+    pickOk = p.buttons(("Approve selected", proc () = w.decideMany("approve")))[0]
+    pickNo = p.buttons(("Reject selected", proc () = w.decideMany("reject")))[0]
     pickPage = p
+    pickWide = -1
     if lastSaid.len > 0: p.label(lastSaid)
     pickShow()
   for gi in 0 ..< groups.len:
