@@ -1292,8 +1292,10 @@ class Phone(unittest.TestCase):
         rot = ui.sh('settings', 'get', 'system', 'accelerometer_rotation').strip()
         self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', rot if rot in ('0', '1') else '0')
         ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
+        ui.sh('settings', 'put', 'system', 'user_rotation', '0')   # upright: turning auto-rotate off keeps the turn
+        time.sleep(2)                                              # in force (part 2 once began here on its side)
         self.join()
-        dp = int(re.findall(r'(\d+)', ui.sh('wm', 'density'))[-1]) / 160
+        dp =int(re.findall(r'(\d+)', ui.sh('wm', 'density'))[-1]) / 160
         ui.type_into('Search KKS or description', 'LCB50AA10')
         ui.find('11LCB50AA101', exact=True, timeout=30)       # (the marked tags arrive with a sync)
         ui.hide_keyboard()
