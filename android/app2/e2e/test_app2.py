@@ -1831,6 +1831,110 @@ class Phone(unittest.TestCase):
         self.assertEqual(sorted(('waiting' if x in ('pending', 'conflict') else x) for x in (st[ids[0]], st[ids[1]])), ['rejected', 'waiting'])
         ui.find('Select all (1)', exact=True, timeout=20)
 
+    def test_panel_keyboard(self):
+        """the UI/UX audit of #363 (R3): with the keyboard up in the tag panel's form, upright and on its side, the
+        heading (the code, Copy, Close) stays whole between the status bar and the keyboard, and so does the field
+        being typed in. Before, the window was panned up: on its side the heading went under the status bar."""
+        def frame(kind):
+            # dumpsys lists the insets of several windows: the visible, non-empty one of this kind
+            ms = [(tuple(map(int, m.groups()[:4])), m.group(5) == 'true') for m in re.finditer(
+                r'type=' + kind + r' frame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\][^\n]*?visible=(true|false)', ui.sh('dumpsys', 'window'))]
+            ms = [x for x in ms if x[0][3] > x[0][1]]
+            return next((x for x in ms if x[1]), ms[0] if ms else (None, False))
+
+        def box(n):
+            return tuple(map(int, re.findall(r'\d+', n.get('bounds'))))
+
+        def reach(text):
+            # upright: the usual slow swipes; on its side the panel's own strip is short: swipes inside it
+            w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+            if ui.sh('settings', 'get', 'system', 'user_rotation').strip() == '0':
+                return ui.scroll_to(text, exact=True, tries=25)
+            w, h = max(w, h), min(w, h)
+            for _ in range(80):
+                if ui.present(text, exact=True):
+                    return
+                ui.sh('input', 'swipe', str(w // 3), str(int(h * 0.80)), str(w // 3), str(int(h * 0.66)), '400')
+            ui.find(text, exact=True, timeout=2)
+
+        self.join()
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
+        auto = ui.sh('settings', 'get', 'system', 'accelerometer_rotation').strip()
+        if auto in ('0', '1'):
+            self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', auto)
+        ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
+        for turn in ('0', '1'):
+            with self.subTest('upright' if turn == '0' else 'on its side'):
+                if ui.present('Close', exact=True):         # (a panel left open by the step before)
+                    ui.hide_keyboard()
+                    ui.tap('Close', exact=True)
+                    time.sleep(1)
+                ui.sh('settings', 'put', 'system', 'user_rotation', turn)
+                time.sleep(3)
+                self.open_tag()
+                head = {t: box(ui.find(t, exact=True)) for t in ('11LAB70AA501', 'Close')}
+                # typing in the drawing's search leaves the panel where it is (it would cover the results). Upright only:
+                # on its side the panel covers the search field (#376)
+                grip = box(ui.find('Panel size: drag to resize', exact=True))
+                q = sorted((x for x in ui.nodes() if x.get('class', '').endswith('EditText')), key=lambda x: box(x)[1])
+                if turn == '0':
+                    self.assertTrue(q, 'the search field')
+                    ui.sh('input', 'tap', *map(str, ui.center(q[0])))
+                    for _ in range(20):
+                        if ui.keyboard_shown():
+                            break
+                        time.sleep(0.5)
+                    self.assertTrue(ui.keyboard_shown(), 'no keyboard for the search field')
+                    time.sleep(1.5)
+                    g = [x for x in ui.nodes() if ui.label(x) == 'Panel size: drag to resize']
+                    self.assertEqual([box(x) for x in g], [grip], 'the panel moved for the search field\'s keyboard')
+                    ui.hide_keyboard()
+                    time.sleep(0.5)
+                reach('Edit')
+                ui.tap('Edit', exact=True)
+                reach('Notes')
+                ui.tap('Notes', exact=True)
+                for _ in range(20):
+                    ime, shown = frame('ime')
+                    if shown and ui.keyboard_shown():
+                        break
+                    time.sleep(0.5)
+                self.assertTrue(shown, 'the keyboard did not come up')
+                time.sleep(1.5)
+                bar, _ = frame('statusBars')
+                png = subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout
+                os.makedirs(SHOTS, exist_ok=True)
+                with open(os.path.join(SHOTS, 'panel-keyboard-' + ('upright' if turn == '0' else 'side') + '.png'), 'wb') as f:
+                    f.write(png)
+                dp = int(re.findall(r'(\d+)', ui.sh('wm', 'density'))[-1]) / 160
+                ns = ui.nodes()
+                for t in ('11LAB70AA501', 'Close'):
+                    n = [x for x in ns if ui.label(x) == t]
+                    self.assertTrue(n, f'{t} is not on screen with the keyboard up')
+                    b = box(n[0])
+                    self.assertGreaterEqual(b[1], bar[3], f'{t} is under the status bar: {b}, the bar ends at {bar[3]}')
+                    self.assertLessEqual(b[3], ime[1], f'{t} is under the keyboard: {b}, the keyboard starts at {ime[1]}')
+                    # (its text's box may lose a pixel or three as the row is laid out again: a cut one loses far more)
+                    # (its box's height is not compared: uiautomator's boxes of the heading's texts come out shorter while the
+                    # keyboard is up although the screenshot, saved above, shows them whole)
+                    self.assertGreaterEqual(b[3] - b[1], 8 * dp, f'{t} is hidden: {b}')
+                field = [x for x in ns if x.get('focused') == 'true' and x.get('class', '').endswith('EditText')]
+                self.assertEqual(len(field), 1, 'no field being typed in')
+                f = box(field[0])
+                # the field starts under the heading, and its line being typed in is above the keyboard: on its side (448 dp
+                # high, the keyboard 238 of them) the panel has about 100 dp, so a tall field may end under the keyboard
+                code = box([x for x in ns if ui.label(x) == '11LAB70AA501'][0])
+                self.assertGreaterEqual(f[1], code[3], f'the field is under the heading: {f}, the code ends at {code[3]}')
+                self.assertGreaterEqual(min(f[3], ime[1]) - f[1], 32 * dp, f'too little of the field is above the keyboard: {f}, the keyboard starts at {ime[1]}')
+                if turn == '0':
+                    self.assertLessEqual(f[3], ime[1], f'the field is under the keyboard: {f}, the keyboard starts at {ime[1]}')
+                ui.hide_keyboard()
+                time.sleep(1)
+                # the keyboard gone, the panel is back down with its grip
+                self.assertTrue(ui.present('Panel size: drag to resize', exact=True), 'the grip did not come back')
+                ui.tap('Close', exact=True)
+                time.sleep(1)
+
     def test_position_required(self):
         """request 7: a new member's join forms need a position; an admin's Add a person too"""
         ui.tap('Join with a file', exact=True)
@@ -2076,7 +2180,8 @@ class Phone(unittest.TestCase):
 # end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
 # test_copy_close_batch (2026-11-16) is in part 1: at the end of part 2 it took the emulator from 7.14 to 7.67 GiB;
 # part 1 had ended at 5.92 GiB.
-PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch'),
+PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
+          'panel_keyboard'),
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures', 'app_links'))

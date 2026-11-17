@@ -176,6 +176,8 @@ fun MainScreen() {
             }
         }
     ) { pad ->
+        // (the bottom bar's height, for the tag panel: it rises only by what the keyboard covers of it)
+        CompositionLocalProvider(LocalBottomBars provides pad.calculateBottomPadding()) {
         Column(Modifier.padding(pad).fillMaxSize()) {
             UpdateBanner()
             PhotoQueueBar()
@@ -188,6 +190,7 @@ fun MainScreen() {
                 "manage" -> Manage(snack, ui)
             }
             }
+        }
         }
     }
     // a link from another app: a code opens its tag on its drawing (as a course's code link), a course opens on the
