@@ -383,6 +383,12 @@ class Gnome(Plant):
         r = self.boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'Tag plate',
                           'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(data).decode()}})
         self.assertEqual(r.get('status'), 'approved', r)
+        # (the server is shared: later tests expect this code without a tag plate photo, and are asked for one)
+        def unplate():
+            for p in self.boss.req('GET', '/api/state')['photos']:
+                if p['kks'] == '11LAB70AA501' and p.get('caption') == 'Tag plate':
+                    self.boss.req('POST', '/api/submit', {'kind': 'photo_delete', 'payload': {'photo_id': p['id']}})
+        self.addCleanup(unplate)
         time.sleep(8)        # rounds every 2 s
         self.assertEqual(mark(), [got[0]], 'the results were made again under the focus')
         self.assertIn('Row', open(focus).read(), 'the focused result lost the focus')
