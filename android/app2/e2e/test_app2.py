@@ -1426,7 +1426,14 @@ class Phone(unittest.TestCase):
         ui.sh('cmd', 'uimode', 'night', 'yes'); time.sleep(2); evidence('setting-dark')
         ui.sh('settings', 'put', 'system', 'font_scale', '1.3'); time.sleep(2); evidence('setting-dark-font130')
         ui.sh('settings', 'put', 'system', 'font_scale', '1.0'); ui.sh('cmd', 'uimode', 'night', 'no'); time.sleep(2)
-        ui.sh('input', 'keyevent', '4')
+        # back to the drawing (the text size change recreated the activity: Back can land anywhere, even outside)
+        for _ in range(4):
+            if ui.present('Sample sheet'):
+                break
+            if not ui.present('Manage', exact=True) and not ui.present('Account', exact=True):
+                ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity'); time.sleep(3)
+            else:
+                ui.sh('input', 'keyevent', '4'); time.sleep(2)
         ui.find('Sample sheet', timeout=20)
         self.open_tag()
         ui.scroll_to('Take a photo', exact=True)
@@ -2092,9 +2099,11 @@ class Phone(unittest.TestCase):
 # that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
 # test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 3: at the
 # end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
+# test_photo_size (a 12 MP picture through the app's own scaling) is in part 1: at the end of part 2 it took the
+# emulator from 6.68 to 7.34 GiB (2026-11-17).
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing',
-          'in_app_camera'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'photo_size'),
+          'in_app_camera', 'photo_size'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'description_and_credit', 'flow', 'course_figures', 'app_links'))
 
