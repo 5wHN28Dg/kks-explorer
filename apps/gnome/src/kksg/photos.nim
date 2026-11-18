@@ -1,13 +1,13 @@
 ## Photos (R9): thumbnails, a zoomable view, delete, and adding one: pick a picture, annotate it (arrow, box, circle,
-## four colours, undo; burned into the image), scale to at most 1600 px, compress as JPEG XL at distance 1.9
-## (the user's choice 2026-09-27), propose it.
+## four colours, undo; burned into the image), scale to at most 2560 px, compress as JPEG XL at distance 1.9, effort 7
+## (the user's choices 2026-09-27 and 2026-11-17, decision 0074), propose it.
 
 import std/[math, strutils, base64, os, sequtils, times, typedthreads, posix]
 import kks/[json, node, model, api]
 import kksi/jxl
 import gtk, ui, appstate, win, photoqueue
 
-const MaxSide = 1600
+const MaxSide* = 2560   ## the longest side a stored photo may have, on every client (decision 0074)
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -385,7 +385,7 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   present(d, w.window)
 
 # ---------------------------------------------------------------- the photo queue (the user: "background compression
-# and a photo queue"). JPEG XL at effort 9 takes seconds: it runs on a worker thread, one photo after another in the
+# and a photo queue"). JPEG XL takes seconds: it runs on a worker thread, one photo after another in the
 # order they were added, and keeps going when the panel or the editor closes. Each photo is proposed as soon as it is
 # compressed, so they arrive in order. Before 2026-10-08 it ran on the main thread, freezing the window meanwhile.
 # Since 2026-10-09 each photo is kept on disk first (apps/common/photoqueue.nim: sealed rows in the device's store)
@@ -414,7 +414,7 @@ proc encWorker() {.thread.} =
   while true:
     let j = encJobs.recv()
     var d = EncDone(key: j.key)
-    try: d.data = encodeLossy(j.rgb, j.w, j.h, 3, 1.9, 9)
+    try: d.data = encodeLossy(j.rgb, j.w, j.h, 3, 1.9, 7)
     except CatchableError, Defect:      # always answer: a dead worker would leave the queue waiting for ever
       d.err = getCurrentExceptionMsg()
     encDone.send(d)

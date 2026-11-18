@@ -325,10 +325,11 @@ class Gnome(Plant):
     def test_photo_editor(self):
         """the photo editor's controls (line sizes, zoom) are reachable; a photo goes to the server; the drawing can be
         coloured by photos. KKS_PHOTO_FILE stands in for the file chooser. (Drawing and the touch loupe need a pointer
-        or a finger: not driven here.)"""
+        or a finger: not driven here.) The picture is larger than a stored photo may be: it arrives at 2560 px on its
+        longer side (decision 0074)."""
         from PIL import Image
         pic = os.path.join(self.dir, 'valve.png')
-        Image.new('RGB', (640, 480), (128, 128, 128)).save(pic)
+        Image.new('RGB', (3200, 2400), (128, 128, 128)).save(pic)
         move, focus = os.path.join(self.dir, 'move-focus'), os.path.join(self.dir, 'focus')
         a = self.start_app('photographer', KKS_PHOTO_FILE=pic, KKS_SYNC_EVERY='2000', KKS_TEST_MOVE_FOCUS=move, KKS_TEST_FOCUS=focus)
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
@@ -360,6 +361,14 @@ class Gnome(Plant):
                 break
             time.sleep(0.5)
         self.assertTrue(any(p['kks'] == '11LAB70AA501' for p in self.boss.req('GET', '/api/state')['photos']))
+        ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501'][0]
+        for _ in range(60):   # the entry can arrive before its file
+            if ph.get('file'): break
+            time.sleep(0.5)
+            ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501'][0]
+        from jxl_header import jxl_size
+        blob = self.boss.op.open(self.boss.base + '/photos/' + ph['file']).read()
+        self.assertEqual(jxl_size(blob), (2560, 1920), 'the stored photo of a 3200 × 2400 picture')
         # the open results follow: the mark says so once the photo is back from the server (nothing typed again)
         got = []
         for _ in range(60):
@@ -1365,9 +1374,13 @@ class Gnome(Plant):
             r = omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': cap,
                          'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(data).decode()}})
             self.assertEqual(r.get('status'), 'pending', r)
-        pic = os.path.join(self.dir, 'noisy.png')        # big and noisy: compressing takes a moment
+        pic = os.path.join(self.dir, 'noisy.png')
         Image.effect_noise((2400, 1800), 40).convert('RGB').save(pic)
-        a = self.start_app('requests', KKS_PHOTO_FILE=pic)
+        # the photos stay queued while this file exists (effort 7 compresses even a big noisy photo before the test
+        # can close the window: decision 0074), so the question on closing is sure to come
+        hold = os.path.join(self.dir, 'hold-photos')
+        open(hold, 'w').close()
+        a = self.start_app('requests', KKS_PHOTO_FILE=pic, KKS_TEST_PHOTO_HOLD=hold)
         self.join(a)
         q = atspi.find(a, 'entry', contains='Search equipment')
         # who set a field: the floor the manager set on the server
@@ -1436,6 +1449,7 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name='Close', timeout=5))
         ask = atspi.find(a, 'alert', contains='still being prepared', timeout=5)
         atspi.click(atspi.find(ask, 'button', name='Wait'))
+        os.remove(hold)
         caps = {}
         for _ in range(120):
             st = self.boss.req('GET', '/api/state')

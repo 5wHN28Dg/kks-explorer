@@ -774,12 +774,25 @@ async function addPhoto(input,k,plate){
 }
 // a picture file → scaled and marked up in the editor -> {canvas, note} or null
 async function photoCanvas(f,title=''){
+  // reading and scaling a camera picture takes a second or more on a phone: say so until the editor opens
+  const bar=K.progress('Preparing the photo…',Math.max(800,f.size/2000));
+  try{ return await photoCanvasIn(f,bar,title) } finally{ bar.done() }
+}
+async function photoCanvasIn(f,bar,title){
   const img=new Image(), url=URL.createObjectURL(f);
   try{ await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(new Error('That file could not be read as a picture.'));img.src=url}) }
   catch(e){ toast(e.message); return null } finally{ URL.revokeObjectURL(url) }
-  const m=1600,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
-  c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-  return K.annotate(c.toDataURL('image/png'),!canApprove(),title);   // mark what matters, or just "Use photo"
+  const m=K.PHOTO_SIDE,s=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement('canvas');
+  c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
+  // decoded and scaled off the main thread where the browser can (a 12 MP picture took over a second of it on a slow
+  // phone); else the canvas scales it, with the best filter the browser has
+  const small=await K.scaledBitmap(f,c.width,c.height);
+  const g=c.getContext('2d'); g.imageSmoothingQuality='high'; g.drawImage(small||img,0,0,c.width,c.height); small?.close();
+  // (toBlob encodes off the main thread: a 2560 px toDataURL took ~0.4 s of it on a laptop, more on a phone)
+  const u=await new Promise(ok=>c.toBlob(bl=>ok(bl?URL.createObjectURL(bl):c.toDataURL('image/png')),'image/png'));
+  bar.done();
+  try{ return await K.annotate(u,!canApprove(),title) }   // mark what matters, or just "Use photo"
+  finally{ if(u.startsWith('blob:')) URL.revokeObjectURL(u) }
 }
 // a picture file → marked up and encoded as the server wants it, for a photo of several codes at once (sent at once,
 // not queued: /api/submit-many) -> {dataUrl, note} or null

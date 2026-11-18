@@ -1,5 +1,5 @@
 ## Photos (R6; the GNOME app's photos.nim): thumbnails with who took each, a zoomable viewer, delete, add from a file
-## (WIC → upright, 1600 px → the annotation editor → the photo queue: JPEG XL d1.9 effort 9 on a worker thread →
+## (WIC → upright, 2560 px → the annotation editor → the photo queue: JPEG XL d1.9 effort 7 on a worker thread →
 ## submit), the tag plate's photo, and the floor asked first when the code has none. Camera capture: see
 ## apps/windows/README.md.
 
@@ -34,7 +34,8 @@ const
   SS_BITMAP = 0x0E'u32
   IMAGE_BITMAP = 0
   Distance = 1.9
-  Effort = 9
+  Effort = 7
+  MaxSide = 2560     ## the longest side a stored photo may have, on every client (decision 0074)
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -148,13 +149,13 @@ proc showPhoto*(w: Win, data, caption: string) =
 # ---------------------------------------------------------------- picking a picture
 
 proc pickPicture(w: Win, title: string): (seq[byte], int, int) =
-  ## a picture from a file, upright and at most 1600 px (RGBA); empty when none was chosen or Windows can't read it
+  ## a picture from a file, upright and at most MaxSide px (RGBA); empty when none was chosen or Windows can't read it
   # KKS_TEST_PHOTO: the end-to-end test's picture instead of the file dialog's answer
   let path = if getEnv("KKS_TEST_PHOTO").len > 0: getEnv("KKS_TEST_PHOTO")
              else: openFile(w.hwnd, title, "Pictures|*.jpg;*.jpeg;*.png;*.heic;*.webp;*.bmp;*.tif;*.tiff|All files|*.*")
   if path.len == 0: return
   var iw, ih: cint
-  let px = imageLoad(newWideCString(path), 1600, addr iw, addr ih)
+  let px = imageLoad(newWideCString(path), MaxSide, addr iw, addr ih)
   if px == nil:
     w.toast("Windows can't read that picture")
     return
@@ -169,7 +170,7 @@ proc photoForCodes*(w: Win, codes: seq[string], floor: string, queued: proc ())
 # "background compression and a photo queue"; since 2026-10-09 kept on disk like Android's, decision 0049, and the
 # GNOME app's: apps/common/photoqueue.nim). Each photo (its pixels and its job: code or codes, caption, note, floor,
 # client_id) is written to the device's own store first, as sealed rows (AES-256-GCM under the store's key, which
-# DPAPI protects: platform/windows/src/kksw/keystore.nim), then compressed (JPEG XL at effort 9 takes seconds) on a
+# DPAPI protects: platform/windows/src/kksw/keystore.nim), then compressed (JPEG XL takes seconds) on a
 # worker thread, one photo after another in the order they were added, and proposed as soon as it is compressed, so
 # they arrive in order. It is removed only once the core accepted it (or it was a repeat: the client_id) or refused it.
 # A failure (the encoder, the core throwing) keeps it: it is tried again a minute later, 5 times in a run; then it

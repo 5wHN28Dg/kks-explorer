@@ -10,7 +10,7 @@ SPEC.json (plant-specific: keep it with the plant data, never in this repository
    "units": ["11", "12"]}
 - `kks` without the unit: the document writes "xx…" for every unit. Each code is linked for every unit in `units`
   whose tag is on the plant's drawings (PLANT_DIR/tags.json), so a link always opens a drawing.
-- `photo` (relative to SPEC.json) goes to every linked code as a photo: JPEG XL like the apps send (at most 1600 px on
+- `photo` (relative to SPEC.json) goes to every linked code as a photo: JPEG XL like the apps send (at most 2560 px on
   the longer side, distance 1.9, effort 7; needs cjxl).
 - `field` sets that custom field on every linked code (equipment `custom`, PROTOCOL-v2 §9).
 
@@ -24,8 +24,8 @@ def jxl(path):
     from PIL import Image
     im = Image.open(path).convert('RGB')
     side = max(im.size)
-    if side > 1600:
-        im = im.resize((im.width * 1600 // side, im.height * 1600 // side), Image.LANCZOS)
+    if side > 2560:
+        im = im.resize((im.width * 2560 // side, im.height * 2560 // side), Image.LANCZOS)   # decision 0074
     with tempfile.TemporaryDirectory() as d:
         png, out = os.path.join(d, 'in.png'), os.path.join(d, 'out.jxl')
         im.save(png)
