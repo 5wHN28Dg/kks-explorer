@@ -24,7 +24,7 @@ const SCREENS := [
 	["Note 9", Vector2i(2220, 1080), "1.35", [1.0, 1.5]],
 ]
 const SIDE_MIN := 300.0          # a side panel's least width (canvas px) on these screens
-const ROWS := 4                  # the tree and the properties show at least this many rows of text
+const ROWS := 4                  # the tree and the properties are at least this many lines of text high
 const TARGET_H := 52             # a control's height at scale 1 (W.button's)
 const FONT := 20                 # the panels' least text size at scale 1 (the theme's)
 
@@ -111,8 +111,12 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 		check(c.size.x >= side, "%s: %s is %.0f wide (at least %.0f)" % [at, c.name, c.size.x, side])
 	var fs: int = pn.tree.get_theme_font_size("font_size")
 	var row: float = pn.tree.get_theme_font("font").get_height(fs) + pn.tree.get_theme_constant("v_separation")
-	check(row > 0.0 and pn.tree.size.y >= ROWS * row, "%s: the parts tree shows %d rows or more (%.0f px high, a row %.0f)" % [at, ROWS, pn.tree.size.y, row])
-	check(pn.props_panel.size.y >= ROWS * row, "%s: the properties are %d rows high or more (%.0f)" % [at, ROWS, pn.props_panel.size.y])
+	# (a line of text: on a phone the tree's rows are taller, targets of 48 dp, and it scrolls through them)
+	var line: float = pn.tree.get_theme_font("font").get_height(fs) + 4.0 * W.scale
+	if s > 1.0:   # (the phone: a row is a target, 52 at its scale: 48 dp at 150 %)
+		check(row >= TARGET_H * s - 1.0, "%s: the parts tree's rows are %.0f px tall (a target: %.0f)" % [at, row, TARGET_H * s])
+	check(row > 0.0 and pn.tree.size.y >= ROWS * line, "%s: the parts tree shows %d rows or more (%.0f px high, a row %.0f)" % [at, ROWS, pn.tree.size.y, row])
+	check(pn.props_panel.size.y >= ROWS * line, "%s: the properties are %d rows high or more (%.0f)" % [at, ROWS, pn.props_panel.size.y])
 	check(pn.tools_scroll.size.y >= TARGET_H * s - 1.0, "%s: the tools show a row at least (%.0f px)" % [at, pn.tools_scroll.size.y])
 	_apart(at, [pn.top_bar, pn.tree_panel, pn.props_panel, pn.tools_panel])
 	# the side panels at their width, a long part name wrapping in the tree rather than widening it (#389)
@@ -164,7 +168,7 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 	pn.show_run(true)
 	await _frames(tree, 2)
 	check(pn.run_panel.is_visible_in_tree() and _inside(pn.run_panel.get_global_rect(), screen) and pn.run_panel.size.x >= side
-		and pn.run_panel.size.y >= ROWS * row, "%s: the bench's panel shows, inside the screen (%s)" % [at, pn.run_panel.get_global_rect()])
+		and pn.run_panel.size.y >= ROWS * line, "%s: the bench's panel shows, inside the screen (%s)" % [at, pn.run_panel.get_global_rect()])
 	_apart(at, [pn.top_bar, pn.tree_panel, pn.run_panel, pn.tools_panel])
 	check(absf(pn.run_panel.size.x - want_side) <= 1.0, "%s: the bench's panel is %.0f wide (%.0f, as the others)" % [at,
 		pn.run_panel.size.x, want_side])
@@ -182,7 +186,7 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 	check(pn.strip.is_visible_in_tree(), "%s: the strip shows in a session" % at)
 	check(_inside(pn.strip.get_global_rect(), screen), "%s: the strip is on the screen (%s)" % [at, pn.strip.get_global_rect()])
 	_apart(at, [pn.strip, pn.top_bar, pn.tree_panel, pn.props_panel, pn.tools_panel])
-	check(pn.tree.size.y >= ROWS * row, "%s: with the strip the tree still shows %d rows (%.0f)" % [at, ROWS, pn.tree.size.y])
+	check(pn.tree.size.y >= ROWS * line, "%s: with the strip the tree still shows %d rows (%.0f)" % [at, ROWS, pn.tree.size.y])
 	ws._session = false
 	await _frames(tree, 1)
 	# a long properties text scrolls inside its panel: it never runs under the tools (#389)
@@ -224,7 +228,9 @@ func _steps(tree: SceneTree, ws, at: String) -> void:
 	_apart(at, [sl, pn.top_bar, pn.tree_panel, pn.props_panel, pn.tools_panel])
 	var fs: int = pn.tree.get_theme_font_size("font_size")
 	var row: float = pn.tree.get_theme_font("font").get_height(fs) + pn.tree.get_theme_constant("v_separation")
-	check(pn.tree.size.y >= ROWS * row and pn.props_panel.size.y >= ROWS * row, "%s: with the step line the tree and the properties still show %d rows (%.0f, %.0f px; a row %.0f)" % [
+	# (a line of text: on a phone the tree's rows are taller, targets of 48 dp, and it scrolls through them)
+	var line: float = pn.tree.get_theme_font("font").get_height(fs) + 4.0 * W.scale
+	check(pn.tree.size.y >= ROWS * line and pn.props_panel.size.y >= ROWS * line, "%s: with the step line the tree and the properties still show %d rows (%.0f, %.0f px; a row %.0f)" % [
 		at, ROWS, pn.tree.size.y, pn.props_panel.size.y, row])
 	ws.reset()
 	await _frames(tree, 2)

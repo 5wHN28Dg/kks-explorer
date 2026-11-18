@@ -2,7 +2,7 @@
 ##   XH_SIZE=1600x900@60 tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/workshop_shots.gd \
 ##       -- --out=DIR [--phone] [--ui-size=X] [--kinds=a,b]
 ## Each kind (default every kind the build has) opened, its first component picked, then its guided steps started
-## (where it has them): `<kind>.png` and `<kind>_steps.png`. --phone draws at the phone's UI scale (1.35) and its UI size
+## (where it has them), then its bench with the session's strip: `<kind>.png`, `<kind>_steps.png`, `<kind>_run_strip.png`. --phone draws at the phone's UI scale (1.35) and its UI size
 ## (150 %), --ui-size=X at that UI size (the settings' 1 to 1.5);
 ## the window is then made the Note 9's 2220 × 1080 (a 1850 × 900 canvas): run it with XH_SIZE=2220x1080@60.
 extends SceneTree
@@ -75,6 +75,14 @@ func _run() -> void:
 		if not ws.words.get("assembly", []).is_empty():
 			ws.start_guide("disassemble")
 			await shot(kind + "_steps")
+			ws.reset()
+		# the bench in the properties' place, and the session's strip (as a session that ended while it showed)
+		ws.panels.show_run(true)
+		ws._session = true
+		ws.panels._strip_n = -1
+		await shot(kind + "_run_strip")
+		ws._session = false
+		ws.panels.show_info(true)
 		ws.close()
 		await ws.left
 	quit(0)

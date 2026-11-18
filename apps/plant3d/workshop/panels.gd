@@ -140,6 +140,9 @@ func setup(w) -> void:
 	tree.set_column_clip_content(0, true)    # (and never widen the panel: the column may be narrower than a name)
 	tree.item_selected.connect(_on_tree_selected)
 	tree.add_theme_font_size_override("font_size", int(FONT * W.scale))
+	# its rows as tall as the buttons on a phone (48 dp at its UI size, T1); a desktop keeps its compact rows
+	if W.scale > 1.0:
+		tree.add_theme_constant_override("v_separation", int(TARGET_H * W.scale - 1.3 * FONT * W.scale))
 	tree_panel.add_child(tree)
 	var gap := Control.new()
 	gap.name = "view_gap"
