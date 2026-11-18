@@ -342,7 +342,7 @@ class Sinks(unittest.TestCase):
                 K.apiError(400, {error: 'bad json'}),
                 K.apiError(409, {error: 'conflict', code: 'conflict'})].map(e => [e.message, e.detail, e.status])""")
             self.assertEqual(got[0], [pg.evaluate("K.errorWords.not_found"), 'not found', 404])
-            self.assertEqual(got[1][0], pg.evaluate("K.errorWords.not_allowed"))
+            self.assertEqual(got[1][0], 'Only an admin can do that.')
             self.assertEqual(got[2][0], 'Wrong username or password.')
             self.assertEqual(got[3][0], pg.evaluate("K.errorWords.server"))
             self.assertEqual(got[4][0], pg.evaluate("K.errorWords.invalid"))

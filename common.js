@@ -21,7 +21,7 @@ K.nativeCall = (method, url, body, base64) => new Promise(res => {
 // its kind, the same words on every client. The raw text stays on the error as `detail` (and in the console).
 K.errorWords = {
   sign_in: 'Your sign-in has ended. Sign in again; what you typed is kept.',
-  not_allowed: "You don't have the right to do that. An admin can.",
+  not_allowed: "You don't have the right to do that here.",
   not_found: "It isn't there any more: someone may have removed it. Reload to see what is there now.",
   conflict: 'It was changed meanwhile, so this was not saved. Look at the current value and try again.',
   too_large: 'That is too large to send.',

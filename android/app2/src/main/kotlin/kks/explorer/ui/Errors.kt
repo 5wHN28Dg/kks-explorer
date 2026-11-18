@@ -9,7 +9,7 @@ import org.json.JSONObject
 object Errors {
     val words = mapOf(
         "sign_in" to "Your sign-in has ended. Sign in again; what you typed is kept.",
-        "not_allowed" to "You don't have the right to do that. An admin can.",
+        "not_allowed" to "You don't have the right to do that here.",
         "not_found" to "It isn't there any more: someone may have removed it. Reload to see what is there now.",
         "conflict" to "It was changed meanwhile, so this was not saved. Look at the current value and try again.",
         "too_large" to "That is too large to send.",
