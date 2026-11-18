@@ -126,7 +126,9 @@ object Sync {
             while (ack!!.optString("state") == "waiting") {
                 if (cancelled()) return JSONObject().put("state", "cancelled")
                 Thread.sleep(2000)
-                ack = try { ask(host, port) } catch (e: Exception) { return JSONObject().put("state", "lost").put("why", "Lost the connection: ${e.message}") }
+                ack = try { ask(host, port) } catch (e: Exception) {
+                    android.util.Log.i("KKSErrors", "join: ${e.message}")
+                    return JSONObject().put("state", "lost").put("why", kks.explorer.ui.Errors.LOST_JOIN) }
             }
             root = ack.optString("root")
             return ack
@@ -135,7 +137,7 @@ object Sync {
         /** after "accepted" (and, in the lobby, after the person confirmed the code): the first sync adopts the plant */
         fun finish(ctx: Context): String {
             try { Net.syncWith(host, port, peer, adoptRoot = if (config().optString("root").isEmpty()) root else "") }
-            catch (e: Exception) { return "Accepted, but the first sync failed: ${e.message}. Try again." }
+            catch (e: Exception) { android.util.Log.i("KKSErrors", "join, first sync: ${e.message}"); return kks.explorer.ui.Errors.FIRST_SYNC_FAILED }
             if (!joined()) return "Synced, but this phone is not certified in what came back."
             joinedNow(ctx, host, port, peer)
             return ""

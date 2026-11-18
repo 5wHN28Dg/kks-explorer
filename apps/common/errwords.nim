@@ -14,7 +14,13 @@ const ErrorWords* = [
   ("too_many", "Too many tries. Wait a few minutes, then try again."),
   ("invalid", "That was not accepted. Check what you entered and try again."),
   ("server", "The server had a problem, so this was not done. Try again in a moment."),
-  ("unreachable", "Couldn't reach the server. Check the network; what you changed is kept on this device.")]
+  ("unreachable", "Couldn't reach the server. Check the network and try again.")]
+
+## terse texts that have a sentence of their own
+const ErrorTerse* = [
+  ("manager only", "Only the plant's manager can do that."),
+  ("admin only", "Only an admin can do that."),
+  ("cross-origin request refused", "The request came from another page and was refused. Open Walkdown from its own address.")]
 
 proc errorWords*(code: string): string =
   for (k, v) in ErrorWords:
@@ -36,13 +42,36 @@ proc isSentence*(t: string): bool =
   let s = t.strip
   s.len > 1 and s[0] in {'A' .. 'Z'} and s[^1] in {'.', '!', '?'}
 
+proc known(code: string): bool =
+  for (k, _) in ErrorWords:
+    if k == code: return true
+
 proc errorText*(status: int, j: JNode): string =
-  ## what to say for an error response (status, the JSON body or nil)
-  let raw = if j != nil and j.kind == jObj and j.get("error") != nil and j["error"].isStr: j["error"].s else: ""
+  ## what to say for an error response (status, the JSON body or nil): a terse text's own sentence; the server's
+  ## sentence; for a request that was refused (invalid, too large, too many, not allowed) its specific text of three
+  ## words or more made a sentence ("Note: up to 500 characters."); else the sentence for the kind
+  let raw = (if j != nil and j.kind == jObj and j.get("error") != nil and j["error"].isStr: j["error"].s else: "").strip
+  let given = if j != nil and j.kind == jObj and j.get("code") != nil and j["code"].isStr: j["code"].s else: ""
+  let code = if given.known: given else: codeOf(status)
+  for (k, v) in ErrorTerse:
+    if k == raw: return v
   if raw.isSentence: return raw
-  let code = if j != nil and j.kind == jObj and j.get("code") != nil and j["code"].isStr: j["code"].s else: codeOf(status)
+  if code in ["invalid", "too_large", "too_many", "not_allowed"] and raw.splitWhitespace.len >= 3:
+    return raw[0].toUpperAscii & raw[1 .. ^1] & (if raw[^1] in {'.', '!', '?'}: "" else: ".")
   errorWords(code)
 
 proc unreachable*(host: string, port: int): string =
   ## a server this device could not connect to (joining, Sync now): plain words, the system's text goes to the log
   "Couldn't reach the server at " & host & ":" & $port & ". Check the address and that this device is on the plant's network."
+
+## joining and syncing, the same words on Android (Errors.kt)
+const LostJoin* = "The connection to the admin's device was lost before they decided. Ask again."
+const FirstSyncFailed* = "Accepted, but the first sync did not finish. Try again in a moment."
+
+proc notJoined*(state, why: string): string =
+  if why.isSentence: why
+  elif state == "expired": "The invite has expired. Ask the admin for a new one."
+  else: "Not joined: the admin refused, or the request ended. Ask the admin to try again."
+
+proc syncFailed*(host: string, port: int): string =
+  "Couldn't sync with " & host & ":" & $port & ". Check that the device is on, on this network, and that its address and port are right."

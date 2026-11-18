@@ -7,6 +7,7 @@ import kksl/[dbstore, privfile, passphrase]
 import kks/model
 import proposals, histline
 import gtk, ui, appstate, win, photos, join
+import errwords
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -725,7 +726,9 @@ proc account(w: Win, box: W) =
         try:
           discard await w.a.syncOne(t[0 ..< colon], parseInt(t[colon + 1 ..< at]), t[at + 1 .. ^1])
           w.toast("Synced")
-        except CatchableError as e: w.toast(e.msg)
+        except CatchableError as e:
+          stderr.writeLine "sync " & t & ": " & e.msg          # (#371: plain words on screen, the system's text here)
+          w.toast(syncFailed(t[0 ..< colon], (try: parseInt(t[colon + 1 ..< at]) except ValueError: 0)))
       else:
         let n = await w.a.syncAll()
         w.toast(if n > 0: "Synced with " & $n & " device" & (if n == 1: "" else: "s") else: "No other device reached")

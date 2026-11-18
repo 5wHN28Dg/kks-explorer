@@ -28,12 +28,28 @@ K.errorWords = {
   too_many: 'Too many tries. Wait a few minutes, then try again.',
   invalid: 'That was not accepted. Check what you entered and try again.',
   server: 'The server had a problem, so this was not done. Try again in a moment.',
-  unreachable: "Couldn't reach the server. Check the network; what you changed is kept on this device.",
+  unreachable: "Couldn't reach the server. Check the network and try again.",
+};
+// terse texts that have a sentence of their own
+K.errorTerse = {
+  'manager only': "Only the plant's manager can do that.",
+  'admin only': 'Only an admin can do that.',
+  'cross-origin request refused': 'The request came from another page and was refused. Open Walkdown from its own address.',
 };
 K.errorCode = status => ({401: 'sign_in', 403: 'not_allowed', 404: 'not_found', 409: 'conflict', 413: 'too_large', 429: 'too_many'})[status]
   || (status >= 400 && status < 500 ? 'invalid' : 'server');
-K.isSentence = t => typeof t === 'string' && /^[A-Z]/.test(t) && /[.!?]$/.test(t.trim());
-K.errorText = (status, d) => K.isSentence(d?.error) ? d.error : K.errorWords[d?.code] || K.errorWords[K.errorCode(status)];
+K.isSentence = t => typeof t === 'string' && /^[A-Z]/.test(t.trim()) && /[.!?]$/.test(t.trim());
+// what to say: a terse text's own sentence; the server's sentence; for a request that was refused (invalid, too large,
+// too many, not allowed) its specific text of three words or more made a sentence ("Note: up to 500 characters.");
+// else the sentence for the kind
+K.errorText = (status, d) => {
+  const raw = typeof d?.error === 'string' ? d.error.trim() : '', code = K.errorWords[d?.code] ? d.code : K.errorCode(status);
+  if (K.errorTerse[raw]) return K.errorTerse[raw];
+  if (K.isSentence(raw)) return raw;
+  if (['invalid', 'too_large', 'too_many', 'not_allowed'].includes(code) && raw.split(/\s+/).length >= 3)
+    return raw[0].toUpperCase() + raw.slice(1) + (/[.!?]$/.test(raw) ? '' : '.');
+  return K.errorWords[code];
+};
 K.apiError = (status, d) => {
   const e = new Error(K.errorText(status, d)); e.status = status; e.data = d; e.detail = d?.error || '';
   if (e.detail && e.detail !== e.message) console.info('the server said:', status, e.detail);

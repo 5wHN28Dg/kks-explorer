@@ -6,6 +6,7 @@ import kks/json
 import kksl/dbstore
 import appstate
 import w32, ui, win, camera, about
+import errwords
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -43,17 +44,19 @@ proc runJoin(w: Win, hosts: seq[(string, int)], peer: string, token: JNode, user
     await sleepAsync(2000)
     try: ack = await w.a.askJoin(host, port, peer, token, req)
     except CatchableError as e:
-      status.setText("Lost the connection: " & e.msg)
+      stderr.writeLine "join: " & e.msg
+      status.setText(LostJoin)
       return
   if ack["state"].s != "accepted":
-    status.setText("Not accepted: " & ack["state"].s & (if s(ack, "why").len > 0: " (" & s(ack, "why") & ")" else: ""))
+    status.setText(notJoined(ack["state"].s, s(ack, "why")))
     return
   let root = ack["root"].s
   proc finish() {.async.} =
     status.setText("Accepted. Syncing…")
     try: discard await w.a.syncOne(host, port, peer, adoptRoot = root)
     except CatchableError as e:
-      status.setText("Accepted, but the first sync failed: " & e.msg & ". Try again.")
+      stderr.writeLine "join, first sync: " & e.msg
+      status.setText(FirstSyncFailed)
       return
     if w.a.joined:
       w.a.store.setMeta("sync_peers", toText(newArr(@[newStr(host & ":" & $port & "@" & peer)])))

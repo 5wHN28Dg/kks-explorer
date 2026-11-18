@@ -248,7 +248,7 @@ object PhotoQueue {
             // after a crash sends no code twice); else the one submission it always was
             val r = if (codes.size > 1) Core.api("POST", "/api/submit-many", body.put("kks", JSONArray(codes)))
                     else { payload.put("kks", codes.first()); Core.api("POST", "/api/submit", body) }
-            if (r.status >= 400) fail(ctx, kks, r.json.optString("error", "error ${r.status}"))
+            if (r.status >= 400) fail(ctx, kks, kks.explorer.ui.Errors.text(r.status, r.json))
             else main.post { Changes.rev++ }
         } catch (e: IllegalArgumentException) {
             // a damaged file (the size check above): it won't get better

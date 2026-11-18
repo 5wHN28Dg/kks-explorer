@@ -16,7 +16,13 @@ object Errors {
         "too_many" to "Too many tries. Wait a few minutes, then try again.",
         "invalid" to "That was not accepted. Check what you entered and try again.",
         "server" to "The server had a problem, so this was not done. Try again in a moment.",
-        "unreachable" to "Couldn't reach the server. Check the network; what you changed is kept on this device.")
+        "unreachable" to "Couldn't reach the server. Check the network and try again.")
+
+    /** terse texts that have a sentence of their own */
+    val terse = mapOf(
+        "manager only" to "Only the plant's manager can do that.",
+        "admin only" to "Only an admin can do that.",
+        "cross-origin request refused" to "The request came from another page and was refused. Open Walkdown from its own address.")
 
     fun codeOf(status: Int) = when (status) {
         401 -> "sign_in"; 403 -> "not_allowed"; 404 -> "not_found"; 409 -> "conflict"; 413 -> "too_large"; 429 -> "too_many"
@@ -26,11 +32,26 @@ object Errors {
     fun isSentence(t: String) = t.trim().let { it.length > 1 && it[0] in 'A'..'Z' && it.last() in ".!?" }
 
     /** what to say for an error response */
+    /** what to say for an error response: a terse text's own sentence; the server's sentence; for a request that was
+     *  refused (invalid, too large, too many, not allowed) its specific text of three words or more made a sentence
+     *  ("Note: up to 500 characters."); else the sentence for the kind */
     fun text(status: Int, j: JSONObject?): String {
-        val raw = j?.optString("error").orEmpty()
+        val raw = j?.optString("error").orEmpty().trim()
+        val code = j?.optString("code")?.takeIf { it in words } ?: codeOf(status)
+        terse[raw]?.let { return it }
         if (isSentence(raw)) return raw
         if (raw.isNotEmpty()) android.util.Log.i("KKSErrors", "$status $raw")
-        return words[j?.optString("code")?.ifEmpty { null } ?: codeOf(status)] ?: words.getValue("server")
+        if (code in setOf("invalid", "too_large", "too_many", "not_allowed") && raw.split(Regex("\\s+")).size >= 3)
+            return raw.replaceFirstChar { it.uppercase() } + if (raw.last() in ".!?") "" else "."
+        return words.getValue(code)
+    }
+
+    const val LOST_JOIN = "The connection to the admin's device was lost before they decided. Ask again."
+    const val FIRST_SYNC_FAILED = "Accepted, but the first sync did not finish. Try again in a moment."
+
+    fun syncFailed(host: String, port: Int, e: Throwable?): String {
+        if (e != null) android.util.Log.i("KKSErrors", "sync $host:$port: ${e.message}")
+        return "Couldn't sync with $host:$port. Check that the device is on, on this network, and that its address and port are right."
     }
 
     /** a server this phone could not connect to: plain words; the system's text goes to the log */
