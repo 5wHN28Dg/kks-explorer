@@ -129,7 +129,7 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
         if (admin && !roomy) item { PickBar(subs, picked, competing, say) }
         item { Dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. Tick several to approve or reject them at once.") }
         if (Picked.said.value.isNotEmpty()) item { Text(Picked.said.value, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        items(groups) { g ->
+        items(groups, key = { g -> g.str("code") + "|" + g.str("tag") }) { g ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val tag = g.str("tag")
@@ -145,7 +145,8 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
                         HorizontalDivider()
                         Text(k.str("label") + if (items.size > 1) " (${items.size})" else "", style = MaterialTheme.typography.titleSmall)
                         if (pick) Dim("Several proposed. “Use this one” approves it and rejects the other ${k.str("label").lowercase()}s; votes are only a hint.")
-                        for (sub in items) ApprovalItem(sub, admin, pick, say, picked, title, k.str("label"), items.size - 1)
+                        // keyed by the proposal: a sync that reorders the list must not move an open question to another one
+                        for (sub in items) key(sub.optLong("id")) { ApprovalItem(sub, admin, pick, say, picked, title, k.str("label"), items.size - 1) }
                     }
                 }
             }
@@ -248,7 +249,7 @@ private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (S
         ProposalBody(sub)
         if (sub.str("kind") == "photo") PhotoOf(sub.optJSONObject("payload")?.str("file").orEmpty(), height = 160)
         // #365: Reject and Use this one (which rejects the rivals) are final: asked first, naming what and how many
-        var asking by remember { mutableStateOf("") }
+        var asking by remember(id) { mutableStateOf("") }
         if (admin) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (pick) {
                 Button(onClick = { asking = "pick" }) { Text("Use this one") }
@@ -263,7 +264,7 @@ private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (S
             "Use this one and reject " + (if (others == 1) "the other" else "the other $others"),
             { act(id, "pick", JSONObject(), "Photo chosen, the others of this kind rejected", say) }, { asking = "" })
         if (asking == "reject") Confirm("Reject " + proposalTitle(sub) + "?",
-            sub.str("by_name").ifEmpty { sub.str("by") } + "'s proposal is discarded; they see that it was rejected. This can't be undone.",
+            sub.str("by_name").ifEmpty { sub.str("by") }.let { if (it.isEmpty()) "The proposal" else "$it's proposal" } + " is discarded; the submitter sees that it was rejected. This can't be undone.",
             "Reject", { act(id, "reject", JSONObject(), "Rejected", say) }, { asking = "" })
     }
 }
@@ -500,7 +501,7 @@ private fun Devices(rev: Int, admin: Boolean, say: (String) -> Unit) {
                 rows(all)
             }
             if (reqs.isNotEmpty()) Section("Waiting to join", "Accept only if the code on the other device is the same.") {
-                for (x in reqs) {
+                for (x in reqs) key(x.str("device")) {
                     val q = x.optJSONObject("request") ?: JSONObject()
                     ListItem(headlineContent = { Text(q.str("full_name") + " (" + q.str("username") + ") · " + q.str("label")) },
                         supportingContent = { Column {
@@ -510,7 +511,7 @@ private fun Devices(rev: Int, admin: Boolean, say: (String) -> Unit) {
                                 color = MaterialTheme.colorScheme.error)
                         } },
                         trailingContent = { Row {
-                            var refusing by remember { mutableStateOf(false) }
+                            var refusing by remember(x.str("device")) { mutableStateOf(false) }
                             val decide = { a: String ->
                                 val res = call("POST", "/api/join-requests/" + x.str("device"), JSONObject().put("action", a).put("existing_ok", true))
                                 say(res.error ?: if (a == "accept") "Accepted" else "Refused")

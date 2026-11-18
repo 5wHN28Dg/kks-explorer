@@ -324,10 +324,10 @@ proc annotate*(owner: HWND, rgba: seq[byte], w, h: int, done: proc (rgba: seq[by
     let c = capText(cap.text.strip, captionMax)
     let n = capText((if note != nil: note.text else: "").strip, MaxNote)
     DestroyWindow(hw)
-    done(marked, c, n)), ("Cancel", proc () =
-      # marks or text would be lost: asked first (#365)
-      if (e.marks.len == 0 and cap.text.strip.len == 0 and (note == nil or note.text.strip.len == 0)) or
-         ask(hw, "Discard the photo?", "The photo and what you drew or typed on it are not sent.", "Discard photo", "Keep editing"):
-        DestroyWindow(hw)))
+    done(marked, c, n)), ("Cancel", proc () = PostMessageW(hw, WM_CLOSE, 0, 0)))
+  # Cancel and the close box: marks or text would be lost, so asked first (#365)
+  popupMayClose[hw] = proc (): bool =
+    (e.marks.len == 0 and cap.text.strip.len == 0 and (note == nil or note.text.strip.len == 0)) or
+      ask(hw, "Discard the photo?", "The photo and what you drew or typed on it are not sent.", "Discard photo", "Keep editing")
   page.layout()
   ShowWindow(hw, SW_SHOW)

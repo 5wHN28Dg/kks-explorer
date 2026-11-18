@@ -1957,7 +1957,7 @@ class Phone(unittest.TestCase):
         self.assertEqual(sum(1 for n in ui.nodes() if ui.label(n) == '11LAB70AA501'), 1, 'one card for the code')
         # #365: Reject is final, so it asks first, naming whose proposal; Cancel leaves it waiting
         ui.tap('Reject', exact=True)
-        ui.find('Omar Fullname\'s proposal is discarded; they see that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        ui.find('Omar Fullname\'s proposal is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
         ui.tap('Cancel', exact=True)
         time.sleep(1)
         self.assertEqual({x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}, {'pending'})
@@ -2522,6 +2522,30 @@ class Phone(unittest.TestCase):
         self.assertFalse(ui.present('Drag a box around the tag the app missed (two fingers move the drawing)'), 'Back did not end marking')
         self.assertTrue(ui.present('Search equipment by KKS code or description'), 'Back left the app')
 
+    def test_question_stays(self):
+        """#365 review: a proposal that arrives (by sync) while Reject's question is open does not take the question
+        over: the question and its button stay with the proposal it was opened for"""
+        omar = self.member('omar', 'Omar Fullname', 'omar password 1')
+        first = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA509', 'changes': {'notes': 'first one'}, 'base': {}}})
+        self.join()
+        ui.tap('Manage', exact=True)
+        ui.tap('Approvals', exact=True)
+        ui.find('11LAB70AA509', exact=True, timeout=20)
+        ui.tap('Reject', exact=True)
+        ui.find('Omar Fullname\'s proposal is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        title = [ui.label(n) for n in ui.nodes() if ui.label(n).startswith('Reject ') and ui.label(n).endswith('?')]
+        self.assertEqual(len(title), 1, title)
+        # a newer proposal for another code: the list puts it first once the phone has synced (every 2 min on screen)
+        second = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA508', 'changes': {'notes': 'second one'}, 'base': {}}})
+        time.sleep(130)
+        self.assertTrue(ui.present(title[0], exact=True), 'the question changed under the person: ' + str([ui.label(n) for n in ui.nodes()][:20]))
+        ui.tap('Reject', exact=True)
+        def decided():
+            st = {s['id']: s['status'] for s in omar.req('GET', '/api/submissions?status=all')['submissions']}
+            return st if st.get(first['id']) != 'pending' else None
+        st = self.wait_server(decided, 'the Reject never reached the server')
+        self.assertEqual((st[first['id']], st[second['id']]), ('rejected', 'pending'), 'Reject decided the wrong proposal')
+
     def test_member_pages(self):
         """requests 6, 9 and 10 as a member: the leaderboard; Updates on Manage's top level (not in Account); My
         proposals filtered by status and grouped by code"""
@@ -2574,7 +2598,7 @@ class Phone(unittest.TestCase):
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
           'panel_keyboard', 'photo_size', 'saved_place'),
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links',
-          'destructive'),
+          'destructive', 'question_stays'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'flow', 'course_figures', 'photo_marks'))
 

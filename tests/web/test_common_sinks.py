@@ -287,7 +287,7 @@ class Sinks(unittest.TestCase):
             pg.evaluate(ask)
             for _ in range(4):
                 pg.keyboard.press('Tab')
-                self.assertTrue(pg.evaluate("document.querySelector('dialog.kconfirm').contains(document.activeElement) || document.activeElement === document.body"))
+                self.assertTrue(pg.evaluate("document.querySelector('dialog.kconfirm').contains(document.activeElement)"))
             # the named action confirms
             pg.click('dialog.kconfirm .kq-yes')
             pg.wait_for_function('window.answer !== undefined')

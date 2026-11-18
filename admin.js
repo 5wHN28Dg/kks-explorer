@@ -237,7 +237,7 @@ const VIEWS={
           // someone who joined with the app has no account on the server: this makes one for the same person
           if(K.cfg?.mode==='server') out.push(ghost('Web sign-in',()=>webSignin(u))) } }
       else if(canEdit(u)&&u.id!==ME.user.id){
-        out.push(ghost(u.active?'Deactivate':'Activate',()=>setUser(+u.id,{active:!u.active})));
+        out.push(ghost(u.active?'Deactivate':'Activate',async()=>(!u.active||await K.confirm(`Deactivate ${u.username}?`,'Every device of theirs is removed: it stops syncing and wipes the plant from itself when it next connects.','Deactivate'))&&setUser(+u.id,{active:!u.active})));
         // the server's key for them was removed and a device of their own still syncs: Deactivate removes those too
         if(!u.active&&u.own_devices) out.push(ghost('Remove devices',async()=>await K.confirm('Remove all devices of '+u.username+'?','They stop syncing.','Remove devices')&&setUser(+u.id,{active:false})));
         if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setUser(+u.id,{role:other(u)})));
@@ -513,7 +513,7 @@ function pollJob(){ clearTimeout(pollT); pollT=setTimeout(async()=>{
 // ---------- actions ----------
 async function decide(id,action,force){
   let note='';
-  if(action==='reject'){ const a=await askDanger('Reject this proposal?','The submitter sees that it was rejected, and the reason if you give one. It can\'t be decided again.','Reject',true); if(!a) return; note=a.note }
+  if(action==='reject'){ const a=await askDanger('Reject this proposal?','The submitter sees that it was rejected, and the reason if you give one. It can\'t be decided again.','Reject','reason'+id); if(!a) return; note=a.note }
   if(force&&!await K.confirm('Overwrite the current value?','This proposal replaces the newer value now in use.','Overwrite')) return;
   const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);   // hand-marked tag: approve with the edited code
   const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
@@ -521,7 +521,8 @@ async function decide(id,action,force){
 }
 // A question before something that can't be taken back (rejections): the page's own dialog (K.confirm). With
 // `reason`: an optional reason, shown to the submitters, offered again after a cancel. -> Promise of {note} or null.
-const askDanger=(title,text,action,reason)=>K.confirm(title,text,action,reason?{note:'Reason (optional, shown to the submitters)',draft:'reason'}:{});
+// (`reason`: the key its draft is kept under, one per proposal or selection: a reason typed for one never shows for another)
+const askDanger=(title,text,action,reason)=>K.confirm(title,text,action,reason?{note:'Reason (optional, shown to the submitters)',draft:reason}:{});
 // the bar sticks to the bottom of the window: a control the keyboard moves to stays above it (scroll-padding for the
 // browser's own scrolling; a nudge for what lands under it anyway)
 document.addEventListener('focusin',e=>{ const bar=$('#pickbar'); if(!bar||bar.contains(e.target)) return;
@@ -551,7 +552,7 @@ async function decideMany(action){
   if(action==='approve') for(const id of ids){ const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);
     if(ek) edits.set(id,{kks:ek.value.trim().toUpperCase(),isa:(ei?.value??'').trim().toUpperCase()}) }
   let note='';
-  if(action==='reject'){ const a=await askDanger(`Reject ${of}?`,'Each one is rejected as its own Reject button does. The submitters see that it was rejected, and the reason if you give one.',`Reject ${of}`,true);
+  if(action==='reject'){ const a=await askDanger(`Reject ${of}?`,'Each one is rejected as its own Reject button does. The submitters see that it was rejected, and the reason if you give one.',`Reject ${of}`,'reason'+[...ids].join(','));
     if(!a) return; note=a.note }
   if(deciding) return;      // (a second question answered while the first one's batch runs)
   deciding=true;

@@ -1269,6 +1269,13 @@ K.confirm = (title, text, action, {danger = true, keep = 'Cancel', note = '', dr
     h('h2', {id: id + 't', style: 'font-size:16px;margin:0 0 6px;overflow-wrap:anywhere'}, title),
     text ? h('p', {id: id + 'x', style: 'margin:0 0 12px;opacity:.9;white-space:pre-line;overflow-wrap:anywhere'}, text) : null, field,
     h('div', {style: 'display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap'}, no, yes));
+  // Tab and Shift+Tab go round the dialog's own controls (a modal dialog alone lets them leave for the browser's)
+  d.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const f = [field, no, yes].filter(Boolean), i = f.indexOf(document.activeElement);
+    e.preventDefault();
+    f[(i < 0 ? 0 : i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+  });
   d.addEventListener('close', () => {
     const ok = d.returnValue === 'yes', v = field?.value.trim() || '';
     if (draft) confirmDrafts[draft] = ok ? '' : v;
@@ -1285,9 +1292,9 @@ K.confirm = (title, text, action, {danger = true, keep = 'Cancel', note = '', dr
 // without moving the focus; Undo runs `undo` once. A new one replaces the last (whose undo is then gone).
 K.undo = (text, undo, ms = 8000) => {
   document.getElementById('kundo')?.remove();
-  const plain = document.getElementById('toast'); if (plain) plain.style.display = 'none';   // (it says the same, under it)
   const h = K.h, box = h('div', {id: 'kundo', role: 'status', 'aria-live': 'polite',
-    style: 'position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:45;display:flex;gap:12px;align-items:center;' +
+    // (above the pages' toasts, which sit 24 px from the bottom: a message said meanwhile stays in view)
+    style: 'position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:45;display:flex;gap:12px;align-items:center;' +
            'background:var(--chrome3,#2f4352);color:var(--ink,#e9eef2);border:1px solid var(--line,#3a5061);border-radius:8px;padding:4px 4px 4px 14px;width:max-content;max-width:92vw;box-shadow:0 6px 24px #0008;font:14px/1.45 var(--sans,system-ui,sans-serif)'},
     h('span', {style: 'overflow-wrap:anywhere'}, text),
     h('button', {type: 'button', style: 'min-height:48px;min-width:72px;background:none;border:0;color:#ffa15c;font:inherit;font-weight:700;cursor:pointer',   // (5.1:1 on the bar; the accent gave 3.9)

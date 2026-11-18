@@ -1008,7 +1008,8 @@ proc ask*(owner: HWND, title, text, yes: string, no = "Cancel", destructive = tr
   var pressed: int32 = 0
   if TaskDialogIndirect(addr c, addr pressed, nil, nil) == 0:
     return pressed == 100
-  # (no task dialog: Common Controls v5 loaded somehow) a message box, its second button (Cancel) the default
+  # (the task dialog failed to show: out of memory, a bad owner) a message box, its second button (Cancel) the
+  # default. Without Common Controls v6 the app would not start at all: TaskDialogIndirect is imported from it.
   MessageBoxW(owner, newWideCString(title & (if text.len > 0: "\n\n" & text else: "")), wTitle,
               MB_OKCANCEL or MB_ICONQUESTION or 0x100'u32) == IDOK    # MB_DEFBUTTON2
 
@@ -1081,6 +1082,7 @@ proc activateFocused*(): bool =
 # ---------------------------------------------------------------- a popup window hosting a page
 
 var popups = initTable[HWND, (Page, proc ())]()
+var popupMayClose* = initTable[HWND, proc (): bool]()   ## a popup's close box (and Escape) asks this first: false keeps it
 
 proc popupProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
   case m
@@ -1092,7 +1094,12 @@ proc popupProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
       PostMessageW(h, WM_CLOSE, 0, 0)
       return 0
     if dispatchCommand(w, l): return 0
+  of WM_CLOSE:
+    if h in popupMayClose:
+      let ask = popupMayClose[h]      # (a copy: the window may go while it asks, and its entry with it)
+      if not ask(): return 0
   of WM_DESTROY:
+    popupMayClose.del h
     let i = escCloses.find(h)
     if i >= 0: escCloses.del i
     if h in popups:
