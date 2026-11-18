@@ -143,7 +143,7 @@ func _at(tree: SceneTree, ui_scale: String, size_given, density: float, dflt: fl
 		await _open(tree, main, pn)
 		for i in 3:
 			await tree.process_frame
-		p += _check_panel(main, pn, at, canvas, phone, ui_size)
+		p += await _check_panel(main, pn, at, canvas, phone, ui_size)
 		_close(main, pn)
 		await tree.process_frame
 	p += await _workshop(tree, main, at, ui_size)
@@ -202,7 +202,7 @@ func _compact(main, at: String, canvas: Rect2, want: bool) -> Array:
 	for i in pm.item_count:
 		listed.append(pm.get_item_text(i))
 	var wanted: Array = ["Settings"]
-	for c in ui._bar_items:
+	for c in ui._compact_order():
 		if c is Button and c.visible and c.get_parent() != ui.bar:
 			wanted.append({"1×": "Normal speed (1×)", "Fast": "Fast-forward"}.get(c.text, c.text))
 	# its highlighted row's text 4.5:1 on its backing (UI-UX-POLICY K1)
@@ -477,6 +477,10 @@ func _node(main, pn: String) -> Control:
 
 
 func _check_panel(main, pn: String, at: String, canvas: Rect2, phone: bool, ui_size: float) -> Array:
+	return await _check_panel_a(main, pn, at, canvas, phone, ui_size)
+
+
+func _check_panel_a(main, pn: String, at: String, canvas: Rect2, phone: bool, ui_size: float) -> Array:
 	var p: Array = []
 	var n := _node(main, pn)
 	if n == null or not n.is_visible_in_tree():
@@ -494,7 +498,23 @@ func _check_panel(main, pn: String, at: String, canvas: Rect2, phone: bool, ui_s
 	if pn == "screens" and pr.end.y - main.ui.mimic.canvas_top() < canvas.size.y * 0.3:
 		p.append("%s: the screens leave %.0f px of %.0f to the screen itself (30 %% the least; from %.0f, over the row %s)" % [at,
 			pr.end.y - main.ui.mimic.canvas_top(), canvas.size.y, pr.position.y, str(main.ui.views_over_row)])
-	# the screens' tabs and Close: no HUD button over them (the screens over the compact row hide Map)
+	# the screens' tabs and Close: no HUD button over them (the screens over the compact row hide Map); with a gamepad
+	# in use its line, which says how the screens are worked, shows over them on the canvas
+	if pn == "screens" and main.ui.compact:
+		var hud0 = main.hud
+		var touch0 = main.cf.get_value("controls", "touch", "auto")
+		main.cf.set_value("controls", "touch", "auto")   # (an earlier test file's choice: Always keeps the bar as it is)
+		hud0.input.pad = true
+		hud0.refresh()
+		for i in 3:
+			await main.get_tree().process_frame
+		if not hud0.pad_hint.is_visible_in_tree() or not canvas.grow(0.5).encloses(hud0.pad_hint.get_global_rect()):
+			p.append("%s: over the screens the gamepad's line doesn't show (%s)" % [at, str(hud0.pad_hint.get_global_rect())])
+		hud0.input.pad = false
+		main.cf.set_value("controls", "touch", touch0)
+		hud0.refresh()
+		for i in 2:
+			await main.get_tree().process_frame
 	if pn == "screens":
 		var chrome := Rect2(pr.position, Vector2(pr.size.x, main.ui.mimic.canvas_top() - pr.position.y))
 		for b in main.hud.bar.get_children():

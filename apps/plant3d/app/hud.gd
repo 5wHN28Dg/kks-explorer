@@ -95,6 +95,10 @@ func setup(m) -> void:
 	pad_hint.add_theme_color_override("font_outline_color", Color.BLACK)
 	pad_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	pad_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pb := StyleBoxFlat.new()          # (a backing: it may lie over the screens or the drawings, K5)
+	pb.bg_color = Color(0.05, 0.05, 0.06, 0.85)
+	pb.set_content_margin_all(4)
+	pad_hint.add_theme_stylebox_override("normal", pb)
 	top_box.add_child(pad_hint)
 	# the two sticks (shown on touch screens, or when chosen in the settings)
 	for side in [["move", Control.PRESET_BOTTOM_LEFT], ["look", Control.PRESET_BOTTOM_RIGHT]]:
@@ -294,7 +298,7 @@ func _measure_status() -> void:
 		return
 	_status_len = n
 	var w := top_box.size.x
-	var h := _text_h(status, w) + (_text_h(pad_hint, w) if pad_hint.visible else 0.0)
+	var h := (_text_h(status, w) if status.visible else 0.0) + (_text_h(pad_hint, w) if pad_hint.visible else 0.0)
 	if h > _status_h + 0.5:
 		_status_h = h
 		if _status_low:
@@ -764,5 +768,12 @@ func _each_frame(_d: float) -> void:
 	_measure_status()
 	if _status_low:
 		var covered: bool = panel.visible or (main.ui != null and main.ui.has_method("covers_bottom") and main.ui.covers_bottom())
-		if top_box.visible == covered:
-			top_box.visible = not covered
+		# over the screens or the drawings the gamepad's line still shows (it says how they are worked), alone, on a
+		# backing: the status line hides
+		var pad_only: bool = covered and not panel.visible and pad_hint.visible and main.ui != null and main.ui.views_open()
+		var show: bool = not covered or pad_only
+		if status.visible == pad_only or top_box.visible != show:
+			status.visible = not pad_only
+			top_box.visible = show
+			top_box.size = Vector2(hud_root.size.x - 2.0 * _stick_side(), 0)   # (shown again at its width)
+			_status_reset()
