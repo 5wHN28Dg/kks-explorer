@@ -20,6 +20,12 @@ LIBS = {
     'androidx.core': 'androidx.core:core',
     'androidx.work': 'androidx.work:work-runtime',
     'kotlinx.coroutines': 'org.jetbrains.kotlinx:kotlinx-coroutines-',
+    'androidx.camera.core': 'androidx.camera:camera-core',
+    'androidx.camera.lifecycle': 'androidx.camera:camera-lifecycle',
+    'androidx.camera.extensions': 'androidx.camera:camera-extensions',
+    'androidx.camera.compose': 'androidx.camera:camera-compose',
+    # the viewfinder's coordinate transformer comes with camera-compose (its API: viewfinder-compose)
+    'androidx.camera.viewfinder.compose': 'androidx.camera:camera-compose',
 }
 # the platform and the language: nothing to declare
 PLATFORM = ('android.', 'java.', 'javax.', 'kotlin.', 'kks.', 'org.json.', 'org.w3c.', 'org.xml.', 'dalvik.')

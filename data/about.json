@@ -697,7 +697,7 @@
   {
    "id": "compose",
    "name": "Jetpack Compose",
-   "version": "1.7.6",
+   "version": "1.7.8",
    "license": "Apache-2.0",
    "license_name": "Apache License 2.0",
    "license_ids": [
@@ -712,7 +712,7 @@
   },
   {
    "id": "androidx",
-   "name": "AndroidX libraries (Activity, Core, Lifecycle, Room, WorkManager and what they use)",
+   "name": "AndroidX libraries (Activity, CameraX, Core, Lifecycle, Room, WorkManager and what they use)",
    "version": null,
    "license": "Apache-2.0",
    "license_name": "Apache License 2.0",
@@ -805,6 +805,102 @@
     "android": "bundled"
    },
    "notice": null
+  },
+  {
+   "id": "dagger",
+   "name": "Dagger",
+   "version": "2.59",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://dagger.dev",
+   "use": "used by CameraX",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "javax-inject",
+   "name": "javax.inject (JSR-330)",
+   "version": "1",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/javax-inject/javax-inject",
+   "use": "used by Dagger",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "jakarta-inject",
+   "name": "Jakarta Dependency Injection",
+   "version": "2.0.1",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/jakartaee/inject",
+   "use": "used by Dagger",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": "Its NOTICE file, META-INF/NOTICE.md of jakarta.inject-api-2.0.1.jar:\n\n# Notices for Eclipse Jakarta Dependency Injection\n\nThis content is produced and maintained by the Eclipse Jakarta Dependency Injection project.\n\n* Project home: https://projects.eclipse.org/projects/cdi.batch\n\n## Trademarks\n\nJakarta Dependency Injection is a trademark of the Eclipse Foundation.\n\n## Copyright\n\nAll content is the property of the respective authors or their employers. For\nmore information regarding authorship of content, please consult the listed\nsource code repository logs.\n\n## Declared Project Licenses\n\nThis program and the accompanying materials are made available under the terms\nof the Apache License, Version 2.0 which is available at\nhttps://www.apache.org/licenses/LICENSE-2.0.\n\nSPDX-License-Identifier: Apache-2.0\n\n## Source Code\n\nThe project maintains the following source code repositories:\n\nhttps://github.com/eclipse-ee4j/injection-api\nhttps://github.com/eclipse-ee4j/injection-spec\nhttps://github.com/eclipse-ee4j/injection-tck\n\n## Third-party Content\n\nThis project leverages the following third party content.\n\nNone\n\n## Cryptography\n\nNone"
+  },
+  {
+   "id": "auto-value-annotations",
+   "name": "AutoValue annotations",
+   "version": "1.6.3",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/google/auto",
+   "use": "used by CameraX",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": null
+  },
+  {
+   "id": "atomicfu",
+   "name": "kotlinx.atomicfu",
+   "version": "0.28.0",
+   "license": "Apache-2.0",
+   "license_name": "Apache License 2.0",
+   "license_ids": [
+    "Apache-2.0"
+   ],
+   "url": "https://github.com/Kotlin/kotlinx-atomicfu",
+   "use": "used by CameraX",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": "Its NOTICE file, license/NOTICE.txt of github.com/Kotlin/kotlinx-atomicfu at 0.28.0:\n\n   =========================================================================\n   ==  NOTICE file corresponding to the section 4 d of                    ==\n   ==  the Apache License, Version 2.0,                                   ==\n   ==  in this case for the kotlix.atomicfu library.                      ==\n   =========================================================================\n\n   kotlinx.atoimcfu library.\n   Copyright 2017 JetBrains s.r.o and respective authors and developers\n"
+  },
+  {
+   "id": "libyuv",
+   "name": "libyuv",
+   "version": null,
+   "license": "BSD-3-Clause",
+   "license_name": "BSD 3-Clause License",
+   "license_ids": [
+    "BSD-3-Clause"
+   ],
+   "url": "https://chromium.googlesource.com/libyuv/libyuv",
+   "use": "image conversion in CameraX (camera-core's native library; camera-core 1.6.2's POM names BSD-3-Clause beside Apache-2.0)",
+   "platforms": {
+    "android": "bundled"
+   },
+   "notice": "Copyright 2011 The LibYuv Project Authors. All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n  * Redistributions of source code must retain the above copyright\n    notice, this list of conditions and the following disclaimer.\n\n  * Redistributions in binary form must reproduce the above copyright\n    notice, this list of conditions and the following disclaimer in\n    the documentation and/or other materials provided with the\n    distribution.\n\n  * Neither the name of Google nor the names of its contributors may\n    be used to endorse or promote products derived from this software\n    without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nHOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n"
   }
  ],
  "licenses": {
