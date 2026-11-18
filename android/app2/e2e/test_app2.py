@@ -2434,10 +2434,9 @@ class Phone(unittest.TestCase):
 # ~0.8 GiB) while part 2 ended at 5.79, so test_description_and_credit and test_app_links went to part 2.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
           'panel_keyboard', 'photo_size'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links',
-          'photo_marks'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
-          'flow', 'course_figures'))
+          'flow', 'course_figures', 'photo_marks'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))
