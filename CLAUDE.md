@@ -221,7 +221,9 @@ in `CLAUDE.local.md` ("Deployment"), never in tracked files.
     16 and 16 minutes, ending at 6.8, 6.2 and 6.4 GiB (part 3 holds test_course_figures, 5.5 minutes; a part that
     ends above 7 GiB gives a test to another; part 1 had reached 7.8 GiB). test_app_links (#211) is in part 3, which
     then ended at 6.91 GiB; in part 1 or 2 it had taken them to 7.25 and 7.03 GiB. Two halves of
-    15 minutes had ended between 6.4 and 7.7 GiB: too close. The emulator
+    15 minutes had ended between 6.4 and 7.7 GiB: too close. On 2026-11-18 part 3 ended at 7.90 GiB on one run and
+    6.82 on the next (the memory after booting differs by ~0.8 GiB), so test_description_and_credit and
+    test_app_links moved to part 2 (which had ended at 5.79). The emulator
     does not slow down on the way (#150: reading the screen took 2.0 s at 3.7 GiB and at 7.5 GiB).
   - Every test_app2 test starts its own server and clears the app (#150), so any order and any split is a valid
     run, and "the Android e2e passed" means every test did, in however many parts. With `KKS_E2E_DIAG=folder` each
