@@ -2594,6 +2594,127 @@ class Phone(unittest.TestCase):
         self.assertFalse(ui.present('Drag a box around the tag the app missed (two fingers move the drawing)'), 'Back did not end marking')
         self.assertTrue(ui.present('Search equipment by KKS code or description'), 'Back left the app')
 
+    def test_saved_place_more(self):
+        """#426 audit pass 2: the on-screen Back buttons ask as system Back does (Setup's Back, Manage's "‹ Manage", the
+        Selected list's Close); a description or tag that arrives by sync while text is typed leaves the typed text and
+        the panel; Account's fields follow a change that arrives while nothing is typed in them; the reading drill's
+        answer is not kept for another reading after the screen is made again; the bottom tabs' question names the
+        panel when its forms hold the text"""
+        def no_question():
+            time.sleep(1.5)
+            self.assertFalse(any(ui.present(q, exact=True) for q in ('Discard your edits?', 'Discard what you typed?')),
+                             'asked about text nobody typed')
+        # Setup: the page's own Back button asks before the typed address goes
+        ui.tap('Join through a server', exact=True)
+        ui.type_into('Server address', 'typed.example:1')
+        ui.tap('Back', exact=True)
+        ui.find('Discard what you typed?', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('typed.example:1', exact=True, timeout=10)
+        ui.tap('Back', exact=True)
+        ui.find('Discard what you typed?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.find('Join through a server', exact=True, timeout=10)
+        added = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [1000, 300, 1120, 360],
+                                                                                     'kks': '11LAB70AA502', 'isa': '', 'note': ''}})
+        self.assertEqual(added['status'], 'approved', added)
+        added_id = next(a['id'] for a in self.boss.req('GET', '/api/state').get('added_tags', []) if a.get('kks') == '11LAB70AA502')
+
+        def describe(text):
+            base = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('custom') or []
+            nxt = [c for c in base if c['k'] != 'Description'] + [{'k': 'Description', 'v': text}]
+            r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'custom': nxt},
+                                                                                      'base': {'custom': base}}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        describe('First description')
+        self.join()
+
+        def sync():
+            ui.sh('input', 'keyevent', '111')       # (the keyboard away: Escape, not Back)
+            time.sleep(1)
+            ui.tap('Sync', exact=True)
+            ui.find('Synced with', timeout=30)
+            time.sleep(2)
+        # a description that arrives while another is being typed: the typed text stays, and the bottom tabs ask in the
+        # panel's words
+        self.open_tag()
+        ui.scroll_to('Edit description', exact=True)
+        ui.tap('Edit description', exact=True)
+        ui.type_into('Description', 'typed description', clear=True)
+        describe('Second description')
+        sync()
+        ui.find('typed description', exact=True, timeout=10)
+        ui.tap('Manage', exact=True)
+        ui.find('What you typed in the panel has not been saved.', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('typed description', exact=True, timeout=10)
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.sh('input', 'keyevent', '4')                       # the panel closes
+        time.sleep(1)
+        # the open tag removed by a sync while its form holds text: the panel and the text stay
+        self.open_tag('11LAB70AA502')
+        ui.scroll_to('Edit', exact=True)
+        ui.tap('Edit', exact=True)
+        ui.scroll_to('Near / landmark', exact=True)
+        ui.type_into('Near / landmark', 'kept near')
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': added_id}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        sync()
+        ui.find('kept near', exact=True, timeout=10)
+        self.assertTrue(ui.present('Copy 11LAB70AA502', exact=True), 'the panel closed under the typed text')
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.sh('input', 'keyevent', '4')
+        time.sleep(1)
+        # the Selected list: its Close asks before typed codes go
+        ui.tap('More', exact=True)
+        ui.tap('Select tags', exact=True)
+        ui.tap('List', exact=True)
+        ui.type_into('Add codes', '11LAB70AA501')
+        ui.tap('Close', exact=True)
+        ui.find('Discard what you typed?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.tap('Done', exact=True, timeout=10)
+        # Manage: "‹ Manage" asks before typed Account text goes
+        ui.tap('Manage', exact=True)
+        ui.tap('Account', exact=True)
+        ui.type_into('Full name', 'Typed Name', clear=True)
+        ui.tap('‹ Manage', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.find('Account', exact=True, timeout=10)
+        # nothing typed: a new name that arrives by sync shows in the field, and leaving asks nothing
+        ui.tap('Account', exact=True)
+        ui.find('The Manager', exact=True, timeout=10)
+        me = self.boss.req('GET', '/api/me')['user']
+        self.boss.req('POST', '/api/profile', {'full_name': 'The Renamed Manager', 'position': me.get('position', '')})
+        ui.find('The Renamed Manager', exact=True, timeout=200)       # (the phone syncs on its own every 2 min on screen)
+        ui.tap('‹ Manage', exact=True)
+        no_question()
+        # the reading drill: an answer, then the screen made again (a font change): no verdict left over for whatever
+        # reading shows now
+        ui.tap('Learning', exact=True)
+        ui.tap('HRSG Course', timeout=15)
+        ui.tap('Contents', exact=True, timeout=15)
+        ui.scroll_to('Reading drill', exact=True, tries=20)
+        ui.tap('Reading drill', exact=True)
+        ui.scroll_to('Within limits (no alarm)', tries=20)
+        ui.tap('Within limits (no alarm)')
+        time.sleep(1)
+        self.assertTrue(any('\u2713' in ui.label(n) for n in ui.nodes()), 'the answer was not marked')
+        scale = ui.sh('settings', 'get', 'system', 'font_scale').strip() or '1.0'
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', scale)
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.15' if scale != '1.15' else '1.2')
+        time.sleep(4)
+        ui.scroll_to('Within limits (no alarm)', tries=20)
+        self.assertFalse(any(('\u2713' in ui.label(n) or '\u2717' in ui.label(n)) for n in ui.nodes()),
+                         'a verdict kept from before, over another reading')
+        ui.sh('settings', 'put', 'system', 'font_scale', scale)
+        time.sleep(3)
+
     def test_question_stays(self):
         """#365 review: a proposal that arrives (by sync) while Reject's question is open does not take the question
         over: the question and its button stay with the proposal it was opened for"""
@@ -2673,7 +2794,7 @@ PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'flow', 'course_figures', 'photo_marks'),
-         ('destructive', 'question_stays', 'saved_place'))
+         ('destructive', 'question_stays', 'saved_place', 'saved_place_more'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))

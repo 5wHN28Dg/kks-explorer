@@ -198,7 +198,8 @@ fun MainScreen() {
     val queue = remember(rev) { if (admin) call("GET", "/api/state").json.optInt("queue") else 0 }
     BackHandler(enabled = ui.tab != "drawings") { ui.tab = "drawings" }
     ui.leaving?.let { then ->
-        Confirm("Discard your edits?", "What you typed has not been saved.", "Discard", { PanelDrafts.drop(); ui.leaving = null; then() },
+        Confirm("Discard your edits?", if (PanelDrafts.dirty.filterValues { it }.keys.all { it in PANEL_DRAFTS }) "What you typed in the panel has not been saved." else "What you typed has not been saved.",
+            "Discard", { PanelDrafts.drop(); ui.leaving = null; then() },
             { ui.leaving = null; ui.keptSeq++ }, no = "Keep editing")
     }
     Scaffold(
@@ -281,10 +282,13 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
     val rev = Changes.rev
     val list = remember(rev) { sheets() }
+    var keptChecked by remember { mutableStateOf(false) }
     LaunchedEffect(list) {
         if (ui.sheet.isEmpty() || list.none { it.id == ui.sheet }) list.firstOrNull()?.let { ui.sheet = it.id }
-        // (a tag kept from before the app was stopped that is no longer there: no empty panel)
-        if (ui.selected.isNotEmpty() && !call("GET", "/native/tag", query = mapOf("id" to ui.selected)).json.has("sheet")) ui.selected = ""
+        // (a tag kept from before the app was stopped that is no longer there: no empty panel. Once, when the screen
+        // comes back: a later sync that removes the open tag leaves the panel and what is typed in it, as before)
+        if (!keptChecked) { keptChecked = true
+            if (ui.selected.isNotEmpty() && !call("GET", "/native/tag", query = mapOf("id" to ui.selected)).json.has("sheet")) ui.selected = "" }
     }
     // (saved: turning the phone or the app stopped in the background keeps them, #366)
     var query by rememberSaveable { mutableStateOf("") }

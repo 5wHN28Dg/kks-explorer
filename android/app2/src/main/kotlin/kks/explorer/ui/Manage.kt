@@ -62,7 +62,7 @@ fun Manage(snack: SnackbarHostState, ui: Ui? = null) {
     val say: (String) -> Unit = { m -> Changes.rev++; kotlinx.coroutines.MainScope().launch { snack.showSnackbar(m) } }
     Column(Modifier.fillMaxSize()) {
         if (page.isNotEmpty() && aboutPage.value == null) Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { page = "" }) { Text("‹ Manage") }
+            TextButton(onClick = { if (PanelDrafts.any()) leaving = true else page = "" }) { Text("‹ Manage") }   // (asks, as system Back does)
         }
         Box(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             when (page) {
@@ -602,13 +602,22 @@ private fun Account(rev: Int, say: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val me = remember(rev) { call("GET", "/api/me").json.optJSONObject("user") ?: JSONObject() }
     // (saved, and not put back by a sync while something is typed: #366)
-    var fn by rememberSaveable(PanelDrafts.reset) { mutableStateOf(me.str("full_name")) }
-    var pos by rememberSaveable(PanelDrafts.reset) { mutableStateOf(me.str("position")) }
+    // (fn0, pos0: the values the fields started from; a change that arrives follows into a field not typed in)
+    var fn0 by rememberSaveable(PanelDrafts.reset) { mutableStateOf(me.str("full_name")) }
+    var pos0 by rememberSaveable(PanelDrafts.reset) { mutableStateOf(me.str("position")) }
+    var fn by rememberSaveable(PanelDrafts.reset) { mutableStateOf(fn0) }
+    var pos by rememberSaveable(PanelDrafts.reset) { mutableStateOf(pos0) }
+    LaunchedEffect(me) {
+        val f = me.str("full_name"); if (fn == fn0) fn = f; fn0 = f
+        val p = me.str("position"); if (pos == pos0) pos = p; pos0 = p
+    }
     var addr by rememberSaveable(PanelDrafts.reset) { mutableStateOf("") }
     var metered by remember { mutableStateOf(SyncWorker.metered(ctx)) }
     val relay0 = remember(rev) { Sync.config().optString("relay_url") }
-    var relay by rememberSaveable(PanelDrafts.reset) { mutableStateOf(relay0) }
-    val accountTyped = fn != me.str("full_name") || pos != me.str("position") || addr.isNotBlank() || relay != relay0
+    var relayFrom by rememberSaveable(PanelDrafts.reset) { mutableStateOf(relay0) }
+    var relay by rememberSaveable(PanelDrafts.reset) { mutableStateOf(relayFrom) }
+    LaunchedEffect(relay0) { if (relay == relayFrom) relay = relay0; relayFrom = relay0 }
+    val accountTyped = fn != fn0 || pos != pos0 || addr.isNotBlank() || relay != relayFrom
     if (accountTyped) HoldLinks()   // (typed, not saved)
     DraftFlag("account", accountTyped)
     var tick by remember { mutableIntStateOf(0) }

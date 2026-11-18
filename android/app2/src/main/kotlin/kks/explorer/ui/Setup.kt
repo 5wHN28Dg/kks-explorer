@@ -70,7 +70,7 @@ fun SetupScreen(onJoined: () -> Unit) {
             "nearby" -> NearbyJoin(onJoined)
             "file" -> FileJoin(onJoined)
         }
-        if (page.isNotEmpty()) TextButton(onClick = { page = "" }) { Text("Back") }
+        if (page.isNotEmpty()) TextButton(onClick = { if (PanelDrafts.any()) leaving = true else page = "" }) { Text("Back") }   // (asks, as system Back does)
     }
 }
 

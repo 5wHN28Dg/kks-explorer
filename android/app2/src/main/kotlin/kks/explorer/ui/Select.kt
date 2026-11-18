@@ -167,7 +167,7 @@ fun SelectList(selected: List<String>, places: Map<String, List<Drawn>>?, onUnti
                     .filter { it.isNotEmpty() }.joinToString(" ")
             }) { Text("Add") }
         }
-    }, confirmButton = { TextButton(onClick = onClose) { Text("Close") } })
+    }, confirmButton = { TextButton(onClick = { if (typed.isNotBlank()) discarding = true else onClose() }) { Text("Close") } })
 }
 
 private val PLACE = FIELDS.filter { it.first != "notes" }

@@ -78,6 +78,9 @@ private object PanelSize { var dp = -1f }
 
 /** what is typed and not sent in the open tag's panel, by form ("form", "desc", "review"): Back, Close, another tag or
  *  another sheet ask before it goes (#366, D3). `reset` empties them all (their saved state is keyed by it). */
+/** the tag panel's own forms (the question names the panel when only they hold text) */
+val PANEL_DRAFTS = setOf("form", "review", "desc")
+
 object PanelDrafts {
     val dirty = mutableStateMapOf<String, Boolean>()
     var reset by mutableIntStateOf(0)
@@ -356,8 +359,11 @@ fun credit(w: JSONObject?): String {
 private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
     var editing by rememberSaveable(code, PanelDrafts.reset) { mutableStateOf(false) }
-    var text by rememberSaveable(code, d.str("text"), PanelDrafts.reset) { mutableStateOf(d.str("text")) }
-    DraftFlag("desc", editing && text.trim() != d.str("text").trim())
+    // (the text when editing began: a description that arrives by sync meanwhile does not replace what is typed)
+    var opened by rememberSaveable(code, PanelDrafts.reset) { mutableStateOf(d.str("text")) }
+    var text by rememberSaveable(code, PanelDrafts.reset) { mutableStateOf(d.str("text")) }
+    LaunchedEffect(d.str("text"), editing) { if (!editing) { opened = d.str("text"); text = opened } }
+    DraftFlag("desc", editing && text.trim() != opened.trim())
     val draft = d.str("status") == "draft"
     Heading("Description")
     Surface(color = if (draft) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
