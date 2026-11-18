@@ -627,7 +627,7 @@ func _fill_more() -> void:
 		pm.add_item("Settings", _more_acts.size())
 		_more_acts.append(func(): main.hud.show_settings(true))
 	var names := {"1×": "Normal speed (1×)", "Fast": "Fast-forward"}
-	for it in _bar_items:
+	for it in _compact_order():         # (the speed's near the top, as the row keeps them first)
 		var b := it as Button
 		if b == null or b.get_parent() != _overflow or not b.visible:
 			continue
