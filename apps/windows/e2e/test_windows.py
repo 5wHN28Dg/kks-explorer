@@ -2,6 +2,7 @@
 No plant data: the drawing is importer/tests/vectors/kkp-sample.pdf. The app is driven through the native UI
 Automation core (uiadrive.exe, what Narrator uses) inside the VM's desktop session.
   python3 apps/windows/e2e/test_windows.py VM_IP [APP.exe] [uiadrive.exe] [SERVER] [IMPORTER]
+KKS_TESTS=test_a,test_b runs only those; KKS_LAPTOP=1 and KKS_VM_KEY for a real laptop (below).
 The VM: OpenSSH with the test key (~/.ssh/kks_vm), auto-logon user kks, reachable from here; the host is 192.168.122.1
 from its side (libvirt's default network). See apps/windows/README.md."""
 import base64, json, os, re, shutil, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
@@ -13,9 +14,13 @@ APP = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkswin/Walkdown.exe'
 DRIVER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kkswin/uiadrive.exe'
 SERVER = sys.argv[4] if len(sys.argv) > 4 else '/tmp/kkslinux/kks_server'
 IMPORTER = sys.argv[5] if len(sys.argv) > 5 else '/tmp/kksimp/kks_import'
-HOST = os.environ.get('KKS_HOST_FROM_VM', '192.168.122.1')
+# KKS_LAPTOP=1: a real Windows machine on the LAN (apps/windows/README.md, "A real (borrowed) Windows laptop"): this
+# machine's ports stay closed to the LAN, so the server's sync port reaches it through an SSH reverse tunnel (the app
+# joins 127.0.0.1), and screenshots come from its desktop session (e2e/shot.cpp), not from virsh
+LAPTOP = os.environ.get('KKS_LAPTOP') == '1'
+HOST = '127.0.0.1' if LAPTOP else os.environ.get('KKS_HOST_FROM_VM', '192.168.122.1')
 PEER = os.environ.get('KKS_PEER', '/tmp/kksgnome/progress_peer')   # apps/gnome/e2e/progress_peer.nim: a second device
-KEY = os.path.expanduser('~/.ssh/kks_vm')
+KEY = os.path.expanduser(os.environ.get('KKS_VM_KEY', '~/.ssh/kks_vm'))   # a laptop's own key (e2e/host)
 del sys.argv[1:]
 SSH = ['-i', KEY, '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-o', 'BatchMode=yes']
 
@@ -61,6 +66,20 @@ def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=(),
             during.pop(0)[1]()
         if ' done' in log: return ('PASSED' in log and not during, log + ''.join('\n(never reached: %s)' % a for a, _ in during))
     return (False, log)
+
+
+def screen_shot(path):
+    """a real machine's screen (KKS_LAPTOP) into path, as a BMP: shot.exe (e2e/shot.cpp, built next to the driver)
+    in the desktop session; it opens no window, so the app keeps the keyboard focus"""
+    vm('Remove-Item C:\\kks\\shot.bmp -ErrorAction SilentlyContinue')
+    vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe C:\\kks\\shot.exe '
+       '-ArgB64 %s -Name kksshot' % base64.b64encode(b'C:\\kks\\shot.bmp').decode())
+    for _ in range(30):
+        time.sleep(1)
+        if vm('(Get-Item C:\\kks\\shot.bmp -ErrorAction SilentlyContinue).Length').strip() not in ('', '0'):
+            time.sleep(1)       # (written at once, but let it close the file)
+            subprocess.run(['scp', '-q'] + SSH + ['kks@%s:C:/kks/shot.bmp' % VM, path], check=True, timeout=120)
+            return
 
 
 def msix(args):
@@ -151,6 +170,15 @@ class Windows(unittest.TestCase):
         cls.server, setup = start_server(SERVER, cls.dir, cfg, sync=True)
         cls.port, cls.sport = cfg['port'], cfg['sync_port']
         cls.boss = Client('http://127.0.0.1:%d' % cls.port)
+        cls.tunnel = None
+        if LAPTOP:
+            cls.tunnel = subprocess.Popen(['ssh'] + SSH + ['-N', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15',
+                                                           '-o', 'ServerAliveCountMax=3', '-R',
+                                                           '%d:127.0.0.1:%d' % (cls.sport, cls.sport), 'kks@' + VM])
+            time.sleep(3)
+            assert cls.tunnel.poll() is None, 'the SSH reverse tunnel to the laptop did not open'
+            # (ended even when the rest of setUpClass fails: tearDownClass then never runs)
+            cls.addClassCleanup(lambda t=cls.tunnel: (t.terminate(), t.wait(5)) if t.poll() is None else None)
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
                                                    'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f: pdf = f.read()
@@ -171,6 +199,7 @@ class Windows(unittest.TestCase):
         subprocess.run([sys.executable, '-c', 'from PIL import Image, ImageDraw; im = Image.new("RGB", (3200, 2400), (60, 90, 150)); '
                         'ImageDraw.Draw(im).rectangle([1067, 800, 2133, 1600], fill=(240, 240, 240)); im.save(%r, quality=92)' % photo], check=True)
         put(APP, DRIVER, os.path.join(HERE, 'run.ps1'), os.path.join(HERE, 'runapp.ps1'), photo)
+        if LAPTOP: put(os.path.join(os.path.dirname(DRIVER), 'shot.exe'))
         if MSIX:
             put(MSIX, MSIX_CER, os.path.join(HERE, 'msix.ps1'))
             vm('Import-Certificate -FilePath C:\\kks\\%s -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople | Out-Null'
@@ -224,8 +253,11 @@ class Windows(unittest.TestCase):
         if not out: return
         os.makedirs(out, exist_ok=True)
         ppm = os.path.join(self.dir, name + '.ppm')
-        dom = os.environ.get('KKS_VM_DOMAIN') or ('kks-win11' if VM.endswith('.20') else 'kks-win10')
-        subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, ppm], capture_output=True)
+        if LAPTOP:
+            screen_shot(ppm)
+        else:
+            dom = os.environ.get('KKS_VM_DOMAIN') or ('kks-win11' if VM.endswith('.20') else 'kks-win10')
+            subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, ppm], capture_output=True)
         if os.path.exists(ppm):
             from PIL import Image
             im = Image.open(ppm)
@@ -284,6 +316,32 @@ class Windows(unittest.TestCase):
                                   'wait\t~Version %s (commit %s' % (version, commit[:12]), 'sleep\t2003',
                                   'keys\t%s\t0x1B' % notice, 'gone\tAbout Walkdown', 'wait\tManage'],
                    during=[('sleep\t2003', lambda: self.screenshot('about-manage'))])
+        self.leave()
+
+    def test_draw_timing(self):
+        """KKS_DRAW_TIMING's draw lines (viewer.nim drawNote): the window's Direct2D target (GPU or
+        software), each paint and each tile's render are timed while the drawing is zoomed in step by step and panned;
+        the summary is printed (a real laptop's GPU against the VMs' WARP)"""
+        self.join('djoin.uia', env={'KKS_DRAW_TIMING': '1'})
+        zoom = ['keys\tDrawing\t0x6B', 'sleep\t700'] * 8
+        pan = ['keys\tDrawing\t0x27,0x27,0x27,0x28,0x28', 'sleep\t700', 'keys\tDrawing\t0x25,0x25,0x26,0x26', 'sleep\t700'] * 3
+        self.check('draw0.uia', ['wait\tDrawing\t10', 'sleep\t1000'] + zoom + pan + ['sleep\t1500'],
+                   during=[('sleep\t1500', lambda: self.screenshot('draw-zoomed'))])
+        # (the plain exe's data folder, or the MSIX package's: KKS_WIN_MSIX)
+        log = vm('@(Get-Content "$env:LOCALAPPDATA\\Walkdown\\timing.log", '
+                 '"$env:LOCALAPPDATA\\Packages\\Walkdown_*\\LocalCache\\Local\\Walkdown\\timing.log" '
+                 '-ErrorAction SilentlyContinue) -join "`n"')
+        lines = [l.strip() for l in log.splitlines() if l.startswith('draw: ')]
+        target = [l for l in lines if l.startswith('draw: render target ')]
+        self.assertTrue(target, 'no render target line in timing.log:\n' + log[-2000:])
+        def times(prefix):
+            return sorted(float(m.group(1)) for l in lines if l.startswith(prefix)
+                          for m in [re.search(r' ([0-9.]+) ms$', l)] if m)
+        paints, tiles = times('draw: paint '), times('draw: tile ')
+        self.assertTrue(paints and tiles, 'no paint or tile times in timing.log:\n' + log[-2000:])
+        def summary(t):
+            return 'n=%d median %.2f p95 %.2f max %.2f ms' % (len(t), t[len(t) // 2], t[int(len(t) * 0.95)], t[-1])
+        print('\n%s; paints %s; tiles %s' % (target[0][len('draw: '):], summary(paints), summary(tiles)), file=sys.stderr)
         self.leave()
 
     def test_dark_drawings(self):
@@ -968,7 +1026,9 @@ class Windows(unittest.TestCase):
         core's 500 characters is cut before the photo is queued (refused by the core, it could never be sent)"""
         self.add_tag('11LBA10AA101', [600, 900, 720, 960], floor='1')
         self.add_tag('11LBA10AA102', [800, 900, 920, 960], floor='1')
-        self.join('qjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1', 'KKS_TEST_RETRY_MS': '600000'})
+        # (KKS_TEST_ENCODE_MS: each compression takes 8 s at least, so the status line's "Compressing" is there to be
+        # read; on a real laptop the photo was compressed and sent before the next look)
+        self.join('qjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1', 'KKS_TEST_RETRY_MS': '600000', 'KKS_TEST_ENCODE_MS': '8000'})
         self.check('queue0.uia', self.show('11LBA10AA101') + [
             # the search result's photo mark, in words in its text
             'wait\t~11LBA10AA101   \t5', 'wait\t~ · Sample sheet · no photos\t5',
@@ -1455,9 +1515,7 @@ class Windows(unittest.TestCase):
         # untouched final check says how many questions it has (it said "0 / 0 right")
         self.check('course5.uia', ['select\tPlacement test', 'click\tOpen the selected page', 'wait\t~ · 4 · 4–20 mA\t20',
                                    'select\tFinal check', 'click\tOpen the selected page', 'wait\t0 / 20 answered\t20'])
-        shot = os.path.join(tempfile.gettempdir(), 'kks-win-course.ppm')
-        dom = 'kks-win11' if VM.endswith('.20') else 'kks-win10'
-        subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, shot], capture_output=True)
+        self.screenshot('win-course')
         self.leave()       # leave no device behind for test_flow (it finds this VM's device by its label)
 
     def test_stale_click(self):
@@ -1698,4 +1756,6 @@ class Windows(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    # KKS_TESTS=test_a,test_b: only these (the command line holds the machine and the builds)
+    only = [t for t in os.environ.get('KKS_TESTS', '').split(',') if t]
+    unittest.main(defaultTest=['Windows.' + t for t in only] or None)
