@@ -278,7 +278,7 @@ func _build() -> void:
 	_ff_btn = _bar_button(bar, "Fast", func(): fast_forward())
 	_time = W.label("", 20, Color.WHITE, false)
 	_time.name = "clock"
-	# as wide as its longest text ("Day 99 Wednesday 23:59 ×1000"): it never grows or cuts as the time goes on
+	# as wide as its longest text ("Day 999 Wed 23:59 paused"): it never grows or cuts as the time goes on
 	_time.custom_minimum_size = Vector2(_clock_w(), 52 * W.scale)
 	_time.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_time.add_theme_constant_override("outline_size", 6)
@@ -364,6 +364,7 @@ func _build() -> void:
 	_build_toast()
 	root.get_viewport().size_changed.connect(_layout)
 	bar.resized.connect(_on_bar_resized)
+	bar.minimum_size_changed.connect(_on_bar_min)
 	# a panel made while its text had no width yet (a wrapping label is then a letter a line) was held taller than its
 	# place by that size; once its text has its width it goes to its place (the canvas is short at a large UI size);
 	# a panel whose tabs wrapped onto more rows gets them moved into its body (place_bar)
@@ -381,7 +382,7 @@ func _clock_w() -> float:
 	var f: Font = _time.get_theme_font("font")
 	var fs: int = _time.get_theme_font_size("font_size")
 	var w := 0.0
-	for t in ["Day 99 Wednesday 23:59 ×1000", "Day 99 Wednesday 23:59 paused", "99:59:59 ×1000", "99:59:59 paused"]:
+	for t in ["Day 999 Wed 23:59 paused", "Day 999 Wed 23:59 ×60", "99:59:59 paused"]:   # (fast-forward: 60× at most)
 		w = maxf(w, f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
 	return ceilf(w) + 12.0 * W.scale + 2.0 * 6.0      # (and its outline)
 
@@ -395,6 +396,13 @@ func _panel_min_changed(pnl: Control) -> void:
 func _relayout() -> void:
 	_relayout_queued = false
 	_layout()
+
+
+## The bar needs fewer rows (a wider canvas): it shrinks to them (a control only ever grows to its minimum by
+## itself), and the panels move up (_on_bar_resized).
+func _on_bar_min() -> void:
+	if bar.size.y > bar.get_combined_minimum_size().y + 0.5:
+		bar.size.y = 0.0
 
 
 ## The bar's height changed (it wrapped onto another row, or back): the panels move below it.
@@ -451,11 +459,15 @@ func panels_top() -> float:
 
 
 func _layout() -> void:
+	if not is_inside_tree():
+		return                # (the window reset as the app leaves: app/main.gd _exit_tree)
 	var vs: Vector2 = root.get_viewport_rect().size
 	if bar != null:
 		bar.position = Vector2(16.0, bar_top())
 		bar.size = Vector2(vs.x - 32.0, 0.0)
 	var top0 := panels_top()
+	if main != null and main.hud != null and main.hud.panel != null and main.hud.panel.visible:
+		main.hud._queue_fit()               # (the settings stand below the bar too)
 	if work != null and work.tools_panel != null:
 		work._layout()                      # (its tools below the bar too)
 	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach

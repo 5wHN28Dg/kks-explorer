@@ -60,6 +60,11 @@ func setup(u, m) -> void:
 	root.name = "manual"
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	# the buttons' and lists' text at the layer's size (the contents' list and Close were Godot's 16 px: 11 sp on
+	# the Note 9 at 150 %)
+	var th := Theme.new()
+	th.default_font_size = int(20 * W.scale)
+	root.theme = th
 	add_child(root)
 	var bg := Panel.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -121,6 +126,8 @@ func setup(u, m) -> void:
 
 
 func _layout() -> void:
+	if not is_inside_tree():
+		return                # (the window reset as the app leaves: app/main.gd _exit_tree)
 	var vs := root.get_viewport_rect().size
 	# the contents take less of a narrow screen (a phone held upright)
 	contents.get_parent().custom_minimum_size.x = minf(300.0 * W.scale, vs.x * 0.28)

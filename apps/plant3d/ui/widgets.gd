@@ -101,6 +101,12 @@ static func label(text: String, size := 20, colour := Color.WHITE, wrap := true)
 	return l
 
 
+## A target's height: `h` at UI scale 1 on a desktop (where a compact row may be under the buttons' 52), and the
+## buttons' at least on a phone (52 at its scale: 48 dp at its UI size, UI-UX-POLICY T1).
+static func tap_h(h: float) -> float:
+	return h * scale if scale <= 1.0 else maxf(h, 52.0) * scale
+
+
 static func button(text: String, f: Callable, min_w := 0) -> Button:
 	var b := Button.new()
 	b.text = text

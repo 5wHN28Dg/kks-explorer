@@ -145,6 +145,8 @@ func setup(u) -> void:
 
 
 func _layout() -> void:
+	if not is_inside_tree():
+		return                # (the window reset as the app leaves: app/main.gd _exit_tree)
 	var vs := get_viewport_rect().size
 	var w := minf(480.0 * W.scale, vs.x * 0.45)
 	panel.position = Vector2(vs.x - w - 12, 12)

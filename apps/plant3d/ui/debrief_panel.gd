@@ -250,7 +250,7 @@ func _row(e: Dictionary) -> Button:
 	b.flat = e.dev == "" and e.kind not in ["trip", "step", "start"]
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	b.custom_minimum_size = Vector2(0, 40 * W.scale)
+	b.custom_minimum_size = Vector2(0, W.tap_h(40))
 	b.add_theme_font_size_override("font_size", int(17 * W.scale))
 	var c := Color.WHITE
 	if e.dev != "":

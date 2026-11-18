@@ -127,6 +127,7 @@ func _idle(keep_code: String, keep_addr: String) -> void:
 	body.add_child(name_edit)
 	body.add_child(W.label("Host", 20, Color(1.0, 0.85, 0.4)))
 	scen = OptionButton.new()
+	scen.custom_minimum_size.y = 52 * W.scale       # (the buttons' height: 48 dp on a phone)
 	_scen_ids = ui.model.scenarios.keys()
 	_scen_ids.sort()
 	for i in _scen_ids.size():

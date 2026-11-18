@@ -640,8 +640,8 @@ func _check(node_name: String, text: String, group: String, id: String) -> Check
 	c.name = node_name
 	c.text = text
 	c.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	c.custom_minimum_size = Vector2(0, 44)      # (a finger's height on the Note 9)
-	c.add_theme_font_size_override("font_size", 17)
+	c.custom_minimum_size = Vector2(0, 52 * W.scale)   # (the layer's buttons' height: 48 dp on the Note 9)
+	c.add_theme_font_size_override("font_size", int(20 * W.scale))
 	c.button_pressed = pick[group].has(id)
 	c.toggled.connect(func(on: bool):
 		if on:

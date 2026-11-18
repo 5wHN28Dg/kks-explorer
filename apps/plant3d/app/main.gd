@@ -484,6 +484,7 @@ func _apply_ui_size() -> void:
 
 ## The UI size chosen in the settings: saved, and applied at once (the panels lay themselves out again).
 func set_ui_size(f: float) -> void:
+	opts.erase("ui_size")                   # (the choice wins over a size the start was given)
 	cf.set_value("ui", "ui_size", W.clamp_ui_size(f, 1.0))
 	Quality.save(cf)
 	_apply_ui_size()

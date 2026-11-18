@@ -121,7 +121,7 @@ func setup(u, screens_model, trend_buffer) -> void:
 		var b := W.button(names[i], show_screen.bind(i - 1))
 		b.toggle_mode = true
 		b.focus_mode = Control.FOCUS_NONE        # the screens are worked on the canvas; the tabs by Page Up/Down
-		b.custom_minimum_size.y = 44 * W.scale
+		b.custom_minimum_size.y = W.tap_h(44)
 		b.name = "tab_" + ("overview" if i == 0 else sm.screens[i - 1].id)
 		tabs.add_child(b)
 		_tab_btns.append(b)
@@ -129,7 +129,7 @@ func setup(u, screens_model, trend_buffer) -> void:
 			["Close", func(): ui.close_screens()]]:
 		var b := W.button(z[0], z[1], 52)
 		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size.y = 44 * W.scale
+		b.custom_minimum_size.y = W.tap_h(44)
 		b.name = "btn_" + String(z[0]).to_lower()
 		top.add_child(b)
 	var brow := HBoxContainer.new()
@@ -147,7 +147,7 @@ func setup(u, screens_model, trend_buffer) -> void:
 	for a in [["Acknowledge screen", func(): ack_screen()], ["Alarm list", func(): ui.toggle_alarms()]]:
 		var b := W.button(a[0], a[1])
 		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size.y = 38 * W.scale
+		b.custom_minimum_size.y = W.tap_h(38)
 		bb.add_child(b)
 		if ack_btn == null:
 			ack_btn = b

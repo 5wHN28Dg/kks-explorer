@@ -61,6 +61,15 @@ func _at(tree: SceneTree, ui_scale: String, ui_size: float) -> Array:
 	if (canvas.size - want).length() > 2.0:
 		p.append("%s: the canvas is %s, %s expected" % [at, str(canvas.size), str(want)])
 	p += _bars(main, at, canvas, ui_scale != "" and ui_size >= 1.5, ui_size)
+	if ui_scale == "" and ui_size == 1.0:
+		# a desktop at 100 % as before: the bar one row at 88 px, the panels from 160 px, with Instructor on too
+		ui.set_instructor(true)
+		for i in 3:
+			await tree.process_frame
+		if absf(ui.bar.get_global_rect().position.y - 88.0) > 0.5 or absf(ui.panels_top() - 160.0) > 0.5:
+			p.append("%s: the bar is at %.0f and the panels begin at %.0f with Instructor on (88 and 160 before)" % [at,
+				ui.bar.get_global_rect().position.y, ui.panels_top()])
+		ui.set_instructor(false)
 	for pn in _panels():
 		await _open(tree, main, pn)
 		for i in 3:
@@ -89,10 +98,12 @@ func _workshop(tree: SceneTree, main, at: String, ui_size: float) -> Array:
 	var back: Button = ws.panels.back_btn
 	if back == null or not back.is_visible_in_tree() or not canvas.grow(0.5).encloses(back.get_global_rect()):
 		p.append("%s: the Workshop's Back to the plant is not on screen: %s" % [at, str(back.get_global_rect()) if back else "none"])
-	var want: float = minf(main.get_viewport().scaling_3d_scale * ui_size, 2.0)
-	if absf(ws.vp.scaling_3d_scale - want) > 0.001:
-		p.append("%s: the Workshop's view is drawn at %.3f of its size, %.3f expected (as many pixels as at 100 %%)" % [at,
-			ws.vp.scaling_3d_scale, want])
+	# the pixels it draws across: its size in the canvas's units times its scale, as at 100 % (the canvas's width in
+	# the window's pixels times the plant's scale)
+	var px: float = ws.vp.size.x * ws.vp.scaling_3d_scale
+	var want: float = canvas.size.x * ui_size * main.get_viewport().scaling_3d_scale
+	if absf(px - want) > 2.0:
+		p.append("%s: the Workshop's view is drawn %.0f px across, %.0f expected (as many as at 100 %%)" % [at, px, want])
 	ws.close()
 	await tree.process_frame
 	return p
@@ -132,7 +143,7 @@ func _bars(main, at: String, canvas: Rect2, phone: bool, ui_size: float) -> Arra
 	var clock: Label = ui._time
 	var f: Font = clock.get_theme_font("font")
 	var fs: int = clock.get_theme_font_size("font_size")
-	for t in ["Day 99 Wednesday 23:59 ×1000", clock.text]:
+	for t in ["Day 999 Wed 23:59 paused", clock.text]:
 		var tw: float = f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		if clock.size.x + 0.5 < tw:
 			p.append("%s: the clock is %.0f px wide, its text \"%s\" %.0f" % [at, clock.size.x, t, tw])
@@ -240,6 +251,22 @@ func _check_panel(main, pn: String, at: String, canvas: Rect2, phone: bool, ui_s
 		var r := cc.get_global_rect()
 		if r.position.x < pr.position.x - 0.5 or r.end.x > pr.end.x + 0.5:
 			cut.append("%s (%.0f..%.0f)" % [_name(cc), r.position.x, r.end.x])
+	if phone:
+		# every target in it 48 dp tall, and no text under 12 sp (UI-UX-POLICY T1, S1)
+		var small: Array = []
+		var tiny: Array = []
+		for c in n.find_children("*", "Control", true, false):
+			var cc := c as Control
+			if not cc.is_visible_in_tree():
+				continue
+			if cc is BaseButton and cc.size.y * ui_size * DP < 47.5:
+				small.append("%s %.0f dp" % [_name(cc), cc.size.y * ui_size * DP])
+			if (cc is Label or cc is BaseButton) and cc.get_theme_font_size("font_size") * ui_size * DP < 12.0 - 0.05:
+				tiny.append("%s %.1f sp" % [_name(cc), cc.get_theme_font_size("font_size") * ui_size * DP])
+		if not small.is_empty():
+			p.append("%s: in the %s %d targets under 48 dp: %s" % [at, pn, small.size(), ", ".join(small.slice(0, 4))])
+		if not tiny.is_empty():
+			p.append("%s: in the %s %d texts under 12 sp: %s" % [at, pn, tiny.size(), ", ".join(tiny.slice(0, 4))])
 	if not cut.is_empty():
 		p.append("%s: in the %s (%.0f..%.0f) %d run out at the sides: %s" % [at, pn, pr.position.x, pr.end.x, cut.size(),
 			", ".join(cut.slice(0, 4))])
@@ -283,6 +310,20 @@ func _setting(tree: SceneTree) -> Array:
 			or not canvas.grow(0.5).encloses(hud.close_btn.get_global_rect()):
 		p.append("after choosing 150 %% the settings or their Close are off the canvas: %s" % str(hud.panel.get_global_rect()))
 	p += _bars(main, "after choosing 150 %", canvas, false, 1.5)
+	if hud.panel.get_global_rect().position.y < main.ui.panels_top() - 0.5:
+		p.append("after choosing 150 %% the settings (from %.0f) reach over the bar (to %.0f)" % [
+			hud.panel.get_global_rect().position.y, main.ui.panels_top()])
+	opt.select(0)
+	opt.item_selected.emit(0)
+	for i in 4:
+		await tree.process_frame
+	if absf(main.ui.panels_top() - 160.0) > 0.5 or absf(main.ui.bar.size.y - main.ui.bar.get_combined_minimum_size().y) > 0.5:
+		p.append("100 %% chosen again: the panels begin at %.0f (160 expected), the bar %.0f tall for %.0f" % [
+			main.ui.panels_top(), main.ui.bar.size.y, main.ui.bar.get_combined_minimum_size().y])
+	opt.select(opt.item_count - 1)
+	opt.item_selected.emit(opt.item_count - 1)
+	for i in 4:
+		await tree.process_frame
 	if float(main.cf.get_value("ui", "ui_size", 0.0)) != 1.5:
 		p.append("the UI size chosen is not kept in the settings file: %s" % str(main.cf.get_value("ui", "ui_size", null)))
 	var saved := ConfigFile.new()

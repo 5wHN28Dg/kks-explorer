@@ -413,6 +413,9 @@ func _fit_settings() -> void:
 		return
 	var top: float = main.ui.panels_top() if main != null and main.ui != null and main.ui.has_method("panels_top") \
 		else SETTINGS_TOP
+	# at least half the canvas's height: where the bars leave less (a phone at a large UI size with a gamepad's line
+	# under the status) the panel rises over the bar's lower rows, its body still a few rows tall
+	top = minf(top, settings_top_min(vs.y))
 	var room := maxf(vs.y - top - SETTINGS_MARGIN, 200.0)
 	var pad := panel.get_theme_stylebox("panel").get_minimum_size()
 	var w := minf(SETTINGS_W * W.scale, vs.x - 2.0 * SETTINGS_MARGIN)
@@ -429,6 +432,21 @@ func _fit_settings() -> void:
 	panel.offset_right = w * 0.5
 	panel.offset_top = y
 	panel.offset_bottom = y + h
+	# the control with the focus kept in view in the body made shorter (the bar above grew a row: a gamepad's line
+	# under the status, a larger UI size)
+	var fo := panel.get_viewport().gui_get_focus_owner() if panel.is_inside_tree() else null
+	if fo != null and settings_scroll.is_ancestor_of(fo):
+		_keep_in_view.call_deferred(fo)
+
+func _keep_in_view(c: Control) -> void:
+	if is_instance_valid(c) and c.is_visible_in_tree() and settings_scroll.is_ancestor_of(c):
+		await get_tree().process_frame             # (once the body has its new size)
+		if is_instance_valid(c) and c.is_visible_in_tree():
+			settings_scroll.ensure_control_visible(c)
+
+## The lowest the settings panel begins on a canvas `h` tall: it keeps half the height at least.
+static func settings_top_min(h: float) -> float:
+	return h * 0.5 - SETTINGS_MARGIN
 
 ## Gamepad B closes the settings (Godot's ui_cancel has no gamepad button). Gamepad A acts as ui_accept on the
 ## focused control of the settings panel (Godot's ui_accept has no gamepad button;
