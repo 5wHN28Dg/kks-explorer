@@ -33,7 +33,8 @@
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
 //                           what a person's keyboard does there (an edit or list of that name before any other
 //                           element of it; `keys` posts to the first element, which may be the window or a label)
-//   resize <name> <w> <h>   the top-level window holding the element restored and resized to w x h (physical px; at
+//   resize <name> <w> <h>   the top-level window holding the element restored and resized to w x h (px as this unaware
+//                           driver sees them: physical at 100 % scaling, as the VMs run; at
 //                           most what the screen allows, logged)
 //   apart <drawing>         no control of the drawing's window meets the drawing's rectangle, and every button, field,
 //                           list and check box wholly in view is what UI Automation's hit test finds at its middle

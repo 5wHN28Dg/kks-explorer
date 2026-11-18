@@ -303,6 +303,9 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     makeFonts(hiword(int(wp)))
     let r = cast[ptr RECT](lp)
     MoveWindow(h, r.left, r.top, r.right - r.left, r.bottom - r.top, 1)
+    # (again even when the rectangle stayed the same, a maximized window's: no WM_SIZE then, and the tabs would keep
+    # the old scale's widths and font)
+    if w != nil and w.v != nil or setupP != nil: layoutMain()
     return 0
   of WM_CLOSE:
     # a window holding something unsent (the photo mark-up) is asked first: closing this one closes it too (#365)
