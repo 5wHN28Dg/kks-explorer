@@ -101,7 +101,14 @@ fun DraftFlag(key: String, typed: Boolean) {
 fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, List<Float>?) -> Unit, snack: SnackbarHostState,
              modifier: Modifier = Modifier, link: Pair<String, Int>? = null, overlayOpen: Boolean = false) {
     val scope = rememberCoroutineScope()
-    val t = remember(id, rev) { Core.api("GET", "/native/tag", query = mapOf("id" to id)).json }
+    val tNow = remember(id, rev) { Core.api("GET", "/native/tag", query = mapOf("id" to id)).json }
+    // the tag removed meanwhile (by another device, arriving by sync) while something is typed in its panel: the panel
+    // goes on showing it as it was, so the typed text stays (D3); a line says it is gone. Nothing typed: as before.
+    val last = remember(id) { arrayOf(tNow) }
+    val removed = !tNow.has("sheet")
+    val keptGone = removed && last[0].has("sheet") && PanelDrafts.any()
+    val t = if (keptGone) last[0] else tNow
+    SideEffect { if (!removed) last[0] = tNow }
     val screen = LocalConfiguration.current.screenHeightDp.toFloat()
     // resizable (the user, 2026-10-05: it took most of the screen): drag the handle, or tap it to go between a low
     // panel (the code and Close, the drawing above free to move around) and the usual height
@@ -166,6 +173,8 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
             { leaveForm(onClose) }, snack, Modifier.onSizeChanged { if (!keyboard) headDp = it.height / dens }, compact = keyboard)
         // (rememberScrollState is saved: the panel opens again where it was scrolled to)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = if (keyboard) 0.dp else 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (keptGone) Text("This tag was removed from the drawing meanwhile. What you typed is still here: send it or discard it.",
+                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             if (t.optString("status") == "review") ReviewSection(t, snack)
             t.optJSONObject("decoded")?.let { d ->
                 Heading("From the drawing")

@@ -941,6 +941,9 @@ class Phone(unittest.TestCase):
         with open(os.path.join(SHOTS, 'android-multi-list.png'), 'wb') as f:
             f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
         ui.tap('Close', exact=True)
+        # (the code that was not added stays in the field, typed: Close asks before it goes, #426)
+        ui.find('Discard what you typed?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
         ui.find('4 selected', exact=True)
         # Photo for all: three codes have no floor, so it is asked first, naming them; 714 keeps its own
         ui.tap('Photo for all', exact=True)
@@ -2516,6 +2519,12 @@ class Phone(unittest.TestCase):
         the Edit form and what was typed in it; Back with typed text asks first (Keep editing keeps it, Discard drops
         it); Back leaves Mark a missing tag and full view before anything else"""
         PKG_ACT = f'{PKG}/kks.explorer.MainActivity'
+
+        def typed_kept():
+            # the typed text in the panel; at the largest font sizes the panel's kept scroll may leave it just out of view
+            if ui.present('north door typed', exact=True): return
+            try: ui.scroll_to('north door typed', exact=True, up=True, tries=6)
+            except AssertionError: ui.scroll_to('north door typed', exact=True, tries=12)
         self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [1000, 300, 1120, 360],
                                                                                            'kks': '11LAB70AA502', 'isa': '', 'note': ''}})['status'], 'approved')
         self.join()
@@ -2533,10 +2542,10 @@ class Phone(unittest.TestCase):
         pid0 = ui.sh('pidof', PKG).strip()
         ui.sh('settings', 'put', 'system', 'font_scale', '1.15' if scale != '1.15' else '1.2')
         time.sleep(3)
-        ui.find('north door typed', exact=True, timeout=10)
+        typed_kept()
         ui.sh('settings', 'put', 'system', 'font_scale', scale)
         time.sleep(3)
-        ui.find('north door typed', exact=True, timeout=10)
+        typed_kept()
         self.assertEqual(ui.sh('pidof', PKG).strip(), pid0, 'the font change restarted the process, not just the screen')
         # stopped by Android in the background (am kill: what the system does to a cached app), then opened again
         pid = ui.sh('pidof', PKG).strip()
@@ -2548,7 +2557,8 @@ class Phone(unittest.TestCase):
             time.sleep(0.5)
         self.assertNotEqual(ui.sh('pidof', PKG).strip(), pid, 'am kill did not stop the app')
         ui.sh('am', 'start', '-n', PKG_ACT)
-        ui.find('north door typed', exact=True, timeout=30)   # the tag's panel, its Edit form and the typed text
+        ui.find('Copy 11LAB70AA501', exact=True, timeout=30)
+        typed_kept()                                          # the tag's panel, its Edit form and the typed text
         evidence('restored-after-kill')
         self.assertTrue(ui.present('11LAB70AA501', exact=True), 'not the same tag')
         # Back with typed text asks; Keep editing keeps it
@@ -2629,9 +2639,7 @@ class Phone(unittest.TestCase):
         describe('First description')
         self.join()
 
-        def sync():
-            ui.sh('input', 'keyevent', '111')       # (the keyboard away: Escape, not Back)
-            time.sleep(1)
+        def sync():          # (type_into has put the keyboard away: another Escape would be Back, which asks)
             ui.tap('Sync', exact=True)
             ui.find('Synced with', timeout=30)
             time.sleep(2)
@@ -2640,7 +2648,7 @@ class Phone(unittest.TestCase):
         self.open_tag()
         ui.scroll_to('Edit description', exact=True)
         ui.tap('Edit description', exact=True)
-        ui.type_into('Description', 'typed description', clear=True)
+        ui.type_into('First description', 'typed description', clear=True)   # (the field, by its text: the heading is "Description")
         describe('Second description')
         sync()
         ui.find('typed description', exact=True, timeout=10)
@@ -2654,7 +2662,9 @@ class Phone(unittest.TestCase):
         ui.sh('input', 'keyevent', '4')                       # the panel closes
         time.sleep(1)
         # the open tag removed by a sync while its form holds text: the panel and the text stay
-        self.open_tag('11LAB70AA502')
+        ui.type_into('Search KKS or description', 'LAB70AA502')
+        ui.tap('11LAB70AA502', exact=True)
+        ui.find('Copy 11LAB70AA502', exact=True, timeout=10)
         ui.scroll_to('Edit', exact=True)
         ui.tap('Edit', exact=True)
         ui.scroll_to('Near / landmark', exact=True)
@@ -2664,6 +2674,7 @@ class Phone(unittest.TestCase):
         sync()
         ui.find('kept near', exact=True, timeout=10)
         self.assertTrue(ui.present('Copy 11LAB70AA502', exact=True), 'the panel closed under the typed text')
+        ui.scroll_to('This tag was removed from the drawing meanwhile.', up=True, tries=6)
         ui.sh('input', 'keyevent', '4')
         ui.find('Discard your edits?', exact=True, timeout=10)
         ui.tap('Discard', exact=True)
@@ -2681,7 +2692,7 @@ class Phone(unittest.TestCase):
         # Manage: "‹ Manage" asks before typed Account text goes
         ui.tap('Manage', exact=True)
         ui.tap('Account', exact=True)
-        ui.type_into('Full name', 'Typed Name', clear=True)
+        ui.type_into('The Manager', 'Typed Name', clear=True)                  # (the Full name field, by its text)
         ui.tap('‹ Manage', exact=True)
         ui.find('Discard your edits?', exact=True, timeout=10)
         ui.tap('Discard', exact=True)
