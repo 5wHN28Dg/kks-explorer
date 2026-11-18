@@ -143,7 +143,7 @@ proc reviewSection(w: Win, t: Tag): W =
       w.toast("Save or cancel your edits first")
       return
     # asked first (#365): the tag leaves the drawing on every device
-    ask(w.window, "Mark this as not a tag?", "It is no longer shown as a tag, on every device.", "Not a tag", "Cancel", proc (yes: bool) =
+    ask(w.window, "Mark this as not a tag?", "It is no longer shown as a tag, on every device.", "Mark as not a tag", "Cancel", proc (yes: bool) =
       if yes and w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
                                              ("base", base)]), "not a tag").len > 0:
         w.rebuildPanel()))

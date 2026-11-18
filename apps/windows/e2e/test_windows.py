@@ -1188,7 +1188,8 @@ class Windows(unittest.TestCase):
                                  'wait\tTag plate photo\t10', 'wait\t~by Omar Fieldman · \t10', 'wait\t11LAC30AP002\t10',
                                  'click\tOpen 11LAC30AP001 on the drawing', 'value\tNumber\t001',
                                  'wait\tTag plate: from a file…\t10', 'click\tClose',
-                                 'click\tUse this one', 'wait\t~Photo chosen\t20', 'gone\tUse this one',
+                                 'click\tUse this one', 'wait\tReject the other photo?\t10',      # #365: asked first, with the count
+                                 'click\tUse this one and reject the other', 'wait\t~Photo chosen\t20', 'gone\tUse this one',
                                  'gone\tEquipment photo (2)', 'wait\tTag plate photo\t20'])
         def decided():
             subs = omar.req('GET', '/api/submissions?status=all')['submissions']
@@ -1502,7 +1503,8 @@ class Windows(unittest.TestCase):
         # (that sync round came after the held Save: the server still has its own value)
         self.assertEqual(eq().get('loc'), 'from the server')
         try:
-            self.check('stale9.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA885', 'click\tNot a tag', 'gone\tCheck this tag',
+            self.check('stale9.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA885', 'click\tNot a tag',
+                                             'wait\tMark this as not a tag?\t10', 'click\tMark as not a tag', 'gone\tCheck this tag',
                                              'gone\tNot a tag', 'click\tDrawings'])
         finally:
             # the confirmed mark goes again: test_systems_follows_sync counts the codes on the drawings

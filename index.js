@@ -756,7 +756,7 @@ async function review(id,status){
   let d={status};
   if(status==='confirmed'){ const m=kv.match(/^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]*)$/); if(!m){toast('That is not a valid KKS (e.g. 11LAB70AA501)');return}
     d={status,kks:m[1],suffix:m[2],isa:iv||null} }
-  else if(!await K.confirm('Mark this as not a tag?','It is no longer shown as a tag, on every device.','Not a tag')) return;
+  else if(!await K.confirm('Mark this as not a tag?','It is no longer shown as a tag, on every device.','Mark as not a tag')) return;
   const r=await send('review',{tag_id:id,data:d,base:STATE.reviews[id]||null},status==='confirmed'?`${d.kks}${d.suffix}`:'not a tag'); if(!r) return;
   renderReview(); const t=TAGS.find(x=>x.id===id);
   if(r.status==='approved'){ if(status==='confirmed') select(eff(t)); else closePanel() }
