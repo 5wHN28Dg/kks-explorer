@@ -258,6 +258,7 @@ func _touch_drag(tree: SceneTree, ws, at: String, kind: String) -> void:
 					and pn.tools_scroll.get_global_rect().encloses((c as Button).get_global_rect()):
 				hb = c
 				break
+	check(hb != null or W.ui_size > 1.5, "%s: the tools have no Hide" % at)
 	if hb != null:      # (at 200 % the first row may be the slider's alone: the bench's drag below stands for it)
 		await _drag_on(tree, pn.tools_scroll, hb, at + ", the tools")
 		ws.show_all()          # (the tap hid the part picked: shown again for the checks after)
@@ -341,12 +342,32 @@ func _drag_on(tree: SceneTree, sc: ScrollContainer, b: Button, at: String) -> vo
 		Input.parse_input_event(u)
 		await _frames(tree, 3)
 		check(presses[0] == 1, "%s: a tap on %s pressed it %d times" % [at, b.name, presses[0]])
+		# a tap that wobbles sideways (16 px across, 3 down: a gloved finger) still presses it
+		t = InputEventScreenTouch.new()
+		t.index = 0
+		t.pressed = true
+		t.position = c
+		Input.parse_input_event(t)
+		await _frames(tree, 1)
+		var d := InputEventScreenDrag.new()
+		d.index = 0
+		d.position = c + xf.basis_xform(Vector2(16, 3))
+		d.relative = xf.basis_xform(Vector2(16, 3))
+		Input.parse_input_event(d)
+		await _frames(tree, 1)
+		u = InputEventScreenTouch.new()
+		u.index = 0
+		u.position = d.position
+		Input.parse_input_event(u)
+		await _frames(tree, 3)
+		check(presses[0] == 2, "%s: a tap on %s that wobbled sideways pressed it %d times (2 in all expected)" % [at, b.name, presses[0]])
 	b.pressed.disconnect(count)
 	sc.scroll_vertical = 0
 	await _frames(tree, 2)
 
 ## The lines of text the tree and the properties keep at the UI size now: ROWS up to 150 % (UI-UX-POLICY S2's
-## range), one less above it (a phone at 200 %: 450 px high, its top bar and a row of tools).
+## range), one less above it: a phone at 200 % is 450 px high, and its top bar and a row of tools leave the middle
+## row three (panels.gd fit's mid_min).
 static func rows() -> int:
 	return ROWS if W.ui_size <= 1.5 else ROWS - 1
 

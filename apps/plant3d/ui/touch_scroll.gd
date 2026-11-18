@@ -1,12 +1,12 @@
 ## A finger's drag that begins on a button in a scrolling panel scrolls the panel, and the button it began on is not
 ## pressed (UI-UX-POLICY T1's targets fill such panels on a phone: there is little else to drag). Godot's own
 ## ScrollContainer drags only from where its children pass the touch on, and a button takes it; a drag that begins
-## elsewhere in the panel is left to it. A press on a button, or a drag that stays within DEADZONE, is an ordinary
-## press. A drag that begins on a slider is the slider's.
+## elsewhere in the panel is left to it. A press on a button, or a drag that stays within the touch slop (8 dp, up or
+## down), or one on a panel with nothing to scroll, is an ordinary press. The panels it serves scroll up and down. A drag that begins on a slider is the slider's.
 ##   TouchScroll.attach(scroll_container)
 extends Node
 
-const DEADZONE := 12.0          # canvas px a finger moves before the touch is a drag
+const SLOP_DP := 8.0            # how far a finger moves before the touch is a drag (Android's touch slop, 8 dp)
 
 var sc: ScrollContainer
 var _index := -1                # the finger dragging (-1: none)
@@ -45,7 +45,9 @@ func _input(e: InputEvent) -> void:
 			_dragging = false
 	elif e is InputEventScreenDrag and (e as InputEventScreenDrag).index == _index:
 		var d: Vector2 = (e as InputEventScreenDrag).position - _from
-		if not _dragging and d.length() > DEADZONE:
+		# a drag along the way the panel scrolls, when it has something to scroll: a tap that wobbles, or one on a
+		# panel that fits, stays a tap
+		if not _dragging and absf(d.y) > _slop() and _can_scroll():
 			_dragging = true
 			_cancel_press()
 			# (from here: the panel may have scrolled the touched button into view since the touch)
@@ -55,9 +57,20 @@ func _input(e: InputEvent) -> void:
 		if _dragging:
 			if sc.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
 				sc.scroll_vertical = int(roundf(_scroll0.y - d.y))
-			if sc.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
-				sc.scroll_horizontal = int(roundf(_scroll0.x - d.x))
 			get_viewport().set_input_as_handled()
+
+
+## The touch slop in the canvas's units (they grow with the UI size): 8 dp on the screen at every size.
+func _slop() -> float:
+	var vp := get_viewport()
+	var px_per_unit: float = vp.get_final_transform().get_scale().y if vp != null else 1.0
+	var dpi := float(DisplayServer.screen_get_dpi())
+	return SLOP_DP * maxf(dpi, 160.0) / 160.0 / maxf(px_per_unit, 0.01)
+
+
+func _can_scroll() -> bool:
+	return sc.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED \
+		and sc.get_v_scroll_bar().max_value - sc.get_v_scroll_bar().page > 1.0
 
 
 ## The button under a point inside the panel (none when it is on a slider or outside the panel's view).

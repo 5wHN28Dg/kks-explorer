@@ -18,7 +18,8 @@ const RunPanel = preload("res://workshop/run_panel.gd")
 
 const SIDE_W := 380.0           # a side panel's width at scale 1 (canvas px)...
 const SIDE_MAX := 0.3           # ...and at most this share of the screen's width...
-const SIDE_LEAST := 240.0       # ...but this much at the least (at scale 1)
+const SIDE_LEAST := 240.0       # ...but this much at the least (at scale 1)...
+const SIDE_CAP := 0.36          # ...never more than this share, though (a narrow window: the view keeps 28 %)
 const TOOLS_MAX := 0.4          # the tools' panel: at most this share of the screen's height (it scrolls past it)
 const MIDDLE_MIN := 0.35        # the tree's and the properties' row keeps at least this share of the height
 const FONT := 20                # the panels' text size at scale 1 (the theme's): nothing smaller (UI-UX-POLICY S1)
@@ -320,10 +321,11 @@ func fit() -> void:
 		if c != middle and c != tools_panel and (c as Control).visible:
 			others += (c as Control).get_combined_minimum_size().y + sep
 	var frame := tools_panel.get_combined_minimum_size().y - tools_scroll.custom_minimum_size.y   # (its margins)
-	# (the middle row: MIDDLE_MIN of the height, and at least four lines of the tree's text with its panel's margins on a
-	# short screen, a phone at 200 %)
+	# (the middle row: MIDDLE_MIN of the height, and at least three lines of the tree's text with the panel's and the
+	# tree's own margins on a short screen, a phone at 200 %: the tools then scroll in a row)
 	var line: float = tree.get_theme_font("font").get_height(int(FONT * W.scale)) + 4.0 * W.scale
-	var mid_min := maxf(vs.y * MIDDLE_MIN, 4.0 * line + tree_panel.get_theme_stylebox("panel").get_minimum_size().y + 2.0)
+	var mid_min := maxf(vs.y * MIDDLE_MIN, 3.0 * line + tree_panel.get_theme_stylebox("panel").get_minimum_size().y
+		+ tree.get_theme_stylebox("panel").get_minimum_size().y + 2.0)
 	var room := col.size.y - others - sep - frame - mid_min
 	var want := minf(tools_box.get_combined_minimum_size().y, minf(vs.y * TOOLS_MAX, maxf(room, TARGET_H * W.scale)))
 	if not is_equal_approx(tools_scroll.custom_minimum_size.y, want):
@@ -333,7 +335,7 @@ func fit() -> void:
 ## A side panel's width on a screen `w` wide: SIDE_W, at most SIDE_MAX of the screen, but SIDE_LEAST at the least (a
 ## phone at 200 %: the bench's wrapped buttons, BUTTON_MAX, and its margins).
 static func side_width(w: float) -> float:
-	return minf(SIDE_W * W.scale, maxf(w * SIDE_MAX, SIDE_LEAST * W.scale))
+	return minf(minf(SIDE_W * W.scale, maxf(w * SIDE_MAX, SIDE_LEAST * W.scale)), w * SIDE_CAP)
 
 ## The step line's place: shown while there are words (its height the wrapped words' at the column's width).
 func _size_step(wdt: float) -> void:
