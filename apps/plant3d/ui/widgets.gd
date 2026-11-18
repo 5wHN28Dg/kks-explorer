@@ -6,7 +6,8 @@ const PRIO_COLOURS := {1: Color(0.95, 0.2, 0.15), 2: Color(1.0, 0.65, 0.0), 3: C
 const OK_COLOUR := Color(0.45, 0.9, 0.45)
 const BAD_COLOUR := Color(1.0, 0.45, 0.4)
 const DIM := Color(0.75, 0.75, 0.75)
-const LIST_HOVER := Color(0.22, 0.27, 0.36)   # a list's highlighted row (make_theme)
+const LIST_HOVER := Color(0.36, 0.42, 0.52)   # a list's highlighted row (make_theme)...
+const LIST_BG := Color(0.08, 0.09, 0.11)      # ...on the list's own colour
 
 static var scale := 1.0
 ## The settings' "UI size" (issue #382): everything drawn on the canvas, panels, bars, the HUD and the Workshop's, is
@@ -130,7 +131,13 @@ static func make_theme() -> Theme:
 	# a list's rows (an OptionButton's popup) as tall as the buttons: 48 dp on a phone at its UI size (T1)
 	t.set_font_size("font_size", "PopupMenu", int(20 * scale))
 	t.set_constant("v_separation", "PopupMenu", int(maxf(0.0, 52.0 * scale - 1.3 * 20.0 * scale)))
-	# the row under the finger or the focus: white on a dark slate, 4.5:1 and more (K1; Godot's own grey was 4.3:1)
+	# the list on the panels' dark colour, and the row under the finger or the focus a lighter slate: 3:1 and more
+	# against the list (K3: it is all that shows the focus), its text white on it 4.5:1 and more (K1; Godot's own grey
+	# was 4.3:1 and 2.2:1)
+	var lp := StyleBoxFlat.new()
+	lp.bg_color = LIST_BG
+	lp.set_content_margin_all(4)
+	t.set_stylebox("panel", "PopupMenu", lp)
 	var hover := StyleBoxFlat.new()
 	hover.bg_color = LIST_HOVER
 	t.set_stylebox("hover", "PopupMenu", hover)

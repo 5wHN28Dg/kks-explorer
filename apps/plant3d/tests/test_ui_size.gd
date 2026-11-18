@@ -208,6 +208,11 @@ func _compact(main, at: String, canvas: Rect2, want: bool) -> Array:
 	# its highlighted row's text 4.5:1 on its backing (UI-UX-POLICY K1)
 	var hs = pm.get_theme_stylebox("hover")
 	var hc: Color = pm.get_theme_color("font_hover_color")
+	# and the highlight 3:1 against the list, the only mark of the keyboard's or gamepad's focus (K3)
+	var lps = pm.get_theme_stylebox("panel")
+	if not (hs is StyleBoxFlat) or not (lps is StyleBoxFlat) \
+			or _contrast((hs as StyleBoxFlat).bg_color, (lps as StyleBoxFlat).bg_color) < 3.0:
+		p.append("%s: More's highlighted row has under 3:1 against the list" % at)
 	if not (hs is StyleBoxFlat) or _contrast(hc, (hs as StyleBoxFlat).bg_color) < 4.5:
 		p.append("%s: More's highlighted row has %.2f:1 contrast (4.5 the least)" % [at,
 			_contrast(hc, (hs as StyleBoxFlat).bg_color) if hs is StyleBoxFlat else 0.0])
