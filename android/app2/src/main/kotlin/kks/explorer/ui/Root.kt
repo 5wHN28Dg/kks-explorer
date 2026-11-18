@@ -671,7 +671,7 @@ private fun MarkDialog(sheet: SheetInfo, b: List<Float>, view: SheetView?, snack
     AlertDialog(onDismissRequest = leave, properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
         title = { Text("Mark a missing tag") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (crop != null) androidx.compose.foundation.Image(crop, "The marked part of the drawing", Modifier.fillMaxWidth())
+            crop?.let { androidx.compose.foundation.Image(it, "The marked part of the drawing", Modifier.fillMaxWidth()) }
             Dim("Type the code if you can read it. If not, leave it empty: the mark goes to the review queue.")
             OutlinedTextField(code, { code = it }, label = { Text("KKS (with suffix, optional)") }, singleLine = true)
             OutlinedTextField(isa, { isa = it }, label = { Text("Function letters (instruments, optional)") }, singleLine = true)
