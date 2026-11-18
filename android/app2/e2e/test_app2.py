@@ -2547,10 +2547,12 @@ class Phone(unittest.TestCase):
         self.assertNotEqual(ui.sh('pidof', PKG).strip(), pid, 'am kill did not stop the app')
         ui.sh('am', 'start', '-n', PKG_ACT)
         ui.find('north door typed', exact=True, timeout=30)   # the tag's panel, its Edit form and the typed text
+        evidence('restored-after-kill')
         self.assertTrue(ui.present('11LAB70AA501', exact=True), 'not the same tag')
         # Back with typed text asks; Keep editing keeps it
         ui.sh('input', 'keyevent', '4')
         ui.find('Discard your edits?', exact=True, timeout=10)
+        evidence('discard-edits')
         ui.tap('Keep editing', exact=True)
         ui.find('north door typed', exact=True, timeout=10)
         # another tag from the search, with text typed: asked first; Keep editing keeps this tag and the text
