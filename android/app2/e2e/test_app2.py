@@ -1,7 +1,7 @@
 """End-to-end: the Android app (v2, Nim core) on an emulator, against the Nim server on this machine. No plant data:
 the drawing is importer/tests/vectors/kkp-sample.pdf. Driven through the accessibility tree (adbui.py).
   python3 android/app2/e2e/test_app2.py APK SERVER IMPORTER [-v] [Phone.test_…]     (the three paths first, if any)
-KKS_E2E_PART=1|2|3 runs one of the three parts (PARTS, at the end); KKS_E2E_DIAG=folder records what happened.
+KKS_E2E_PART=1|2|3|4 runs one of the four parts (PARTS, at the end); KKS_E2E_DIAG=folder records what happened.
 Needs a running emulator (adb devices); the app's data is cleared first. The emulator reaches this machine as
 10.0.2.2."""
 import json, os, re, shutil, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
@@ -2540,8 +2540,9 @@ class Phone(unittest.TestCase):
         ui.find('Nothing matches these filters.', timeout=10)
 
 
-# The suite in three parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2 or 3 runs
-# that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
+# The suite in four parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2, 3 or 4
+# runs that part; each takes about ten minutes. Every test is in exactly one (checked below), so four parts are a whole
+# run. (A fourth since #365: part 2 ended at 7.86 GiB with its two new tests.)
 # test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 3: at the
 # end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
 # test_copy_close_batch (2026-11-16) is in part 1: at the end of part 2 it took the emulator from 7.14 to 7.67 GiB;
@@ -2551,10 +2552,10 @@ class Phone(unittest.TestCase):
 # ~0.8 GiB) while part 2 ended at 5.79, so test_description_and_credit and test_app_links went to part 2.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
           'panel_keyboard', 'photo_size'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links',
-          'destructive', 'question_stays'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
-          'flow', 'course_figures', 'photo_marks'))
+          'flow', 'course_figures', 'photo_marks'),
+         ('destructive', 'question_stays'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))
@@ -2562,6 +2563,6 @@ if __name__ == '__main__':
     assert listed == tests, f'PARTS must hold every test once: it has {listed}, the tests are {tests}'
     part = os.environ.get('KKS_E2E_PART')
     if part:
-        assert part in ('1', '2', '3'), f'KKS_E2E_PART is 1, 2 or 3, not {part!r}'
+        assert part in ('1', '2', '3', '4'), f'KKS_E2E_PART is 1, 2, 3 or 4, not {part!r}'
         sys.argv += [f'Phone.test_{n}' for n in PARTS[int(part) - 1]]
     unittest.main()

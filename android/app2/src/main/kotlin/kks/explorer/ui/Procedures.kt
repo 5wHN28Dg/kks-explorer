@@ -11,6 +11,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
@@ -88,7 +90,7 @@ private fun ProcedureDetail(ui: Ui, id: String, rev: Int, snack: SnackbarHostSta
                                     val r = snack.showSnackbar("Unlinked $k from step $n", actionLabel = "Undo", duration = SnackbarDuration.Long)
                                     if (r == SnackbarResult.ActionPerformed) snack.showSnackbar("Link $k: " + linkSubmit(id, n, k, true).second)
                                 }
-                            }.semantics { contentDescription = "Unlink $k from step $n" })
+                            }.clearAndSetSemantics { contentDescription = "Unlink $k from step $n"; role = androidx.compose.ui.semantics.Role.Button })
                         })
                     }
                     AssistChip(onClick = { ui.linkProc = id; ui.linkStep = n; ui.tab = "drawings" }, label = { Text("+ Link equipment") })
