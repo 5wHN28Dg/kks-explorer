@@ -6,6 +6,7 @@
 ## the plant and what is the bench's own.
 extends PanelContainer
 
+const TouchScroll = preload("res://ui/touch_scroll.gd")
 const W = preload("res://ui/widgets.gd")
 const Mirror = preload("res://workshop/mirror.gd")
 const FONT := 20                # the text's size at scale 1 (the theme's, as the Workshop's other panels: #389)
@@ -32,6 +33,7 @@ func setup(w) -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true      # (the D-pad's focus brings a fault's button into view)
 	add_child(scroll)
+	TouchScroll.attach(scroll)      # (a finger's drag that begins on a button scrolls the bench: its buttons fill it)
 	box = VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(box)

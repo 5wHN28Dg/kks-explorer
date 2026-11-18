@@ -1,7 +1,8 @@
 ## The Workshop's panels laid out on the screens they are used on (#388, #389, #390; docs/UI-UX-POLICY.md T1, T3, R1,
 ## S1, S2, L2, K5), for every kind the build has:
-## - on a desktop (1600 × 900 canvas) and on the Note 9 (2220 × 1080 at 420 dpi: a 1850 × 900 canvas, the phone's UI
-##   scale 1.35), each at the UI size's 100 % and 150 % (the settings' UI size, #382: the canvas 1.5 times smaller);
+## - on a desktop (1600 × 900 canvas) at the UI size's 100 % and 150 %, on the Note 9 (2220 × 1080 at 420 dpi: a
+##   1850 × 900 canvas, the phone's UI scale 1.35) at 100 %, 150 % (its default) and 200 %, and on a 16:9 phone at 150 %
+##   (the settings' UI size, #382: the canvas that many times smaller);
 ## - the panels fill the screen; the top bar with Back to the plant, the parts tree, the properties, the bench and the
 ##   tools are shown, inside the screen, apart, and big enough to use (the tree three rows high or more, the side
 ##   panels at least SIDE_MIN wide, the tools a row high);
@@ -9,7 +10,8 @@
 ## - no text in the panels is under the theme's size, and the words drawn over the 3D view (the step line, the
 ##   session's strip) have a backing of their own;
 ## - a long properties text scrolls inside its panel; the guided steps are reachable and start, their line shown
-##   between the panels and the tools, over none of them.
+##   between the panels and the tools, over none of them;
+## - on a phone, a finger's drag that begins on a button in the tools or the bench scrolls them and presses nothing.
 extends RefCounted
 
 const W = preload("res://ui/widgets.gd")
@@ -21,7 +23,8 @@ const RunSave = preload("res://ui/run_save.gd")
 ## app starts with (the phone's on the Note 9), the UI sizes (the settings' 100 % and 150 %, applied as the app does)]
 const SCREENS := [
 	["desktop", Vector2i(1600, 900), "", [1.0, 1.5]],
-	["Note 9", Vector2i(2220, 1080), "1.35", [1.0, 1.5]],
+	["Note 9", Vector2i(2220, 1080), "1.35", [1.0, 1.5, 2.0]],
+	["16:9 phone", Vector2i(1920, 1080), "1.35", [1.5]],   # (the top bar's least room: 1067 px across at 150 %)
 ]
 const SIDE_MIN := 300.0          # a side panel's least width (canvas px) on these screens
 const ROWS := 4                  # the tree and the properties are at least this many lines of text high
@@ -68,6 +71,8 @@ func run(tree: SceneTree) -> Array:
 				await _frames(tree, 3)
 				var at := "%s, %s at %d %%" % [kind, sc[0], roundi(size * 100.0)]
 				await _layout(tree, ws, at)
+				if sc[2] != "" and size >= 1.5:
+					await _touch_drag(tree, ws, at, kind)
 				await _steps(tree, ws, at)
 			W.apply_ui_size(tree.root, 1.0)
 			ws.close()
@@ -235,6 +240,89 @@ func _steps(tree: SceneTree, ws, at: String) -> void:
 	ws.reset()
 	await _frames(tree, 2)
 	check(not sl.is_visible_in_tree() or sl.text == "", "%s: the step line goes with the steps" % at)
+
+## A finger's drag that begins on a button in a scrolling panel scrolls it and presses nothing (the tools' Hide; the
+## gas turbine's bench's first button): on a phone those panels are full of 48 dp targets, with nowhere else to drag.
+func _touch_drag(tree: SceneTree, ws, at: String, kind: String) -> void:
+	var pn = ws.panels
+	await _drag_on(tree, pn.tools_scroll, pn.tools_panel.find_child("hide", true, false), at + ", the tools")
+	if kind == "gas_turbine":
+		pn.show_run(true)
+		await _frames(tree, 3)
+		var sc: ScrollContainer = null
+		for c in pn.run_panel.get_children():
+			if c is ScrollContainer:
+				sc = c
+		var b: Button = null
+		if sc != null:
+			for c in sc.find_children("*", "Button", true, false):
+				if (c as Button).is_visible_in_tree() and not (c as Button).disabled:
+					b = c
+					break
+		await _drag_on(tree, sc, b, at + ", the bench")
+		pn.show_info(true)
+		await _frames(tree, 2)
+
+func _drag_on(tree: SceneTree, sc: ScrollContainer, b: Button, at: String) -> void:
+	if sc == null or b == null:
+		check(false, "%s: no scroll or button to drag on" % at)
+		return
+	sc.scroll_vertical = 0
+	await _frames(tree, 2)
+	if sc.get_v_scroll_bar().max_value - sc.size.y < 30.0:
+		check(false, "%s: nothing to scroll (content %.0f in %.0f): the drag isn't tested" % [at, sc.get_v_scroll_bar().max_value, sc.size.y])
+		return
+	var presses := [0]
+	var count := func(): presses[0] += 1
+	b.pressed.connect(count)
+	var xf: Transform2D = tree.root.get_final_transform()   # (the canvas to the window's pixels: events come in those)
+	# (the middle of what shows of it: a button in the last row the scroll shows may be partly below its edge)
+	var shown: Rect2 = b.get_global_rect().intersection(sc.get_global_rect())
+	if shown.size.y < 8.0:
+		check(false, "%s: %s doesn't show in its scroll at the top (%s in %s)" % [at, b.name, b.get_global_rect(), sc.get_global_rect()])
+		b.pressed.disconnect(count)
+		return
+	var p: Vector2 = shown.get_center()
+	var t := InputEventScreenTouch.new()
+	t.index = 0
+	t.pressed = true
+	t.position = xf * p
+	Input.parse_input_event(t)
+	await _frames(tree, 1)
+	for k in 8:
+		var d := InputEventScreenDrag.new()
+		d.index = 0
+		d.relative = xf.basis_xform(Vector2(0, -8))
+		p += Vector2(0, -8)
+		d.position = xf * p
+		Input.parse_input_event(d)
+		await _frames(tree, 1)
+	var u := InputEventScreenTouch.new()
+	u.index = 0
+	u.position = xf * p
+	Input.parse_input_event(u)
+	await _frames(tree, 3)
+	check(sc.scroll_vertical > 20, "%s: a finger's drag up from %s scrolls (%d px)" % [at, b.name, sc.scroll_vertical])
+	check(presses[0] == 0, "%s: a finger's drag from %s pressed it" % [at, b.name])
+	# and a tap on it still presses it
+	sc.scroll_vertical = 0
+	await _frames(tree, 2)
+	if b.is_visible_in_tree() and sc.get_global_rect().encloses(b.get_global_rect()):
+		var c: Vector2 = xf * b.get_global_rect().get_center()
+		t = InputEventScreenTouch.new()
+		t.index = 0
+		t.pressed = true
+		t.position = c
+		Input.parse_input_event(t)
+		await _frames(tree, 1)
+		u = InputEventScreenTouch.new()
+		u.index = 0
+		u.position = c
+		Input.parse_input_event(u)
+		await _frames(tree, 3)
+		check(presses[0] == 1, "%s: a tap on %s pressed it %d times" % [at, b.name, presses[0]])
+	b.pressed.disconnect(count)
+	sc.scroll_vertical = 0
 
 func _inside(r: Rect2, outer: Rect2) -> bool:
 	return r.size.x > 0.0 and r.size.y > 0.0 and r.position.x >= outer.position.x - 0.5 and r.position.y >= outer.position.y - 0.5 \
