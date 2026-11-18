@@ -976,7 +976,13 @@ class Phone(unittest.TestCase):
         with self.subTest('one sealed job for all four codes'):
             if not ui.debuggable(PKG):
                 self.skipTest('not a debuggable build (rehearsal/release): run-as cannot reach the queue\'s files')
-            names = ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()
+            # read a few times: right after the force-stop the listing came back empty on some runs (4 of 6 on the
+            # camera branch) while the job was on disk (the restarted app sent it below; logcat showed it held)
+            for _ in range(10):
+                names = ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()
+                if names:
+                    break
+                time.sleep(1)
             self.assertEqual(sorted(n.rsplit('.', 1)[1] for n in names), ['json', 'px'], f'the queued files: {names}')
             for n in names:
                 raw = subprocess.run(ui.ADB + ['exec-out', 'run-as', PKG, 'cat', 'files/photo-queue/' + n], capture_output=True).stdout
