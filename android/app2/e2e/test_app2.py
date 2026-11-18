@@ -1,7 +1,7 @@
 """End-to-end: the Android app (v2, Nim core) on an emulator, against the Nim server on this machine. No plant data:
 the drawing is importer/tests/vectors/kkp-sample.pdf. Driven through the accessibility tree (adbui.py).
   python3 android/app2/e2e/test_app2.py APK SERVER IMPORTER [-v] [Phone.test_…]     (the three paths first, if any)
-KKS_E2E_PART=1|2|3 runs one of the three parts (PARTS, at the end); KKS_E2E_DIAG=folder records what happened.
+KKS_E2E_PART=1|2|3|4 runs one of the four parts (PARTS, at the end); KKS_E2E_DIAG=folder records what happened.
 Needs a running emulator (adb devices); the app's data is cleared first. The emulator reaches this machine as
 10.0.2.2."""
 import json, os, re, shutil, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
@@ -80,6 +80,21 @@ def diag_fail(text, ns):
 
 
 ui.on_fail = diag_fail
+
+
+# UI/UX audit evidence (docs/UI-UX-POLICY.md §3.3): with KKS_EVIDENCE=folder, the tests that call evidence() save a
+# screenshot and the screen's accessibility tree there (synthetic data only)
+EVIDENCE = os.environ.get('KKS_EVIDENCE', '')
+
+
+def evidence(name):
+    if not EVIDENCE: return
+    os.makedirs(EVIDENCE, exist_ok=True)
+    with open(os.path.join(EVIDENCE, name + '.png'), 'wb') as f:
+        f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+    ui.sh('uiautomator', 'dump', '/sdcard/ev.xml')
+    with open(os.path.join(EVIDENCE, name + '.xml'), 'wb') as f:
+        f.write(subprocess.run(ui.ADB + ['exec-out', 'cat', '/sdcard/ev.xml'], capture_output=True).stdout)
 
 
 class Phone(unittest.TestCase):
@@ -1072,6 +1087,7 @@ class Phone(unittest.TestCase):
         ui.tap('Cancel', exact=True)
         ui.find('Discard the photo?', exact=True, timeout=10)
         ui.find('Discard photo', exact=True)
+        evidence('discard-photo')
         ui.tap('Keep editing', exact=True)
         self.assertTrue(undo_enabled(), 'the marks went with Keep editing')
         ui.tap('Retake', exact=True)
@@ -1958,6 +1974,7 @@ class Phone(unittest.TestCase):
         # #365: Reject is final, so it asks first, naming whose proposal; Cancel leaves it waiting
         ui.tap('Reject', exact=True)
         ui.find('Omar Fullname\'s proposal is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        evidence('reject')
         ui.tap('Cancel', exact=True)
         time.sleep(1)
         self.assertEqual({x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}, {'pending'})
@@ -1973,6 +1990,7 @@ class Phone(unittest.TestCase):
         ui.tap('Use this one', exact=True)
         # #365: it rejects the rival for good: asked first, with how many (B2)
         ui.find('Reject the other photo?', exact=True, timeout=10)
+        evidence('use-this-one')
         ui.tap('Use this one and reject the other', exact=True)
 
         def decided():
@@ -2429,6 +2447,7 @@ class Phone(unittest.TestCase):
         ui.tap('Not a tag', exact=True)
         ui.find('Mark this as not a tag?', exact=True, timeout=10)
         ui.find('It is no longer shown as a tag, on every device.', exact=True)
+        evidence('not-a-tag')
         ui.tap('Cancel', exact=True)
         time.sleep(2)
         self.assertIsNone(reviewed(), 'Not a tag was sent before it was confirmed')
@@ -2451,6 +2470,7 @@ class Phone(unittest.TestCase):
         ui.tap('P-1  Start the test pump', exact=True, timeout=20)
         ui.tap(f'Unlink {code} from step 1', exact=True, timeout=20)
         ui.find(f'Unlinked {code} from step 1', exact=True, timeout=10)
+        evidence('unlink-undo')
         self.wait_server(lambda: not linked(), 'Unlink unlinked nothing')
         ui.tap('Undo', exact=True)
         self.wait_server(linked, 'Undo did not link it again')
@@ -2586,8 +2606,9 @@ class Phone(unittest.TestCase):
         ui.find('Nothing matches these filters.', timeout=10)
 
 
-# The suite in three parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2 or 3 runs
-# that part; each takes about ten minutes. Every test is in exactly one (checked below), so three parts are a whole run.
+# The suite in four parts for an emulator whose memory is capped (CLAUDE.md, Android): KKS_E2E_PART=1, 2, 3 or 4
+# runs that part; each takes about ten minutes. Every test is in exactly one (checked below), so four parts are a whole
+# run. (A fourth since #365: part 2 ended at 7.86 GiB with its two new tests.)
 # test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 3: at the
 # end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
 # test_copy_close_batch (2026-11-16) is in part 1: at the end of part 2 it took the emulator from 7.14 to 7.67 GiB;
@@ -2596,11 +2617,11 @@ class Phone(unittest.TestCase):
 # 2026-11-18: part 3 ended at 7.90 GiB on one run (6.82 on another: the emulator's memory after booting differs by
 # ~0.8 GiB) while part 2 ended at 5.79, so test_description_and_credit and test_app_links went to part 2.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
-          'panel_keyboard', 'photo_size', 'saved_place'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links',
-          'destructive', 'question_stays'),
+          'panel_keyboard', 'photo_size'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
-          'flow', 'course_figures', 'photo_marks'))
+          'flow', 'course_figures', 'photo_marks'),
+         ('destructive', 'question_stays', 'saved_place'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))
@@ -2608,6 +2629,6 @@ if __name__ == '__main__':
     assert listed == tests, f'PARTS must hold every test once: it has {listed}, the tests are {tests}'
     part = os.environ.get('KKS_E2E_PART')
     if part:
-        assert part in ('1', '2', '3'), f'KKS_E2E_PART is 1, 2 or 3, not {part!r}'
+        assert part in ('1', '2', '3', '4'), f'KKS_E2E_PART is 1, 2, 3 or 4, not {part!r}'
         sys.argv += [f'Phone.test_{n}' for n in PARTS[int(part) - 1]]
     unittest.main()
