@@ -620,8 +620,9 @@ class Gnome(Plant):
         self.assertTrue(clear.get_state_set().contains(Atspi.StateType.SHOWING), 'a sync that brought nothing rebuilt the page')
         atspi.click(clear)
         # #365: it says how many it hides, and hides nothing until asked (B2)
-        atspi.find(a, None, name='Hide 1 removed device and 1 person with no active device?', timeout=10)
-        atspi.click(atspi.find(a, 'button', name='Hide 2', timeout=5))
+        ask = atspi.find(a, 'alert', contains='removed device', timeout=10)
+        self.assertEqual(ask.get_name(), 'Hide 1 removed device and 1 person with no active device?')
+        atspi.click(atspi.find(ask, 'button', name='Hide 2', timeout=5))
         for _ in range(20):
             if not atspi.find_all(a, contains='· sara'):
                 break
