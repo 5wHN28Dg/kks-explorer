@@ -176,11 +176,13 @@ The user's laptop: Intel Core i7 4th generation U (2 cores, 4 threads), 4 GB DDR
 10.18.15.4248; its AMD GPU disabled on purpose), SATA SSD, Windows 10 Pro, 1920 × 1080 at 125 % (Windows'
 recommended scale for its panel).
 
-- **The e2e suite** at 125 %: RESULT_E2E
+- **The e2e suite** at 125 %: 28 of 28 passed (32 minutes, with #427). Before, `test_photo_queue` failed twice:
+  the photo was compressed and sent before the test's next look at "Compressing 1 photo"; the test now holds each
+  compression 8 s (`KKS_TEST_ENCODE_MS`).
 - **Direct2D on a GPU** (`test_draw_timing`, `KKS_TIMING`: zoomed in eight steps and panned): the window's render
-  target is the hardware one (the VMs: WARP). A paint of the drawing took 1.25 ms median, 45.8 ms at most (20
-  paints); a tile's render 14.2 ms median, 62.6 ms at most (21 tiles, on worker threads). Lines sharp zoomed in
-  (screenshots at 125 %).
+  target is the hardware one (the VMs: WARP). Two runs: a paint of the drawing took 1.25 and 1.35 ms median, 46 and
+  33 ms at most (about 20 paints each); a tile's render 14.2 and 8.1 ms median, 64 and 58 ms at most (21 tiles, on
+  worker threads). Lines sharp zoomed in (screenshots at 125 %).
 - **Scaling:** 100, 125 and 150 % set while the app runs (as Settings does) and at its start: the window follows
   (`WM_DPICHANGED`), the tabs stay in one row beside the drawing (#427's `test_tabs_beside_drawing` passes at each,
   main before #427 failed at each). Left from #377: the status line keeps the old scale's font after a live change.
@@ -196,7 +198,7 @@ recommended scale for its panel).
   or better. At 1280 × 720 without shadow and fog: 54.7 ms median. The draw takes ~70 of the 80 ms (773 draw calls).
   First frame 56.6 s after the very first start (shaders compiled), 7.5 s on later starts. Memory: about 0.97 GB
   private, 1.03 GB peak working set. One of four starts ended by itself 3.6 s into the walk, with no log line or
-  crash report the standard account could read.
+  crash report the standard account could read (#432).
 - **Arabic:** the note `مضخة التغذية 11LAB70AA501 تعمل` shows with "11" apart from "LAB70AA501", as in the VMs (#379).
 
 ## Not done yet
