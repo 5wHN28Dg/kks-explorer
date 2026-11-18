@@ -1429,6 +1429,7 @@ class Phone(unittest.TestCase):
         ui.tap("Take photos with Walkdown's own camera", exact=True)
         time.sleep(1)
         evidence('setting-light')
+        self.addCleanup(ui.sh, 'cmd', 'uimode', 'night', 'no')
         ui.sh('cmd', 'uimode', 'night', 'yes'); time.sleep(2); evidence('setting-dark')
         self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', '1.0')
         for scale in ('1.3', '2.0'):
@@ -1465,6 +1466,7 @@ class Phone(unittest.TestCase):
         ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
         auto = ui.sh('settings', 'get', 'system', 'accelerometer_rotation').strip() or '0'
         self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', auto)
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
         ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0'); ui.sh('settings', 'put', 'system', 'user_rotation', '1')
         time.sleep(3); evidence('screen-landscape')
         ui.sh('settings', 'put', 'system', 'font_scale', '2.0'); time.sleep(3); evidence('screen-landscape-font200')
@@ -1486,7 +1488,12 @@ class Phone(unittest.TestCase):
         # the camera app from Walkdown's camera: its shutter, then confirm (the emulator's camera app)
         ui.scroll_to('Take a photo', exact=True)
         ui.tap('Take a photo', exact=True)
+        # Back from the camera app returns to Walkdown's camera (it closed both before), then the camera app again
         ui.tap('Use the camera app instead', exact=True, timeout=30)
+        time.sleep(5)
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Use the camera app instead', exact=True, timeout=20)
+        ui.tap('Use the camera app instead', exact=True)
         time.sleep(5)
         ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
         time.sleep(4)

@@ -71,6 +71,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsEndWidth
+import androidx.compose.foundation.layout.windowInsetsStartWidth
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -190,18 +195,22 @@ class CameraActivity : ComponentActivity() {
     private var camera: Camera? = null
     private var capture: ImageCapture? = null
     private var preview: Preview? = null
+    /** the last rotation the sensor gave (kept for a capture bound later: a mode change binds a new one) */
+    private var heldAs: Int? = null
     /** the shot's rotation follows how the phone is held, not the screen (which stays upright when auto-rotate is
      *  off): CameraX's advice for still capture */
     private val held by lazy {
         object : android.view.OrientationEventListener(this) {
             override fun onOrientationChanged(deg: Int) {
                 if (deg == ORIENTATION_UNKNOWN) return
-                capture?.targetRotation = when (deg) {
+                val rot = when (deg) {
                     in 45 until 135 -> android.view.Surface.ROTATION_270
                     in 135 until 225 -> android.view.Surface.ROTATION_180
                     in 225 until 315 -> android.view.Surface.ROTATION_90
                     else -> android.view.Surface.ROTATION_0
                 }
+                heldAs = rot
+                capture?.targetRotation = rot
             }
         }
     }
@@ -223,7 +232,7 @@ class CameraActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            androidx.activity.SystemBarStyle.dark(0xCC000000.toInt()))   // (on its side the bar lies over the preview)
+            androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))   // (its scrim is drawn below: Android 15 ignores a colour)
         @Suppress("DEPRECATION")
         out = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(MediaStore.EXTRA_OUTPUT, Uri::class.java) else intent.getParcelableExtra(MediaStore.EXTRA_OUTPUT)
         if (out == null) { setResult(RESULT_CANCELED); finish(); return }
@@ -246,6 +255,7 @@ class CameraActivity : ComponentActivity() {
         super.onResume()
         if (held.canDetectOrientation()) held.enable()
         getSystemService(android.hardware.display.DisplayManager::class.java).registerDisplayListener(turned, null)
+        turned.onDisplayChanged(0)   // (turned while away)
     }
     override fun onPause() {
         held.disable()
@@ -267,7 +277,7 @@ class CameraActivity : ComponentActivity() {
 
     private fun useCameraApp() {
         val o = out ?: return
-        runCatching { system.launch(o) }.onFailure { log("camera app", it); error = "The camera app could not be opened on this phone." }
+        runCatching { system.launch(o) }.onFailure { log("camera app", it); error = "The camera app could not be opened on this phone. Take the photo here instead." }
     }
 
     private fun start() {
@@ -304,6 +314,7 @@ class CameraActivity : ComponentActivity() {
             val preview = Preview.Builder().build().also { it.setSurfaceProvider { r -> request = r }; this.preview = it }
             val best = ResolutionSelector.Builder().setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY).build()
             capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).setResolutionSelector(best).build()
+                .also { c -> heldAs?.let { c.targetRotation = it } }
             camera = p.bindToLifecycle(this, selector, preview, capture)
             ready = true
         }.onFailure {
@@ -370,12 +381,16 @@ class CameraActivity : ComponentActivity() {
                             detectTapGestures { o -> focusAt = o; with(transform) { val p = o.transform(); focus(p.x, p.y) } }
                         }, coordinateTransformer = transform)
                 }
+                // the navigation bar on its side lies over the preview: a dark scrim under it (Android 15+ draws none)
+                Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().windowInsetsStartWidth(WindowInsets.navigationBars).background(BAR))
+                Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().windowInsetsEndWidth(WindowInsets.navigationBars).background(BAR))
                 // a ring where the person tapped, for a second: focusing there
-                focusAt?.let { at ->
+                focusAt?.takeIf { camera != null }?.let { at ->
                     androidx.compose.runtime.LaunchedEffect(at) { kotlinx.coroutines.delay(1000); if (focusAt == at) focusAt = null }
                     val d = androidx.compose.ui.platform.LocalDensity.current
                     Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt() - with(d) { 32.dp.roundToPx() }, at.y.toInt() - with(d) { 32.dp.roundToPx() }) }
-                        .size(64.dp).border(2.dp, Color.White, CircleShape).clearAndSetSemantics {})
+                        .size(64.dp).border(4.dp, Color.Black, CircleShape).padding(1.dp).border(2.dp, Color.White, CircleShape)
+                        .clearAndSetSemantics {})   // (white inside black: seen over a bright scene and a dark one)
                 }
                 // the bars are dark enough for white text over the brightest scene (a tag plate in the sun): over white
                 // 80 % black leaves #333, 12.6:1 for white; they reach under the system bars, which are dark too
@@ -392,7 +407,7 @@ class CameraActivity : ComponentActivity() {
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // one status line, always there, so that what it says next is announced
                     val status = error.ifEmpty { if (busy) "Taking the photo: hold still" else "" }
-                    Text(status, color = Color.White, modifier = live)
+                    Text(status, color = Color.White, modifier = live.then(if (status.isEmpty()) Modifier.height(0.dp) else Modifier))
                     if (modes.size > 1) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (m in modes) FilterChip(m == mode, { if (m != mode && !busy) { mode = m; bind() } }, enabled = !busy,
                             label = { Text(InAppCamera.modeName(m) + " mode") },
