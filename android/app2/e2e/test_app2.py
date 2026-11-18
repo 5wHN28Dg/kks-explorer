@@ -2456,13 +2456,9 @@ class Phone(unittest.TestCase):
         ui.sh('input', 'keyevent', '4')                       # Back keeps too
         time.sleep(1)
         self.assertFalse(ui.present('Mark this as not a tag?', exact=True))
-        panel = ui.find('Not a tag', exact=True).get('bounds')
         ui.tap('Not a tag', exact=True)
         ui.find('Mark this as not a tag?', exact=True, timeout=10)
-        named = [n for n in ui.nodes() if ui.label(n) == 'Not a tag' and n.get('bounds') != panel]
-        self.assertEqual(len(named), 1, 'the question names its button "Not a tag"')
-        b = [int(v) for v in re.findall(r'\d+', named[0].get('bounds'))]
-        ui.sh('input', 'tap', str((b[0] + b[2]) // 2), str((b[1] + b[3]) // 2))
+        ui.tap('Mark as not a tag', exact=True)          # (the question's button names the action)
         self.wait_server(lambda: (reviewed() or {}).get('status') == 'rejected', 'Not a tag sent nothing')
         ui.sh('input', 'keyevent', '4')
         # Unlink: no question, an Undo in the snackbar

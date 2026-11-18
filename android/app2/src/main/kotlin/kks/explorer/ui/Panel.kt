@@ -305,7 +305,7 @@ private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
         OutlinedButton(onClick = { notTag = true }) { Text("Not a tag") }
     }
     // #365: asked first (the tag leaves the drawing on every device)
-    if (notTag) Confirm("Mark this as not a tag?", "It is no longer shown as a tag, on every device.", "Not a tag", {
+    if (notTag) Confirm("Mark this as not a tag?", "It is no longer shown as a tag, on every device.", "Mark as not a tag", {
         val (_, msg) = submit("review", JSONObject().put("tag_id", t.getString("id")).put("data", JSONObject().put("status", "rejected")).put("base", JSONObject.NULL))
         scope.launch { snack.showSnackbar(msg) }
     }, { notTag = false })

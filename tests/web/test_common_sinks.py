@@ -241,7 +241,7 @@ class Sinks(unittest.TestCase):
             self.assertEqual(pg.text_content(d + ' h2'), EVIL)
             self.assertEqual(pg.text_content(d + ' p'), EVIL)
             self.assertEqual(pg.text_content(d + ' .kq-yes'), EVIL)
-            self.assertEqual(pg.get_attribute(d + ' input.note', 'placeholder'), EVIL)
+            self.assertEqual(pg.text_content(d + ' label'), EVIL)
             pg.fill(d + ' input.note', EVIL)
             pg.click(d + ' .kq-yes')
             pg.wait_for_function('window.answer')

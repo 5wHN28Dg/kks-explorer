@@ -1521,7 +1521,7 @@ class Gnome(Plant):
                 atspi.find(a, None, name='Reject the other photo?', timeout=4)
                 self.evidence(a, 'pick-question')
                 self.assertEqual(omar.req('GET', '/api/submissions?status=all&kind=photo')['submissions'][0]['status'], 'pending')
-                atspi.click(atspi.find(a, 'button', name='Pick and reject the other', timeout=5))
+                atspi.click(atspi.find(a, 'button', name='Use this one and reject the other', timeout=5))
                 atspi.find(a, 'label', contains='Photo chosen', timeout=4)
                 break
             except AssertionError:

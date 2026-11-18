@@ -70,7 +70,7 @@ proc reviewSection(w: Win, p: Page, t: Tag) =
       w.afterChange(id, sent = [k, isa])),
     ("Not a tag", proc () =
       # asked first (#365): the tag leaves the drawing on every device
-      if not ask(w.hwnd, "Mark this as not a tag?", "It is no longer shown as a tag, on every device.", "Not a tag"): return
+      if not ask(w.hwnd, "Mark this as not a tag?", "It is no longer shown as a tag, on every device.", "Mark as not a tag"): return
       if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
                                     ("base", base)]), "not a tag").len > 0:
         w.afterChange(id, sent = [k, isa])))
