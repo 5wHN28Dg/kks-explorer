@@ -58,6 +58,7 @@ const COMPACT_MARGIN := 16.0     # right of the HUD's buttons in the compact row
 ## Up and Down (flying, touch): right of the middle, below the bars (place_updown)
 var updown_box: VBoxContainer
 var ui_size_opt: OptionButton    # the settings' UI size (100 % to 200 %, ui/widgets.gd ui_size)
+var ui_size_steps: Array = []    # its Smaller and Larger buttons
 var settings_layer: CanvasLayer
 var _theme_scale := 0.0        # the UI scale the settings' theme was made for
 const SETTINGS_W := 700.0      # the settings panel's width at UI scale 1 (less on a narrower canvas)
@@ -415,6 +416,15 @@ func _settings(_hud_root: Control) -> void:
 		ui_size_opt.add_item(ui_size_text(f))
 	ui_size_opt.item_selected.connect(_on_ui_size)
 	row_s.add_child(ui_size_opt)
+	# a step smaller or larger: on a phone the list is longer than the screen, and Android's finger doesn't scroll a
+	# Godot list (seen on the Note 9: a drag moves the highlight), so its last sizes were out of reach
+	for d in [["Smaller", -1], ["Larger", 1]]:
+		var b := W.button(d[0], _step_ui_size.bind(d[1]))
+		b.name = "ui_size_" + String(d[0]).to_lower()
+		b.focus_mode = Control.FOCUS_ALL
+		b.accessibility_name = "UI size " + String(d[0]).to_lower()
+		row_s.add_child(b)
+		ui_size_steps.append(b)
 	var ui_note := Label.new()
 	ui_note.name = "ui_size_note"
 	ui_note.text = "Text, buttons and panels: larger, or smaller to see more of the plant. The size marked \"default\" is where this device starts: on a phone, the size that makes its buttons big enough for a finger."
@@ -616,6 +626,7 @@ func show_settings(on: bool) -> void:
 		for i in W.UI_SIZES.size():               # (the device's start marked: it is known once the app has started)
 			ui_size_opt.set_item_text(i, ui_size_text(W.UI_SIZES[i]))
 		ui_size_opt.selected = W.UI_SIZES.find(W.ui_size)
+		_ui_size_steps_state()
 		touch_opt.selected = TOUCH.find(touch_setting())
 		var pi: int = Player.PACES.keys().find(main.cf.get_value("controls", "pace", "normal"))
 		pace_opt.selected = pi if pi >= 0 else Player.PACES.keys().find("normal")     # as apply_gait: unknown is normal
@@ -632,8 +643,22 @@ func _on_tier(i: int) -> void:
 static func ui_size_text(f: float) -> String:
 	return "%d %%" % roundi(f * 100.0) + (" (default)" if is_equal_approx(f, W.ui_size_default) else "")
 
+## Smaller (-1) or Larger (+1): the next of the settings' sizes, applied and saved as a choice in the list is.
+func _step_ui_size(d: int) -> void:
+	var i := clampi(W.UI_SIZES.find(W.ui_size) + d, 0, W.UI_SIZES.size() - 1)
+	if not is_equal_approx(W.UI_SIZES[i], W.ui_size):
+		main.set_ui_size(W.UI_SIZES[i])
+	ui_size_opt.selected = W.UI_SIZES.find(W.ui_size)
+	_ui_size_steps_state()
+
+func _ui_size_steps_state() -> void:
+	if ui_size_steps.size() == 2:
+		ui_size_steps[0].disabled = W.UI_SIZES.find(W.ui_size) <= 0
+		ui_size_steps[1].disabled = W.UI_SIZES.find(W.ui_size) >= W.UI_SIZES.size() - 1
+
 func _on_ui_size(i: int) -> void:
 	main.set_ui_size(W.UI_SIZES[i])
+	_ui_size_steps_state()
 
 func _on_touch(i: int) -> void:
 	main.cf.set_value("controls", "touch", TOUCH[i])

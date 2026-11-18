@@ -618,6 +618,25 @@ func _setting(tree: SceneTree) -> Array:
 	if absf(main.ui.panels_top() - 160.0) > 0.5 or absf(main.ui.bar.size.y - main.ui.bar.get_combined_minimum_size().y) > 0.5:
 		p.append("100 %% chosen again: the panels begin at %.0f (160 expected), the bar %.0f tall for %.0f" % [
 			main.ui.panels_top(), main.ui.bar.size.y, main.ui.bar.get_combined_minimum_size().y])
+	# Larger and Smaller step through the sizes (a phone's finger doesn't scroll the list): from 100 % to 110 % and back,
+	# saved; Smaller is disabled at 100 %, Larger at 200 %
+	var up: Button = hud.ui_size_steps[1]
+	var down: Button = hud.ui_size_steps[0]
+	up.pressed.emit()
+	for i in 3:
+		await tree.process_frame
+	if not is_equal_approx(W.ui_size, 1.1) or not is_equal_approx(float(main.cf.get_value("ui", "ui_size", 0.0)), 1.1) \
+			or opt.selected != W.UI_SIZES.find(1.1):
+		p.append("Larger from 100 %% gave %d %% (saved %s, the list at %d)" % [roundi(W.ui_size * 100.0),
+			str(main.cf.get_value("ui", "ui_size", null)), opt.selected])
+	down.pressed.emit()
+	for i in 3:
+		await tree.process_frame
+	if not is_equal_approx(W.ui_size, 1.0) or not down.disabled:
+		p.append("Smaller from 110 %% gave %d %%, Smaller then %s" % [roundi(W.ui_size * 100.0), "disabled" if down.disabled else "enabled"])
+	for b in [up, down]:
+		if b.size.y < 52.0 * W.scale - 0.5 or not b.is_visible_in_tree() or not canvas.grow(0.5).encloses(b.get_global_rect()):
+			p.append("the UI size's %s is %s, off the canvas or short" % [b.text, str(b.get_global_rect())])
 	# 200 %, the most: the settings and their Close still inside the 800 × 450 canvas
 	opt.select(opt.item_count - 1)
 	opt.item_selected.emit(opt.item_count - 1)
@@ -628,6 +647,9 @@ func _setting(tree: SceneTree) -> Array:
 			or not canvas.grow(0.5).encloses(hud.close_btn.get_global_rect()):
 		p.append("after choosing 200 %% the canvas is %s, the settings %s" % [str(canvas.size), str(hud.panel.get_global_rect())])
 	p += await _bars(main, "after choosing 200 %", canvas, false, 2.0)
+	if not up.disabled or down.disabled:
+		p.append("at 200 %% Larger is %s and Smaller %s (disabled and enabled expected)" % [
+			"disabled" if up.disabled else "enabled", "disabled" if down.disabled else "enabled"])
 	opt.select(i150)
 	opt.item_selected.emit(i150)
 	for i in 4:
