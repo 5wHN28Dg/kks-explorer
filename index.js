@@ -177,6 +177,8 @@ async function refreshState(){
   // the open systems list follows the sync too, but never redraws under the keyboard or a screen reader's focus
   const SD=$('#sysDrawer');
   if(SD.classList.contains('open')){ if(SD.contains(document.activeElement)) sysStale=true; else renderSystems() }
+  // the open search results' photo marks likewise (only when one of them changed: the list keeps its place otherwise)
+  followSearch();
   const CD=$('#covDrawer');   // the coverage numbers likewise
   // rebuilt at once unless the focus is on something the rebuild replaces (a row in #covBody; the heading stays)
   if(CD.classList.contains('open')){ if($('#covBody').contains(document.activeElement)) covStale=true; else renderCoverage() }
@@ -276,9 +278,9 @@ function dropDarkLevels(){ for(const p of dark.levels.values()) p.then(u=>URL.re
 // ---------- dark drawings: like a PDF reader's dark mode; remembered on this device ----------
 const dark={on:false,gen:0,sheet:null,levels:new Map(),wait:new Map(),seq:0,warned:false};
 function setDark(on){
+  if(dark.on===on) return;
   dark.on=on; dark.gen++; document.body.classList.toggle('darkdwg',on);
-  const b=$('#zdark'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
-  try{ on?localStorage.setItem('darkDrawings','1'):localStorage.removeItem('darkDrawings') }catch(e){}
+  $('#zdark').classList.toggle('on',on);
   if(!on){ dropDarkLevels(); dark.sheet=null }      // their blob: URLs are freed with them
   if(!cur?.levels) return;
   sharp.worker??=startTiles();
@@ -288,8 +290,32 @@ function setDark(on){
   levelSrc(k).then(u=>{ if(cur===s&&dark.gen===g) img.src=u }).catch(e=>console.warn('overview level',k,e));
   clearTimeout(sharp.timer); drawSharp();
 }
-$('#zdark').onclick=()=>setDark(!dark.on);
-try{ if(localStorage.getItem('darkDrawings')==='1') setDark(true) }catch(e){}
+// The setting (the user, 2026-11-16: "an option to keep dark mode on for the sheets"): the drawings follow the device's
+// theme until the person says always dark or always light. Kept on this device as localStorage darkDrawings: '1' always
+// dark (what the old on/off button wrote when on), '0' always light, absent = follow the theme. The same three
+// choices, with the same words, in every app.
+const DARK_MODES=[['follow','Follow theme'],['dark','Always dark'],['light','Always light']];
+const sysDark=matchMedia('(prefers-color-scheme: dark)');
+let darkMode='follow';
+try{ const v=localStorage.getItem('darkDrawings'); darkMode=v==='1'?'dark':v==='0'?'light':'follow' }catch(e){}
+const darkWanted=()=>darkMode==='dark'||(darkMode==='follow'&&sysDark.matches);
+const darkTitle=()=>{ const t='Dark drawings: '+DARK_MODES.find(m=>m[0]===darkMode)[1]; $('#zdark').title=t; $('#zdark').setAttribute('aria-label',t) };
+function setDarkMode(m){
+  darkMode=m;
+  try{ m==='follow'?localStorage.removeItem('darkDrawings'):localStorage.setItem('darkDrawings',m==='dark'?'1':'0') }catch(e){}
+  darkTitle(); setDark(darkWanted());
+}
+$('#zdark').onclick=()=>{
+  const d=dialog('Dark drawings',
+    h('p',{class:'sub',style:'margin:0 0 8px'},'Light lines on dark paper, like a PDF reader’s dark mode. Remembered on this device.'),
+    h('div',{role:'radiogroup','aria-labelledby':'dlgT'},DARK_MODES.map(([m,label])=>h('label',{class:'radio'},
+      h('input',{type:'radio',name:'darkMode',value:m,checked:m===darkMode?'':null,onchange:e=>{ if(e.currentTarget.checked) setDarkMode(m) }}),' ',label))),
+    h('div',{class:'btns'},h('button',{type:'button',class:'primary',onclick:()=>d.close()},'Done')));
+  d.addEventListener('close',()=>$('#zdark').focus());
+  d.querySelector('input:checked')?.focus();
+};
+(sysDark.addEventListener?sysDark.addEventListener.bind(sysDark,'change'):sysDark.addListener.bind(sysDark))(()=>{ if(darkMode==='follow') setDark(darkWanted()) });
+darkTitle(); setDark(darkWanted());
 function apply(){ const t=`translate(${view.x}px,${view.y}px) scale(${view.s})`; $('#stage').style.transform=t; $('#stage2').style.transform=t; followSharp() }
 
 // ---------- sharp layer: the sheet's vector drawing, redrawn for the visible area once the view stops moving ----------
@@ -399,6 +425,12 @@ $('#zin').onclick=()=>zoomAt(1.4); $('#zout').onclick=()=>zoomAt(1/1.4); $('#zfi
 // a photo of the tag plate is a photo whose caption starts with "Tag plate" (PROTOCOL-v2 §9; core model.photoCover)
 const photoCover=k=>KSys.photoCover(k,STATE.photos);
 const COVER_WORDS={both:'equipment and tag plate photos',equipment:'equipment photo only',plate:'tag plate photo only',none:'no photos'};
+// the photo mark beside a code (search results, equipment by system): the coverage colour and a shape of its own per
+// state (index.html .pmark). Drawn only: the row says the same in words for screen readers.
+const pmark=p=>h('span',{class:'pmark p-'+p,'aria-hidden':'true',title:COVER_WORDS[p]});
+// what the marks mean, as the last line of the search results (not a result: it can't be picked)
+const photoLegend=()=>h('div',{class:'res m legend',role:'option','aria-disabled':'true',id:'resLegend'},'Photos:',
+  ['none','equipment','plate','both'].map(p=>h('span',{class:'nw'},pmark(p),COVER_WORDS[p])));
 // empties the tag layer (all but the select and mark boxes); data-sheet names the sheet whose image has loaded and
 // whose tags were drawn over it
 function clearLayer(){ const L=$('#layer'); delete L.dataset.sheet; for(const x of [...L.children]) if(x.id!=='selbox'&&x.id!=='markbox') x.remove() }
@@ -539,11 +571,22 @@ async function saveDesc(t,text){
 // `queued` false: a floor that is only in the outbox (with a photo waiting or kept after it was refused, or a place change) doesn't count
 const floorKnown=(k,queued=true)=>!!((eq(k).floor||'').trim()||String(myPendingEq(k,queued).floor??'').trim()
   ||[...(STATE.mine||[]).map(s=>s.payload),...(queued?K.outbox:[]).map(i=>i.payload)].some(p=>p&&p.kks===k&&p.floor));
+// a device whose main pointer is a finger: a file input with `capture` opens its camera
+const PHONE_CAMERA=()=>matchMedia('(pointer:coarse)').matches;
 function photoAdd(k){
   const need=!floorKnown(k);
-  const pick=(label,plate)=>h('label',{class:'ghost',style:'display:inline-block;margin:8px 6px 0 0;cursor:pointer'},label,
-    h('input',{type:'file',accept:'image/*',capture:'environment',style:'display:none','data-plate':plate?'1':null,onchange:ev=>addPhoto(ev.currentTarget,k,plate)}));
-  const btns=h('div',{id:'phAdd',style:need?'display:none':null},pick('+ Equipment photo',false),pick('+ Tag plate photo',true));
+  // Each button says which kind of photo it adds and where it comes from (the user, 2026-11-16; the same words on
+  // every client). On a phone or tablet: the camera (`capture`) or the gallery, for each kind; elsewhere `capture`
+  // does nothing, so there is one button per kind, for a file.
+  // (a real button that opens its hidden file input: a label around the input could not be reached from the keyboard
+  // nor was it named a button: UI/UX audit of #401)
+  const pick=(label,plate,cam)=>{
+    const inp=h('input',{type:'file',accept:'image/*',capture:cam?'environment':null,style:'display:none','data-plate':plate?'1':null,'data-src':cam?'camera':'file',onchange:ev=>addPhoto(ev.currentTarget,k,plate)});
+    return h('span',null,h('button',{type:'button',class:'ghost',style:'margin:8px 6px 0 0',onclick:()=>inp.click()},label),inp);
+  };
+  const btns=h('div',{id:'phAdd',style:need?'display:none':null},PHONE_CAMERA()
+    ?[pick('Equipment: take photo',false,true),pick('Equipment: from gallery',false,false),pick('Tag plate: take photo',true,true),pick('Tag plate: from gallery',true,false)]
+    :[pick('Equipment: from a file…',false,false),pick('Tag plate: from a file…',true,false)]);
   if(!need) return btns;
   const inp=h('input',{id:'phFloor',type:'number',inputmode:'numeric',min:0,max:10,step:1,placeholder:'0–10',style:'width:90px',
     oninput:()=>{ btns.style.display=/^(\d|10)$/.test(inp.value.trim())?'':'none' }});
@@ -722,20 +765,20 @@ async function addPhoto(input,k,plate){
   // no floor for this code yet: the one typed above the buttons goes with the photo (written first, PROTOCOL-v2 §9)
   const fl=floorKnown(k)?'':($('#phFloor')?.value||'').trim();
   if(!floorKnown(k)&&!/^(\d|10)$/.test(fl)){ toast('The floor first: a whole number from 0 to 10'); return }
-  const a=await photoCanvas(f); if(!a) return;
+  const a=await photoCanvas(f,plate?'Add a tag plate photo':'Add an equipment photo'); if(!a) return;
   // queued at once (kept on this device), converted in the background, sent in order: closing the panel stops nothing
   try{ await K.queuePhoto(a.canvas,{kks:k,...(plate?{caption:'Tag plate'}:{}),...(fl?{floor:fl}:{})},a.note) }
   catch(e){ toast('Not saved: '+e.message); return }
-  toast(`${plate?'Tag plate photo':'Photo'} for ${k}: converting, then sent`);
+  toast(`${plate?'Tag plate photo':'Equipment photo'} for ${k}: converting, then sent`);
   if(selTag&&full(selTag)===k&&!$('#panel').querySelector('.editing')) reselect();
 }
 // a picture file → scaled and marked up in the editor -> {canvas, note} or null
-async function photoCanvas(f){
+async function photoCanvas(f,title=''){
   // reading and scaling a camera picture takes a second or more on a phone: say so until the editor opens
   const bar=K.progress('Preparing the photo…',Math.max(800,f.size/2000));
-  try{ return await photoCanvasIn(f,bar) } finally{ bar.done() }
+  try{ return await photoCanvasIn(f,bar,title) } finally{ bar.done() }
 }
-async function photoCanvasIn(f,bar){
+async function photoCanvasIn(f,bar,title){
   const img=new Image(), url=URL.createObjectURL(f);
   try{ await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(new Error('That file could not be read as a picture.'));img.src=url}) }
   catch(e){ toast(e.message); return null } finally{ URL.revokeObjectURL(url) }
@@ -748,7 +791,7 @@ async function photoCanvasIn(f,bar){
   // (toBlob encodes off the main thread: a 2560 px toDataURL took ~0.4 s of it on a laptop, more on a phone)
   const u=await new Promise(ok=>c.toBlob(bl=>ok(bl?URL.createObjectURL(bl):c.toDataURL('image/png')),'image/png'));
   bar.done();
-  try{ return await K.annotate(u,!canApprove()) }   // mark what matters, or just "Use photo"
+  try{ return await K.annotate(u,!canApprove(),title) }   // mark what matters, or just "Use photo"
   finally{ if(u.startsWith('blob:')) URL.revokeObjectURL(u) }
 }
 // a picture file → marked up and encoded as the server wants it, for a photo of several codes at once (sent at once,
@@ -973,7 +1016,9 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&multi.on&&!documen
   (e.target===document.body||e.target.closest?.('#viewer,#pickbar,.zoom'))){ pickMode(false); $('#zpick').focus() } });
 
 // ---------- search ----------
-let hits=[],hi=0;
+let hits=[],hi=0,resKey='';
+// what the open results show of the photos: when a sync changes it, they are made again (a photo arrived)
+const resultsKey=()=>{ const c=KSys.photoCovers(STATE.photos); return hits.map(x=>x.loc?'':x.k+':'+(c.get(x.k)||'none')).join() };
 $('#q').addEventListener('input',()=>{
   const q=$('#q').value.trim().toUpperCase().replace(/\s+/g,''), qr=$('#q').value.trim().toLowerCase(), R=$('#results');
   if(q.length<2){R.style.display='none';$('#q').setAttribute('aria-expanded','false');return}
@@ -991,18 +1036,31 @@ $('#q').addEventListener('input',()=>{
     const text=[...(LOC[b]||[]).map(r=>[r.cabinet,r.desc,r.direction].join(' ')),...(PTS[b]||[]).map(r=>[r.desc,r.grid].join(' '))].join(' ').toLowerCase();
     const score=b===qb?90:b.startsWith(qb)?70:b.includes(qb)?50:qr.length>2&&text.includes(qr)?35:0; if(score)hits.push({loc:b,score,k:b}) }
   hits.sort((a,b)=>b.score-a.score||a.k.localeCompare(b.k)); hits=hits.slice(0,60); hi=0;
+  resKey=resultsKey();
   const sn=id=>SHEETS.find(s=>s.id===id).name;
+  const covers=KSys.photoCovers(STATE.photos), pc=k=>covers.get(k)||'none';   // one pass over the photos
   put(R,hits.length?hits.map((x,i)=>{ const opt={class:'res'+(i===0?' on':''),role:'option',id:'res-'+i,'aria-selected':String(i===0),onclick:()=>pick(i)};
     if(x.loc){const r=refLoc(x.loc);return h('div',opt,h('div',{class:'k'},x.loc+' ',h('span',{class:'m',style:'color:var(--review)'},r.rows.length?'location list only':'instrument point only')),
       h('div',{class:'m'},r.rows.length?(r.elev||'level varies')+(r.cabinet?' · '+r.cabinet:'')+(r.rows[0].desc?' · '+r.rows[0].desc:''):
         'instrument point'+((PTS[x.loc]||[])[0]?.desc?' · '+PTS[x.loc][0].desc:'')))}
     const e=eq(x.k), fl=floorOf(x.t), cab=refLoc(bodyOf(x.t)).cabinet;
-    return h('div',opt,h('div',{class:'k'},x.k||x.t.read.join(' / '),x.t.isa?[' ',h('span',{class:'m'},x.t.isa)]:null,x.t.status==='review'?[' ',h('span',{class:'m',style:'color:var(--review)'},'unverified')]:null),
-      h('div',{class:'m'},`${sn(x.t.sheet)} · ${kindName(x.t)??''}`+(fl?' · '+floorName(fl):'')+(cab?' · '+cab:'')+(e.area?' · '+e.area:'')))})
+    return h('div',opt,h('div',{class:'k'},x.k?pmark(pc(x.k)):null,x.k||x.t.read.join(' / '),x.t.isa?[' ',h('span',{class:'m'},x.t.isa)]:null,x.t.status==='review'?[' ',h('span',{class:'m',style:'color:var(--review)'},'unverified')]:null),
+      h('div',{class:'m'},`${sn(x.t.sheet)} · ${kindName(x.t)??''}`+(fl?' · '+floorName(fl):'')+(cab?' · '+cab:'')+(e.area?' · '+e.area:''),
+        x.k?h('span',{class:'vh'},' · '+COVER_WORDS[pc(x.k)]):null))}).concat(hits.some(x=>x.k&&!x.loc)?[photoLegend()]:[])
     :h('div',{class:'res m',role:'option','aria-disabled':'true'},'No match. It may be on a sheet not loaded yet, or still in the review queue under a misread.'));
   R.style.display='block';
   $('#q').setAttribute('aria-expanded','true'); $('#q').setAttribute('aria-activedescendant', hits.length?'res-0':'');
 });
+// the open results follow a sync when what they show changed, the keyboard's place kept on the same result (made again,
+// the list went back to its first: Enter then opened another code than the one chosen; UI/UX audit of #401)
+function followSearch(){
+  if($('#results').style.display!=='block'||!hits.length||resultsKey()===resKey) return;
+  const id=x=>x&&(x.loc?'loc:'+x.loc:x.t.id), was=id(hits[hi]);
+  $('#q').dispatchEvent(new Event('input'));
+  const i=hits.findIndex(x=>id(x)===was); if(i<=0) return;
+  hi=i; [...$('#results').children].forEach((c,j)=>{ c.classList.toggle('on',j===hi); c.setAttribute('aria-selected',String(j===hi)) });
+  $('#q').setAttribute('aria-activedescendant','res-'+hi);
+}
 $('#q').addEventListener('keydown',e=>{ const R=$('#results');
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){ hi=Math.max(0,Math.min(hits.length-1,hi+(e.key==='ArrowDown'?1:-1)));
     [...R.children].forEach((c,i)=>{ c.classList.toggle('on',i===hi); c.setAttribute('aria-selected', String(i===hi)) });
@@ -1088,7 +1146,7 @@ function renderSystems(){
   const all=(q!==''||!!sysOnly)&&v.total<=SYS_OPEN_ALL;
   const sum=(label,n)=>h('summary',null,label,' ',h('span',{class:'c'},`(${n})`));
   const row=it=>h('button',{type:'button',class:'sysrow','data-tag':it.tag,onclick:()=>{ focusPanel=true; if(innerWidth<=720){ $('#sysDrawer').classList.remove('open'); $('#sysBtn').setAttribute('aria-expanded','false') } goTo(it.tag) }},
-    h('span',{class:'sysdot p-'+it.photos,'aria-hidden':'true',title:COVER_WORDS[it.photos]}),
+    h('span',{class:'sysdot pmark p-'+it.photos,'aria-hidden':'true',title:COVER_WORDS[it.photos]}),
     h('span',{class:'mono'},it.code),
     h('span',{class:'d'},it.desc?[K.userText(it.desc),it.sheet_name?' · ':'']:null,it.sheet_name||'',it.count>1?' · ×'+it.count:''),
     h('span',{class:'vh'},' · '+COVER_WORDS[it.photos]));

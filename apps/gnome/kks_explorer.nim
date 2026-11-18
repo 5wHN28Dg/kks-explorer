@@ -5,7 +5,7 @@ import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequt
 import kks/[json, api, applink]
 import kks/model
 import kksl/dbstore
-import appstate
+import appstate, darkcolor
 import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, coverage, links, photos, about]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
@@ -77,6 +77,15 @@ proc fillSheets(w: Win) =
       gtk_list_box_append(w.sheetList, navRow(name, sub, "Open " & name, proc () = w.showSheet(id)))
   w.sheetsKey = key
 
+var
+  followTheme: proc ()        ## the open main screen's "the theme changed" (Dark drawings set to follow it)
+  themeWatched = false
+
+proc resultsKey(w: Win, found: seq[Tag], covers: Table[string, string]): string =
+  ## what the search results show: the tags found and each code's photo mark
+  for t in found: result.add t.id & "\x1f" & t.full & "\x1f" & covers.getOrDefault(t.full, "none") & "\x1e"
+  result.add $w.picking
+
 proc runSearch(w: Win) =
   let q = text(w.searchEntry).strip
   leaveFocus(w.resultList)
@@ -88,6 +97,9 @@ proc runSearch(w: Win) =
     return
   let found = w.m.search(q)
   let items2 = toSeq(found)
+  let covers = w.m.photoCovers       # each result's photo mark (one pass over the photos)
+  w.resultsShown = w.resultsKey(found, covers)
+  var marked = false
   for i2 in 0 ..< items2.len:
     closureScope:   # each pass gets its own copies of the captured variables
       let t = items2[i2]
@@ -96,12 +108,24 @@ proc runSearch(w: Win) =
       let id = t.id
       let sheet = t.sheet
       let picking = w.picking     # the select mode: a result toggles its tag (the keyboard's way to select)
-      gtk_list_box_append(w.resultList, navRow(title, w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet),
+      let r = navRow(title, w.m.kindName(t) & " · " & (if okS: si.name else: t.sheet),
         (if picking: "Select or unselect " else: "Show ") & title & " on " & (if okS: si.name else: t.sheet), proc () =
           if w.picking: w.pickResult(id)      # the open drawing stays (multi.nim)
-          else: w.goToTag(sheet, id)))
+          else: w.goToTag(sheet, id))
+      if t.full.len > 0:
+        adw_action_row_add_prefix(r, photoMark(covers.getOrDefault(t.full, "none")))
+        marked = true
+      gtk_list_box_append(w.resultList, r)
       w.v.hits.incl t.id
   if found.len == 0: gtk_list_box_append(w.resultList, row("Nothing found", "Try part of the code, or a word from the description"))
+  if marked:      # what the marks mean: a last line that is not a result
+    let lr = gtk_list_box_row_new()
+    gtk_list_box_row_set_child(lr, photoLegend())
+    gtk_list_box_row_set_activatable(lr, 0)
+    gtk_list_box_row_set_selectable(lr, 0)
+    gtk_widget_set_focusable(lr, 0)
+    setAccessibleLabel(lr, "Photos: ring no photos, half disc equipment photo only, square tag plate photo only, disc equipment and tag plate photos")
+    gtk_list_box_append(w.resultList, lr)
   gtk_widget_set_visible(w.resultList, 1)
   gtk_widget_queue_draw(w.v.widget)
 
@@ -135,6 +159,13 @@ proc refresh(w: Win) =
   ## the data changed underneath (sync, an approval): reload, keep the open sheet and selection (R20)
   w.loadModel()
   w.fillSheets()
+  # the search results follow (a photo arrived: its code's mark changes), made again only when what they show changed
+  # (a list rebuilt at every sync round loses the presses on it, #147)
+  # Not while the focus is on a result (a keyboard's or a screen reader's place would be lost: UI/UX audit of #401):
+  # the next round after it leaves makes them again.
+  if w.searchEntry != nil and gtk_widget_get_visible(w.resultList) != 0 and text(w.searchEntry).strip.len > 0 and
+     not focusInside(w.resultList) and
+     w.resultsKey(w.m.search(text(w.searchEntry).strip), w.m.photoCovers) != w.resultsShown: w.runSearch()
   if w.sheet.len > 0:
     w.v.tags = w.tagBoxes(w.sheet)
     w.setLinks()
@@ -233,7 +264,9 @@ proc mainScreen(w: Win): W =
   let sidebar = page(w.sideNav, "Sheets")
   # content: viewer + tag panel
   w.v = newViewer()
-  w.v.setDark(w.a.store.getMeta("dark_drawings") == "1")    # per device (this device's store), like sync_peers
+  # the Dark drawings setting, per device (this device's store, like sync_peers): follow the theme, always dark or
+  # always light (darkcolor.nim)
+  w.v.setDark(darkNow(darkModeOf(w.a.store.getMeta("dark_drawings")), adw_style_manager_get_dark(adw_style_manager_get_default()) != 0))
   w.showSheet = proc (id: string) = w.doShowSheet(id)
   w.selectTag = proc (id: string, center: bool) = w.doSelectTag(id, center)
   w.rebuildPanel = proc () =
@@ -297,15 +330,45 @@ proc mainScreen(w: Win): W =
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-in-symbolic", "Zoom in (+)", proc () = w.v.zoomBy(1.5)))
   adw_header_bar_pack_end(contentHeader, iconButton("zoom-out-symbolic", "Zoom out (−)", proc () = w.v.zoomBy(1 / 1.5)))
   # dark drawings: a PDF reader's dark mode for the sheets (lightness inverted, hue kept; photos never change)
-  let darkBtn = gtk_toggle_button_new()
-  gtk_button_set_icon_name(darkBtn, "weather-clear-night-symbolic")
-  gtk_widget_set_tooltip_text(darkBtn, "Dark drawings")
-  setAccessibleLabel(darkBtn, "Dark drawings")
-  gtk_toggle_button_set_active(darkBtn, cint(w.v.dark))
-  darkBtn.on("toggled", proc () =
-    let on = gtk_toggle_button_get_active(darkBtn) != 0
-    w.v.setDark(on)
-    w.a.store.setMeta("dark_drawings", if on: "1" else: ""))
+  # A menu button with the three choices (the user, 2026-11-16: the drawings can stay dark, or light, whatever the
+  # theme; until then they follow it). The choice is remembered on this device.
+  let darkBtn = gtk_menu_button_new()
+  gtk_menu_button_set_icon_name(darkBtn, "weather-clear-night-symbolic")
+  gtk_widget_set_tooltip_text(darkBtn, DarkSetting)
+  setAccessibleLabel(darkBtn, DarkSetting)
+  let darkPop = gtk_popover_new()
+  let darkBox = vbox(4)
+  darkBox.add label(DarkSetting, "heading", wrap = false)
+  let styles = adw_style_manager_get_default()
+  var darkMode = darkModeOf(w.a.store.getMeta("dark_drawings"))
+  let applyDark = proc () = w.v.setDark(darkNow(darkMode, adw_style_manager_get_dark(styles) != 0))
+  var firstRadio: W
+  for m in DarkMode:
+    closureScope:
+      let mode = m
+      # toggle buttons in one group (one is always pressed): unlike GTK 4's check buttons they can be pressed
+      # through AT-SPI, by a screen reader's own action and by the e2e
+      let rb = gtk_toggle_button_new_with_label(DarkModeLabels[mode].cstring)
+      if firstRadio == nil: firstRadio = rb else: gtk_toggle_button_set_group(rb, firstRadio)
+      gtk_toggle_button_set_active(rb, cint(mode == darkMode))
+      rb.on("toggled", proc () =
+        if gtk_toggle_button_get_active(rb) == 0 or darkMode == mode: return
+        darkMode = mode
+        w.a.store.setMeta("dark_drawings", storedAs(mode))
+        applyDark()
+        idle(proc () = gtk_popover_popdown(darkPop)))     # chosen: the drawing shows it, the menu is done
+      darkBox.add rb
+  discard margins(darkBox, 8)
+  gtk_popover_set_child(darkPop, darkBox)
+  gtk_menu_button_set_popover(darkBtn, darkPop)
+  # the theme changed while the app runs: the drawings follow at once when they are set to. One handler for the
+  # process, calling the main screen of the moment (the screen is made again after leaving a plant and joining one)
+  followTheme = proc () =
+    if not w.gone: applyDark()       # (not into a window that has closed: adversarial review of #401)
+  if not themeWatched:
+    themeWatched = true
+    styles.onPtr("notify::dark", proc (p: W) =
+      if followTheme != nil: followTheme())
   adw_header_bar_pack_end(contentHeader, darkBtn)
   # a toggle: its pressed state is what Orca reads (and what the Coverage page turns on)
   w.coverBtn = gtk_toggle_button_new()
@@ -575,6 +638,21 @@ proc activate(w: Win, app: W) =
         removeFile(staleFlag)
         w.rebuildPanel()
         stderr.writeLine "KKS_TEST_STALE_CLICK: the panel was rebuilt before a button's handler"
+  # tests: when the file KKS_TEST_MOVE_FOCUS names appears, the keyboard focus goes to the first search result
+  # ("result") or to the search field ("search"), and the file is removed (GTK 4's AT-SPI has no GrabFocus, and keys
+  # can't be typed into the headless session)
+  let moveFocus = getEnv("KKS_TEST_MOVE_FOCUS")
+  if moveFocus.len > 0:
+    timeout(100, proc (): bool =
+      if w.gone: return false
+      if fileExists(moveFocus):
+        let what = readFile(moveFocus).strip
+        removeFile(moveFocus)
+        if what == "result":
+          let r = gtk_list_box_get_row_at_index(w.resultList, 0)
+          if r != nil: gtk_widget_grab_focus(r)
+        elif what == "search" and w.searchEntry != nil: gtk_widget_grab_focus(w.searchEntry)
+      true)
   # tests: the file KKS_TEST_FOCUS names holds what has the window's keyboard focus (a button's label, else the
   # widget's type; "" for none), written when it changes. The headless test session has no keyboard, so its window
   # is never the active one and AT-SPI reports no widget as focused.

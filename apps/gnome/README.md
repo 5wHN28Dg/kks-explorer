@@ -38,7 +38,7 @@ system's.
 - vector tiles above the overview's resolution, drawn by Cairo and composited by GSK;
 - tag hotspots by status;
 - pan, zoom, pinch and keyboard (arrows, + −, 0).
-- dark drawings (the header's moon toggle, remembered per device): a PDF reader's dark mode. Every colour's lightness
+- dark drawings (the header's moon button: follow the theme, always dark or always light, remembered per device): a PDF reader's dark mode. Every colour's lightness
   is inverted and its hue kept (`apps/common/darkcolor.nim`): black lines near-white, the paper #121212, red markup
   red. Tiles are re-rendered and the overview levels decoded again in the new mode (the transform adds ~140 ms on the
   worker to a 30 Mpx level 0, on top of ~270 ms of decoding); tag outlines are lightened to keep 3:1 on the dark

@@ -298,8 +298,8 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
                 Text("Preparing the photo…", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
-            Button(onClick = { shoot() }, enabled = !preparing, modifier = Modifier.fillMaxWidth()) { Text("Take a photo") }
-            OutlinedButton(onClick = { fromCamera = false; gallery.launch("image/*") }, enabled = !preparing, modifier = Modifier.fillMaxWidth()) { Text("From the gallery") }
+            Button(onClick = { shoot() }, enabled = !preparing, modifier = Modifier.fillMaxWidth()) { Text("Take photo") }
+            OutlinedButton(onClick = { fromCamera = false; gallery.launch("image/*") }, enabled = !preparing, modifier = Modifier.fillMaxWidth()) { Text("From gallery") }
         }
     }, confirmButton = { TextButton(onClick = onClose) { Text("Cancel") } })
     picked?.let { bmp ->

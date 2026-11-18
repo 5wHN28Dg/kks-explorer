@@ -1084,11 +1084,13 @@ K.lightbox.isOpen = () => document.getElementById('kzoom')?.style.display === 'b
 // -> Promise of {canvas, note} with the marks drawn in, or null if cancelled. askNote: offer "note for the approver".
 // The photo editor (R6): arrow, box or circle, four colours, three line sizes, undo; zoom (buttons, wheel, two-finger
 // pinch and pan) and, while a finger draws, a loupe: the area under the finger magnified, above it (touch only).
-K.annotate = (src, askNote) => new Promise(done => {
+K.annotate = (src, askNote, title = '') => new Promise(done => {
   const box = document.createElement('div');
   box.style.cssText = 'position:fixed;inset:0;z-index:160;background:#0b1116;display:flex;flex-direction:column;color:#e9eef2;font:14px system-ui,sans-serif;padding-top:env(safe-area-inset-top,0px)';
   const h = K.h, b = (t, a, extra = '', label = '') => h('button', {type: 'button', 'data-a': a, 'aria-label': label || null,
     style: 'padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;cursor:pointer;' + extra}, t);
+  // what the photo is of, when the caller says ("Add a tag plate photo"): the same words as the apps' editors
+  if (title) box.append(h('div', {class: 'atitle', role: 'heading', 'aria-level': '2', style: 'padding:8px 8px 0;font-weight:600;font-size:15px'}, title));
   box.append(h('div', {style: 'display:flex;gap:6px;flex-wrap:wrap;padding:8px;align-items:center'}, b('↗ Arrow', 'arrow'), b('▭ Box', 'rect'), b('◯ Circle', 'circle'),
       h('span', {style: 'display:inline-flex;gap:4px'}, ['#ff3b30', '#ffcc00', '#34c759', '#ffffff'].map(c => h('button', {type: 'button', 'data-c': c, 'aria-label': 'Colour',
         style: `width:30px;height:30px;border-radius:15px;border:2px solid #3a5061;background:${c};cursor:pointer`}))),

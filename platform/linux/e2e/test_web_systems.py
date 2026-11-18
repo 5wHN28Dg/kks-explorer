@@ -137,7 +137,7 @@ class WebSystems(unittest.TestCase):
             label = re.sub(r'\s+', ' ', row.text_content())
             for part in ('feed valve', 'Sheet A', '×2', 'no photos'):
                 self.assertIn(part, label, name)
-            self.assertEqual(row.locator('.sysdot').get_attribute('class'), 'sysdot p-none')
+            self.assertEqual(row.locator('.sysdot').get_attribute('class'), 'sysdot pmark p-none')
             # the filter: every word somewhere in the code, names, subsystem or description; levels open when few match
             page.fill('#sysQ', 'feed valve')   # 'feed' in LAB's name, 'valve' in AA's: the three LAB70 valves
             page.wait_for_function("() => document.getElementById('sysCount').textContent === '3 codes match'")

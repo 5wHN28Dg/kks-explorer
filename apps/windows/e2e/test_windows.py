@@ -286,18 +286,44 @@ class Windows(unittest.TestCase):
         self.leave()
 
     def test_dark_drawings(self):
-        """Dark drawings: the check box turns the sheet light-on-dark at once (dark paper, light lines, as drawn on the
-        screen), off restores it, and the choice survives a restart of the app (this device's store)"""
-        self.join('djoin.uia')
-        self.check('dark0.uia', ['state\tDark drawings\toff', 'shade\tDrawing\tlight', 'toggle\tDark drawings',
-                                 'state\tDark drawings\ton', 'shade\tDrawing\tdark',
-                                 'toggle\tDark drawings', 'shade\tDrawing\tlight', 'toggle\tDark drawings',
-                                 'shade\tDrawing\tdark', 'sleep\t500'])
+        """Dark drawings: a setting with three choices in the sidebar. The drawings follow Windows' app mode until the
+        person says otherwise (KKS_TEST_SYSTEM_DARK stands in for it); Always dark turns the sheet light-on-dark at
+        once (dark paper, light lines, as drawn on the screen), Always light restores it, the choice survives a
+        restart of the app (this device's store), and holds against the system's mode"""
+        light, dark = {'KKS_TEST_SYSTEM_DARK': '0'}, {'KKS_TEST_SYSTEM_DARK': '1'}
+        self.join('djoin.uia', env=light)
+        self.check('dark0.uia', ['wait\tDark drawings\t10', 'chosen\tFollow theme', 'shade\tDrawing\tlight',
+                                 'choose\tAlways dark', 'chosen\tAlways dark', 'shade\tDrawing\tdark',
+                                 'choose\tAlways light', 'chosen\tAlways light', 'shade\tDrawing\tlight',
+                                 'choose\tAlways dark', 'shade\tDrawing\tdark',
+                                 # the choices are a group of their own: an arrow key on the check box after them
+                                 # does not move into it and choose another
+                                 'keys\tSelect tags\t0x26', 'sleep\t700', 'chosen\tAlways dark', 'shade\tDrawing\tdark',
+                                 'state\tSelect tags\toff', 'sleep\t500'], env=light)
         # zoomed in: the vector tiles (Direct2D on the workers) are dark too
         self.check('dark1.uia', ['keys\tDrawing\t0x6B,0x6B,0x6B,0x6B,0x6B,0x6B', 'sleep\t1500', 'shade\tDrawing\tdark',
-                                 'click\tFit the sheet (0)'])
-        self.check('dark2.uia', ['wait\t~Sample sheet\t60', 'state\tDark drawings\ton', 'shade\tDrawing\tdark'],
-                   restart=True)
+                                 'click\tFit the sheet (0)'], env=light)
+        self.check('dark2.uia', ['wait\t~Sample sheet\t60', 'chosen\tAlways dark', 'shade\tDrawing\tdark',
+                                 'choose\tAlways light', 'shade\tDrawing\tlight', 'sleep\t500'], restart=True, env=light)
+        # the system in dark mode: always light holds; following it, the drawings are dark
+        self.check('dark3.uia', ['wait\t~Sample sheet\t60', 'chosen\tAlways light', 'shade\tDrawing\tlight',
+                                 'choose\tFollow theme', 'chosen\tFollow theme', 'shade\tDrawing\tdark', 'sleep\t500'],
+                   restart=True, env=dark)
+        self.check('dark4.uia', ['wait\t~Sample sheet\t60', 'chosen\tFollow theme', 'shade\tDrawing\tlight'],
+                   restart=True, env=light)
+        # Windows' own setting, read from the registry (no stand-in): "Choose your default app mode" dark, then as it was
+        key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize'
+        was = vm('(Get-ItemProperty -Path %s -Name AppsUseLightTheme -ErrorAction SilentlyContinue).AppsUseLightTheme' % key).strip()
+        def app_mode(v):
+            vm('if (-not (Test-Path %s)) { New-Item -Path %s | Out-Null }; Set-ItemProperty -Path %s -Name AppsUseLightTheme -Value %s -Type DWord' % (key, key, key, v), check=True)
+        try:
+            app_mode(0)
+            self.check('dark5.uia', ['wait\t~Sample sheet\t60', 'chosen\tFollow theme', 'shade\tDrawing\tdark'], restart=True)
+            app_mode(1)
+            self.check('dark6.uia', ['wait\t~Sample sheet\t60', 'chosen\tFollow theme', 'shade\tDrawing\tlight'], restart=True)
+        finally:
+            if was in ('0', '1'): app_mode(was)
+            else: vm('Remove-ItemProperty -Path %s -Name AppsUseLightTheme -ErrorAction SilentlyContinue' % key)
         self.leave()
 
     def test_multi(self):
@@ -943,7 +969,9 @@ class Windows(unittest.TestCase):
         self.add_tag('11LBA10AA102', [800, 900, 920, 960], floor='1')
         self.join('qjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1', 'KKS_TEST_RETRY_MS': '600000'})
         self.check('queue0.uia', self.show('11LBA10AA101') + [
-            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tQueue A',
+            # the search result's photo mark, in words in its text
+            'wait\t~11LBA10AA101   \t5', 'wait\t~ · Sample sheet · no photos\t5',
+            'click\tEquipment: from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tQueue A',
             'click\tSend', 'wait\tAnd its tag plate?\t20', 'click\tNo',
             'wait\t~Photo of 11LBA10AA101 was not sent (could not be compressed\t30', 'wait\tPhotos not sent (1)…\t10',
             'wait\t~1 photo of this equipment not sent\t10',
@@ -955,7 +983,7 @@ class Windows(unittest.TestCase):
         long_caption = 'Queue B ' + 'x' * 592
         # another code's photo: compressed in the background while the panel closes, then sent
         self.check('queue1.uia', self.show('11LBA10AA102') + [
-            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'settext\tCaption (optional)\t' + long_caption,
+            'click\tEquipment: from a file…', 'wait\tPhoto to mark up\t30', 'settext\tCaption (optional)\t' + long_caption,
             'click\tSend', 'wait\t~Compressing 1 photo (11LBA10AA102)\t10', 'wait\tAnd its tag plate?\t20', 'click\tNo',
             'click\tClose', 'wait\t~Saved: photo of 11LBA10AA102\t90', 'gone\t~Compressing 1 photo'])
         # the kept one: Try again
@@ -971,6 +999,10 @@ class Windows(unittest.TestCase):
         self.assertEqual(len(long_caption), 600)
         self.assertEqual((ph['11LBA10AA101']['caption'], ph['11LBA10AA102']['caption']), ('Queue A', long_caption[:500]))
         self.assertEqual(ph['11LBA10AA101'].get('by_name'), 'The Manager')
+        # both codes' search results now say so (the list follows the sync in place)
+        self.check('queue3.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLBA10AA10',
+                                  'wait\t~11LBA10AA101   \t10', 'wait\t~ · Sample sheet · equipment photo only\t60',
+                                  'gone\t~ · Sample sheet · no photos'])
         self.leave()
 
     def test_photo_queue_crash(self):
@@ -984,7 +1016,7 @@ class Windows(unittest.TestCase):
         self.add_tag(b, [800, 1100, 920, 1160], floor='2')
         self.join('crjoin.uia', env={'KKS_TEST_PHOTO_HOLD': '1'})
         def photo(code, caption):
-            return self.show(code) + ['click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30',
+            return self.show(code) + ['click\tEquipment: from a file…', 'wait\tPhoto to mark up\t30',
                                       'set\tCaption (optional)\t' + caption, 'click\tSend',
                                       'wait\tAnd its tag plate?\t20', 'click\tNo']
         self.check('crash0.uia', photo(a, 'Crash one') + photo(b, 'Crash two') +
@@ -1020,7 +1052,7 @@ class Windows(unittest.TestCase):
         self.add_tag(code, [600, 1200, 720, 1260], floor='3')
         self.join('rjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1', 'KKS_TEST_RETRY_MS': '3000'})
         self.check('retry0.uia', self.show(code) + [
-            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tRetried',
+            'click\tEquipment: from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tRetried',
             'click\tSend', 'wait\tAnd its tag plate?\t20', 'click\tNo',
             'wait\t~Photo of %s was not sent (could not be compressed\t30' % code,
             'wait\t~Saved: photo of %s\t90' % code, 'gone\tPhotos not sent (1)…'])
@@ -1038,7 +1070,7 @@ class Windows(unittest.TestCase):
         self.add_tag(c, [1000, 1000, 1120, 1060])
         self.join('fjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '3', 'KKS_TEST_RETRY_MS': '600000'})
         def photo(code, floor=None, caption=''):
-            return self.show(code) + ['click\tAdd a photo from a file…'] + (
+            return self.show(code) + ['click\tEquipment: from a file…'] + (
                 ['wait\tWhich floor is %s on?\t20' % code, 'set\tFloor of %s (0–10)\t%s' % (code, floor), 'click\tContinue']
                 if floor else []) + ['wait\tPhoto to mark up\t30', 'set\tCaption (optional)\t' + caption, 'click\tSend',
                                      'wait\tAnd its tag plate?\t20', 'click\tNo']
@@ -1068,13 +1100,13 @@ class Windows(unittest.TestCase):
                                   'wait\t~The floor of %s (4) was to be sent with that photo\t20' % a,
                                   'click\tDiscard', 'wait\tDiscard this photo?\t10', 'click\tOK',
                                   'wait\tPhotos not sent (1)…\t20', 'click\tClose'] +
-                   self.show(a) + ['click\tAdd a photo from a file…', 'wait\tWhich floor is %s on?\t20' % a,
+                   self.show(a) + ['click\tEquipment: from a file…', 'wait\tWhich floor is %s on?\t20' % a,
                                    'click\tCancel', 'gone\tWhich floor is %s on?' % a])
         self.assertIsNone((self.boss.req('GET', '/api/state').get('equipment', {}).get(a) or {}).get('floor'))
         # c: the editor opens without asking (the kept photo carries floor 7); that photo is discarded meanwhile, so
         # Send asks for the floor
         self.check('floor2.uia', self.show(c) + [
-            'click\tAdd a photo from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tFloor C2',
+            'click\tEquipment: from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tFloor C2',
             'click\tPhotos not sent (1)…', 'wait\tPhotos not sent\t10', 'click\tDiscard', 'wait\tDiscard this photo?\t10',
             'click\tOK', 'wait\t~The floor of %s (7) was to be sent with that photo\t20' % c,
             'wait\tEvery photo was sent or discarded.\t20',
@@ -1155,7 +1187,7 @@ class Windows(unittest.TestCase):
                                  'wait\tOpen 11LAC30AP001 on the drawing\t10', 'wait\tEquipment photo (2)\t10',
                                  'wait\tTag plate photo\t10', 'wait\t~by Omar Fieldman · \t10', 'wait\t11LAC30AP002\t10',
                                  'click\tOpen 11LAC30AP001 on the drawing', 'value\tNumber\t001',
-                                 'wait\tTag plate photo from a file…\t10', 'click\tClose',
+                                 'wait\tTag plate: from a file…\t10', 'click\tClose',
                                  'click\tUse this one', 'wait\t~Photo chosen\t20', 'gone\tUse this one',
                                  'gone\tEquipment photo (2)', 'wait\tTag plate photo\t20'])
         def decided():
@@ -1556,7 +1588,7 @@ class Windows(unittest.TestCase):
         self.assertEqual(got, note)
         # a photo: the code has no floor, so the floor is asked first and sent with the photo (the user's rule); then
         # the annotation editor, a red box burned in, JPEG XL (the queue), synced; the app offers a tag plate photo
-        self.check('photo.uia', ['click\tAdd a photo from a file…', 'wait\tWhich floor is 11LAB70AA501 on?\t20',
+        self.check('photo.uia', ['click\tEquipment: from a file…', 'wait\tWhich floor is 11LAB70AA501 on?\t20',
                                  'set\tFloor of 11LAB70AA501 (0–10)\t11', 'click\tContinue',
                                  'wait\tFloor: a whole number from 0 to 10 (the height goes in Elevation).\t10',
                                  'set\tFloor of 11LAB70AA501 (0–10)\t4', 'click\tContinue',

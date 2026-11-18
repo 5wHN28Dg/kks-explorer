@@ -17,6 +17,7 @@ type Win* = ref object
   m*: Model
   v*: Viewer
   split*, sheetList*, searchEntry*, resultList*, sheetTitle*, panelSplit*, panelBox*, markBtn*, status*: W
+  resultsShown*: string     ## what the search results show (kks_explorer resultsKey): rebuilt only when it changes
   sideNav*, banner*: W
   coverBtn*: W                 ## the drawing's "Colour tags by photos" toggle
   queueBar*, queueLabel*: W    ## the photo queue's status (photos.nim), under the drawing
@@ -96,7 +97,7 @@ proc noForm*(w: Win) =
   w.formNote = nil
   w.formSaid = ""
 
-proc focusInside(area: W): bool =
+proc focusInside*(area: W): bool =
   let root = gtk_widget_get_root(area)
   if root == nil: return false
   let f = gtk_root_get_focus(root)

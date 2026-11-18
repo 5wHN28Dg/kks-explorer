@@ -110,3 +110,22 @@ suite "markers on dark":
     # light mode unchanged
     check markerColor("auto", "", false, false) == (0.1, 0.4, 0.9)
     check linkColor(false) == (0.55, 0.2, 0.85)
+
+suite "the Dark drawings setting":
+  test "follows the theme unless always dark or always light; the old toggle's value still means dark":
+    check darkModeOf("1") == dmDark and darkModeOf("0") == dmLight
+    check darkModeOf("") == dmFollow and darkModeOf("anything else") == dmFollow
+    for m in DarkMode: check darkModeOf(storedAs(m)) == m
+    check darkNow(dmFollow, true) and not darkNow(dmFollow, false)
+    check darkNow(dmDark, false) and darkNow(dmDark, true)
+    check not darkNow(dmLight, true) and not darkNow(dmLight, false)
+    check DarkModeLabels == ["Follow theme", "Always dark", "Always light"]
+
+suite "the photo marks":
+  test "the amber half and the green disc reach 3:1 on light and dark backgrounds (#401's UI/UX audit)":
+    # libadwaita's light view and card backgrounds, its dark ones
+    for bg in [(1.0, 1.0, 1.0), (0xFA / 255, 0xFA / 255, 0xFB / 255), (0xF6 / 255, 0xF5 / 255, 0xF4 / 255)]:
+      for k in ["equipment", "both"]: check contrast(markColor(k, true), bg) >= 3.0
+    for bg in [(0x1E / 255, 0x1E / 255, 0x1E / 255), (0x24 / 255, 0x24 / 255, 0x24 / 255), (0x30 / 255, 0x30 / 255, 0x30 / 255)]:
+      for k in ["equipment", "both"]: check contrast(markColor(k, false), bg) >= 3.0
+    check markColor("plate", true) == coverColor("plate") and markColor("none", true) == coverColor("none")

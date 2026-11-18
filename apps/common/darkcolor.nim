@@ -59,3 +59,29 @@ proc darkenPixels*(px: var openArray[byte], channels: int) =
 func lightenForDark*(r, g, b: float, amount = 0.35): (float, float, float) =
   ## a marker colour (tag outlines, selection) raised toward white so it stays readable on the dark background
   (r + (1 - r) * amount, g + (1 - g) * amount, b + (1 - b) * amount)
+
+# The "Dark drawings" setting (the user, 2026-11-16: "an option to keep dark mode on for the sheets"): the drawings
+# follow the system's theme unless the person says always dark or always light. Kept per device as the store's
+# `dark_drawings` value: "1" always dark (what the old on/off toggle wrote when on), "0" always light, anything else
+# follows the theme.
+type DarkMode* = enum dmFollow, dmDark, dmLight
+
+const
+  DarkSetting* = "Dark drawings"
+  DarkModeLabels*: array[DarkMode, string] = ["Follow theme", "Always dark", "Always light"]
+
+func darkModeOf*(stored: string): DarkMode =
+  case stored
+  of "1": dmDark
+  of "0": dmLight
+  else: dmFollow
+
+func storedAs*(m: DarkMode): string =
+  case m
+  of dmDark: "1"
+  of dmLight: "0"
+  of dmFollow: ""
+
+func darkNow*(m: DarkMode, systemDark: bool): bool =
+  ## whether the drawings are dark now
+  m == dmDark or (m == dmFollow and systemDark)

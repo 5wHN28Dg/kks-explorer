@@ -151,7 +151,23 @@ dt{color:var(--muted)} dd{margin:0}
 .sysrow{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;padding:6px 4px 6px 16px;border:0;border-bottom:1px solid var(--chrome3);background:none;color:inherit;font:inherit;cursor:pointer}
 .sysrow:hover,.sysrow:focus-visible{background:var(--chrome3)}
 .sysrow .mono{flex:none} .sysrow .d{flex:1;min-width:0;color:var(--muted);font-size:12.5px}
-.sysdot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--pc);align-self:center}
+/* the photo mark beside a code (search results, equipment by system): the coverage colour AND a shape of its own, so it
+   reads without colour: none = an empty ring, equipment only = a half-filled disc, tag plate only = a filled square,
+   both = a filled disc. A thin line in the text colour around it keeps the shape at 3:1 on any theme (amber alone
+   does not reach it on a light background). */
+.pmark{flex:none;display:inline-block;box-sizing:border-box;width:11px;height:11px;border:2px solid var(--pc);border-radius:50%;background:var(--pc);box-shadow:0 0 0 1px currentColor;align-self:center;forced-color-adjust:none}
+.pmark.p-none{background:none}
+.pmark.p-equipment{background:linear-gradient(90deg,var(--pc) 50%,transparent 50%)}
+.pmark.p-plate{border-radius:1px}
+@media (forced-colors:active){.pmark{box-shadow:0 0 0 1px CanvasText}}
+.res .k .pmark{margin-right:7px;vertical-align:-1px}
+.res.legend .pmark{margin:0 4px 0 8px;vertical-align:-1px} .res.legend .nw{display:inline-block;white-space:nowrap}
+/* the photo buttons: a finger's target on a phone (48 px), each on its own if the row is too narrow */
+#phAdd button{display:inline-flex;align-items:center;min-height:32px;box-sizing:border-box}
+@media (max-width:599px),(pointer:coarse){#phAdd button{min-height:48px}}
+dialog.multi label.radio{display:flex;align-items:center;gap:8px;min-height:48px;cursor:pointer}
+dialog.multi label.radio input{width:20px;height:20px;margin:0}
+.res.legend,.res.legend:hover{cursor:default;background:none;color:var(--muted);font-size:12px}
 /* coverage: bars in the photo coverage colours, each with its numbers in words beside it */
 .covbar{flex:none;display:flex;width:56px;height:10px;border:1px solid var(--muted);border-radius:2px;overflow:hidden;align-self:center;background:var(--chrome)}
 .covbar span{display:block;background:var(--pc)} .covbar.wide{width:120px;margin:5px 0 3px}
@@ -206,7 +222,7 @@ dt{color:var(--muted)} dd{margin:0}
 </header>
 <main>
   <div id="viewer"><div id="stage"><img id="sheetimg" alt="P&amp;ID sheet" draggable="false"></div><canvas id="sharp"></canvas><div id="stage2"><div id="layer"></div></div></div>
-  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button><button id="zdark" title="Dark drawings" aria-label="Dark drawings" aria-pressed="false">◐</button><button id="zpick" title="Select tags: one photo, place or note for several" aria-label="Select tags" aria-pressed="false">☑</button></div>
+  <div class="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button><button id="zfit" title="Fit sheet">⤢</button><button id="zmark" title="Mark a tag the app missed">✎</button><button id="zcover" title="Colour tags by photos" aria-pressed="false">📷</button><button id="zdark" title="Dark drawings" aria-label="Dark drawings" aria-haspopup="dialog">◐</button><button id="zpick" title="Select tags: one photo, place or note for several" aria-label="Select tags" aria-pressed="false">☑</button></div>
   <div id="pickbar" role="region" aria-label="Selected tags"><span id="pickCount" aria-live="polite">0 selected</span>
     <button type="button" class="ghost" id="pickList">List</button><span class="hint">Click tags, drag a box, or search (any drawing)</span>
     <button type="button" class="ghost" id="pickPhoto">Photo for all…</button><button type="button" class="ghost" id="pickPlace">Place for all…</button>

@@ -152,8 +152,14 @@ proc newId(): int =
   nextId = if nextId >= 0xFFFF: 1001 else: nextId + 1
   nextId
 
+var groupEnds = false
+  ## set by `radios`: the next control made starts a group of its own (WS_GROUP). Without it the radios' group runs on
+  ## through the controls after them, and an arrow key on one of those moves to a radio and chooses it
+
 proc control*(parent: HWND, cls, text: string, style: uint32, ex = 0'u32, font: HFONT = nil): (HWND, int) =
   let id = newId()
+  let style = if groupEnds and (style and WS_GROUP) == 0: style or WS_GROUP else: style
+  groupEnds = false
   let shown = if cls == "BUTTON": buttonLabel(text) else: text      # a button's "&" is the character (labels.nim)
   let h = CreateWindowExW(ex, newWideCString(cls), newWideCString(shown), WS_CHILD or WS_VISIBLE or style, 0, 0, 10, 10,
                           parent, cast[HMENU](id), hinst, nil)
@@ -731,6 +737,80 @@ proc drawRow*(dc: HDC, r: RECT, text: string, selected: bool, indent: int) =
   discard DrawTextW(dc, newWideCString(text), -1, addr tr, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS)
   SelectObject(dc, oldFont)  # the DC goes back as it came (WM_DRAWITEM)
 
+proc CreatePen(style, width: int32, c: DWORD): HGDIOBJ {.importc, stdcall, header: HG.}
+proc GetStockObject(i: int32): HGDIOBJ {.importc, stdcall, header: HG.}
+proc Ellipse(dc: HDC, l, t, r, b: int32): int32 {.importc, stdcall, header: HG, discardable.}
+proc Rectangle(dc: HDC, l, t, r, b: int32): int32 {.importc, stdcall, header: HG, discardable.}
+proc Pie(dc: HDC, l, t, r, b, x1, y1, x2, y2: int32): int32 {.importc, stdcall, header: HG, discardable.}
+
+proc photoStateWords*(photos: string): string =
+  ## a code's photo coverage in words, the same on every client
+  case photos
+  of "both": "equipment and tag plate photos"
+  of "equipment": "equipment photo only"
+  of "plate": "tag plate photo only"
+  else: "no photos"
+
+proc photoRgb*(photos: string): uint32 =
+  ## the photo coverage colours, the same on every client (viewer.coverColor): both green, the equipment only amber,
+  ## the tag plate only blue, none red
+  case photos
+  of "both": 0x2EA043'u32
+  of "equipment": 0xE69600'u32
+  of "plate": 0x1E78E6'u32
+  else: 0xDC2828'u32
+
+proc markRgb*(photos: string, light: bool): uint32 =
+  ## the photo mark's fill: the coverage colour, except on a light background, where the green and the amber are
+  ## darker (the drawings' are 3.4:1 and 2.4:1 on white; these 4.4:1 and 4.2:1, UI/UX audit of #401). The same on
+  ## every client.
+  if light and photos == "both": 0x2B8A3E'u32
+  elif light and photos == "equipment": 0xB36B00'u32
+  else: photoRgb(photos)
+
+proc lightRgb(c: DWORD): bool =
+  ## a COLORREF (0x00BBGGRR) light enough that dark text goes on it
+  let r = float(c and 0xFF)
+  let g = float((c shr 8) and 0xFF)
+  let b = float((c shr 16) and 0xFF)
+  0.299 * r + 0.587 * g + 0.114 * b > 128
+
+proc drawPhotoMark*(dc: HDC, r: RECT, photos: string, selected: bool) =
+  ## the photo mark at the start of an owner-drawn row `r` (search results): the coverage colour and a shape of its
+  ## own per state, so it reads without colour: none = an empty ring, equipment only = a half-filled disc, tag plate
+  ## only = a filled square, both = a filled disc. A thin line in the text colour around it keeps the shape at 3:1 on
+  ## any theme, the contrast themes included. The row's text says the same in words.
+  let d = px(12)
+  let l = r.left + px(7)
+  let t = r.top + (r.bottom - r.top - d) div 2
+  let hue = colorRef(markRgb(photos, lightRgb(GetSysColor(if selected: COLOR_HIGHLIGHT else: int32(COLOR_WINDOW)))))
+  let line = CreatePen(0, 1, GetSysColor(if selected: COLOR_HIGHLIGHTTEXT else: COLOR_WINDOWTEXT))
+  let ring = CreatePen(6, max(2, px(2)), hue)          # PS_INSIDEFRAME: the ring stays inside its box
+  let fill = CreateSolidBrush(hue)
+  let hollow = GetStockObject(5)                       # NULL_BRUSH
+  let oldPen = SelectObject(dc, line)
+  let oldBrush = SelectObject(dc, fill)
+  case photos
+  of "both": Ellipse(dc, l, t, l + d, t + d)
+  of "plate": Rectangle(dc, l, t, l + d, t + d)
+  else:
+    SelectObject(dc, ring)
+    SelectObject(dc, hollow)
+    Ellipse(dc, l + 1, t + 1, l + d - 1, t + d - 1)
+    if photos == "equipment":                          # the left half filled (from the top round to the bottom)
+      SelectObject(dc, fill)
+      SelectObject(dc, GetStockObject(8))              # NULL_PEN: no line along the diameter (it all but filled the
+                                                       # empty half: UI/UX audit of #401)
+      Pie(dc, l + 1, t + 1, l + d - 1, t + d - 1, l + d div 2, t, l + d div 2, t + d)
+    SelectObject(dc, line)
+    SelectObject(dc, hollow)
+    Ellipse(dc, l, t, l + d, t + d)
+  SelectObject(dc, oldPen)
+  SelectObject(dc, oldBrush)
+  DeleteObject(line)
+  DeleteObject(ring)
+  DeleteObject(fill)
+
 proc pictureList*(p: Page, rows: seq[string], draw: OwnerDraw, height = 200, onActivate: proc (i: int) = nil,
                   openLabel = ""): HWND {.discardable.} =
   ## a list whose rows `draw` paints (a small picture, then drawRow); the rows' strings stay its UI Automation names
@@ -875,6 +955,7 @@ proc radios*(p: Page, labels: seq[string], selected: int, f: proc (i: int)): seq
       onClick(b, proc () = f(idx))
       p.items.add Item(kind: ikCheck, hwnds: @[b])
       res.add b
+  groupEnds = true
   res
 
 proc chips*(p: Page, labels: seq[string], selected: int, f: proc (i: int)): seq[HWND] {.discardable.} =

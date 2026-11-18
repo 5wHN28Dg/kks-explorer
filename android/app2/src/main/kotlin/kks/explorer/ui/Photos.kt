@@ -204,10 +204,14 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         Text(if (queued == 1) "1 photo of this tag is being prepared" else "$queued photos of this tag are being prepared")
         LinearProgressIndicator(Modifier.fillMaxWidth())
     }
+    // every way in says which kind of photo it adds (the user, 2026-11-16: one "From the gallery" did not say whether
+    // it was for the equipment or its tag plate); the same words on every client
+    fun choose(ofPlate: Boolean) { plate = ofPlate; fromCamera = false; awaiting = true; gallery.launch("image/*") }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { withFloor { shoot(false) } }, enabled = !preparing) { Text("Take a photo") }
-        OutlinedButton(onClick = { withFloor { shoot(true) } }, enabled = !preparing) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
-        OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; awaiting = true; gallery.launch("image/*") } }, enabled = !preparing) { Text("From the gallery") }
+        OutlinedButton(onClick = { withFloor { shoot(false) } }, enabled = !preparing) { Text("Equipment: take photo") }
+        OutlinedButton(onClick = { withFloor { choose(false) } }, enabled = !preparing) { Text("Equipment: from gallery") }
+        OutlinedButton(onClick = { withFloor { shoot(true) } }, enabled = !preparing) { Text("Tag plate: take photo") }
+        OutlinedButton(onClick = { withFloor { choose(true) } }, enabled = !preparing) { Text("Tag plate: from gallery") }
     }
     if (preparing) {
         Text("Preparing the photo…", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
@@ -334,7 +338,7 @@ internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () 
         FullScreenDialogWindow()
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (plate) Text("Tag plate", style = MaterialTheme.typography.titleMedium)
+                Text(if (plate) "Add a tag plate photo" else "Add an equipment photo", style = MaterialTheme.typography.titleMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.Center) {
                     for ((k, lab) in listOf("arrow" to "Arrow", "box" to "Box", "circle" to "Circle"))
                         FilterChip(kind == k, { kind = k }, label = { Text(lab) })

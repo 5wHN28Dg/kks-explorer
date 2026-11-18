@@ -167,8 +167,28 @@ class WebRequests(unittest.TestCase):
         self.assertFalse(page.is_visible('#phAdd'))
         page.fill('#phFloor', '3')
         self.assertTrue(page.is_visible('#phAdd'))
+        # every button says which kind of photo it adds and where from (the user, 2026-11-16): at a desk one per kind,
+        # for a file; where the main pointer is a finger, the camera or the gallery for each kind
+        LABELS = "[...document.querySelectorAll('#phAdd button')].map(b => b.textContent + '|' + (b.nextElementSibling.dataset.plate || '') + '|' + (b.nextElementSibling.getAttribute('capture') || ''))"
+        self.assertEqual(page.evaluate(LABELS), ['Equipment: from a file…||', 'Tag plate: from a file…|1|'])
+        # buttons, reached and pressed from the keyboard (UI/UX audit of #401: a label around the input was neither)
+        self.assertEqual(page.locator('#phAdd').get_by_role('button').all_text_contents(), ['Equipment: from a file…', 'Tag plate: from a file…'])
+        page.focus('#phFloor')
+        page.keyboard.press('Tab')
+        self.assertEqual(page.evaluate("document.activeElement.textContent"), 'Equipment: from a file…')
+        with page.expect_file_chooser() as fc:
+            page.keyboard.press('Enter')
+        self.assertTrue(fc.value.is_multiple() is False)
+        page.evaluate("window.matchMedia0 = window.matchMedia.bind(window); window.matchMedia = q => q === '(pointer:coarse)' ? {matches: true} : window.matchMedia0(q)")
+        page.evaluate("reselect()")
+        page.fill('#phFloor', '3')
+        self.assertEqual(page.evaluate(LABELS), ['Equipment: take photo||environment', 'Equipment: from gallery||',
+                                                 'Tag plate: take photo|1|environment', 'Tag plate: from gallery|1|'])
+        page.evaluate("window.matchMedia = window.matchMedia0; reselect()")
+        page.fill('#phFloor', '3')
         page.set_input_files('#phAdd input[data-plate="1"]', files=[{'name': 'plate.png', 'mimeType': 'image/png', 'buffer': png(320, 240)}])
         page.wait_for_selector('[data-a="ok"]')
+        self.assertEqual(page.text_content('.atitle'), 'Add a tag plate photo')      # the editor says which kind
         page.wait_for_function("() => document.querySelector('[data-a=arrow]').style.borderColor !== ''")   # (the photo is in the editor)
         # offline from here (WebKit's offline emulation refuses even blob: URLs, so not before the photo is read)
         ctx.set_offline(True)

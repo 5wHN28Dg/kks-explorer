@@ -287,7 +287,7 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
   wheel.onScroll(proc (dx, dy: float) = zoomAt(px0, py0, zoom * exp(-dy * 0.15)))
   gtk_widget_add_controller(area, wheel)
   let d = adw_dialog_new()
-  adw_dialog_set_title(d, if plate: "Add a tag plate photo" else: "Add a photo")
+  adw_dialog_set_title(d, if plate: "Add a tag plate photo" else: "Add an equipment photo")
   adw_dialog_set_content_width(d, 1000)
   adw_dialog_set_content_height(d, 780)
   let tools = hbox(4)
@@ -378,7 +378,7 @@ proc annotate*(w: Win, px: seq[byte], iw, ih: int, done: proc (rgb: seq[byte], w
     sent = true
     adw_dialog_close(d)
     done(rgb, ow, oh, text(caption).strip, text(note).strip), once = true)
-  let header = headerBar(adw_window_title_new(if plate: "Add a tag plate photo" else: "Add a photo",
+  let header = headerBar(adw_window_title_new(if plate: "Add a tag plate photo" else: "Add an equipment photo",
                                               if plate: "The metal plate with the KKS code" else: "Draw to point things out"))
   adw_header_bar_pack_end(header, send)
   adw_dialog_set_child(d, toolbarView(header, body))
@@ -695,7 +695,7 @@ proc addPhoto*(w: Win, kks: string, plate = false) =
   let pick = proc (title: string, fn: proc (path: string)) =
     if getEnv("KKS_PHOTO_FILE").len > 0: fn(getEnv("KKS_PHOTO_FILE")) else: openFile(w.window, title, fn)
   proc go(floor: string) =
-    pick(if plate: "Choose a photo of the tag plate" else: "Choose a photo", proc (path: string) =
+    pick(if plate: "Choose a tag plate photo" else: "Choose an equipment photo", proc (path: string) =
       if path.len == 0: return
       let (iw, ih, px) = loadImage(path)
       if iw == 0:
@@ -800,6 +800,7 @@ proc photoSection*(w: Win, kks: string): W =
     adw_preferences_group_add(g, label((if q == 1: "1 photo" else: $q & " photos") & " of this equipment being compressed; " &
                                        "sent when ready.", "dim-label"))
   let btns = hbox(8)
-  btns.add button("+ Add photo", "", proc () = w.addPhoto(kks))
-  btns.add button(if w.hasPlate(kks): "+ New tag plate photo" else: "+ Tag plate photo", "", proc () = w.addPhoto(kks, plate = true))
+  # each button says which kind of photo it adds (the user, 2026-11-16); the same words on every client
+  btns.add button("Equipment: from a file…", "", proc () = w.addPhoto(kks))
+  btns.add button("Tag plate: from a file…", "", proc () = w.addPhoto(kks, plate = true))
   adw_preferences_group_add(g, btns)
