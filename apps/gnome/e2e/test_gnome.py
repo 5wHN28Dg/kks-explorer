@@ -250,6 +250,7 @@ class Gnome(Plant):
         atspi.set_text(atspi.find(a, 'password text', name='Password'), 'a long password')
         atspi.click(atspi.find(a, 'button', name='Join'))
         said = atspi.find(a, None, contains="Couldn't reach the server at 127.0.0.1:1.", timeout=30)
+        self.evidence(a, 'join-unreachable')
         self.assertNotIn('refused', said.get_name().lower())
 
     def test_scan_camera(self):

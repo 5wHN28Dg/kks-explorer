@@ -236,7 +236,8 @@ class Windows(unittest.TestCase):
         error text"""
         self.check('unreach.uia', ['click\tJoin through a server', 'set\tServer address\t127.0.0.1:1', 'set\tUsername\tboss',
                                    'set\tPassword\ta long password', 'click\tJoin',
-                                   "wait\t~Couldn't reach the server at 127.0.0.1:1.\t60", 'gone\t~refused the network connection'], keep=False)
+                                   "wait\t~Couldn't reach the server at 127.0.0.1:1.\t60", 'sleep\t2031', 'gone\t~refused the network connection'], keep=False,
+                   during=[('sleep\t2031', lambda: self.screenshot('win-join-unreachable'))])
 
     def test_about(self):
         """About Walkdown (about.nim, from the compiled-in data/about.json): from the setup screen's button and F1, and

@@ -2543,6 +2543,7 @@ class Phone(unittest.TestCase):
         ui.type_into('Password', 'a long password')
         ui.tap('Join', exact=True)
         ui.find("Couldn't reach the server at 127.0.0.1:1. Check the address and that this phone is on the plant's network.", exact=True, timeout=40)
+        evidence('join-unreachable')
         self.assertFalse(ui.present('ECONNREFUSED'), 'the socket error is shown')
 
     def test_member_pages(self):
