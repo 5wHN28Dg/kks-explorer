@@ -1306,6 +1306,24 @@ class Windows(unittest.TestCase):
                                  'click\tHide hidden', 'wait\t~ · removed\t20', 'gone\t~ · hidden'])
         self.leave()
 
+    def test_tabs_beside_drawing(self):
+        """the tabs and every page of the sidebar stay beside the drawing, never under it (the user, 2026-11-18: on a
+        1080p laptop Manage was mostly hidden behind the drawing and came to the front only under the mouse; the five
+        tabs took 472 px in the 380 px sidebar, #377): no control's rectangle meets the drawing's, and every button,
+        field and list in view is what UI Automation's hit test finds at its middle, without the mouse over it first.
+        Both window sizes the user has; 125 and 150 % scaling are in tests/test_tabs.nim (a scale needs a new sign-in)"""
+        self.join('tjoin.uia')
+        lines = ['wait\t~Sample sheet\t60']
+        for size in ('1366\t768', '1920\t1080'):
+            lines += ['resize\tDrawing\t' + size, 'clear\tDrawing\tManage', 'apart\tDrawing']
+            for tab in ('Procedures', 'Review', 'Learning', 'Manage', 'Drawings'):
+                lines += ['click\t' + tab, 'sleep\t1000', 'apart\tDrawing']
+            for page in ('Account', 'Devices'):
+                lines += ['click\tManage', 'click\t' + page, 'wait\t‹ Manage\t20', 'sleep\t500', 'apart\tDrawing']
+            lines += ['click\tDrawings', 'wait\t~Sample sheet\t20']
+        self.check('tabs.uia', lines)
+        self.leave()
+
     def test_scan_camera(self):
         """decision 0039: the scan window reads an invite through Media Foundation; KKS_CAMERA_FILE (run.ps1) plays a
         video of a QR code through the same Source Reader (the VMs have no camera)"""

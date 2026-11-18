@@ -671,7 +671,7 @@ proc newViewer*(parent: HWND, hinst: HINSTANCE): Viewer =
     viewClassDone = true
   result = Viewer(z: 1, linkSel: -1)
   result.hwnd = CreateWindowExW(0, newWideCString("KKSDrawing"), newWideCString("Drawing"),
-                                WS_CHILD or WS_VISIBLE or WS_TABSTOP, 0, 0, 10, 10, parent, nil, hinst, nil)
+                                WS_CHILD or WS_VISIBLE or WS_TABSTOP or WS_CLIPSIBLINGS, 0, 0, 10, 10, parent, nil, hinst, nil)
   result.v = viewNew(result.hwnd)
   viewers[result.hwnd] = result
   result.uia = uiaNew(result.hwnd, cast[pointer](a11yCount), cast[pointer](a11yInfo), cast[pointer](a11yInvoke),
