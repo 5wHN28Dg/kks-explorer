@@ -8,12 +8,49 @@ const BAD_COLOUR := Color(1.0, 0.45, 0.4)
 const DIM := Color(0.75, 0.75, 0.75)
 
 static var scale := 1.0
+## The settings' "UI size" (issue #382): everything drawn on the canvas, panels, bars, the HUD and the Workshop's, is
+## this much larger (the window's content scale: the canvas the layout sees is that much smaller), on top of `scale`.
+## 100 % to 150 %; a phone starts at 150 %, which gives its buttons 48 dp and its text 14 sp and more (UI-UX-POLICY T1,
+## S1; at 100 % they were 32 dp and 12 sp), a desktop at 100 %. It is also the text size setting of the policy's S2.
+static var ui_size := 1.0
+const UI_SIZES := [1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
+const UI_SIZE_PHONE := 1.5
 
 
 ## The UI's scale: 1 on desktops; phones get bigger text and targets (a 1600 × 900 canvas on a 6" screen).
 static func pick_scale() -> float:
 	scale = 1.35 if OS.has_feature("mobile") or DisplayServer.is_touchscreen_available() else 1.0
 	return scale
+
+
+## The UI size a first start takes: 150 % on a phone, 100 % elsewhere (a desktop's touch screen keeps 100 %: its
+## canvas is a laptop's, not a 6" one).
+static func default_ui_size() -> float:
+	return UI_SIZE_PHONE if OS.has_feature("mobile") else 1.0
+
+
+## A UI size as saved or given (a number, or text such as "1.5"), held to the nearest of UI_SIZES; anything that is no
+## number is `fallback`.
+static func clamp_ui_size(v, fallback: float) -> float:
+	var f := fallback
+	if v is float or v is int:
+		f = float(v)
+	elif v is String and (v as String).is_valid_float():
+		f = (v as String).to_float()
+	var best: float = UI_SIZES[0]
+	for s in UI_SIZES:
+		if absf(s - f) < absf(best - f):
+			best = s
+	return best
+
+
+## Applies a UI size to the window: its content is drawn that much larger, at once (every panel lays itself out again
+## on the viewport's size_changed). Returns the size applied.
+static func apply_ui_size(win: Window, f: float) -> float:
+	ui_size = clamp_ui_size(f, 1.0)
+	if win != null:
+		win.content_scale_factor = ui_size
+	return ui_size
 
 
 static func make_theme() -> Theme:
@@ -111,6 +148,31 @@ static func panel(title: String, on_close: Callable) -> Array:
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(body)
 	return [p, body, t]
+
+
+## A panel's row of tabs or filters (`bar`, made under its title row in `v`) moved into the panel's scrolling body when
+## it would take more than a third of the panel's `room` (a short canvas, a large UI size: wrapped onto rows it left
+## the list no room), and back under the title once there is room. The body (made by `panel`) is put in a box of its
+## own in the scroll (`tabs_box`), the bar above it there. The title row with Close never moves.
+static func tabs_box(body: Control) -> VBoxContainer:
+	var sc := body.get_parent() as ScrollContainer
+	var outer := VBoxContainer.new()
+	outer.name = "tabs_box"
+	outer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.remove_child(body)
+	sc.add_child(outer)
+	outer.add_child(body)
+	return outer
+
+
+static func place_bar(bar: Control, v: Control, outer: Control, room: float) -> void:
+	var inside := bar.get_combined_minimum_size().y > room / 3.0
+	var want: Control = outer if inside else v
+	if bar.get_parent() == want:
+		return
+	bar.get_parent().remove_child(bar)
+	want.add_child(bar)
+	want.move_child(bar, 0 if inside else 1)
 
 
 ## Sizes a panel (made by `panel`) to its content, at most `max_h` high: on a phone the view stays visible below it.

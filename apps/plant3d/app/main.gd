@@ -121,6 +121,7 @@ const Crowd = preload("res://app/crowd.gd")
 const ScriptCost = preload("res://app/script_cost.gd")
 const WalkFrames = preload("res://app/walk_frames.gd")
 const WeatherView = preload("res://app/weather_view.gd")
+const W = preload("res://ui/widgets.gd")
 # The start's slow scripts and the plant's model are made on worker threads while the sky frame is drawn and the plant
 # loads (`_prep_begin`): preloaded here, the UI's, the Workshop's and the session's scripts were compiled on the main
 # thread before the scene was ready (most of the Note 9's 5.2 s to `ready`), and the model read there in the `ui` stage
@@ -208,6 +209,7 @@ func _ready() -> void:
 		get_tree().change_scene_to_file.call_deferred("res://voice/demo/voice_wav.tscn")
 		return
 	cf = Quality.settings()
+	_apply_ui_size()
 	OS.delta_smoothing = false
 	_environment()
 	_launch("environment")
@@ -460,6 +462,31 @@ func _hold_scripts() -> void:
 func _exit_tree() -> void:
 	if _prep_task >= 0:
 		_prep_end()   # (a start that ended before its UI: no task left behind)
+	if _ui_size_set:
+		W.apply_ui_size(get_tree().root, 1.0)   # the window as it was (the tests start the app again and again in one)
+
+var _ui_size_set := false
+
+## The settings' UI size (ui/widgets.gd ui_size; issue #382): `ui_size=` for a test or a shot, else the saved one, else
+## the device's default (150 % on a phone). The phone's scale on a desktop (`ui_scale=`, tests/mimic_shots.gd --phone)
+## takes the phone's default too.
+func _apply_ui_size() -> void:
+	W.pick_scale()                           # (the HUD, made before the interaction layer, sizes itself by it too)
+	if opts.has("ui_scale"):
+		W.scale = clampf(float(opts["ui_scale"]), 0.5, 3.0)
+	var dflt: float = W.UI_SIZE_PHONE if opts.has("ui_scale") and float(opts["ui_scale"]) > 1.0 else W.default_ui_size()
+	var f: float = W.clamp_ui_size(opts["ui_size"], dflt) if opts.has("ui_size") \
+			else W.clamp_ui_size(cf.get_value("ui", "ui_size", dflt), dflt)
+	W.apply_ui_size(get_tree().root, f)
+	_ui_size_set = true
+	if workshop != null and workshop.has_method("fit_resolution"):
+		workshop.fit_resolution()
+
+## The UI size chosen in the settings: saved, and applied at once (the panels lay themselves out again).
+func set_ui_size(f: float) -> void:
+	cf.set_value("ui", "ui_size", W.clamp_ui_size(f, 1.0))
+	Quality.save(cf)
+	_apply_ui_size()
 
 func _unbaked(n: Node) -> void:
 	var g := n as GeometryInstance3D
@@ -507,7 +534,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music", "job", "monitor", "bench_speed", "ws_warm"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music", "job", "monitor", "bench_speed", "ws_warm", "ui_size"]:   # nothing else from a shared folder (ui_size: a walk at another UI size; voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))

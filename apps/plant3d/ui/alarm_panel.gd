@@ -22,6 +22,17 @@ var _tabs := {}
 var ack_all_btn: Button          # "Acknowledge all (N)": N the alarms it acknowledges (unacked)
 
 
+var bar: HFlowContainer          # the tabs, under the title row (or in the scrolling body: place_bar)
+var _v: Control
+var _tabs_box: Control
+
+
+## The tabs under the title, or in the body when they would take too much of the panel's room (ui/plant_ui.gd _layout).
+func place_bar(room: float) -> void:
+	if bar != null:
+		W.place_bar(bar, _v, _tabs_box, room)
+
+
 func setup(u) -> void:
 	ui = u
 	var parts := W.panel("Alarms", func(): ui.close_alarms())
@@ -32,9 +43,12 @@ func setup(u) -> void:
 	add_child(v)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	body = parts[1]
-	var bar := HFlowContainer.new()
+	bar = HFlowContainer.new()
+	bar.name = "tabs"
 	v.add_child(bar)
 	v.move_child(bar, 1)
+	_v = v
+	_tabs_box = W.tabs_box(body)
 	for t in [["active", "Active"], ["shelved", "Shelved"], ["suppressed", "Suppressed"], ["trips", "Trips"]]:
 		var b := W.button(t[1], _tab.bind(t[0]))
 		b.toggle_mode = true

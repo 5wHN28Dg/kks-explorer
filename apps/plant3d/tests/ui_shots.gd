@@ -1,6 +1,7 @@
 ## Screenshots of the interaction layer in use, to look at (not a test: it needs a display):
 ##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/ui_shots.gd -- --out=DIR
-##     [--phone]      at the phone's UI scale (as tests/mimic_shots.gd --phone)
+##     [--phone]      at the phone's UI scale (as tests/mimic_shots.gd --phone), and its UI size (150 %)
+##     [--ui-size=X]  at UI size X (1 to 1.5: the settings' UI size, ui/widgets.gd ui_size)
 ##     [--settings]   the settings panel only (folded, with the controls' help open, over the alarm list), then quits
 ## The app as a trainee has it (app/main.tscn, the full tier), driven through the layer: a refused start at the
 ## pump, the cold start's step with its card, an alarm and the trips with their first out, the instructor's faults,
@@ -15,6 +16,7 @@ const RunSave = preload("res://ui/run_save.gd")
 
 var out := ""
 var phone := false
+var ui_size := ""    # --ui-size=1.5: at that UI size (the settings' 100 % to 150 %; a phone starts at 150 %)
 var settings_only := false
 var main: Node
 var ui
@@ -24,6 +26,8 @@ func _init() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
+		elif a.begins_with("--ui-size="):
+			ui_size = a.substr(10)
 		elif a == "--phone":
 			phone = true
 		elif a == "--settings":
@@ -36,7 +40,7 @@ func shot(name: String, frames := 40) -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := root.get_viewport().get_texture().get_image()
-	var p := out.path_join(("phone_" if phone else "") + name + ".png")
+	var p := out.path_join(("phone_" if phone else "") + (("ui%s_" % ui_size) if ui_size != "" else "") + name + ".png")
 	print("shot %s: %d" % [p, img.save_png(p)])
 
 
@@ -65,6 +69,8 @@ func _run() -> void:
 	main.opts["quality"] = "full"
 	if phone:
 		main.opts["ui_scale"] = "1.35"
+	if ui_size != "":
+		main.opts["ui_size"] = ui_size
 	root.add_child(main)
 	# with a display the start draws the sky first and makes the UI after it (decision 0060): wait for its first
 	# walkable frame, or for its failure

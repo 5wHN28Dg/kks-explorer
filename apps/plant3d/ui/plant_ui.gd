@@ -140,6 +140,9 @@ var _toast_t := 0.0
 var _toast_beside_card := false
 var _toast_side := false        # a side panel was open when the notice was laid out
 var _alarm_btn: Button
+var bar: HFlowContainer         # the layer's buttons and the clock, under the HUD's (wraps on a narrow canvas)
+var _bar_h := 0.0
+var _relayout_queued := false
 var _time: Label
 var _ff_btn: Button
 var _play_btn: Button
@@ -248,11 +251,13 @@ func setup(m, scenario := "cold_iron", content := CONTENT, ready_model = null) -
 # ------------------------------------------------------------------ building the overlay
 
 func _build() -> void:
-	var bar := HBoxContainer.new()
+	# the bar wraps onto a second row from the right when the canvas is too narrow for it (a phone, a large UI size):
+	# nothing goes off screen, and the panels begin below it (panels_top)
+	bar = HFlowContainer.new()
 	bar.name = "ui_bar"
-	bar.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	bar.position = Vector2(-16, 88)
+	bar.alignment = FlowContainer.ALIGNMENT_END
+	bar.add_theme_constant_override("h_separation", int(8 * W.scale))
+	bar.add_theme_constant_override("v_separation", int(8 * W.scale))
 	root.add_child(bar)
 	_alarm_btn = _bar_button(bar, "Alarms", func(): toggle_alarms())
 	_bar_button(bar, "Procedures", func(): toggle_procedure())
@@ -272,7 +277,10 @@ func _build() -> void:
 	_play_btn = _bar_button(bar, "1×", func(): clock.set_speed(SimClock.Speed.NORMAL))
 	_ff_btn = _bar_button(bar, "Fast", func(): fast_forward())
 	_time = W.label("", 20, Color.WHITE, false)
-	_time.custom_minimum_size.x = 150 * W.scale
+	_time.name = "clock"
+	# as wide as its longest text ("Day 99 Wednesday 23:59 ×1000"): it never grows or cuts as the time goes on
+	_time.custom_minimum_size = Vector2(_clock_w(), 52 * W.scale)
+	_time.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_time.add_theme_constant_override("outline_size", 6)
 	_time.add_theme_color_override("font_outline_color", Color.BLACK)
 	bar.add_child(_time)
@@ -355,8 +363,45 @@ func _build() -> void:
 	root.add_child(_hint)
 	_build_toast()
 	root.get_viewport().size_changed.connect(_layout)
+	bar.resized.connect(_on_bar_resized)
+	# a panel made while its text had no width yet (a wrapping label is then a letter a line) was held taller than its
+	# place by that size; once its text has its width it goes to its place (the canvas is short at a large UI size);
+	# a panel whose tabs wrapped onto more rows gets them moved into its body (place_bar)
+	for pnl in [card, procedure, alarms, trainer, permits, work_orders, stores, debrief, crew, session_panel,
+			work.tools_panel]:
+		pnl.minimum_size_changed.connect(_panel_min_changed.bind(pnl))
+	if main.hud != null and main.hud.has_signal("top_changed"):
+		main.hud.top_changed.connect(_layout)
 	_layout()
 	_on_speed(clock.speed, "")
+
+
+## The clock's width: its longest text at its size.
+func _clock_w() -> float:
+	var f: Font = _time.get_theme_font("font")
+	var fs: int = _time.get_theme_font_size("font_size")
+	var w := 0.0
+	for t in ["Day 99 Wednesday 23:59 ×1000", "Day 99 Wednesday 23:59 paused", "99:59:59 ×1000", "99:59:59 paused"]:
+		w = maxf(w, f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	return ceilf(w) + 12.0 * W.scale + 2.0 * 6.0      # (and its outline)
+
+
+func _panel_min_changed(pnl: Control) -> void:
+	if not _relayout_queued and pnl.size.y > _max_h + 0.5:
+		_relayout_queued = true
+		_relayout.call_deferred()
+
+
+func _relayout() -> void:
+	_relayout_queued = false
+	_layout()
+
+
+## The bar's height changed (it wrapped onto another row, or back): the panels move below it.
+func _on_bar_resized() -> void:
+	if absf(bar.size.y - _bar_h) > 0.5:
+		_bar_h = bar.size.y
+		_layout()
 
 
 func _build_toast() -> void:
@@ -384,22 +429,35 @@ func _build_toast() -> void:
 	_layout_toast()
 
 
-func _bar_button(bar: Control, text: String, f: Callable) -> Button:
+func _bar_button(to: Control, text: String, f: Callable) -> Button:
 	var b := W.button(text, f)
 	b.focus_mode = Control.FOCUS_NONE       # the bar is reached by its keys; focus stays in the panels
 	b.custom_minimum_size = Vector2(0, 56 * W.scale)
-	bar.add_child(b)
+	to.add_child(b)
 	return b
 
 
-## Where the panels may begin: below the HUD's buttons and the layer's bar (app/hud.gd's settings panel too).
+## Where the layer's bar begins: below the HUD's buttons and its status line (app/hud.gd top_bottom).
+func bar_top() -> float:
+	return (main.hud.top_bottom() if main != null and main.hud != null and main.hud.has_method("top_bottom") else 76.0) \
+			+ 12.0
+
+
+## Where the panels may begin: below the HUD's buttons and the layer's bar, one row or more (app/hud.gd's settings
+## panel too).
 func panels_top() -> float:
-	return 88.0 + 56.0 * W.scale + 16.0
+	var h: float = bar.get_combined_minimum_size().y if bar != null else 56.0 * W.scale
+	return bar_top() + maxf(h, 56.0 * W.scale) + 16.0
 
 
 func _layout() -> void:
 	var vs: Vector2 = root.get_viewport_rect().size
+	if bar != null:
+		bar.position = Vector2(16.0, bar_top())
+		bar.size = Vector2(vs.x - 32.0, 0.0)
 	var top0 := panels_top()
+	if work != null and work.tools_panel != null:
+		work._layout()                      # (its tools below the bar too)
 	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach
 	var top := maxf(top0, mimic.canvas_top() + 8.0) if screens_open() else top0
 	if drawings_open():
@@ -407,6 +465,8 @@ func _layout() -> void:
 	var w := minf(560.0 * W.scale, vs.x * 0.45)
 	card.position = Vector2(vs.x - w - 16.0, top)
 	_max_h = vs.y - top - 16.0
+	alarms.place_bar(_max_h)
+	debrief.place_bar(_max_h)
 	card.size = Vector2(w, vs.y - top - 16.0)
 	procedure.position = Vector2(16.0, top)
 	procedure.size = Vector2(w, vs.y - top - 16.0)
@@ -476,6 +536,7 @@ func add_settings(box: VBoxContainer) -> void:
 		cb.text = row[1]
 		cb.focus_mode = Control.FOCUS_ALL
 		cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # wraps in the settings panel's width
+		cb.custom_minimum_size.y = 52 * W.scale            # as tall as the layer's buttons (48 dp on a phone, T1)
 		var on: bool = cf.get_value("ui", row[0], row[2])
 		cb.button_pressed = on
 		_setting(row[0], on)

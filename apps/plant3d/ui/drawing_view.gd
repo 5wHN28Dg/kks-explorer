@@ -76,6 +76,7 @@ func setup(u, drawings) -> void:
 	picker.custom_minimum_size = Vector2(0, 52 * W.scale)
 	picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	picker.clip_text = true
+	picker.fit_to_longest_item = false     # (else as wide as the longest title: the bar ran off a narrow canvas)
 	for s in set_.sheets:
 		picker.add_item("%s  %s" % [s["number"], s["title"]])
 	picker.item_selected.connect(func(i): open_sheet(String(set_.sheets[i]["id"])))

@@ -31,6 +31,17 @@ var _tabs := {}
 var _t := 0.0
 
 
+var bar: HFlowContainer          # the tabs, under the title row (or in the scrolling body: place_bar)
+var _v: Control
+var _tabs_box: Control
+
+
+## The tabs under the title, or in the body when they would take too much of the panel's room (ui/plant_ui.gd _layout).
+func place_bar(room: float) -> void:
+	if bar != null:
+		W.place_bar(bar, _v, _tabs_box, room)
+
+
 func setup(u) -> void:
 	ui = u
 	var parts := W.panel("Debrief", func(): ui.close_debrief())
@@ -43,9 +54,12 @@ func setup(u) -> void:
 	body = parts[1]
 	title = parts[2]
 	(body.get_parent() as ScrollContainer).follow_focus = true
-	var bar := HFlowContainer.new()
+	bar = HFlowContainer.new()
+	bar.name = "tabs"
 	v.add_child(bar)
 	v.move_child(bar, 1)
+	_v = v
+	_tabs_box = W.tabs_box(body)
 	for t in [["all", "Everything"], ["deviations", "Deviations"], ["alarms", "Alarms and trips"],
 			["permits", "Permits"], ["safety", "Safety"], ["role", "Your tasks"], ["diagnosis", "Diagnosis"]]:
 		var b := W.button(t[1], _tab.bind(t[0]))

@@ -1,6 +1,6 @@
 ## Screenshots of the control room screens (docs/PLANT3D.md §7.11, ui/mimic.gd), to look at, and their cost (not a
 ## test: it needs a display):
-##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/mimic_shots.gd -- --out=DIR [--phone]
+##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/mimic_shots.gd -- --out=DIR [--phone] [--ui-size=1.5]
 ## Every screen at cold iron, at base load, and with a trip and alarms (the instructor's loss of both closed cooling
 ## water pumps at base load); --phone draws them at the phone's UI scale (run it at the phone's resolution,
 ## `--resolution 2960x1440`). Prints each screen's drawing time and the frame's CPU and GPU time with the screens
@@ -16,6 +16,7 @@ const App = preload("res://tests/ui_app.gd")
 
 var out := ""
 var phone := false
+var ui_size := ""    # --ui-size=1.5: at that UI size (the settings' 100 % to 150 %; a phone starts at 150 %)
 var main: Node
 var ui
 
@@ -24,6 +25,8 @@ func _init() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
+		elif a.begins_with("--ui-size="):
+			ui_size = a.substr(10)
 		elif a == "--phone":
 			phone = true
 	_run.call_deferred()
@@ -34,7 +37,7 @@ func shot(name: String, frames := 12) -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := root.get_viewport().get_texture().get_image()
-	var p := out.path_join(("phone_" if phone else "") + name + ".png")
+	var p := out.path_join(("phone_" if phone else "") + (("ui%s_" % ui_size) if ui_size != "" else "") + name + ".png")
 	print("shot %s: %d" % [p, img.save_png(p)])
 
 
@@ -70,6 +73,8 @@ func _run() -> void:
 	main.opts["quality"] = "lean+vis" if phone else "full"
 	if phone:
 		main.opts["ui_scale"] = "1.35"
+	if ui_size != "":
+		main.opts["ui_size"] = ui_size
 	root.add_child(main)
 	# with a display the start draws the sky first and makes the UI after it (decision 0060): wait for its first
 	# walkable frame, or for its failure
