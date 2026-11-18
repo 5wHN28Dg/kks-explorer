@@ -115,7 +115,7 @@ func machine_shown() -> void:
 		if o.get("do") == "set" and o.has("range"):
 			var r := HFlowContainer.new()
 			box.add_child(r)
-			r.add_child(W.label(String(o.get("title", o.input)), FONT, W.DIM, false))
+			r.add_child(_wrapping_label(W.label(String(o.get("title", o.input)), FONT, W.DIM, false)))
 			var s := HSlider.new()
 			s.name = "set_" + String(o.input)
 			s.min_value = float(o.range[0])
@@ -135,7 +135,7 @@ func machine_shown() -> void:
 	for k in c.m.readouts:   # (its name and its value with the unit: the value goes under the name where it is narrow)
 		var rr := HFlowContainer.new()
 		box.add_child(rr)
-		rr.add_child(W.label(_title(k), FONT, Color.WHITE, false))
+		rr.add_child(_wrapping_label(W.label(_title(k), FONT, Color.WHITE, false)))
 		var l := W.label("", FONT, Color.WHITE, false)
 		l.name = "read_" + String(k)
 		rr.add_child(l)
@@ -248,6 +248,16 @@ static func _wrapping(b: Button) -> Button:
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.custom_minimum_size.x = BUTTON_MAX * W.scale
 	return b
+
+
+## A row's name too long for BUTTON_MAX wraps there, as a button's (a long reading's name widened the bench past its
+## share on a 16:9 phone at 150 %).
+static func _wrapping_label(l: Label) -> Label:
+	var fs := int(FONT * W.scale)
+	if ThemeDB.fallback_font.get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > BUTTON_MAX * W.scale:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = BUTTON_MAX * W.scale
+	return l
 
 
 static func _num(x: float) -> String:

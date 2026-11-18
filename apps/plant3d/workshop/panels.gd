@@ -92,11 +92,15 @@ func setup(w) -> void:
 	back_btn = W.button("Back to the plant", func(): ws.close())
 	back_btn.name = "back"
 	top.add_child(back_btn)
-	title = W.label("", 24, Color.WHITE, true)
+	title = W.label("", 24, Color.WHITE, false)
 	title.name = "title"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.custom_minimum_size.x = 160 * W.scale
+	# the kind's name in what the buttons leave, ending in "…" where that is little (a phone at 200 %: the bar stays one
+	# row and inside the screen; the name is a description, not a code: UI-UX-POLICY S3)
+	title.clip_text = true
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	title.custom_minimum_size.x = 0
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(title)
 	var parts_btn := W.button("Parts", func(): tree_panel.visible = not tree_panel.visible)
@@ -315,7 +319,11 @@ func fit() -> void:
 		if c != middle and c != tools_panel and (c as Control).visible:
 			others += (c as Control).get_combined_minimum_size().y + sep
 	var frame := tools_panel.get_combined_minimum_size().y - tools_scroll.custom_minimum_size.y   # (its margins)
-	var room := col.size.y - others - sep - frame - vs.y * MIDDLE_MIN
+	# (the middle row: MIDDLE_MIN of the height, and at least four lines of the tree's text with its panel's margins on a
+	# short screen, a phone at 200 %)
+	var line: float = tree.get_theme_font("font").get_height(int(FONT * W.scale)) + 4.0 * W.scale
+	var mid_min := maxf(vs.y * MIDDLE_MIN, 4.0 * line + tree_panel.get_theme_stylebox("panel").get_minimum_size().y + 2.0)
+	var room := col.size.y - others - sep - frame - mid_min
 	var want := minf(tools_box.get_combined_minimum_size().y, minf(vs.y * TOOLS_MAX, maxf(room, TARGET_H * W.scale)))
 	if not is_equal_approx(tools_scroll.custom_minimum_size.y, want):
 		tools_scroll.custom_minimum_size.y = want
