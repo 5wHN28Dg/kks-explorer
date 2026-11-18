@@ -364,9 +364,9 @@ proc received(w: Win, d: EncDone) =
       if getEnv("KKS_TEST_PHOTO_DIE_AFTER_SEND").len > 0: discard TerminateProcess(GetCurrentProcess(), 9)
     except ApiError as e:
       if e.status >= 400: (outcome, why) = (Refused, e.msg)
-      else: (outcome, why) = (Failed, "not sent: " & e.msg)
+      else: (outcome, why) = (Failed, "Not sent. " & e.msg)
     except CatchableError as e:
-      (outcome, why) = (Failed, "not sent: " & e.msg)
+      (outcome, why) = (Failed, "Not sent. " & e.msg)
   let now = nowMs()
   var r: string
   try: r = pq.finish(d.key, outcome, why, now)

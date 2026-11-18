@@ -20,11 +20,11 @@ K.nativeCall = (method, url, body, base64) => new Promise(res => {
 // sentence ("Wrong username or password."); a terse one ("not found", "admin only") becomes this client's sentence for
 // its kind, the same words on every client. The raw text stays on the error as `detail` (and in the console).
 K.errorWords = {
-  sign_in: 'Your sign-in has ended. Sign in again; what you typed is kept.',
-  not_allowed: "You don't have the right to do that here.",
-  not_found: "It isn't there any more: someone may have removed it. Reload to see what is there now.",
+  sign_in: 'Your sign-in has ended. Sign in again.',
+  not_allowed: "You don't have the right to do that here. Ask an admin if you need it.",
+  not_found: "It isn't there any more: someone may have removed it. Open it again to see what is there now.",
   conflict: 'It was changed meanwhile, so this was not saved. Look at the current value and try again.',
-  too_large: 'That is too large to send.',
+  too_large: 'That is too large to send. Choose a smaller file or a shorter text.',
   too_many: 'Too many tries. Wait a few minutes, then try again.',
   invalid: 'That was not accepted. Check what you entered and try again.',
   server: 'The server had a problem, so this was not done. Try again in a moment.',
@@ -40,6 +40,8 @@ K.errorTerse = {
 };
 K.errorCode = status => ({401: 'sign_in', 403: 'not_allowed', 404: 'not_found', 409: 'conflict', 413: 'too_large', 429: 'too_many'})[status]
   || (status >= 400 && status < 500 ? 'invalid' : 'server');
+// a developer's text, not meant for people ("bad submission kind or payload", "action must be start or confirm")
+K.devText = t => /^(bad|unknown) |\(| must be | is required/i.test(t);
 K.isSentence = t => typeof t === 'string' && /^[A-Z]/.test(t.trim()) && /[.!?]$/.test(t.trim());
 // what to say: a terse text's own sentence; the server's sentence; for a request that was refused (invalid, too large,
 // too many, not allowed) its specific text of three words or more made a sentence ("Note: up to 500 characters.");
@@ -49,7 +51,7 @@ K.errorText = (status, d) => {
   const code = own(K.errorWords, d?.code) ? d.code : K.errorCode(status);
   if (own(K.errorTerse, raw)) return K.errorTerse[raw];
   if (K.isSentence(raw)) return raw;
-  if (['invalid', 'too_large', 'too_many', 'not_allowed', 'conflict'].includes(code) && raw.split(/\s+/).length >= 3)
+  if (['invalid', 'too_large', 'too_many', 'not_allowed', 'conflict'].includes(code) && raw.split(/\s+/).length >= 3 && !K.devText(raw))
     return raw[0].toUpperCase() + raw.slice(1) + (/[.!?]$/.test(raw) ? '' : '.');
   return K.errorWords[code];
 };

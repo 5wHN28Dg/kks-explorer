@@ -8,11 +8,11 @@ import org.json.JSONObject
  *  sentence for its kind. The raw text goes to the log. */
 object Errors {
     val words = mapOf(
-        "sign_in" to "Your sign-in has ended. Sign in again; what you typed is kept.",
-        "not_allowed" to "You don't have the right to do that here.",
-        "not_found" to "It isn't there any more: someone may have removed it. Reload to see what is there now.",
+        "sign_in" to "Your sign-in has ended. Sign in again.",
+        "not_allowed" to "You don't have the right to do that here. Ask an admin if you need it.",
+        "not_found" to "It isn't there any more: someone may have removed it. Open it again to see what is there now.",
         "conflict" to "It was changed meanwhile, so this was not saved. Look at the current value and try again.",
-        "too_large" to "That is too large to send.",
+        "too_large" to "That is too large to send. Choose a smaller file or a shorter text.",
         "too_many" to "Too many tries. Wait a few minutes, then try again.",
         "invalid" to "That was not accepted. Check what you entered and try again.",
         "server" to "The server had a problem, so this was not done. Try again in a moment.",
@@ -34,6 +34,9 @@ object Errors {
         in 400..499 -> "invalid"; else -> "server"
     }
 
+    /** a developer's text, not meant for people ("bad submission kind or payload", "action must be start or confirm") */
+    fun devText(t: String) = t.lowercase().let { it.startsWith("bad ") || it.startsWith("unknown ") || "(" in it || " must be " in it || " is required" in it }
+
     fun isSentence(t: String) = t.trim().let { it.length > 1 && it[0] in 'A'..'Z' && it.last() in ".!?" }
 
     /** what to say for an error response */
@@ -46,7 +49,7 @@ object Errors {
         terse[raw]?.let { return it }
         if (isSentence(raw)) return raw
         if (raw.isNotEmpty()) android.util.Log.i("KKSErrors", "$status $raw")
-        if (code in setOf("invalid", "too_large", "too_many", "not_allowed", "conflict") && raw.split(Regex("\\s+")).size >= 3)
+        if (code in setOf("invalid", "too_large", "too_many", "not_allowed", "conflict") && raw.split(Regex("\\s+")).size >= 3 && !devText(raw))
             return asSentence(raw)
         return words.getValue(code)
     }

@@ -16,6 +16,8 @@ suite "errors in plain words":
     check errorText(400, err("bad json", "invalid")) == errorWords("invalid")
     check errorText(500, nil) == errorWords("server")
     check errorText(418, err("x", "no such kind")) == errorWords("invalid")      # (an unknown kind: by the status)
+    check errorText(400, err("bad submission kind or payload", "invalid")) == errorWords("invalid")   # (a developer's text)
+    check errorText(400, err("action must be start or confirm", "invalid")) == errorWords("invalid")
   test "a refused join says the core's reason":
     check notJoined("unknown", "this invite has expired; ask for a new one") == "This invite has expired; ask for a new one."
     check notJoined("used", "") == "Not joined: the admin refused, or the request ended. Ask the admin to try again."

@@ -349,8 +349,9 @@ class Sinks(unittest.TestCase):
             self.assertEqual(got[5][0], pg.evaluate("K.errorWords.conflict"))
             more = pg.evaluate("""() => [K.apiError(400, {error: 'note: up to 500 characters', code: 'invalid'}).message,
                 K.apiError(403, {error: 'manager only', code: 'not_allowed'}).message,
-                K.apiError(404, {error: 'no such user', code: 'not_found'}).message]""")
-            self.assertEqual(more, ['Note: up to 500 characters.', "Only the plant's manager can do that.", pg.evaluate("K.errorWords.not_found")])
+                K.apiError(404, {error: 'no such user', code: 'not_found'}).message,
+                K.apiError(400, {error: 'bad submission kind or payload', code: 'invalid'}).message]""")
+            self.assertEqual(more, ['Note: up to 500 characters.', "Only the plant's manager can do that.", pg.evaluate("K.errorWords.not_found"), pg.evaluate("K.errorWords.invalid")])
             for m, _, _ in got:
                 self.assertRegex(m, r'^[A-Z].*[.]$')
                 self.assertNotRegex(m, r'\b(error|[45]\d\d)\b')

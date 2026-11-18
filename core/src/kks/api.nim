@@ -290,7 +290,7 @@ proc normalize*(a: Api, kind: string, p: JNode): JNode =
     if blobExt(raw) notin ["jpg", "png", "webp", "jxl"]: bad("not an image")
     if a.photoEncoder != nil and blobExt(raw) != "jxl":
       try: raw = a.photoEncoder(raw)
-      except CatchableError as e: bad("not a readable image (" & e.msg & ")")
+      except CatchableError: bad("That file is not a picture Walkdown can read. Take or choose the photo again.")
     elif blobExt(raw) != "jxl":
       # photos are stored as JPEG XL only (decision 0018); a device without an encoder takes JXL from its clients
       bad("photos must be sent as JPEG XL")

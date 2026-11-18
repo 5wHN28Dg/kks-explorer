@@ -97,7 +97,7 @@ body.hide-review .hs.review{display:none}
 .zoom button{width:42px;height:42px;border-radius:21px;border:1px solid var(--line);background:var(--chrome2);font-size:19px;cursor:pointer}
 #banner{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:30;background:var(--accent);color:#1c2730;font-weight:600;padding:8px 12px;border-radius:6px;display:none;gap:10px;align-items:center;max-width:92%}
 #banner button{background:#1c2730;color:var(--ink);border:0;border-radius:4px;padding:4px 10px;cursor:pointer}
-#toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chrome3);padding:8px 14px;border-radius:6px;display:none;z-index:40;width:max-content;max-width:92%}
+#toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chrome3);padding:8px 14px;border-radius:6px;display:none;z-index:40;width:max-content;max-width:min(92%, calc(100% - 132px))}
 /* side drawers + equipment panel */
 .drawer{position:absolute;top:0;bottom:0;left:0;width:390px;max-width:100%;background:var(--chrome2);border-right:1px solid var(--line);z-index:20;display:none;flex-direction:column}
 .drawer.open{display:flex}

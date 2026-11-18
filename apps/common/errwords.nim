@@ -6,11 +6,11 @@ import std/[strutils]
 import kks/json
 
 const ErrorWords* = [
-  ("sign_in", "Your sign-in has ended. Sign in again; what you typed is kept."),
-  ("not_allowed", "You don't have the right to do that here."),
-  ("not_found", "It isn't there any more: someone may have removed it. Reload to see what is there now."),
+  ("sign_in", "Your sign-in has ended. Sign in again."),
+  ("not_allowed", "You don't have the right to do that here. Ask an admin if you need it."),
+  ("not_found", "It isn't there any more: someone may have removed it. Open it again to see what is there now."),
   ("conflict", "It was changed meanwhile, so this was not saved. Look at the current value and try again."),
-  ("too_large", "That is too large to send."),
+  ("too_large", "That is too large to send. Choose a smaller file or a shorter text."),
   ("too_many", "Too many tries. Wait a few minutes, then try again."),
   ("invalid", "That was not accepted. Check what you entered and try again."),
   ("server", "The server had a problem, so this was not done. Try again in a moment."),
@@ -45,6 +45,11 @@ proc asSentence*(t: string): string =
   let s = t.strip
   if s.len == 0: "" else: s[0].toUpperAscii & s[1 .. ^1] & (if s[^1] in {'.', '!', '?'}: "" else: ".")
 
+proc devText*(t: string): bool =
+  ## a developer's text, not meant for people ("bad submission kind or payload", "action must be start or confirm")
+  let l = t.toLowerAscii
+  l.startsWith("bad ") or l.startsWith("unknown ") or "(" in l or " must be " in l or " is required" in l
+
 proc isSentence*(t: string): bool =
   let s = t.strip
   s.len > 1 and s[0] in {'A' .. 'Z'} and s[^1] in {'.', '!', '?'}
@@ -63,7 +68,7 @@ proc errorText*(status: int, j: JNode): string =
   for (k, v) in ErrorTerse:
     if k == raw: return v
   if raw.isSentence: return raw
-  if code in ["invalid", "too_large", "too_many", "not_allowed", "conflict"] and raw.splitWhitespace.len >= 3:
+  if code in ["invalid", "too_large", "too_many", "not_allowed", "conflict"] and raw.splitWhitespace.len >= 3 and not raw.devText:
     return raw.asSentence
   errorWords(code)
 
