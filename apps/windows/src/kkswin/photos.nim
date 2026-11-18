@@ -183,6 +183,7 @@ type
     rgb: seq[byte]
     w, h: int
     fail: bool                 ## tests: KKS_TEST_ENCODE_FAIL makes the first n encodes fail
+    holdMs: int                ## tests: KKS_TEST_ENCODE_MS, the least time an encode takes
   EncDone = object
     key, clientId: string
     data: string
@@ -199,6 +200,9 @@ var
   wipedAll = false             ## the device was removed: nothing more is written or sent
   polling = false
   failLeft = (try: max(0, parseInt(getEnv("KKS_TEST_ENCODE_FAIL", "0"))) except ValueError: 0)
+  encodeMs = (try: max(0, parseInt(getEnv("KKS_TEST_ENCODE_MS", "0"))) except ValueError: 0)
+    ## tests: each encode takes at least this long, so that "Compressing" can be read before it ends (a real
+    ## laptop compressed and sent a photo before the end-to-end test's next look at the status line)
   retryWait = (try: max(0, parseInt(getEnv("KKS_TEST_RETRY_MS", $RetryMs))) except ValueError: RetryMs)
     ## tests: a failed photo's wait before it is tried again
   failWin: HWND
@@ -208,6 +212,7 @@ proc encWorker() {.thread.} =
   while true:
     let j = encJobs.recv()
     var d = EncDone(key: j.key, clientId: j.clientId)
+    if j.holdMs > 0: sleep(j.holdMs)
     try:
       if j.fail: d.err = "the encoder failed (a test)"
       else:
@@ -403,7 +408,7 @@ proc startNext(w: Win) =
   if ok:
     let fail = failLeft > 0
     if fail: dec failLeft
-    encJobs.send(EncJob(key: it.key, clientId: it.clientId, rgb: px, w: it.w, h: it.h, fail: fail))
+    encJobs.send(EncJob(key: it.key, clientId: it.clientId, rgb: px, w: it.w, h: it.h, fail: fail, holdMs: encodeMs))
 
 proc pollQueue(w: Win) =
   var changed = false

@@ -16,7 +16,7 @@ SERVER = sys.argv[4] if len(sys.argv) > 4 else '/tmp/kkslinux/kks_server'
 IMPORTER = sys.argv[5] if len(sys.argv) > 5 else '/tmp/kksimp/kks_import'
 # KKS_LAPTOP=1: a real Windows machine on the LAN (apps/windows/README.md, "A real (borrowed) Windows laptop"): this
 # machine's ports stay closed to the LAN, so the server's sync port reaches it through an SSH reverse tunnel (the app
-# joins 127.0.0.1), and screenshots come from its desktop session (e2e/shot.ps1), not from virsh
+# joins 127.0.0.1), and screenshots come from its desktop session (e2e/shot.cpp), not from virsh
 LAPTOP = os.environ.get('KKS_LAPTOP') == '1'
 HOST = '127.0.0.1' if LAPTOP else os.environ.get('KKS_HOST_FROM_VM', '192.168.122.1')
 PEER = os.environ.get('KKS_PEER', '/tmp/kksgnome/progress_peer')   # apps/gnome/e2e/progress_peer.nim: a second device
@@ -1023,7 +1023,9 @@ class Windows(unittest.TestCase):
         core's 500 characters is cut before the photo is queued (refused by the core, it could never be sent)"""
         self.add_tag('11LBA10AA101', [600, 900, 720, 960], floor='1')
         self.add_tag('11LBA10AA102', [800, 900, 920, 960], floor='1')
-        self.join('qjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1', 'KKS_TEST_RETRY_MS': '600000'})
+        # (KKS_TEST_ENCODE_MS: each compression takes 8 s at least, so the status line's "Compressing" is there to be
+        # read; on a real laptop the photo was compressed and sent before the next look)
+        self.join('qjoin.uia', env={'KKS_TEST_ENCODE_FAIL': '1', 'KKS_TEST_RETRY_MS': '600000', 'KKS_TEST_ENCODE_MS': '8000'})
         self.check('queue0.uia', self.show('11LBA10AA101') + [
             # the search result's photo mark, in words in its text
             'wait\t~11LBA10AA101   \t5', 'wait\t~ · Sample sheet · no photos\t5',
