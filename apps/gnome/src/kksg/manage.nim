@@ -526,26 +526,30 @@ proc hide(w: Win, body: JNode, done: string, again: proc ()) =
 proc hiddenControls(w: Win, box: W, hiddenN: int, what: string, again: proc ()): W =
   ## "Clear removed" and "Show hidden (n)"
   result = hbox(8)
-  let clear = button("Clear removed", "", proc () =
-    # how many it hides, said first (#365): every removed device and person not hidden yet, in both lists
-    var nd, np = 0
-    try:
-      let all = w.a.call("GET", "/api/devices").get("all")      # (the lists as shown: hidden ones left out)
-      if all != nil and all.kind == jArr:
-        for x in all.elems:
-          if x.get("revoked") != nil and x["revoked"].kind == jBool and x["revoked"].b: inc nd
-      for u in w.a.call("GET", "/api/users")["users"].elems:
-        if u.get("active") != nil and u["active"].kind == jBool and not u["active"].b and
-           u.get("devices") != nil and u["devices"].kind == jInt and u["devices"].i > 0: inc np
-    except ApiError, KeyError: discard
-    if nd + np == 0:
+  # how many it hides, on the button (#365, B2), and Undo after: hiding is display only, so it is taken back by
+  # showing the same ones again. Counted as the page is built: the lists as shown (hidden ones left out).
+  var ids: seq[string]
+  try:
+    let all = w.a.call("GET", "/api/devices").get("all")
+    if all != nil and all.kind == jArr:
+      for x in all.elems:
+        if x.get("revoked") != nil and x["revoked"].kind == jBool and x["revoked"].b and s(x, "device").len > 0: ids.add s(x, "device")
+    for u in w.a.call("GET", "/api/users")["users"].elems:
+      if u.get("active") != nil and u["active"].kind == jBool and not u["active"].b and
+         u.get("devices") != nil and u["devices"].kind == jInt and u["devices"].i > 0 and s(u, "person").len > 0: ids.add s(u, "person")
+  except ApiError, KeyError: discard
+  let clear = button("Clear removed (" & $ids.len & ")", "", proc () =
+    if ids.len == 0:
       w.toast("Nothing to clear: no removed device or person is listed")
       return
-    let parts = (if nd > 0: @[$nd & (if nd == 1: " removed device" else: " removed devices")] else: @[]) &
-                (if np > 0: @[$np & (if np == 1: " person" else: " people") & " with no active device"] else: @[])
-    confirm(w.window, "Hide " & parts.join(" and ") & "?", "They leave these lists; Show hidden lists them again, and History keeps them.",
-            "Hide " & $(nd + np), false, proc () =
-      w.hide(newObj(@[("clear_removed", newBool(true))]), "Removed devices and people hidden", again)))
+    try:
+      discard w.a.call("POST", "/api/hidden", newObj(@[("clear_removed", newBool(true))]))
+      again()
+      w.toastUndo("Hid " & $ids.len & " removed " & (if ids.len == 1: "device or person" else: "devices and people"), proc () =
+        var arr = newArr()
+        for x in ids: arr.elems.add newStr(x)
+        w.hide(newObj(@[("ids", arr), ("hide", newBool(false))]), "Shown again", again))
+    except ApiError as e: w.toast(e.msg))
   setAccessibleDescription(clear, "Hide every removed device and every person with no active device from these lists")
   result.add clear
   if hiddenN > 0 or showHidden:

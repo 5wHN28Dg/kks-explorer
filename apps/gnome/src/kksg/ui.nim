@@ -134,15 +134,17 @@ proc present*(d, parent: W) =
   idle(proc () = adw_dialog_present(d, parent))
 
 proc confirm*(parent: W, heading, body, yes: string, destructive: bool, fn: proc ()) =
-  let d = adw_alert_dialog_new(heading.cstring, body.cstring)
-  adw_alert_dialog_add_response(d, "cancel", "Cancel")
-  adw_alert_dialog_add_response(d, "yes", yes.cstring)
-  adw_alert_dialog_set_response_appearance(d, "yes", if destructive: ADW_RESPONSE_DESTRUCTIVE else: ADW_RESPONSE_SUGGESTED)
-  adw_alert_dialog_set_default_response(d, "cancel")
-  adw_alert_dialog_set_close_response(d, "cancel")
-  d.onResponse(proc (id: string) =
-    if id == "yes": fn())
-  present(d, parent)
+  ## built from idle, as `ask` is: a dialog built inside an accessibility action has no accessibility contents
+  idle(proc () =
+    let d = adw_alert_dialog_new(heading.cstring, body.cstring)
+    adw_alert_dialog_add_response(d, "cancel", "Cancel")
+    adw_alert_dialog_add_response(d, "yes", yes.cstring)
+    adw_alert_dialog_set_response_appearance(d, "yes", if destructive: ADW_RESPONSE_DESTRUCTIVE else: ADW_RESPONSE_SUGGESTED)
+    adw_alert_dialog_set_default_response(d, "cancel")
+    adw_alert_dialog_set_close_response(d, "cancel")
+    d.onResponse(proc (id: string) =
+      if id == "yes": fn())
+    adw_dialog_present(d, parent))
 
 proc ask*(parent: W, heading, body, yes, no: string, fn: proc (yes: bool)) =
   ## A question with a destructive answer (`yes`) and a safe one (`no`: the default, and what Escape gives). `fn`
