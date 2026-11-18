@@ -745,6 +745,8 @@ func _layout_toast() -> void:
 ## Something open that reaches the bottom of the canvas (a side panel, the screens, the drawings, the tools, the
 ## crew or the procedures): the HUD's status line, when it is at the bottom, hides under it (app/hud.gd).
 func covers_bottom() -> bool:
+	if procedure == null:
+		return false          # (not built yet: the app still loading, or a start that stopped before its layer)
 	return _side_open() or procedure.visible or crew.visible or session_panel.visible or views_open() or manual_open() \
 			or (work != null and (work.tools_panel.visible or work.is_open)) or (monitoring != null and monitoring.is_open())
 
