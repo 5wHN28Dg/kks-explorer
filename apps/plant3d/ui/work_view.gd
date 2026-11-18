@@ -145,6 +145,8 @@ func setup(u) -> void:
 
 
 func _layout() -> void:
+	if not is_inside_tree():
+		return                # (the window reset as the app leaves: app/main.gd _exit_tree)
 	var vs := get_viewport_rect().size
 	var w := minf(480.0 * W.scale, vs.x * 0.45)
 	panel.position = Vector2(vs.x - w - 12, 12)
@@ -153,8 +155,10 @@ func _layout() -> void:
 	meters_panel.position = Vector2(maxf(12.0, (vs.x - w - 12) * 0.5 - mw * 0.5), vs.y - 12)
 	meters_panel.custom_minimum_size.x = mw
 	meters_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	tools_panel.position = Vector2(12, 150 * W.scale)
-	tools_panel.size = Vector2(minf(440.0 * W.scale, vs.x * 0.45), minf(560.0 * W.scale, vs.y - 170 * W.scale))
+	# below the bars (the layer's bar wraps onto more rows on a narrow canvas or at a large UI size)
+	var top: float = ui.panels_top() if ui != null and ui.has_method("panels_top") and ui.bar != null else 150.0 * W.scale
+	tools_panel.position = Vector2(12, top)
+	tools_panel.size = Vector2(minf(440.0 * W.scale, vs.x * 0.45), minf(560.0 * W.scale, vs.y - top - 16.0))
 
 
 ## The codes with jobs and their service files (built/content/service/, REALISM.md §2.16).
@@ -862,8 +866,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 
 
 func _turn(rel: Vector2) -> void:
-	_yaw -= rel.x * 0.008
-	_pitch = clampf(_pitch + rel.y * 0.008, -1.3, 1.3)
+	_yaw -= rel.x * W.ui_size * 0.008      # (as far as the finger moves on the screen, whatever the UI size)
+	_pitch = clampf(_pitch + rel.y * W.ui_size * 0.008, -1.3, 1.3)
 	_orbit_cam()
 
 

@@ -121,6 +121,7 @@ const Crowd = preload("res://app/crowd.gd")
 const ScriptCost = preload("res://app/script_cost.gd")
 const WalkFrames = preload("res://app/walk_frames.gd")
 const WeatherView = preload("res://app/weather_view.gd")
+const W = preload("res://ui/widgets.gd")
 # The start's slow scripts and the plant's model are made on worker threads while the sky frame is drawn and the plant
 # loads (`_prep_begin`): preloaded here, the UI's, the Workshop's and the session's scripts were compiled on the main
 # thread before the scene was ready (most of the Note 9's 5.2 s to `ready`), and the model read there in the `ui` stage
@@ -208,6 +209,7 @@ func _ready() -> void:
 		get_tree().change_scene_to_file.call_deferred("res://voice/demo/voice_wav.tscn")
 		return
 	cf = Quality.settings()
+	_apply_ui_size()
 	OS.delta_smoothing = false
 	_environment()
 	_launch("environment")
@@ -460,6 +462,61 @@ func _hold_scripts() -> void:
 func _exit_tree() -> void:
 	if _prep_task >= 0:
 		_prep_end()   # (a start that ended before its UI: no task left behind)
+	if _ui_size_set:
+		if get_tree().root.size_changed.is_connected(_on_window_resized):
+			get_tree().root.size_changed.disconnect(_on_window_resized)
+		W.apply_ui_size(get_tree().root, 1.0)   # the window as it was (the tests start the app again and again in one)
+
+var _ui_size_set := false
+
+## The settings' UI size (ui/widgets.gd ui_size; issue #382): `ui_size=` for a test or a shot, else the saved one, else
+## the device's default (on a phone the size its screen needs for 48 dp buttons: W.phone_ui_size). The phone's scale on
+## a desktop (`ui_scale=`, tests/mimic_shots.gd --phone) takes a phone's default for the window's size, at `density=`
+## (if not given, the density that makes the window as tall as the Note 9's: 150 %).
+func _apply_ui_size() -> void:
+	W.pick_scale()                           # (the HUD, made before the interaction layer, sizes itself by it too)
+	if opts.has("ui_scale"):
+		W.scale = clampf(float(opts["ui_scale"]), 0.5, 3.0)
+	var win := Vector2(get_tree().root.size)
+	var dflt: float
+	if opts.has("ui_scale") and float(opts["ui_scale"]) > 1.0:
+		# (without `density=` the window is a phone as tall as the Note 9, 411 dp: 420 at 1080 px, 560 at 1440)
+		dflt = W.phone_ui_size(win, float(opts["density"]) if opts.has("density") else W.NOTE9_DENSITY * win.y / 1080.0)
+	else:
+		dflt = W.default_ui_size(win)
+		if OS.has_feature("mobile") and not _ui_size_logged:
+			_ui_size_logged = true      # (the walk's log says what the phone was given: apps/plant3d/README.md)
+			print("ui size: window %dx%d, density %.0f (%s), default %d %%" % [win.x, win.y, W.screen_density(),
+				W.density_source, roundi(dflt * 100.0)])
+	W.ui_size_default = dflt
+	_ui_win = get_tree().root.size
+	var f: float = W.clamp_ui_size(opts["ui_size"], dflt) if opts.has("ui_size") \
+			else W.clamp_ui_size(cf.get_value("ui", "ui_size", dflt), dflt)
+	W.apply_ui_size(get_tree().root, f)
+	if not _ui_size_set:
+		get_tree().root.size_changed.connect(_on_window_resized)
+	_ui_size_set = true
+	if workshop != null and workshop.has_method("fit_resolution"):
+		workshop.fit_resolution()
+
+var _ui_size_logged := false
+var _ui_win := Vector2i.ZERO      # the window's size the default UI size was worked out for
+
+## The window took another size (Android's split screen, a foldable, a desktop window): the default size is worked out
+## again for it, when the size is the default (none chosen in the settings, none given at the start).
+func _on_window_resized() -> void:
+	if not _ui_size_set or get_tree().root.size == _ui_win:
+		return
+	if opts.has("ui_size") or cf.has_section_key("ui", "ui_size"):
+		return
+	_apply_ui_size()
+
+## The UI size chosen in the settings: saved, and applied at once (the panels lay themselves out again).
+func set_ui_size(f: float) -> void:
+	opts.erase("ui_size")                   # (the choice wins over a size the start was given)
+	cf.set_value("ui", "ui_size", W.clamp_ui_size(f, 1.0))
+	Quality.save(cf)
+	_apply_ui_size()
 
 func _unbaked(n: Node) -> void:
 	var g := n as GeometryInstance3D
@@ -507,7 +564,7 @@ func _options() -> void:
 		if f:
 			for line in f.get_as_text().split("\n"):
 				var kv := line.strip_edges().split("=", true, 1)
-				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music", "job", "monitor", "bench_speed", "ws_warm"]:   # nothing else from a shared folder (voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
+				if kv.size() == 2 and kv[0] in ["walk", "kind", "seconds", "quality", "procedure", "panels", "scenario", "speed", "pipeline_save_mb", "probe", "fx_off", "fx_on", "max_fps", "crowd", "people_skinned", "people_shadows", "crews", "shot", "voice", "digest", "step", "shadow_ab", "mp", "mp_inputs", "mp_probe", "weather", "cold", "music", "job", "monitor", "bench_speed", "ws_warm", "ui_size"]:   # nothing else from a shared folder (ui_size: a walk at another UI size; voice, probe, fx_off, fx_on, max_fps, the people's, crews, shot, digest, step and shadow_ab: measuring on a phone)
 					opts[kv[0]] = kv[1]
 	if opts.has("pipeline_save_mb"):   # (measuring what the pipeline cache's saves cost a start: decision 0060)
 		ProjectSettings.set_setting("rendering/rendering_device/pipeline_cache/save_chunk_size_mb", clampf(float(opts.pipeline_save_mb), 0.25, 1024.0))

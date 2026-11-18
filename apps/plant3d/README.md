@@ -105,6 +105,7 @@ The app on this laptop: `godot --path apps/plant3d` after `build.sh`. Options go
 | `--procedure=ID` | follows that procedure or tour from the start |
 | `--panels=alarms,procedure,crew,card:CODE,drawings,drawing:CODE,settings,toasts` | opens these panels (`toasts`: a notice every 10 s, for a measured walk) |
 | `--speed=fast` | starts the plant in fast-forward |
+| `--ui_size=1.5` | the UI size (as the settings' "UI size": 1 to 2; a phone's `walk.txt` may give it too, to measure a walk at another size) |
 | `walkdown-plant://kks/CODE`, `walkdown-plant://procedure/ID[/STEP]` | a link (docs/PLANT3D.md §6), anywhere on the command line; a start with a link takes none of the options above (a crafted link could add its own) |
 | `--fx_off=fog,lightmap,shadow`, `--fx_on=ssao,sdfgi,ssil,volfog,glow` | effects off or on, to measure what each costs |
 | `--walk=frames --crowd=N` | the walk among N people (`app/crowd.gd`: walking the route both ways and at work beside it, kept round the walker): what people cost; `--people_skinned=N` that many skinned avatars instead of the tier's, `--people_shadows=0` without their shadows; the result's `PEOPLE` line has their CPU time and the bands' counts |
@@ -145,6 +146,18 @@ Controls (R7):
   climbed at 0.8 m/s whatever the gait. Footsteps follow the speed: longer strides the faster (about 2 a second at a
   walk, 3 running), softer slow steps and louder running ones. The eye dips and sways at the footsteps' rate while
   walking, unless "Reduced motion" is on. Touch has no run button: its stick goes up to a jog. There is no crouching.
+- **UI size** (settings, issue #382): 100 % to 200 %, applied at once and kept in `user://settings.cfg`. A phone
+  starts at the least size that gives its buttons 48 dp and its text 14 sp on its own screen (UI-UX-POLICY T1, S1:
+  `ui/widgets.gd` phone_ui_size, from the screen's density and the canvas: 150 % on the Note 9, 180 % on a phone 360 dp
+  tall), a desktop at 100 %; the list marks that size "(default)", and either can go above or below it. Everything
+  drawn on the canvas grows with it (the window's content scale: the panels, both bars, the HUD, the Workshop's panels),
+  and the layouts follow the smaller canvas: where the bar doesn't fit on one row (every phone, a desktop at
+  a large size) the HUD's buttons (Fly, Use, Map) and the bar share ONE compact row at the top, the clock on two lines, as many
+  buttons as fit (Alarms, Procedures, the speed's first) and the rest with Settings in **More**; the panels begin below
+  it and scroll, a panel's tabs go into its body when they would take a third of its height, and the control room's
+  screens go over the whole row where they would keep under 30 % of the height for the screen itself. The touch sticks
+  keep their size on the screen, and the Workshop's view its pixel count (its resolution scale grows with the size). It
+  is also the policy's text size setting (S2). A phone's log says what it was given (`ui size: window …, density …`).
 - **Ladders:** walk into a ladder facing it to climb it. To go down, step backwards over the edge at its top.
 - **Map:** drag to pan, use the wheel or pinch to zoom, and right-drag or turn two fingers to rotate. Tap a floor to
   go there.
@@ -461,6 +474,15 @@ On the Note 9 (2026-10-19, debug build, `WALK_EXTRA="walk=screens\n" phone/frame
 16.7 ms, 99.95 % at 30 fps or more; the screens' pieces drew in 0.38 ms a frame on average, 71 of 5,969 frames over
 2 ms, 13 ms at most (a screen's first drawing when it is shown). That counts the pieces only: the tabs, the alarm
 banner and the flow lines are drawn besides, so the frame times above are the measure.
+- `test_ui_size`: the size a phone starts at (48 dp buttons, 14 sp text: the Note 9 at its density 420 and at Godot's
+  class 480, a 360 dp tall phone, 16:9 phones, phones too small for 48 dp at 200 %); then on a desktop's canvas at
+  100 %, 150 % and 200 % and on the Note 9's, a 360 dp tall phone's and 16:9 phones' (at the phone's scale) at their
+  default and at 200 %: the HUD's buttons, the bar and its clock on screen and apart, the compact row ONE row in the
+  top fifth with the clock, Alarms and More, More's list holding the rest and Settings and doing what they do, the
+  sticks at a thumb's size, every panel inside the canvas below the bars with its Close on screen and nothing running
+  out at its sides, the screens keeping 30 % of the height, 48 dp targets and 14 sp text on a phone at its size or
+  above, the Workshop's way back and its view's pixels; chosen in the settings it applies at once, is saved and taken
+  by the next start. `tests/ui_size_shots.gd` shoots the same panels (`--phone`, `--density=`, `--ui-size=1.5`).
 - `test_about`: About from the settings (gamepad A), what it shows (version, commit, the assets with their licence,
   Godot's notices), scrolling by D-pad, stick, Page Down and Home, and back by Esc, B and Back.
 - `test_kit_build`: the built plant's nodes, cells and plates (every valve, inline ones too, carries its tag plate).

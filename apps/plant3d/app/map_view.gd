@@ -3,6 +3,7 @@
 ## right-drag or two fingers' turn to rotate; a tap or click on a floor puts the trainee there.
 extends Node3D
 
+const W = preload("res://ui/widgets.gd")   # (W.ui_size: drags come in the canvas's units, larger at a larger UI size)
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
 
 const LAYER := 2
@@ -99,8 +100,8 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e is InputEventMouseMotion and (e.button_mask & MOUSE_BUTTON_MASK_LEFT):
 		_pan(e.relative)
 	elif e is InputEventMouseMotion and (e.button_mask & MOUSE_BUTTON_MASK_RIGHT):
-		yaw -= e.relative.x * 0.005
-		pitch = clampf(pitch - e.relative.y * 0.005, deg_to_rad(-89), deg_to_rad(-15))
+		yaw -= e.relative.x * W.ui_size * 0.005
+		pitch = clampf(pitch - e.relative.y * W.ui_size * 0.005, deg_to_rad(-89), deg_to_rad(-15))
 	elif e is InputEventScreenTouch:
 		if e.pressed:
 			_touches[e.index] = e.position
@@ -125,7 +126,7 @@ func _unhandled_input(e: InputEvent) -> void:
 
 func _pan(rel: Vector2) -> void:
 	_moved += rel.length()
-	var k := dist * 0.0015
+	var k := dist * 0.0015 * W.ui_size     # (as far as the finger moves on the screen, whatever the UI size)
 	target += Basis(Vector3.UP, yaw) * Vector3(-rel.x * k, 0, -rel.y * k)
 
 ## A tap: the trainee goes to the lowest floor under that point with room to stand (inside a building, not onto

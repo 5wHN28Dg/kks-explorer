@@ -42,8 +42,12 @@ counts as 1 dp; on a desktop, sizes are in the platform's logical pixels at 100 
 pixels to dp with Android's density, as Android itself does: dp = screen px × 160 / density, the density read with
 `adb shell wm density` (not Godot's `screen_get_dpi()`, which returns a rounded bucket). Plant draws on a 1600 × 900
 canvas stretched to the screen (`project.godot`, `canvas_items`, `expand`); on the Note 9 at its default 2220 × 1080
-and density 420, one canvas px is 1.2 screen px, so **dp = canvas px × 0.457**. Use that factor for the phone layout
-rendered on a desktop, with the phone UI scale (`ui_scale` 1.35, as `tests/mimic_shots.gd --phone` sets it).
+and density 420, one canvas px is 1.2 screen px, so **dp = canvas px × 0.457** at 100 %, times Plant's UI size above
+it (its setting, 100 % to 200 %, the window's content scale). Each phone starts at the least UI size that gives its
+buttons 48 dp and its text 14 sp on its own screen, from its density and window (`ui/widgets.gd` phone_ui_size: 150 %
+on the Note 9, 180 % on a phone 360 dp tall); the user may go above or below it. Render the phone layout on a desktop
+at the phone's window size with the phone UI scale (`ui_scale` 1.35, as `tests/mimic_shots.gd --phone` sets it), which
+starts at that phone's size (`density=`; if not given, the window is as tall as the Note 9's 411 dp).
 
 "Phone" means Android, the web client at a viewport narrower than 600 CSS px, and Plant on Android.
 
