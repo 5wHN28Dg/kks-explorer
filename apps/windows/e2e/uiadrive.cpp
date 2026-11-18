@@ -33,9 +33,8 @@
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
 //                           what a person's keyboard does there (an edit or list of that name before any other
 //                           element of it; `keys` posts to the first element, which may be the window or a label)
-//   resize <name> <w> <h>   the top-level window holding the element restored and resized to w x h (px as this unaware
-//                           driver sees them: physical at 100 % scaling, as the VMs run; at
-//                           most what the screen allows, logged)
+//   resize <name> <w> <h>   the top-level window holding the element restored and resized to w x h physical px (the
+//                           driver is per-monitor DPI aware); at most what the screen allows, logged
 //   apart <drawing>         no control of the drawing's window meets the drawing's rectangle, and every button, field,
 //                           list and check box wholly in view is what UI Automation's hit test finds at its middle
 //   clear <drawing> <name>  the same for the controls of that name only (at least one must be there)
@@ -391,6 +390,10 @@ static int apart(DWORD &pid, IUIAutomationElement *drawing, const std::string &o
 int wmain(int argc, wchar_t **argv) {
     if (argc < 4) { fprintf(stderr, "uiadrive <exe name> <script> <log>\n"); return 2; }
     logf = _wfopen(argv[3], L"a");
+    // every rectangle and point in physical pixels, UI Automation's and the window's alike: an unaware driver at 125 %
+    // got UIA's rectangles and its own window metrics scaled and rounded apart (the title bar's buttons 1 px into the
+    // drawing on a real laptop); at 100 %, as the VMs run, nothing changes
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void **)&ua))) {
         say("ERROR: no UI Automation"); return 1;
