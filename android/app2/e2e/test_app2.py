@@ -1438,7 +1438,7 @@ class Phone(unittest.TestCase):
                     ui.tap('Manage', exact=True)
                 ui.tap('Account', exact=True)
                 ui.scroll_to("Take photos with Walkdown's own camera", exact=True, tries=16)
-            evidence(f'setting-dark-font{scale.replace(".", "")}')
+            evidence(f'setting-dark-font{round(float(scale) * 100)}')
         ui.sh('settings', 'put', 'system', 'font_scale', '1.0'); ui.sh('cmd', 'uimode', 'night', 'no'); time.sleep(2)
         # back to the drawing (the text size change recreated the activity: Back can land anywhere, even outside)
         for _ in range(4):
