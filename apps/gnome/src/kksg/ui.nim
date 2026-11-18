@@ -2,6 +2,7 @@
 
 import std/strutils
 import gtk
+import errwords
 
 proc vbox*(spacing = 6): W = gtk_box_new(GTK_ORIENTATION_VERTICAL, cint(spacing))
 proc hbox*(spacing = 6): W = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, cint(spacing))
@@ -117,7 +118,7 @@ proc newToast*(msg: string): W =
 proc toast*(overlay: W, msg: string) =
   if overlay == nil: return
   let t = newToast(msg)
-  adw_toast_set_timeout(t, 4)
+  adw_toast_set_timeout(t, cuint(readSeconds(msg)))      # (long enough to read: errwords.readSeconds)
   adw_toast_overlay_add_toast(overlay, t)
 
 proc toastUndo*(overlay: W, msg: string, undo: proc ()) =

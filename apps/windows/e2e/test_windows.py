@@ -239,6 +239,17 @@ class Windows(unittest.TestCase):
                                    "wait\t~Couldn't reach the server at 127.0.0.1:1.\t60", 'sleep\t2031', 'gone\t~refused the network connection'], keep=False,
                    during=[('sleep\t2031', lambda: self.screenshot('win-join-unreachable'))])
 
+    def test_status_wraps(self):
+        """#371 (UI audit after fixes, N-1): a plain-words error in the main window's status line (Sync now to an address
+        that isn't there) is a sentence or two; in a narrow window the bottom row grows so its second line shows, instead
+        of being cut after the first"""
+        self.join('wrap0.uia')
+        self.check('wrap1.uia', ['click\tManage', 'resize\tManage\t640\t700', 'click\tAccount',
+                                 'set\tSync with an address (host:port@device)\t127.0.0.1:1@abc', 'click\tSync now',
+                                 "wait\t~Couldn't sync with 127.0.0.1:1. Check that the device is on\t60",
+                                 "height\t~Couldn't sync with 127.0.0.1:1.\t30", 'sleep\t1500'],
+                   during=[('sleep\t1500', lambda: self.screenshot('win-status-wraps'))])
+
     def test_about(self):
         """About Walkdown (about.nim, from the compiled-in data/about.json): from the setup screen's button and F1, and
         from Manage once joined. It says the version with the commit the exe was built from and links that commit's

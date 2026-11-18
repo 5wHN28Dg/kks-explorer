@@ -3,6 +3,7 @@
 ## already a sentence ("Wrong username or password."); a terse one ("not found", "admin only") becomes the sentence for
 ## its kind. The raw text goes to the log.
 import std/[strutils]
+from std/unicode import runeLen
 import kks/json
 
 const ErrorWords* = [
@@ -87,3 +88,8 @@ proc notJoined*(state, why: string): string =
 
 proc syncFailed*(host: string, port: int): string =
   "Couldn't sync with " & host & ":" & $port & ". Check that the device is on, on this network, and that its address and port are right."
+
+proc readSeconds*(msg: string, least = 4): int =
+  ## how long a passing message stays on screen: long enough to read it (1.5 s and 60 ms a character, as the web's
+  ## toasts; #371 audit after fixes, N-2: a plain-words error is a sentence or two)
+  max(least, (1500 + 60 * msg.runeLen + 999) div 1000)

@@ -379,6 +379,15 @@ proc measure(p: Page, text: string, font: HFONT, width: int): int =
   ReleaseDC(p.hwnd, dc)
   int(r.bottom - r.top)
 
+proc textHeight*(h: HWND, text: string, width: int): int =
+  ## how tall `text` is in the normal font, wrapped at `width` px (the main window's status line, #371)
+  let dc = GetDC(h)
+  SelectObject(dc, fontNormal)
+  var r = RECT(left: 0, top: 0, right: int32(max(10, width)), bottom: 0)
+  discard DrawTextW(dc, newWideCString(if text.len == 0: " " else: text), -1, addr r, DT_CALCRECT or DT_WORDBREAK or DT_NOPREFIX)
+  ReleaseDC(h, dc)
+  int(r.bottom - r.top)
+
 proc textWidth(p: Page, text: string, font: HFONT): int =
   let dc = GetDC(p.hwnd)
   SelectObject(dc, font)
