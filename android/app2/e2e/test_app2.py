@@ -2490,7 +2490,8 @@ class Phone(unittest.TestCase):
         ui.find('Mark this as not a tag?', exact=True, timeout=10)
         ui.tap('Mark as not a tag', exact=True)          # (the question's button names the action)
         self.wait_server(lambda: (reviewed() or {}).get('status') == 'rejected', 'Not a tag sent nothing')
-        ui.sh('input', 'keyevent', '4')
+        time.sleep(2)
+        if ui.present('Close', exact=True): ui.sh('input', 'keyevent', '4')     # (the panel closes itself once its tag is gone)
         # Unlink: no question, an Undo in the snackbar
         ui.tap('Procedures', exact=True)
         ui.tap('P-1  Start the test pump', exact=True, timeout=20)
@@ -2573,11 +2574,11 @@ class Phone(unittest.TestCase):
         ui.tap('Discard', exact=True)
         time.sleep(1)
         self.assertFalse(ui.present('north door typed', exact=True), 'Discard kept the text')
-        self.assertTrue(ui.present('Feed water piping system'), 'Discard closed the panel too')
+        self.assertTrue(ui.present('Copy 11LAB70AA501', exact=True), 'Discard closed the panel too')   # (its heading)
         # Back now closes the panel (nothing typed), and the app stays
         ui.sh('input', 'keyevent', '4')
         time.sleep(1)
-        self.assertFalse(ui.present('Feed water piping system'), 'Back did not close the panel')
+        self.assertFalse(ui.present('Copy 11LAB70AA501', exact=True), 'Back did not close the panel')
         # full view: Back leaves it first, the app stays
         ui.tap('Full screen: the drawing only', exact=True)
         ui.find('Show the header and search', exact=True, timeout=10)
