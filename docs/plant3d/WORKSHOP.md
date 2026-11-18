@@ -82,7 +82,8 @@ frames a part; Reset view. The gamepad orbits with the sticks, as the plant's lo
 **The component tree.** A collapsible panel: machine → subassemblies → components → small parts (fastener groups).
 Selecting in the tree selects in 3D and the other way round; the selection is highlighted (the lit material's
 emission, no new shader). The properties panel shows the name, what it does (one or two sentences), its material and
-what it is fastened to (from the fastener groups, §4.4). Panels collapse so the 3D view fills the screen.
+what it is fastened to (from the fastener groups, §4.4). Panels collapse so the 3D view fills the screen (Parts,
+Info and Tools in the top bar fold the tree, the properties and the tools away; Back to the plant stays there).
 
 **Take apart.** One slider from assembled (0) to fully exploded (1), smooth, the same picture for the same value
 (§4.3). Subassemblies come out first, their parts after. The slider works on the whole machine or on the selected

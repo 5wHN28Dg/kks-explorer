@@ -2134,8 +2134,8 @@ func _input(e: InputEvent) -> void:
 			close()
 		return
 	if not ours:
-		if e.pressed and panels.slider.is_visible_in_tree():
-			panels.slider.grab_focus()
+		if e.pressed:   # (the tools folded away: Tools, which brings them back; never Back, which A would press next)
+			(panels.slider if panels.slider.is_visible_in_tree() else panels.tools_btn).grab_focus()
 			get_viewport().set_input_as_handled()
 		return
 	if e.button_index == JOY_BUTTON_A:

@@ -474,6 +474,12 @@ On the Note 9 (2026-10-19, debug build, `WALK_EXTRA="walk=screens\n" phone/frame
 16.7 ms, 99.95 % at 30 fps or more; the screens' pieces drew in 0.38 ms a frame on average, 71 of 5,969 frames over
 2 ms, 13 ms at most (a screen's first drawing when it is shown). That counts the pieces only: the tabs, the alarm
 banner and the flow lines are drawn besides, so the frame times above are the measure.
+`tests/workshop_shots.gd` (same arguments, `--phone` for the Note 9's screen and scale, `--ui-size=X`, `--kinds=a,b`)
+saves each Workshop kind with its panels, and with its guided steps started.
+- `test_workshop_layout`: the Workshop's panels on a desktop and on the Note 9, each at the UI size's 100 % and 150 %
+  (#382's setting), for every kind: they fill the screen, the tree, the properties, the bench and the tools are
+  shown apart and big enough, no control is squeezed or cut and each scrolls into view, the text is the theme's size,
+  the step line and the strip have a backing, a long text scrolls, and the guided steps start from the tools.
 - `test_ui_size`: the size a phone starts at (48 dp buttons, 14 sp text: the Note 9 at its density 420 and at Godot's
   class 480, a 360 dp tall phone, 16:9 phones, phones too small for 48 dp at 200 %); then on a desktop's canvas at
   100 %, 150 % and 200 % and on the Note 9's, a 360 dp tall phone's and 16:9 phones' (at the phone's scale) at their
