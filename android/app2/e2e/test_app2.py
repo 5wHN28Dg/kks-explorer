@@ -944,6 +944,9 @@ class Phone(unittest.TestCase):
         time.sleep(4)
         ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
         ui.find('Send', exact=True, timeout=30)
+        # again: Android may have ended Walkdown's process while the camera app was in front, and the hold lives in
+        # the process (a run where it had gone sent the job before the test looked at the queue)
+        ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--ez', 'hold', 'true')
         ui.tap('Send', exact=True)
         ui.find('1 photo being prepared', timeout=30)
         self.assertFalse(ui.present('4 selected', exact=True), 'still selecting after the photo was queued')
