@@ -1095,7 +1095,9 @@ proc popupProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
       return 0
     if dispatchCommand(w, l): return 0
   of WM_CLOSE:
-    if h in popupMayClose and not popupMayClose[h](): return 0
+    if h in popupMayClose:
+      let ask = popupMayClose[h]      # (a copy: the window may go while it asks, and its entry with it)
+      if not ask(): return 0
   of WM_DESTROY:
     popupMayClose.del h
     let i = escCloses.find(h)

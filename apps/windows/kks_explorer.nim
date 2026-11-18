@@ -308,6 +308,11 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     MoveWindow(h, r.left, r.top, r.right - r.left, r.bottom - r.top, 1)
     return 0
   of WM_CLOSE:
+    # a window holding something unsent (the photo mark-up) is asked first: closing this one closes it too (#365)
+    var asks: seq[proc (): bool]
+    for _, f in popupMayClose: asks.add f
+    for f in asks:
+      if not f(): return 0
     # photos still waiting are kept on this computer (photos.nim) and sent when Walkdown next starts: say so, and
     # offer to wait for them
     let n = (if w != nil: queuedCount() else: 0)

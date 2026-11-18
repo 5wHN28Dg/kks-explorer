@@ -90,7 +90,8 @@ proc procedureDetail(w: Win, id: string, box: W) =
                 if link(true).len > 0:
                   w.loadModel()
                   w.applyHighlights()
-                  if page.shown: w.procedureDetail(id, box))
+                  if page.shown: w.procedureDetail(id, box)
+                  else: w.refreshLive())      # (the procedure opened again meanwhile: a page that follows the data)
             w.loadModel()
             w.applyHighlights()
             w.procedureDetail(id, box))
