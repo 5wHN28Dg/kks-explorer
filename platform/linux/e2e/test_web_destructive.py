@@ -94,6 +94,19 @@ class Destructive(unittest.TestCase):
             bar.get_by_role('button', name='Undo').click()
             expect(chip()).to_have_count(1, timeout=15000)
             expect(chip2()).to_have_count(1, timeout=15000)
+            # offline (F3): the unlink is queued, and its Undo too, in that order; back online both go, and the link
+            # stays
+            links = lambda: [l for l in self.boss.req('GET', '/api/state')['links'] if l['kks'] == other and l['proc'] == 'EP-1']
+            page.context.set_offline(True)
+            page.locator('#procBody .step').nth(1).get_by_role('button', name='Unlink ' + other).click()
+            expect(bar).to_contain_text(f'Unlinked {other} from step 2')
+            bar.get_by_role('button', name='Undo').click()
+            page.wait_for_function("() => K.outbox.length === 2")
+            self.assertEqual(page.evaluate("async () => (await K.idb.all()).sort((a, b) => a.ts - b.ts).map(i => i.payload.on)"), [False, True])   # (sent oldest first)
+            page.context.set_offline(False)
+            page.evaluate("K.flush()")
+            page.wait_for_function("() => K.outbox.length === 0", timeout=30000)
+            self.assertEqual(len(links()), 1, 'the link did not stay after the offline unlink and its Undo')
 
             # Remove a hand-marked tag: the page's own question; Escape and Enter keep it, the named button removes it
             page.evaluate("(c) => select(eff(TAGS.find(t => full(t) === c)))", code)

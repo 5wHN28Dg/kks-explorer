@@ -608,7 +608,8 @@ function decideSignup(r,action){
   if(action==='reject') return K.confirm(`Reject the request of ${r.full_name} (${r.username})?`,'It is deleted; they have to ask again.','Reject request').then(y=>y&&act(()=>K.api(`/api/signups/${r.id}/reject`,{}),'Request rejected'));
   const p=r.person;
   // never by itself: the admin says the request is that person's own
-  if(action==='same') return K.confirm('Approve as the same person?',`This request (sent as “${r.full_name}”) asks for the username of ${whoIs(p)}.\n\nApproving as the same person lets whoever sent it act as ${p.full_name}${p.role==='admin'?', an admin':''} on the web: their submissions, their name on every change. Anyone with the sign-up code can send such a request, so check with ${p.full_name} that it is theirs.`,'Approve as the same person')
+  const iso=t=>`\u2068${t}\u2069`;   // (a name in its own direction: an Arabic one doesn't turn the sentence)
+  if(action==='same') return K.confirm('Approve as the same person?',`This request (sent as “${iso(r.full_name)}”) asks for the username of ${iso(whoIs(p))}.\n\nApproving as the same person lets whoever sent it act as ${iso(p.full_name)}${p.role==='admin'?', an admin':''} on the web: their submissions, their name on every change. Anyone with the sign-up code can send such a request, so check with ${iso(p.full_name)} that it is theirs.`,'Approve as the same person')
     .then(y=>y&&act(()=>K.api(`/api/signups/${r.id}/approve`,{person:p.person}),`Approved: ${p.username} can sign in on the web as the same person`));
   let username=r.username;
   if(r.taken){ username=prompt(`The username ${r.username} exists already. Approve ${r.full_name} with which username? (Tell them: they sign in with it.)`,''); if(!username) return }
