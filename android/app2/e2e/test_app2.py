@@ -1464,6 +1464,7 @@ class Phone(unittest.TestCase):
         self.assertFalse(ui.present('Standard', exact=True), 'mode chips shown on a camera with no Extensions')
         time.sleep(3)                   # (the preview and the capture are bound)
         evidence('screen')
+        ui.sh('input', 'tap', str(w // 2), str(h // 2)); evidence('screen-focus')   # (the focus ring shows for a second)
         ui.sh('settings', 'put', 'system', 'font_scale', '1.3'); time.sleep(2); evidence('screen-font130')
         ui.sh('settings', 'put', 'system', 'font_scale', '2.0'); time.sleep(2); evidence('screen-font200')
         ui.sh('settings', 'put', 'system', 'font_scale', '1.0')

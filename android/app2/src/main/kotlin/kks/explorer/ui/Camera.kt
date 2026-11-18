@@ -72,7 +72,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsEndWidth
 import androidx.compose.foundation.layout.windowInsetsStartWidth
@@ -277,7 +277,7 @@ class CameraActivity : ComponentActivity() {
 
     private fun useCameraApp() {
         val o = out ?: return
-        runCatching { system.launch(o) }.onFailure { log("camera app", it); error = "The camera app could not be opened on this phone. Take the photo here instead." }
+        runCatching { system.launch(o) }.onFailure { log("camera app", it); error = "The camera app could not be opened on this phone." + if (ready) " Take the photo here instead." else "" }
     }
 
     private fun start() {
@@ -385,12 +385,15 @@ class CameraActivity : ComponentActivity() {
                 Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().windowInsetsStartWidth(WindowInsets.navigationBars).background(BAR))
                 Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().windowInsetsEndWidth(WindowInsets.navigationBars).background(BAR))
                 // a ring where the person tapped, for a second: focusing there
-                focusAt?.takeIf { camera != null }?.let { at ->
+                focusAt?.takeIf { ready }?.let { at ->
                     androidx.compose.runtime.LaunchedEffect(at) { kotlinx.coroutines.delay(1000); if (focusAt == at) focusAt = null }
                     val d = androidx.compose.ui.platform.LocalDensity.current
                     Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(at.x.toInt() - with(d) { 32.dp.roundToPx() }, at.y.toInt() - with(d) { 32.dp.roundToPx() }) }
-                        .size(64.dp).border(4.dp, Color.Black, CircleShape).padding(1.dp).border(2.dp, Color.White, CircleShape)
-                        .clearAndSetSemantics {})   // (white inside black: seen over a bright scene and a dark one)
+                        .size(64.dp).drawBehind {   // a white ring with black on both sides: seen over a bright scene and a dark one
+                            val c = center; val rad = size.minDimension / 2 - 3.dp.toPx()
+                            drawCircle(Color.Black, rad, c, style = androidx.compose.ui.graphics.drawscope.Stroke(5.dp.toPx()))
+                            drawCircle(Color.White, rad, c, style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+                        }.clearAndSetSemantics {})
                 }
                 // the bars are dark enough for white text over the brightest scene (a tag plate in the sun): over white
                 // 80 % black leaves #333, 12.6:1 for white; they reach under the system bars, which are dark too
@@ -407,7 +410,7 @@ class CameraActivity : ComponentActivity() {
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // one status line, always there, so that what it says next is announced
                     val status = error.ifEmpty { if (busy) "Taking the photo: hold still" else "" }
-                    Text(status, color = Color.White, modifier = live.then(if (status.isEmpty()) Modifier.height(0.dp) else Modifier))
+                    Text(status, color = Color.White, modifier = live)   // (an empty line keeps its height: a node of no size leaves the tree)
                     if (modes.size > 1) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (m in modes) FilterChip(m == mode, { if (m != mode && !busy) { mode = m; bind() } }, enabled = !busy,
                             label = { Text(InAppCamera.modeName(m) + " mode") },
