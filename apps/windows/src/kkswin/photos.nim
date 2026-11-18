@@ -11,6 +11,7 @@ import appstate
 import kks/node
 import kksl/dbstore
 import w32, ui, win, annotate, photoqueue
+import errwords
 from kks/api import ApiError
 
 {.compile("kks_img.cpp", "-std=c++17").}
@@ -364,9 +365,10 @@ proc received(w: Win, d: EncDone) =
       if getEnv("KKS_TEST_PHOTO_DIE_AFTER_SEND").len > 0: discard TerminateProcess(GetCurrentProcess(), 9)
     except ApiError as e:
       if e.status >= 400: (outcome, why) = (Refused, e.msg)
-      else: (outcome, why) = (Failed, "Not sent. " & e.msg)
+      else: (outcome, why) = (Failed, "Not sent yet: " & e.msg.asSentence)
     except CatchableError as e:
-      (outcome, why) = (Failed, "Not sent. " & e.msg)
+      stderr.writeLine "photo: " & e.msg               # (#371: the system's text to the log)
+      (outcome, why) = (Failed, "Not sent yet; it is tried again.")
   let now = nowMs()
   var r: string
   try: r = pq.finish(d.key, outcome, why, now)

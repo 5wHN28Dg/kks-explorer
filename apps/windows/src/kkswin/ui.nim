@@ -655,6 +655,17 @@ proc restoreText*(p: Page, kept: KeptText): KeptText =
     if not found: result.add k
 
 
+proc setLabel*(h: HWND, text: string) =
+  ## a page's label given new text: its height is measured again (a status line that becomes a sentence or two wraps
+  ## instead of being cut after its first line, #371)
+  h.setText(text)
+  let pg = GetParent(h)
+  if pg in pages:
+    let p = pages[pg]
+    for it in p.items.mitems:
+      if it.kind in {ikLabel, ikDim} and h in it.hwnds: it.text = text
+    p.layout()
+
 proc label*(p: Page, text: string): HWND {.discardable.} =
   result = control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX or SS_EDITCONTROL)[0]
   p.items.add Item(kind: ikLabel, hwnds: @[result], text: text)

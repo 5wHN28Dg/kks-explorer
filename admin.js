@@ -38,7 +38,10 @@ new MutationObserver(()=>document.querySelectorAll('[data-crop]:not([data-bg])')
   (cropBg[id]??=K.jxl.native().then(n=>n?u:K.jxl.url(u))).then(x=>{ el.style.backgroundImage=`url("${x}")` }).catch(e=>console.warn('crop',e)) }))
   .observe(document.body,{childList:true,subtree:true});
 const isAdmin=()=>['admin','manager'].includes(ME.user.role), isManager=()=>ME.user.role==='manager';
-function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',Math.max(3500,1500+60*String(t).length))}
+// several results in one line: the same reason once, with the items it was for ("It was changed meanwhile…: #3, #4")
+const grouped=L=>{const by=new Map(); for(const [who,m] of L){ const k=String(m).replace(/[.]$/,''); by.set(k,[...(by.get(k)||[]),who]) }
+  return [...by].map(([m,w])=>`${w.join(', ')}: ${m}.`).join(' ')};
 const when=ts=>ts?new Date(ts*1000).toLocaleString():'';
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
 // (the page is rebuilt with the answer: rebuild, below)
@@ -574,15 +577,15 @@ async function decideMany(action){
       const edit=edits.get(id);
       const pn=$('#pickN'); if(pn) pn.textContent=`${action==='approve'?'Approving':'Rejecting'} ${done+failedL.length+1} of ${n}…`;   // (no bar: another tab was opened meanwhile; the batch goes on and its result is said)
       try{ await K.api(`/api/submissions/${id}/${action}`,{force:false,note,edit}); done++; PICKED.delete(id) }
-      catch(e){ if(e.status===401){ out=e; break } if(K.isNetErr(e)){ offline=ids.slice(ids.indexOf(id)).filter(i=>!held.includes(i)&&!competing.includes(i)&&!gone.includes(i)); break } failedL.push(`#${id}: ${e.message}`) }
+      catch(e){ if(e.status===401){ out=e; break } if(K.isNetErr(e)){ offline=ids.slice(ids.indexOf(id)).filter(i=>!held.includes(i)&&!competing.includes(i)&&!gone.includes(i)); break } failedL.push([`#${id}`,e.message]) }
     }
   }finally{ deciding=false }
   const L=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${n}.`];
   if(held.length) L.push(`Not approved: ${held.map(i=>'#'+i).join(', ')} clash${held.length===1?'es':''} with the value as it is now; decide ${held.length===1?'it':'them'} on ${held.length===1?'its':'their'} own.`);
   if(competing.length) L.push(`Not approved: ${competing.map(i=>'#'+i).join(', ')}: several photos of one kind compete for ${competing.length===1?'its':'their'} code; choose with “Use this one”.`);
   if(gone.length) L.push(`No longer waiting or no longer ticked: ${gone.map(i=>'#'+i).join(', ')}.`);
-  if(failedL.length) L.push('Not done: '+failedL.join('; ')+'.');
-  if(out) L.push('Stopped there: '+out.message+'.');
+  if(failedL.length) L.push('Not done: '+grouped(failedL));
+  if(out) L.push('Stopped there. '+out.message);
   if(offline.length) L.push(`Couldn't reach the server: ${offline.length} not decided (${offline.map(i=>'#'+i).join(', ')}). They stay ticked; try again when you're back online.`);
   LAST_SAID=L.join(' '); toast(LAST_SAID);
   if(out&&await K.api('/api/me').then(()=>false,x=>x.status===401)){ location.reload(); return }    // signed out meanwhile: the sign-in screen
@@ -638,13 +641,13 @@ async function decideSignups(reqs,action){
   for(const r of L){
     if(skip.includes(r)) continue;
     try{ await K.api(`/api/signups/${r.id}/${action}`,{}); done++; SU_PICKED.delete(String(r.id)) }
-    catch(e){ if(e.status===401){ out401=e; break } if(K.isNetErr(e)){ off=L.slice(L.indexOf(r)).filter(x=>!skip.includes(x)); break } bad.push(`${r.username}: ${e.message}`) }
+    catch(e){ if(e.status===401){ out401=e; break } if(K.isNetErr(e)){ off=L.slice(L.indexOf(r)).filter(x=>!skip.includes(x)); break } bad.push([r.username,e.message]) }
   }
   }finally{ decidingSu=false }
   const out=[`${action==='approve'?'Approved':'Rejected'} ${done} of ${L.length}.`];
   if(skip.length) out.push(`Not approved: ${skip.map(r=>r.username).join(', ')} (the username is taken or asked for more than once): use ${skip.length===1?'its':'their'} own button.`);
-  if(bad.length) out.push('Not done: '+bad.join('; ')+'.');
-  if(out401) out.push('Stopped there: '+out401.message+'.');
+  if(bad.length) out.push('Not done: '+grouped(bad));
+  if(out401) out.push('Stopped there. '+out401.message);
   if(off.length) out.push(`Couldn't reach the server: ${off.length} not decided (${off.map(r=>r.username).join(', ')}). They stay ticked; try again when you're back online.`);
   toast(out.join(' '));
   if(out401&&await K.api('/api/me').then(()=>false,x=>x.status===401)){ location.reload(); return }

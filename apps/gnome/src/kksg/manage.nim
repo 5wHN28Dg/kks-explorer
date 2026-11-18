@@ -770,7 +770,8 @@ proc rootKeySection(w: Win): W =
         try:
           writePrivate(path, toText(doc))
         except OSError as e:
-          w.toast("Not saved. " & e.msg)
+          stderr.writeLine "save " & path & ": " & e.msg
+          w.toast("Not saved: the file could not be written there. Choose another folder.")
           return
         adw_action_row_set_subtitle(shown, pass.cstring)
         w.toast("Saved. Write down the passphrase shown above: it is not kept anywhere. Test the backup once with Restore."))))

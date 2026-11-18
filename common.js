@@ -41,7 +41,7 @@ K.errorTerse = {
 K.errorCode = status => ({401: 'sign_in', 403: 'not_allowed', 404: 'not_found', 409: 'conflict', 413: 'too_large', 429: 'too_many'})[status]
   || (status >= 400 && status < 500 ? 'invalid' : 'server');
 // a developer's text, not meant for people ("bad submission kind or payload", "action must be start or confirm")
-K.devText = t => /^(bad|unknown) |\(| must be | is required/i.test(t);
+K.devText = t => /^(bad|unknown) |^not a readable image| must be | is required/i.test(t);
 K.isSentence = t => typeof t === 'string' && /^[A-Z]/.test(t.trim()) && /[.!?]$/.test(t.trim());
 // what to say: a terse text's own sentence; the server's sentence; for a request that was refused (invalid, too large,
 // too many, not allowed) its specific text of three words or more made a sentence ("Note: up to 500 characters.");

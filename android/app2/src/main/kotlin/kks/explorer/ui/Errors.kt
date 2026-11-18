@@ -35,7 +35,7 @@ object Errors {
     }
 
     /** a developer's text, not meant for people ("bad submission kind or payload", "action must be start or confirm") */
-    fun devText(t: String) = t.lowercase().let { it.startsWith("bad ") || it.startsWith("unknown ") || "(" in it || " must be " in it || " is required" in it }
+    fun devText(t: String) = t.lowercase().let { it.startsWith("bad ") || it.startsWith("unknown ") || it.startsWith("not a readable image") || " must be " in it || " is required" in it }
 
     fun isSentence(t: String) = t.trim().let { it.length > 1 && it[0] in 'A'..'Z' && it.last() in ".!?" }
 

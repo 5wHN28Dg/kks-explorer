@@ -108,6 +108,11 @@ proc newToast*(msg: string): W =
   ## data ("Drains & vents" showed nothing; "<a href=…>" would be a link), so markup is off
   result = adw_toast_new(msg.cstring)
   adw_toast_set_use_markup(result, 0)
+  # a sentence or two wraps instead of being cut at the window's edge (a plain-words error, #371): its own label
+  if msg.len > 60:
+    let l = label(msg, wrap = true)
+    gtk_label_set_max_width_chars(l, 60)
+    adw_toast_set_custom_title(result, l)
 
 proc toast*(overlay: W, msg: string) =
   if overlay == nil: return

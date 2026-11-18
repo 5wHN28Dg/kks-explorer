@@ -48,7 +48,7 @@ proc asSentence*(t: string): string =
 proc devText*(t: string): bool =
   ## a developer's text, not meant for people ("bad submission kind or payload", "action must be start or confirm")
   let l = t.toLowerAscii
-  l.startsWith("bad ") or l.startsWith("unknown ") or "(" in l or " must be " in l or " is required" in l
+  l.startsWith("bad ") or l.startsWith("unknown ") or l.startsWith("not a readable image") or " must be " in l or " is required" in l
 
 proc isSentence*(t: string): bool =
   let s = t.strip
