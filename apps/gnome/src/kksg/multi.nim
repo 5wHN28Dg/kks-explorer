@@ -358,7 +358,7 @@ proc placeForAll*(w: Win) =
     let nt = text(note)
     proc go() =
       if w.sendMany("equipment", newObj(@[("changes", changes)]), nt): adw_dialog_close(d)
-    if lines.len > 0: confirm(w.window, "Replace values?", lines.join("\n"), "Send", false, go)
+    if lines.len > 0: confirm(w.window, "Replace values?", lines.join("\n"), "Replace", false, go)
     else: go())
 
 proc noteForAll*(w: Win) =

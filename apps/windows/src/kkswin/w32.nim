@@ -263,6 +263,26 @@ type CommonControlsInit* {.importc: "INITCOMMONCONTROLSEX", header: "<commctrl.h
   dwSize*, dwICC*: DWORD
 proc InitCommonControlsEx*(i: ptr CommonControlsInit): BOOL {.importc, stdcall, header: "<commctrl.h>", discardable.}
 
+# A task dialog (Common Controls v6, in the app's manifest): a question whose buttons the caller names, and whose
+# default is the safe one (ui.ask). Only the fields the app sets; the C compiler lays the structs out (packed).
+type
+  TaskDialogButton* {.importc: "TASKDIALOG_BUTTON", header: "<commctrl.h>".} = object
+    nButtonID*: int32
+    pszButtonText*: WideCString
+  TaskDialogConfig* {.importc: "TASKDIALOGCONFIG", header: "<commctrl.h>".} = object
+    cbSize*: UINT
+    hwndParent*: HWND
+    dwFlags*: int32
+    pszWindowTitle*, pszMainIcon*, pszMainInstruction*, pszContent*: WideCString
+    cButtons*: UINT
+    pButtons*: ptr TaskDialogButton
+    nDefaultButton*: int32
+const
+  TDF_ALLOW_DIALOG_CANCELLATION* = 0x0008'i32
+  TDF_POSITION_RELATIVE_TO_WINDOW* = 0x1000'i32
+  TD_WARNING_ICON* = 0xFFFF            ## MAKEINTRESOURCEW(-1)
+proc TaskDialogIndirect*(c: ptr TaskDialogConfig, button, radio: ptr int32, verify: ptr BOOL): int32 {.importc, stdcall, header: "<commctrl.h>".}
+
 const GWLP_USERDATA* = -21'i32
 
 proc loword*(x: int): int = x and 0xFFFF

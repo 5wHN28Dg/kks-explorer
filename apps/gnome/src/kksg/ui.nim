@@ -115,6 +115,20 @@ proc toast*(overlay: W, msg: string) =
   adw_toast_set_timeout(t, 4)
   adw_toast_overlay_add_toast(overlay, t)
 
+proc toastUndo*(overlay: W, msg: string, undo: proc ()) =
+  ## a toast with Undo, for something the server can take back (#365, D1 in docs/UI-UX-POLICY.md: at least 4 s; 8
+  ## here). Undo runs `undo` once, from idle (it builds widgets; the press may come from an accessibility action).
+  if overlay == nil: return
+  let t = newToast(msg)
+  adw_toast_set_timeout(t, 8)
+  adw_toast_set_button_label(t, "Undo")
+  var done = false
+  t.on("button-clicked", proc () =
+    if done: return
+    done = true
+    idle(proc () = undo()))
+  adw_toast_overlay_add_toast(overlay, t)
+
 proc present*(d, parent: W) =
   ## (see onClick: never inside an accessibility action)
   idle(proc () = adw_dialog_present(d, parent))

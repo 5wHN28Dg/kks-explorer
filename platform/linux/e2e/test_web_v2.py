@@ -23,6 +23,27 @@ from e2e_server import start_server  # noqa: E402  (the ports and the server sta
 CSP_WATCH = """document.addEventListener('securitypolicyviolation', e => {
   throw new Error('CSP violation: ' + e.violatedDirective + ' blocked ' + (e.blockedURI || 'inline')) })"""
 
+# The pages ask with their own dialog (K.confirm in common.js), never the browser's confirm() (#365). A suite that only
+# needs each question answered, as page.on('dialog') answered confirm(), uses answer_confirms(page, decide):
+# decide(message) gets the dialog's title and text and returns True (the named action), False (Cancel) or a string
+# (the action, with that typed into the dialog's note field). It presses the dialog's own button.
+KQ_SCRIPT = """(() => { if (window.__kqOn) return; window.__kqOn = true;
+  const look = () => { for (const d of document.querySelectorAll('dialog.kconfirm[open]')) {
+      if (d.dataset.answered) continue; d.dataset.answered = '1';
+      const msg = [d.querySelector('h2')?.textContent, d.querySelector('p')?.textContent].filter(Boolean).join('\\n\\n');
+      window.__kqAnswer(msg).then(a => { const n = d.querySelector('input.note'); if (n && a.note) n.value = a.note;
+        d.querySelector(a.ok ? '.kq-yes' : '.kq-keep').click() }) } };
+  new MutationObserver(look).observe(document, {childList: true, subtree: true}); })()"""
+
+def answer_confirms(page, decide):
+    def answer(msg):
+        r = decide(msg)
+        return {'ok': r is not False and r is not None, 'note': r if isinstance(r, str) else ''}
+    page.expose_function('__kqAnswer', answer)
+    page.add_init_script(KQ_SCRIPT)
+    try: page.evaluate(KQ_SCRIPT)              # a page already loaded
+    except Exception: pass
+
 class PageErrors(list):
     """The page's own errors (Playwright's pageerror). A navigation cancels the requests the page left in flight (the
     sync poll, cacheSheets' fetches), and WebKit logs each one it cancels as the console error "Fetch API cannot load

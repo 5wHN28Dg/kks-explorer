@@ -285,8 +285,15 @@ proc approvals(w: Win, box: W) =
                 else: btns.add cb
               if pick:
                 let votes = if sub.get("votes") != nil and sub["votes"].kind == jInt: sub["votes"].i else: 0
+                let others = items.len - 1
                 let pb = button("Pick this photo", "suggested-action", proc () =
-                  if w.act(id, "pick", newObj(), "Photo chosen; the other " & s(kd, "label").toLowerAscii & "s were rejected"): again())
+                  # the others of its kind are rejected with it, for good (#365): said, with how many, first
+                  let kind = s(kd, "label").toLowerAscii
+                  ask(w.window, "Reject the other " & (if others == 1: "photo?" else: $others & " photos?"),
+                      "Picking #" & $id & " for " & s(grp, "code") & " rejects the other " & (if others == 1: kind else: $others & " " & kind & "s") &
+                      " proposed for it. The submitters see that " & (if others == 1: "it was" else: "they were") & " rejected; this can't be undone.",
+                      "Pick and reject " & (if others == 1: "the other" else: "the other " & $others), "Cancel", proc (yes: bool) =
+                    if yes and w.act(id, "pick", newObj(), "Photo chosen; the other " & kind & "s were rejected"): again()))
                 setAccessibleDescription(pb, what & ", " & $votes & " votes")
                 btns.add pb
                 btns.add label($votes & (if votes == 1: " vote" else: " votes"), "dim-label")
@@ -296,7 +303,11 @@ proc approvals(w: Win, box: W) =
                 setAccessibleDescription(ab, what)
                 btns.add ab
               let rb = button("Reject", "destructive-action", proc () =
-                if w.act(id, "reject", newObj(), "Rejected"): again())
+                # final: the core takes no other decision on it afterwards (#365)
+                ask(w.window, "Reject " & proposalTitle(sub) & "?",
+                    s(sub, "by_name") & "'s proposal is discarded; they see that it was rejected. This can't be undone.",
+                    "Reject", "Cancel", proc (yes: bool) =
+                  if yes and w.act(id, "reject", newObj(), "Rejected"): again()))
               setAccessibleDescription(rb, what)
               btns.add rb
               adw_preferences_group_add(pg, btns)
@@ -372,7 +383,7 @@ proc myList(w: Win, box: W) =
         if st in ["pending", "conflict"]:
           let wb = button("Withdraw", "", proc () =
             let list = hold(box)    # a sync can rebuild the page (and free this list) while the question is up
-            confirm(w.window, "Withdraw this proposal?", "", "Withdraw", true, proc () =
+            confirm(w.window, "Withdraw this proposal?", proposalTitle(sub) & ": it is taken back before anyone decides it.", "Withdraw", true, proc () =
               if w.act(id, "withdraw", newObj(), "Withdrawn"):
                 if list.shown: w.refreshPage(box, proc (b: W) = w.myList(b))
                 else: w.refreshLive()))     # the page that replaced it, brought up to date
@@ -516,7 +527,25 @@ proc hiddenControls(w: Win, box: W, hiddenN: int, what: string, again: proc ()):
   ## "Clear removed" and "Show hidden (n)"
   result = hbox(8)
   let clear = button("Clear removed", "", proc () =
-    w.hide(newObj(@[("clear_removed", newBool(true))]), "Removed devices and people hidden", again))
+    # how many it hides, said first (#365): every removed device and person not hidden yet, in both lists
+    var nd, np = 0
+    try:
+      let all = w.a.call("GET", "/api/devices").get("all")      # (the lists as shown: hidden ones left out)
+      if all != nil and all.kind == jArr:
+        for x in all.elems:
+          if x.get("revoked") != nil and x["revoked"].kind == jBool and x["revoked"].b: inc nd
+      for u in w.a.call("GET", "/api/users")["users"].elems:
+        if u.get("active") != nil and u["active"].kind == jBool and not u["active"].b and
+           u.get("devices") != nil and u["devices"].kind == jInt and u["devices"].i > 0: inc np
+    except ApiError, KeyError: discard
+    if nd + np == 0:
+      w.toast("Nothing to clear: no removed device or person is listed")
+      return
+    let parts = (if nd > 0: @[$nd & (if nd == 1: " removed device" else: " removed devices")] else: @[]) &
+                (if np > 0: @[$np & (if np == 1: " person" else: " people") & " with no active device"] else: @[])
+    confirm(w.window, "Hide " & parts.join(" and ") & "?", "They leave these lists; Show hidden lists them again, and History keeps them.",
+            "Hide " & $(nd + np), false, proc () =
+      w.hide(newObj(@[("clear_removed", newBool(true))]), "Removed devices and people hidden", again)))
   setAccessibleDescription(clear, "Hide every removed device and every person with no active device from these lists")
   result.add clear
   if hiddenN > 0 or showHidden:
@@ -596,7 +625,7 @@ proc devices(w: Win, box: W) =
         if not x["revoked"].b and not x["this_computer"].b:
           let b = button("Remove", "flat destructive-action", proc () =
             confirm(w.window, "Remove this device?", "It stops receiving data, and wipes the plant from itself if it ever connects again.",
-                    "Remove", true, proc () =
+                    "Remove device", true, proc () =
               try:
                 discard w.a.call("POST", "/api/devices/revoke", newObj(@[("device", newStr(dev))]))
                 w.toast("Removed")

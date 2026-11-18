@@ -290,8 +290,15 @@ proc approvals(w: Win, p: Page) =
               w.photoButton(sub, specs)
               if w.isAdmin:
                 if pick:
+                  let others = items.len - 1
                   specs.add ("Use this one", proc () =
-                    if w.act(id, "pick", newObj(), "Photo chosen; the other " & lab.toLowerAscii & "s of this code were rejected"):
+                    # the others of its kind are rejected with it, for good (#365): said, with how many, first
+                    let kind = lab.toLowerAscii
+                    if not ask(w.hwnd, "Reject the other " & (if others == 1: "photo?" else: $others & " photos?"),
+                               "Using #" & $id & " for " & code & " rejects the other " & (if others == 1: kind else: $others & " " & kind & "s") &
+                               " proposed for it. The submitters see that " & (if others == 1: "it was" else: "they were") & " rejected; this can't be undone.",
+                               "Use this one and reject " & (if others == 1: "the other" else: "the other " & $others)): return
+                    if w.act(id, "pick", newObj(), "Photo chosen; the other " & kind & "s of this code were rejected"):
                       w.rebuildSide())
                   specs.add ("Add", proc () =
                     if w.act(id, "approve", newObj(), "Added"): w.rebuildSide())
@@ -299,7 +306,9 @@ proc approvals(w: Win, p: Page) =
                   specs.add ((if conflict: "Approve anyway" else: "Approve"), proc () =
                     if w.act(id, "approve", newObj(@[("force", newBool(conflict))]), "Approved"): w.rebuildSide())
                 specs.add ("Reject", proc () =
-                  if w.act(id, "reject", newObj(), "Rejected"): w.rebuildSide())
+                  # final: the core takes no other decision on it afterwards (#365)
+                  if ask(w.hwnd, "Reject " & proposalTitle(sub) & "?", s(sub, "by_name") & "'s proposal is discarded; they see that it was rejected. This can't be undone.", "Reject") and
+                     w.act(id, "reject", newObj(), "Rejected"): w.rebuildSide())
               if specs.len > 0: p.buttons(specs)
       p.space()
 
@@ -373,7 +382,7 @@ proc myProposals(w: Win, p: Page) =
           w.photoButton(sub, specs)
           if stt in ["pending", "conflict"]:
             specs.add ("Withdraw", proc () =
-              if ask(w.hwnd, "Withdraw this proposal?", "") and w.act(id, "withdraw", newObj(), "Withdrawn"): w.rebuildSide())
+              if ask(w.hwnd, "Withdraw this proposal?", "It is taken back before anyone decides it.", "Withdraw") and w.act(id, "withdraw", newObj(), "Withdrawn"): w.rebuildSide())
           if specs.len > 0: p.buttons(specs)
       p.space(6)
   # photos others proposed: members vote where several photos of one kind compete for a code
@@ -460,14 +469,14 @@ proc history(w: Win, p: Page) =
       if historyUndoable(r):
         let h = if hid.kind == jInt: $hid.i else: hid.s
         p.buttons(("Revert", proc () =
-          if ask(w.hwnd, "Revert this change?", "This writes a new change that undoes it; History keeps both."):
+          if ask(w.hwnd, "Revert this change?", "This writes a new change that undoes it; History keeps both.", "Revert"):
             try:
               discard w.a.call("POST", "/api/revisions/" & h & "/revert", newObj())
               w.toast("Reverted")
               w.rebuildSide()
             except ApiError as e: w.toast(e.msg)),
           ("Restore", proc () =
-            if ask(w.hwnd, "Restore to just after this change?", "Every later change is undone by new changes."):
+            if ask(w.hwnd, "Restore to just after this change?", "Every later change is undone by new changes.", "Restore"):
               try:
                 discard w.a.call("POST", "/api/restore", newObj(@[("hid", hid)]))
                 w.toast("Restored")
@@ -623,7 +632,7 @@ proc devices(w: Win, p: Page) =
             w.hide(newObj(@[("ids", newArr(ids)), ("hide", newBool(not hidden))]), if hidden: "Shown again" else: "Hidden")))
         if not x["revoked"].b and not me:
           p.buttons(("Remove " & (if s(x, "label").len > 0: s(x, "label") else: "device") & " of " & s(x, "username"), proc () =
-            if ask(w.hwnd, "Remove this device?", "It stops receiving data, and wipes the plant from itself if it ever connects again."):
+            if ask(w.hwnd, "Remove this device?", "It stops receiving data, and wipes the plant from itself if it ever connects again.", "Remove device"):
               try:
                 discard w.a.call("POST", "/api/devices/revoke", newObj(@[("device", newStr(dev))]))
                 w.toast("Removed")

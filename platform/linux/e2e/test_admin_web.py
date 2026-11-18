@@ -14,7 +14,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 IMPORTER = os.environ.get('KKS_IMPORTER', '/tmp/kksimp/kks_import')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import start_server, Client, CSP_WATCH
+from test_web_v2 import start_server, Client, CSP_WATCH, answer_confirms
 
 # short enough for a name (80 characters): closes an attribute, an <img> whose onerror runs, an element with an id
 NAME = '"><img src=x onerror=pwned=1><b id=injected>N</b>\''
@@ -118,6 +118,7 @@ class AdminWeb(unittest.TestCase):
         page.on('pageerror', lambda e: errors.append(str(e)))
         # confirm() is accepted; prompt() (a rejection's reason) gets a hostile answer
         page.on('dialog', lambda d: d.accept(NAME) if d.type == 'prompt' else d.accept())
+        answer_confirms(page, lambda msg: NAME if msg.startswith('Reject this proposal?') else True)
         return browser, page, errors
 
     def proposals(self, n):

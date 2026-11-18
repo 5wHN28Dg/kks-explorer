@@ -389,7 +389,7 @@ proc placeForAll*(w: Win) =
       return
     # what this device shows now, before the question: the sync goes on while it is open
     let payload = newObj(@[("changes", changes), ("bases", w.basesOf(codes, changes))])
-    if lines.len > 0 and not ask(hw, "Replace values?", lines.join("\n")): return
+    if lines.len > 0 and not ask(hw, "Replace values?", lines.join("\n"), "Replace", destructive = false): return
     if round != pickRound: return     # the round ended while the question was open (its window went with it)
     if w.sendMany(round, codes, "equipment", payload, if note != nil: note.text else: "") and hw in roundWins:
       DestroyWindow(hw)),             # (unless the round's end has closed it already)

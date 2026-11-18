@@ -20,7 +20,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 IMPORTER = os.environ.get('KKS_IMPORTER', '/tmp/kksimp/kks_import')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import start_server, Client
+from test_web_v2 import start_server, Client, answer_confirms
 
 PW = 'a long password'
 BOSS, TOM = 'The Boss', 'Tom Smith'
@@ -99,6 +99,7 @@ class WebRequests(unittest.TestCase):
         errors = []
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.on('dialog', lambda d: d.accept(''))
+        answer_confirms(page, lambda msg: True)
         return browser, ctx, page, errors
 
     def tag(self, code, n):

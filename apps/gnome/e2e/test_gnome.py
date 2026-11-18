@@ -586,7 +586,7 @@ class Gnome(Plant):
             except AssertionError:
                 continue
         self.assertTrue(dlg, 'no alert named Remove this device?')
-        atspi.click(atspi.find(dlg, 'button', name='Remove', timeout=10))
+        atspi.click(atspi.find(dlg, 'button', name='Remove device', timeout=10))
         atspi.find(a, None, contains='removed', timeout=10)
         b = self.start_app('phone')
         atspi.click(atspi.find(b, 'button', name='Sync now', timeout=15))
@@ -619,6 +619,9 @@ class Gnome(Plant):
         time.sleep(1)       # the app reloads 300 ms after a sync: wait past that before looking
         self.assertTrue(clear.get_state_set().contains(Atspi.StateType.SHOWING), 'a sync that brought nothing rebuilt the page')
         atspi.click(clear)
+        # #365: it says how many it hides, and hides nothing until asked (B2)
+        atspi.find(a, None, name='Hide 1 removed device and 1 person with no active device?', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Hide 2', timeout=5))
         for _ in range(20):
             if not atspi.find_all(a, contains='· sara'):
                 break
@@ -695,7 +698,7 @@ class Gnome(Plant):
         atspi.click(atspi.find(pd, 'button', name='Send'))
         alert = atspi.find(a, 'alert', name='Replace values?', timeout=10)
         atspi.find(alert, None, contains='1 of 2 already have a floor; it will be replaced.', timeout=5)
-        atspi.click(atspi.find(alert, 'button', name='Send'))
+        atspi.click(atspi.find(alert, 'button', name='Replace'))
         atspi.find(a, 'label', name='Sent for 2 codes · saved', timeout=10)
         self.assertFalse(mode.get_state_set().contains(Atspi.StateType.PRESSED), 'the mode did not end')
         want = {'11LAC10AP001': '3', '11LAC10AP002': '3', '11LAC10AP003': '', '11LAC20AA101': ''}
@@ -1482,6 +1485,10 @@ class Gnome(Plant):
         for _ in range(5):          # the page rebuilds after a sync that brought data: a lost click is retried
             atspi.click(atspi.find(a, 'button', name='Pick this photo', timeout=15))
             try:
+                # #365: picking rejects the rival for good: asked first, the count in the question (B2)
+                atspi.find(a, None, name='Reject the other photo?', timeout=4)
+                self.assertEqual(omar.req('GET', '/api/submissions?status=all&kind=photo')['submissions'][0]['status'], 'pending')
+                atspi.click(atspi.find(a, 'button', name='Pick and reject the other', timeout=5))
                 atspi.find(a, 'label', contains='Photo chosen', timeout=4)
                 break
             except AssertionError:
@@ -2120,6 +2127,20 @@ class Gnome(Plant):
         gone('button', 'Done', 'Done left the banner up')
         atspi.find(a, 'button', name=unlink, timeout=5)      # (the page was the one from before: not drawn again)
         gone('button', link, 'Done left the panel\'s Link button')
+        # #365: Unlink asks nothing; its toast's Undo links it again
+        linked = lambda: any(l['kks'] == code and l['proc'] == 'P-1' and l.get('step') == 1 for l in self.boss.req('GET', '/api/state')['links'])
+        atspi.click(atspi.find(a, 'button', name=unlink))
+        undo = atspi.find(a, 'button', name='Undo', timeout=10)
+        for _ in range(40):
+            if not linked(): break
+            time.sleep(0.25)
+        self.assertFalse(linked(), 'Unlink unlinked nothing')
+        atspi.click(undo)
+        for _ in range(40):
+            if linked(): break
+            time.sleep(0.25)
+        self.assertTrue(linked(), 'Undo did not link it again')
+        atspi.find(a, 'button', name=unlink, timeout=10)
         self.assertIsNone(app.poll(), 'the app died')
         self.assertEqual(self.criticals('linkdone'), [], 'Done worked on widgets that were gone')
         app.kill()
@@ -2273,6 +2294,13 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name='Edit'))          # (a second form: its Save would rebuild the panel)
         atspi.find(a, None, contains='Finish checking this tag first', timeout=10)
         self.assertIsNone(self.typed(a, 'Notes'), 'an Edit form opened over a review form that holds something typed')
+        # #365: Not a tag asks first; Cancel sends nothing and leaves the form as it was
+        atspi.click(atspi.find(a, 'button', name='Not a tag'))
+        atspi.find(a, None, name='Mark this as not a tag?', timeout=10)
+        atspi.click(atspi.find(a, 'button', name='Cancel', timeout=5))
+        wait_for('Cancel left the question up', lambda: not atspi.find_all(a, None, name='Mark this as not a tag?'), 10)
+        self.assertIsNone(reviewed(), 'Not a tag sent before it was confirmed')
+        self.assertEqual(self.typed(a, 'KKS (with suffix)'), '11LAE31AP001')
         atspi.click(atspi.find(a, 'button', name='Confirm'))
         wait_for('Confirm sent nothing', lambda: (reviewed() or {}).get('kks') == '11LAE31AP001')
         wait_for('the review form stayed after Confirm', lambda: not atspi.find_all(a, 'text', name='KKS (with suffix)'), 10)

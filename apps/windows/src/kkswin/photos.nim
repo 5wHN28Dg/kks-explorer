@@ -582,7 +582,7 @@ proc failedWindow*(w: Win) =
         p.dim(whyOf.getOrDefault(key, "Not sent").capitalizeAscii)
         p.buttons(("Try again", proc () = w.retryNow(key)),
           ("Discard", proc () =
-            if ask(h, "Discard this photo?", "It was never sent: it is lost."): w.discardPhoto(key, cid)))
+            if ask(h, "Discard this photo?", "It was never sent: it is lost.", "Discard photo"): w.discardPhoto(key, cid)))
     p.buttons(("Close", proc () = DestroyWindow(h)))
     p.layout()
   refillFailed = fill
@@ -777,7 +777,7 @@ proc photoSection*(w: Win, p: Page, kks: string) =
           if who.len > 0: p.dim(who)
           discard p.buttons(("Open photo" & (if caption.len > 0: ": " & caption else: ""), proc () = w.showPhoto(data, caption)),
                     ("Delete", proc () =
-                      if ask(w.hwnd, "Delete this photo?", "It is removed for everyone once approved."):
+                      if ask(w.hwnd, "Delete this photo?", "It is removed for everyone once approved.", "Delete photo"):
                         discard w.submit("photo_delete", newObj(@[("photo_id", newStr(pid))]), "delete a photo")))
         else:
           discard p.dim("A photo not on this device yet (it arrives with the next sync)" & (if caption.len > 0: ": " & caption else: "") &

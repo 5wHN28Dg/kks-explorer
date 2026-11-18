@@ -232,6 +232,7 @@ proc adw_toast_overlay_set_child*(o, c: W) {.importc, header: HA.}
 proc adw_toast_overlay_add_toast*(o, t: W) {.importc, header: HA.}
 proc adw_toast_new*(title: cstring): W {.importc, header: HA.}
 proc adw_toast_set_timeout*(t: W, s: cuint) {.importc, header: HA.}
+proc adw_toast_set_button_label*(t: W, l: cstring) {.importc, header: HA.}
 proc adw_toast_set_use_markup*(t: W, on: cint) {.importc, header: HA.}
 proc adw_toast_get_use_markup*(t: W): cint {.importc, header: HA.}
 proc adw_toast_get_title*(t: W): cstring {.importc, header: HA.}

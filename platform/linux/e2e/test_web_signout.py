@@ -24,7 +24,7 @@ from playwright.sync_api import sync_playwright, expect
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors
+from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors, answer_confirms
 from app_person import crypto2, proto2      # (the Python reference, ref/)
 
 PW = 'a long password'
@@ -70,6 +70,7 @@ class WebSignOut(unittest.TestCase):
         errors = PageErrors(page)
         if said is not None:
             page.on('dialog', lambda d: (said.append(d.message), d.accept() if answer['ok'] else d.dismiss()))
+            answer_confirms(page, lambda msg: (said.append(msg), answer['ok'])[1])
         page.goto(self.base + path)
         page.wait_for_function(SIGNED_IN % user)
         return page, errors

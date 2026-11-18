@@ -222,7 +222,7 @@ class Sinks(unittest.TestCase):
         self.each(run)
 
     def test_status_progress_ask(self):
-        """the status line (peer, signed out, online), the progress bar and the question box"""
+        """the status line (peer, signed out, online), the progress bar, the question box and the Undo bar"""
         def run(pg):
             pg.evaluate("""() => { K.cfg = {mode: 'peer'}; K.syncStatus = {reachable: 2, last_sync: 0, internet: true}; K.renderStatus() }""")
             self.assertEqual(pg.text_content('#syncStatus'), '● 2 devices reachable · synced never · Internet ✓')
@@ -235,23 +235,100 @@ class Sinks(unittest.TestCase):
             self.clean(pg, 'K.progress')
             self.assertIn(EVIL, pg.text_content('body'))
             pg.evaluate("window.bar.done()")
-            pg.evaluate("(evil) => { window.asked = K.ask(evil, evil, true, evil).then(v => window.answer = v) }", EVIL)
-            self.clean(pg, 'K.ask')
-            box = "[...document.body.children].pop()"
-            self.assertEqual(pg.evaluate(f"{box}.querySelector(':scope > div > div').textContent"), EVIL)
-            self.assertEqual(pg.evaluate(f"{box}.querySelectorAll(':scope > div > div')[1].textContent"), EVIL)
-            self.assertEqual(pg.text_content('button[data-v="1"]'), EVIL)
-            self.assertEqual(pg.evaluate("document.activeElement.className"), 'note')
-            pg.keyboard.type(EVIL)
-            pg.keyboard.press('Tab')
-            pg.keyboard.press('Tab')
-            self.assertEqual(pg.evaluate('document.activeElement.dataset.v'), '1')
-            pg.keyboard.press('Enter')
+            pg.evaluate("(evil) => { window.asked = K.confirm(evil, evil, evil, {note: evil}).then(v => window.answer = v) }", EVIL)
+            self.clean(pg, 'K.confirm')
+            d = 'dialog.kconfirm'
+            self.assertEqual(pg.text_content(d + ' h2'), EVIL)
+            self.assertEqual(pg.text_content(d + ' p'), EVIL)
+            self.assertEqual(pg.text_content(d + ' .kq-yes'), EVIL)
+            self.assertEqual(pg.get_attribute(d + ' input.note', 'placeholder'), EVIL)
+            pg.fill(d + ' input.note', EVIL)
+            pg.click(d + ' .kq-yes')
             pg.wait_for_function('window.answer')
             self.assertEqual(pg.evaluate('window.answer'), {'note': EVIL.strip()})
-            self.clean(pg, 'K.ask answered')
+            self.clean(pg, 'K.confirm answered')
+            pg.evaluate("(evil) => K.undo(evil, () => {})", EVIL)
+            self.clean(pg, 'K.undo')
+            self.assertIn(EVIL, pg.text_content('#kundo'))
         self.each(run)
 
+
+    def test_confirm_safe_default(self):
+        """#365 (D1, D2 in docs/UI-UX-POLICY.md): a question before a destructive action is the page's own modal dialog,
+        not the browser's confirm(): its role and name, the action named on its button and styled as destructive, the
+        focus on Cancel (so Enter keeps), Escape keeps, and the focus back where it was"""
+        def run(pg):
+            pg.evaluate("""() => { const b = document.createElement('button'); b.id = 'opener'; b.textContent = 'Delete';
+              document.body.append(b); b.focus(); window.browserAsked = 0; window.confirm = () => { browserAsked++; return true } }""")
+            ask = "() => { window.answer = undefined; K.confirm('Delete this photo?', 'It is removed for everyone.', 'Delete photo').then(v => window.answer = v) }"
+            pg.evaluate(ask)
+            d = pg.locator('dialog.kconfirm')
+            self.assertTrue(d.is_visible())
+            self.assertEqual(pg.evaluate("document.querySelector('dialog.kconfirm').matches(':modal')"), True)
+            self.assertEqual(d.get_attribute('role'), 'alertdialog')
+            self.assertEqual(pg.get_by_role('alertdialog', name='Delete this photo?').count(), 1)
+            names = pg.evaluate("[...document.querySelectorAll('dialog.kconfirm button')].map(b => b.textContent)")
+            self.assertEqual(names, ['Cancel', 'Delete photo'])
+            self.assertEqual(pg.evaluate('document.activeElement.textContent'), 'Cancel')
+            yes = pg.evaluate("getComputedStyle(document.querySelector('.kq-yes')).color")
+            self.assertEqual(yes, 'rgb(255, 90, 90)')                 # the --bad colour, not the accent
+            # Enter presses the focused Cancel: kept, focus back on the opener
+            pg.keyboard.press('Enter')
+            pg.wait_for_function('window.answer !== undefined')
+            self.assertIsNone(pg.evaluate('window.answer'))
+            self.assertEqual(pg.evaluate('document.activeElement.id'), 'opener')
+            self.assertEqual(d.count(), 0)
+            # Escape keeps
+            pg.evaluate(ask)
+            pg.keyboard.press('Escape')
+            pg.wait_for_function('window.answer !== undefined')
+            self.assertIsNone(pg.evaluate('window.answer'))
+            # Tab stays inside the dialog (the page under it is inert)
+            pg.evaluate(ask)
+            for _ in range(4):
+                pg.keyboard.press('Tab')
+                self.assertTrue(pg.evaluate("document.querySelector('dialog.kconfirm').contains(document.activeElement) || document.activeElement === document.body"))
+            # the named action confirms
+            pg.click('dialog.kconfirm .kq-yes')
+            pg.wait_for_function('window.answer !== undefined')
+            self.assertEqual(pg.evaluate('window.answer'), {'note': ''})
+            self.assertEqual(pg.evaluate('browserAsked'), 0)
+            # a note typed and then cancelled is offered again (draft)
+            pg.evaluate("() => { window.answer = undefined; K.confirm('Reject?', '', 'Reject', {note: 'Reason', draft: 'r'}).then(v => window.answer = v) }")
+            pg.fill('dialog.kconfirm input.note', 'typed')
+            pg.keyboard.press('Escape')
+            pg.wait_for_function('window.answer !== undefined')
+            pg.evaluate("() => { window.answer = undefined; K.confirm('Reject?', '', 'Reject', {note: 'Reason', draft: 'r'}).then(v => window.answer = v) }")
+            self.assertEqual(pg.input_value('dialog.kconfirm input.note'), 'typed')
+            pg.click('dialog.kconfirm .kq-yes')
+            pg.wait_for_function('window.answer !== undefined')
+            self.assertEqual(pg.evaluate('window.answer'), {'note': 'typed'})
+        self.each(run)
+
+    def test_undo_bar(self):
+        """#365 (D1): Undo shows for at least 4 s, as a status the screen reader reads, and runs its action once"""
+        def run(pg):
+            pg.evaluate("() => { window.undone = 0; window.t0 = Date.now(); K.undo('Unlinked 11LAB70AA501 from step 2', () => undone++, 1000) }")
+            bar = pg.locator('#kundo')
+            self.assertEqual(bar.get_attribute('role'), 'status')
+            self.assertIn('Unlinked 11LAB70AA501 from step 2', bar.text_content())
+            pg.wait_for_timeout(3000)
+            self.assertTrue(bar.is_visible())                        # (asked for 1 s: 4 s at least)
+            pg.get_by_role('button', name='Undo').click()
+            self.assertEqual((pg.evaluate('undone'), bar.count()), (1, 0))
+            pg.evaluate("() => K.undo('again', () => undone++, 4000)")
+            pg.wait_for_function("!document.getElementById('kundo')", timeout=8000)
+            self.assertGreaterEqual(pg.evaluate('Date.now() - t0'), 3000 + 4000 - 50)
+            self.assertEqual(pg.evaluate('undone'), 1)
+        self.each(run)
+
+    def test_no_browser_confirm(self):
+        """#365 (D2): no page asks with the browser's confirm(), which can't name its buttons and confirms on Enter"""
+        import re
+        for f in ('index.js', 'admin.js', 'common.js', 'learning.js', 'course.js', 'course-bridge.js', 'tiles.js'):
+            with open(os.path.join(REPO, f), encoding='utf-8') as fh: src = fh.read()
+            src = re.sub(r'//[^\n]*', '', src)                     # (comments may name it)
+            self.assertIsNone(re.search(r'(?<![.\w])confirm\(', src), f)
 
 if __name__ == '__main__':
     unittest.main()

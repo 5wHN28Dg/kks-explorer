@@ -13,7 +13,7 @@ from playwright.sync_api import sync_playwright, expect
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors
+from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors, answer_confirms
 from app_person import AppPerson
 
 PW = 'a long password'
@@ -77,6 +77,7 @@ class WebSignIn(unittest.TestCase):
             said = []                                    # what each confirmation told the admin
             answer = {'ok': False}
             m.on('dialog', lambda d: (said.append(d.message), d.accept() if answer['ok'] else d.dismiss()))
+            answer_confirms(m, lambda msg: (said.append(msg), answer['ok'])[1])
 
             # ---- 1. the admin's Web sign-in
             m.goto(self.base + '/admin.html#users')

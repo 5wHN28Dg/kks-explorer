@@ -142,9 +142,11 @@ proc reviewSection(w: Win, t: Tag): W =
     if w.panelEditing:
       w.toast("Save or cancel your edits first")
       return
-    if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
-                                  ("base", base)]), "not a tag").len > 0:
-      w.rebuildPanel())
+    # asked first (#365): the tag leaves the drawing on every device
+    ask(w.window, "Mark this as not a tag?", "It is no longer shown as a tag, on every device.", "Not a tag", "Cancel", proc (yes: bool) =
+      if yes and w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
+                                             ("base", base)]), "not a tag").len > 0:
+        w.rebuildPanel()))
   adw_preferences_group_add(result, btns)
 
 proc equipmentSection(w: Win, t: Tag): W =
@@ -498,7 +500,7 @@ proc buildPanel*(w: Win, t: Tag) =
                   (if t.note.len > 0: " Note: " & t.note else: ""))
     let addedId = t.added
     adw_preferences_group_add(g, button("Remove this tag", "destructive-action", proc () =
-      confirm(w.window, "Remove this tag?", "The mark goes away on every device once approved.", "Remove", true, proc () =
+      confirm(w.window, "Remove this tag?", "The mark goes away on every device once approved.", "Remove tag", true, proc () =
         discard w.submit("tag_remove", newObj(@[("id", newStr(addedId))]), if k.len > 0: k else: "the mark"))))
     w.panelBox.add g
   if k.len == 0:

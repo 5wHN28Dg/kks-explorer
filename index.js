@@ -167,7 +167,7 @@ async function sendMark(){
   const r=await send('tag_add',{sheet:cur.id,bbox:mark.pending.map(v=>Math.round(v*10)/10),kks,isa,note:$('#mkN').value.trim()},kks||'marked tag');
   if(r){ markMode(false); closePanel() }
 }
-async function removeAdded(id,label){ if(!confirm(`Remove the hand-added tag ${label}?`)) return; if(await send('tag_remove',{id},'remove '+label)) closePanel() }
+async function removeAdded(id,label){ if(!await K.confirm(`Remove the tag ${label}?`,'This hand-marked tag goes away on every device once approved.','Remove tag')) return; if(await send('tag_remove',{id},'remove '+label)) closePanel() }
 
 // ---------- saving: every edit is a submission (applied at once for admins, otherwise queued for approval) ----------
 async function refreshState(){
@@ -756,6 +756,7 @@ async function review(id,status){
   let d={status};
   if(status==='confirmed'){ const m=kv.match(/^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]*)$/); if(!m){toast('That is not a valid KKS (e.g. 11LAB70AA501)');return}
     d={status,kks:m[1],suffix:m[2],isa:iv||null} }
+  else if(!await K.confirm('Mark this as not a tag?','It is no longer shown as a tag, on every device.','Not a tag')) return;
   const r=await send('review',{tag_id:id,data:d,base:STATE.reviews[id]||null},status==='confirmed'?`${d.kks}${d.suffix}`:'not a tag'); if(!r) return;
   renderReview(); const t=TAGS.find(x=>x.id===id);
   if(r.status==='approved'){ if(status==='confirmed') select(eff(t)); else closePanel() }
@@ -813,7 +814,7 @@ async function photoData(f){
   return {dataUrl,note:a.note};
 }
 async function delPhoto(pid,tid){
-  const a=await K.ask('Delete this photo?',canApprove()?'':'An admin decides.',!canApprove(),'Delete'); if(!a) return;
+  const a=await K.confirm('Delete this photo?','It is removed for everyone'+(canApprove()?'.':' once an admin approves.'),'Delete photo',{note:canApprove()?'':'Note for the approver (optional)',draft:'del'+pid}); if(!a) return;
   if(await send('photo_delete',{photo_id:pid},'delete photo',a.note)) select(eff(TAGS.find(x=>x.id===tid)));
 }
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
@@ -1129,7 +1130,9 @@ function renderProcDetail(id){
 function startLink(proc,step){ pickMode(false); linkTarget={proc,step}; $('#bannerText').textContent=`Tap tags on the drawing to link them to step ${step}`; $('#banner').style.display='flex';
   if(innerWidth<=720) $('#procDrawer').classList.remove('open') }
 $('#bannerDone').onclick=()=>{ if(mark.on){ markMode(false); closePanel(); return } const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
-async function unlink(proc,step,kks){ await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags() }
+// (no question first: Undo puts the link back, by sending it again)
+async function unlink(proc,step,kks){ const r=await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags()
+  if(r?.status==='approved') K.undo(`Unlinked ${kks} from step ${step}`,async()=>{ if(await send('link',{proc,step,kks,on:true},`link ${kks}`)){ renderProcDetail(proc); drawTags() } }) }
 
 // ---------- equipment by system (core views.systemsView, ported in systems.js) ----------
 // While filtering, every level opens when few codes match; otherwise blocks open and systems closed.

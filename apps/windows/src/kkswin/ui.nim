@@ -984,8 +984,33 @@ proc setRows*(l: HWND, rows: seq[string]) =
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
   listRows[l] = rows
 
-proc ask*(owner: HWND, title, text: string): bool =
-  MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OKCANCEL or MB_ICONQUESTION) == IDOK
+proc ask*(owner: HWND, title, text, yes: string, no = "Cancel", destructive = true): bool =
+  ## A question before an action (#365, D2 in docs/UI-UX-POLICY.md): a task dialog whose confirming button names the
+  ## action (`yes`: "Delete photo", never OK), and whose default is the safe button (`no`), so Enter, Escape and
+  ## closing it keep. With `destructive`: the warning icon. `title` is the question, `text` what it means. True: `yes`.
+  let wTitle = newWideCString("Walkdown")
+  let wQ = newWideCString(title)
+  let wText = newWideCString(text)
+  let wYes = newWideCString(yes)
+  let wNo = newWideCString(no)
+  var buttons = [TaskDialogButton(nButtonID: 100, pszButtonText: wYes), TaskDialogButton(nButtonID: 2, pszButtonText: wNo)]
+  var c: TaskDialogConfig
+  c.cbSize = UINT(sizeof(TaskDialogConfig))
+  c.hwndParent = owner
+  c.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION or TDF_POSITION_RELATIVE_TO_WINDOW
+  c.pszWindowTitle = wTitle
+  if destructive: c.pszMainIcon = cast[WideCString](TD_WARNING_ICON)
+  c.pszMainInstruction = wQ
+  if text.len > 0: c.pszContent = wText
+  c.cButtons = UINT(buttons.len)
+  c.pButtons = addr buttons[0]
+  c.nDefaultButton = 2        # IDCANCEL: also what Escape and the close box give
+  var pressed: int32 = 0
+  if TaskDialogIndirect(addr c, addr pressed, nil, nil) == 0:
+    return pressed == 100
+  # (no task dialog: Common Controls v5 loaded somehow) a message box, its second button (Cancel) the default
+  MessageBoxW(owner, newWideCString(title & (if text.len > 0: "\n\n" & text else: "")), wTitle,
+              MB_OKCANCEL or MB_ICONQUESTION or 0x100'u32) == IDOK    # MB_DEFBUTTON2
 
 proc askYesNo*(owner: HWND, title, text: string): bool =
   ## a question with Yes and No (MB_YESNO; IDYES = 6)
