@@ -2327,11 +2327,13 @@ class Phone(unittest.TestCase):
 # test_copy_close_batch (2026-11-16) is in part 1: at the end of part 2 it took the emulator from 7.14 to 7.67 GiB;
 # part 1 had ended at 5.92 GiB. test_photo_size (a 12 MP picture through the app's own scaling) is in part 1 too: at
 # the end of part 2 it took the emulator from 6.68 to 7.34 GiB (2026-11-17).
+# 2026-11-18: part 3 ended at 7.90 GiB on one run (6.82 on another: the emulator's memory after booting differs by
+# ~0.8 GiB) while part 2 ended at 5.79, so test_description_and_credit and test_app_links went to part 2.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
           'panel_keyboard', 'in_app_camera', 'photo_size'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
-          'description_and_credit', 'flow', 'course_figures', 'app_links'))
+          'flow', 'course_figures'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))
