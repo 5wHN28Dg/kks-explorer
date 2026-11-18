@@ -46,3 +46,11 @@ effort 9, bilinear). Can an in-app camera get the picture the camera app would h
 it is removed again (the dependency with it) and the add-photo screen gets a one-line hint to take the photo in the
 camera app and add it from the gallery. Also when CameraX 1.7 is stable, or if the installed size grows past the
 25 % rule.
+
+**Outcome (2026-11-18): not adopted.** The user tried the trial build on the Honor 600: CameraX found no Extensions
+there, so the in-app camera could not use the phone's own processing. A plain Camera2 capture (the phone reports
+hardware level 3) could raise resolution and noise-reduction quality but not reproduce the camera app's multi-frame
+processing, and the user judged it not worth it. The add-photo path stays as it was (the system camera through
+`TakePicture`, then 0074's 2560 px pipeline), with no hint added. PR #407 (the in-app camera and the trial build) was
+closed unmerged, so CameraX is not a dependency. Revisit if a target phone offers Extensions or the photos prove
+unreadable in the field.
