@@ -416,12 +416,12 @@ func _build() -> void:
 
 
 ## The clock's width: its longest text at its size (on two lines in the compact bar).
-func _clock_w() -> float:
+func _clock_w(two_lines := compact) -> float:
 	var f: Font = _time.get_theme_font("font")
 	var fs: int = _time.get_theme_font_size("font_size")
 	var w := 0.0
 	for t in CLOCK_LONGEST:
-		for line in clock_label(t[0], t[1], compact).split("\n"):
+		for line in clock_label(t[0], t[1], two_lines).split("\n"):
 			w = maxf(w, f.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
 	return ceilf(w) + 12.0 * W.scale + 2.0 * 6.0      # (and its outline)
 
@@ -531,7 +531,7 @@ func _wants_compact(w: float) -> bool:
 			continue
 		var cw := c.get_combined_minimum_size().x
 		if c == _time:
-			cw = _clock_w()
+			cw = _clock_w(false)      # (on one line whatever the bar is now: the answer must not flip it back)
 		elif c == _alarm_btn:
 			cw = maxf(cw, _alarm_w())
 		sum += cw + sep
@@ -610,7 +610,10 @@ func _queue_compact() -> void:
 func _refit_compact() -> void:
 	_compact_queued = false
 	if is_inside_tree() and compact:
-		_fit_compact(_compact_room)
+		if not _wants_compact(root.get_viewport_rect().size.x):
+			_layout()                 # (a button hidden: the full bar fits on one row again)
+		else:
+			_fit_compact(_compact_room)
 
 
 ## More's list: the bar's buttons that wait in it (as they would show), then the settings.
@@ -702,7 +705,7 @@ func _layout() -> void:
 	# (app/hud.gd refresh: it would lie over their tabs), and their own bar has Close.
 	var below := vs.y - top0
 	var chrome: float = mimic.canvas_top() - mimic.position.y
-	var over := below < vs.y * 0.6 or (compact and screens_open() and below - chrome < vs.y * 0.3)
+	var over := (not compact and below < vs.y * 0.6) or (compact and screens_open() and below - chrome < vs.y * 0.3)
 	var vtop := top0 if not over else (0.0 if compact else bar_top())
 	if (over and compact) != views_over_row:
 		views_over_row = over and compact

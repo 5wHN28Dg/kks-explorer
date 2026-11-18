@@ -149,15 +149,21 @@ func _compact(main, at: String, canvas: Rect2, want: bool) -> Array:
 	if ui.compact != want:
 		return ["%s: the bar is %s (%s expected)" % [at, "compact" if ui.compact else "full", "compact" if want else "full"]]
 	var more: MenuButton = ui._more
+	# the choice doesn't depend on the bar's present state (the compact clock is narrower): no width flips it back
+	var c0: bool = ui.compact
+	for w in range(700, 2300, 7):
+		ui.compact = false
+		var a: bool = ui._wants_compact(float(w))
+		ui.compact = true
+		if ui._wants_compact(float(w)) != a:
+			p.append("%s: at %d px the bar is compact or not as it is now" % [at, w])
+			break
+	ui.compact = c0
 	if not want:
 		if more.visible or ui._overflow.get_child_count() > 0 or not hud.settings_btn.visible:
 			p.append("%s: the full bar has More or buttons in its list, or no Settings" % at)
 		return p
 	# one row: every control on the bar and the HUD's at the same height band, the band from y 12
-	var rows := {}
-	for c in ui.bar.get_children() + hud.bar.get_children():
-		if (c as Control).is_visible_in_tree():
-			rows[roundi((c as Control).get_global_rect().position.y)] = true
 	var band: float = maxf(ui.bar.get_global_rect().end.y, hud.bar.get_global_rect().end.y)
 	if ui.bar.get_global_rect().position.y > 12.5 or band > canvas.size.y * 0.2 + 0.5 or ui.panels_top() > band + 16.5:
 		p.append("%s: the compact row runs %.0f to %.0f of %.0f (a fifth at most), the panels from %.0f" % [at,
@@ -189,6 +195,25 @@ func _compact(main, at: String, canvas: Rect2, want: bool) -> Array:
 		p.append("%s: More's list is %s (%s expected)" % [at, str(listed), str(wanted)])
 	if listed.size() < 2:
 		p.append("%s: More's list holds only %s" % [at, str(listed)])
+	# a button that is disabled is listed disabled, and choosing it does nothing
+	var ff: Button = ui._ff_btn
+	if ff.get_parent() != ui.bar:
+		var was: bool = ff.disabled
+		ff.disabled = true
+		ui._fill_more()
+		var fi: int = -1
+		for i in pm.item_count:
+			if pm.get_item_text(i) == "Fast-forward":
+				fi = i
+		var speed0: int = ui.clock.speed
+		if fi < 0 or not pm.is_item_disabled(fi):
+			p.append("%s: Fast-forward, disabled, is not listed disabled in More" % at)
+		elif true:
+			ui._on_more(pm.get_item_id(fi))
+			if ui.clock.speed != speed0:
+				p.append("%s: Fast-forward, disabled, ran from More's list" % at)
+		ff.disabled = was
+		ui._fill_more()
 	var si: int = listed.find("Settings")
 	ui._on_more(pm.get_item_id(si))
 	await main.get_tree().process_frame
