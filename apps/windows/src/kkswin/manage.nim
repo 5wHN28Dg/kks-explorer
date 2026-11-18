@@ -307,7 +307,7 @@ proc approvals(w: Win, p: Page) =
                     if w.act(id, "approve", newObj(@[("force", newBool(conflict))]), "Approved"): w.rebuildSide())
                 specs.add ("Reject", proc () =
                   # final: the core takes no other decision on it afterwards (#365)
-                  if ask(w.hwnd, "Reject " & proposalTitle(sub) & "?", (if s(sub, "by_name").len > 0: s(sub, "by_name") & "'s proposal" else: "The proposal") & " is discarded; the submitter sees that it was rejected. This can't be undone.", "Reject") and
+                  if ask(w.hwnd, "Reject " & proposalTitle(sub) & "?", "The proposal" & (if s(sub, "by_name").len > 0: " by \u2068" & s(sub, "by_name") & "\u2069" else: "") & " is discarded; the submitter sees that it was rejected. This can't be undone.", "Reject") and
                      w.act(id, "reject", newObj(), "Rejected"): w.rebuildSide())
               if specs.len > 0: p.buttons(specs)
       p.space()

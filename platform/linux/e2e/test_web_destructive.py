@@ -46,7 +46,9 @@ class Destructive(unittest.TestCase):
         r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [400 + 60 * n, 300, 450 + 60 * n, 340],
                                                                                   'kks': code, 'isa': '', 'note': ''}})
         self.assertEqual(r['status'], 'approved')
-        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 2, 'kks': code, 'on': True}})['status'], 'approved')
+        other = '11LAB70AA59' + str(n)
+        for k in (code, other):
+            self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 2, 'kks': k, 'on': True}})['status'], 'approved')
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
             ctx = browser.new_context(viewport={'width': 1200, 'height': 800}, service_workers='block')
@@ -77,6 +79,21 @@ class Destructive(unittest.TestCase):
             bar.get_by_role('button', name='Undo').click()
             expect(chip()).to_have_count(1, timeout=15000)
             expect(bar).to_have_count(0)
+            # from the keyboard: the focus goes to Undo; a second unlink meanwhile joins the first in the bar, and Undo
+            # links both again (each keeps its Undo); the "Saved" toast is not shown under the bar
+            chip2 = lambda: page.locator('#procBody .step').nth(1).locator('.chip.mono', has_text=other)
+            page.locator('#procBody .step').nth(1).get_by_role('button', name='Unlink ' + code).focus()
+            page.keyboard.press('Enter')
+            expect(chip()).to_have_count(0)
+            expect(bar).to_contain_text(f'Unlinked {code} from step 2')
+            page.wait_for_function("document.activeElement && document.activeElement.textContent === 'Undo'")
+            page.locator('#procBody .step').nth(1).get_by_role('button', name='Unlink ' + other).click()
+            expect(chip2()).to_have_count(0)
+            expect(bar).to_contain_text('Unlinked 2 codes')
+            self.assertNotIn('unlink', page.text_content('#toast') or '')
+            bar.get_by_role('button', name='Undo').click()
+            expect(chip()).to_have_count(1, timeout=15000)
+            expect(chip2()).to_have_count(1, timeout=15000)
 
             # Remove a hand-marked tag: the page's own question; Escape and Enter keep it, the named button removes it
             page.evaluate("(c) => select(eff(TAGS.find(t => full(t) === c)))", code)

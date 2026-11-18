@@ -189,9 +189,10 @@ async function refreshState(){
   }
 }
 const canApprove=()=>['admin','manager'].includes(K.me?.user?.role);   // their edits apply at once: no note needed
-async function send(kind,payload,what,note){
+// (`quiet`: a saved or queued change is not said here: the caller says it, with an Undo)
+async function send(kind,payload,what,note,quiet){
   let r; try{ r=await K.submit(kind,payload,note) }catch(e){ toast('Not saved: '+e.message); return null }
-  toast({approved:'Saved: ',pending:'Sent for approval: ',conflict:'Clashes with a newer change, an admin will decide: ',queued:K.reauth?'Queued until you sign in again: ':'Offline, queued: '}[r.status]+what);
+  if(!(quiet&&(r.status==='approved'||r.status==='queued'))) toast({approved:'Saved: ',pending:'Sent for approval: ',conflict:'Clashes with a newer change, an admin will decide: ',queued:K.reauth?'Queued until you sign in again: ':'Offline, queued: '}[r.status]+what);
   if(r.status!=='queued') await refreshState(); else updatePending();
   return r;
 }
@@ -1122,18 +1123,31 @@ function renderProcDetail(id){
     const ls=L.filter(l=>l.step===s.n);
     out.push(h('div',{class:'step'},h('span',{class:'n'},`${s.n})`),s.text,h('div',{style:'margin-top:5px'},
       ls.map(l=>{const t=byKks(l.kks)[0];return [h('span',{class:'chip mono',onclick:()=>{ if(t) goTo(t.id) }},l.kks),
-        h('button',{class:'x',style:'font-size:14px',title:'Unlink','aria-label':`Unlink ${l.kks}`,onclick:()=>unlink(id,+s.n,l.kks)},'×')]}),
-      ' ',h('button',{class:'ghost',style:'font-size:12.5px;padding:3px 8px',onclick:()=>startLink(id,+s.n)},'+ Link equipment'))));
+        h('button',{class:'x',style:'font-size:14px',title:'Unlink','aria-label':`Unlink ${l.kks}`,onclick:e=>unlink(id,+s.n,l.kks,e.detail===0)},'×')]}),
+      ' ',h('button',{class:'ghost','data-step':s.n,style:'font-size:12.5px;padding:3px 8px',onclick:()=>startLink(id,+s.n)},'+ Link equipment'))));
   }
   put($('#procBody'),out);
 }
 function startLink(proc,step){ pickMode(false); linkTarget={proc,step}; $('#bannerText').textContent=`Tap tags on the drawing to link them to step ${step}`; $('#banner').style.display='flex';
   if(innerWidth<=720) $('#procDrawer').classList.remove('open') }
 $('#bannerDone').onclick=()=>{ if(mark.on){ markMode(false); closePanel(); return } const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
-// (no question first: Undo puts the link back, by sending it again)
-async function unlink(proc,step,kks){ const r=await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags()
-  // (offline, queued: Undo queues the link again after it)
-  if(r?.status==='approved'||r?.status==='queued') K.undo(`Unlinked ${kks} from step ${step}`,async()=>{ if(await send('link',{proc,step,kks,on:true},`link ${kks}`)){ if(activeProc===proc) renderProcDetail(proc); drawTags() } }) }
+// (no question first: Undo puts the links back, by sending them again). Unlinks made while the bar is up gather in
+// it, so each one's Undo stays (a gloved double tap can take the next chip's ×); the focus stays in the step (on its
+// "+ Link equipment"), or goes to Undo when the × was pressed with the keyboard.
+let UNLINKED=[];
+async function unlink(proc,step,kks,kb){
+  const r=await send('link',{proc,step,kks,on:false},`unlink ${kks}`,undefined,true); renderProcDetail(proc); drawTags()
+  if(activeProc===proc) $(`#procBody button[data-step="${step}"]`)?.focus({preventScroll:true});
+  if(r?.status!=='approved'&&r?.status!=='queued') return;   // (a member's proposal: withdrawn in My submissions)
+  if(!document.getElementById('kundo')) UNLINKED=[];
+  UNLINKED.push({proc,step,kks});
+  const all=[...UNLINKED], one=all.length===1;
+  const bar=K.undo(one?`Unlinked ${kks} from step ${step}`:`Unlinked ${all.length} codes`,async()=>{
+    UNLINKED=[];
+    for(const l of all) await send('link',{...l,on:true},`link ${l.kks}`);
+    if(all.some(l=>l.proc===activeProc)) renderProcDetail(activeProc); drawTags() });
+  if(kb) bar.querySelector('button')?.focus();
+}
 
 // ---------- equipment by system (core views.systemsView, ported in systems.js) ----------
 // While filtering, every level opens when few codes match; otherwise blocks open and systems closed.

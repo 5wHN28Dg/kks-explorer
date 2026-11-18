@@ -151,7 +151,7 @@ proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) 
               " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
     if competing.len > 0:
       msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
-              (if competing.len == 1: "its" else: "their") & " code; choose with “Pick this photo”."
+              (if competing.len == 1: "its" else: "their") & " code; choose with “Use this one”."
     if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
     lastSaid = msg
     w.toast(msg)
@@ -277,7 +277,7 @@ proc approvals(w: Win, box: W) =
                   else: picked.keepItIf(it != id)
                   pickShow())
                 pickChecks.add (id, cb)
-                if pick:        # (a line of its own: with "Pick this photo", the votes and Reject the row was too wide)
+                if pick:        # (a line of its own: with "Use this one", the votes and Reject the row was too wide)
                   let top = hbox(8)
                   gtk_widget_set_margin_top(top, 6)
                   top.add cb
@@ -286,7 +286,7 @@ proc approvals(w: Win, box: W) =
               if pick:
                 let votes = if sub.get("votes") != nil and sub["votes"].kind == jInt: sub["votes"].i else: 0
                 let others = items.len - 1
-                let pb = button("Pick this photo", "suggested-action", proc () =
+                let pb = button("Use this one", "suggested-action", proc () =
                   # the others of its kind are rejected with it, for good (#365): said, with how many, first
                   let kind = s(kd, "label").toLowerAscii
                   ask(w.window, "Reject the other " & (if others == 1: "photo?" else: $others & " photos?"),
@@ -305,7 +305,7 @@ proc approvals(w: Win, box: W) =
               let rb = button("Reject", "destructive-action", proc () =
                 # final: the core takes no other decision on it afterwards (#365)
                 ask(w.window, "Reject " & proposalTitle(sub) & "?",
-                    (if s(sub, "by_name").len > 0: s(sub, "by_name") & "'s proposal" else: "The proposal") & " is discarded; the submitter sees that it was rejected. This can't be undone.",
+                    "The proposal" & (if s(sub, "by_name").len > 0: " by \u2068" & s(sub, "by_name") & "\u2069" else: "") & " is discarded; the submitter sees that it was rejected. This can't be undone.",
                     "Reject", "Cancel", proc (yes: bool) =
                   if yes and w.act(id, "reject", newObj(), "Rejected"): again()))
               setAccessibleDescription(rb, what)

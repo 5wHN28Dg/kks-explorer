@@ -1973,7 +1973,7 @@ class Phone(unittest.TestCase):
         self.assertEqual(sum(1 for n in ui.nodes() if ui.label(n) == '11LAB70AA501'), 1, 'one card for the code')
         # #365: Reject is final, so it asks first, naming whose proposal; Cancel leaves it waiting
         ui.tap('Reject', exact=True)
-        ui.find('Omar Fullname\'s proposal is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        ui.find('The proposal by \u2068Omar Fullname\u2069 is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
         evidence('reject')
         ui.tap('Cancel', exact=True)
         time.sleep(1)
@@ -2436,8 +2436,10 @@ class Phone(unittest.TestCase):
         r = subprocess.run([SERVER, 'publish-data', plant, '--config', cfg], cwd=self.dir, capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         code = '11LAB70AA501'
-        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'P-1', 'step': 1, 'kks': code, 'on': True}})['status'], 'approved')
-        linked = lambda: any(l['kks'] == code and l['proc'] == 'P-1' for l in self.boss.req('GET', '/api/state')['links'])
+        other = '11LAB70AA599'
+        for k in (code, other):
+            self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'P-1', 'step': 1, 'kks': k, 'on': True}})['status'], 'approved')
+        linked = lambda k=code: any(l['kks'] == k and l['proc'] == 'P-1' for l in self.boss.req('GET', '/api/state')['links'])
         reviewed = lambda: self.boss.req('GET', '/api/state')['reviews'].get('sample:doubt')
         self.join()
         # Not a tag: asked, and Cancel sends nothing
@@ -2471,6 +2473,14 @@ class Phone(unittest.TestCase):
         ui.tap('Undo', exact=True)
         self.wait_server(linked, 'Undo did not link it again')
         ui.find(f'Unlink {code} from step 1', exact=True, timeout=20)
+        # two unlinks in a row: the second joins the first in the snackbar, and Undo links both again
+        ui.tap(f'Unlink {code} from step 1', exact=True)
+        ui.find(f'Unlinked {code} from step 1', exact=True, timeout=10)
+        ui.tap(f'Unlink {other} from step 1', exact=True, timeout=10)
+        ui.find('Unlinked 2 codes', exact=True, timeout=10)
+        self.wait_server(lambda: not linked() and not linked(other), 'the two unlinks never reached the server')
+        ui.tap('Undo', exact=True)
+        self.wait_server(lambda: linked() and linked(other), 'Undo did not link both again')
 
     def test_question_stays(self):
         """#365 review: a proposal that arrives (by sync) while Reject's question is open does not take the question
@@ -2482,7 +2492,7 @@ class Phone(unittest.TestCase):
         ui.tap('Approvals', exact=True)
         ui.find('11LAB70AA509', exact=True, timeout=20)
         ui.tap('Reject', exact=True)
-        ui.find('Omar Fullname\'s proposal is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        ui.find('The proposal by \u2068Omar Fullname\u2069 is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
         title = [ui.label(n) for n in ui.nodes() if ui.label(n).startswith('Reject ') and ui.label(n).endswith('?')]
         self.assertEqual(len(title), 1, title)
         # a newer proposal for another code: the list puts it first once the phone has synced (every 2 min on screen)

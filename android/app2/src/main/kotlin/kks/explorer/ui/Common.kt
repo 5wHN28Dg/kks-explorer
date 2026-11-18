@@ -1,6 +1,7 @@
 package kks.explorer.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -58,7 +59,9 @@ fun Confirm(title: String, text: String, yes: String, onYes: () -> Unit, onDismi
             no: String = "Cancel") {
     // #365 (D2 in docs/UI-UX-POLICY.md): the confirming button names the action and, when it deletes, discards or can't
     // be taken back, is in the error colour; Back, a tap outside and `no` keep
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { if (text.isNotEmpty()) Text(text) },
+    // (the text scrolls: at the largest font sizes a long question would push the buttons off the dialog)
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) },
+        text = { if (text.isNotEmpty()) Text(text, Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) },
         // act first, then close: closing may clear the state the action reads (a photo delete sent an empty id)
         confirmButton = { TextButton(onClick = { onYes(); onDismiss() },
             colors = if (destructive) ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.textButtonColors()) { Text(yes) } },

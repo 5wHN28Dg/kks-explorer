@@ -1509,13 +1509,13 @@ class Gnome(Plant):
         atspi.find(a, None, contains='by Omar Tech', timeout=10)
         # the page may be rebuilding (a photo's picture arrives after its entry): count it once it is complete
         for _ in range(20):
-            picks = len(atspi.find_all(a, 'button', contains='Pick this photo'))
+            picks = len(atspi.find_all(a, 'button', name='Use this one'))
             if picks == 2:
                 break
             time.sleep(0.5)
         self.assertEqual(picks, 2)
         for _ in range(5):          # the page rebuilds after a sync that brought data: a lost click is retried
-            atspi.click(atspi.find(a, 'button', name='Pick this photo', timeout=15))
+            atspi.click(atspi.find(a, 'button', name='Use this one', timeout=15))
             try:
                 # #365: picking rejects the rival for good: asked first, the count in the question (B2)
                 atspi.find(a, None, name='Reject the other photo?', timeout=4)
