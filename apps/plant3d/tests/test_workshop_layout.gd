@@ -125,6 +125,15 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 		check(absf(c.size.x - want_side) <= 1.0, "%s: %s is %.0f wide with a long name in the tree (%.0f expected)" % [at, c.name,
 			c.size.x, want_side])
 	long_it.free()
+	# the machine's own names wrap in the tree (#389: they were cut short)
+	var it: TreeItem = pn.tree.get_root()
+	while it != null:
+		check(it.get_autowrap_mode(0) != TextServer.AUTOWRAP_OFF, "%s: the tree's \"%s\" does not wrap" % [at, it.get_text(0)])
+		it = it.get_next_in_tree()
+	# the top bar takes presses on its buttons only: a drag elsewhere on it turns the 3D view under it
+	for c in pn.top_bar.find_children("*", "Control", true, false) + [pn.top_bar]:
+		if not (c is BaseButton) and (c as Control).mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			check(false, "%s: the top bar's %s takes the mouse (only its buttons should)" % [at, c.name])
 	# Back to the plant: always in the top bar, whole, in the screen (R1)
 	check(pn.back_btn.is_visible_in_tree() and _inside(pn.back_btn.get_global_rect(), screen)
 		and pn.top_bar.is_ancestor_of(pn.back_btn), "%s: Back to the plant is in the top bar, on the screen" % at)
@@ -157,6 +166,8 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 	check(pn.run_panel.is_visible_in_tree() and _inside(pn.run_panel.get_global_rect(), screen) and pn.run_panel.size.x >= side
 		and pn.run_panel.size.y >= ROWS * row, "%s: the bench's panel shows, inside the screen (%s)" % [at, pn.run_panel.get_global_rect()])
 	_apart(at, [pn.top_bar, pn.tree_panel, pn.run_panel, pn.tools_panel])
+	check(absf(pn.run_panel.size.x - want_side) <= 1.0, "%s: the bench's panel is %.0f wide (%.0f, as the others)" % [at,
+		pn.run_panel.size.x, want_side])
 	var rr: Rect2 = pn.run_panel.get_global_rect()
 	for c in _controls(pn.run_panel):   # its rows wrap: nothing squeezed or past the panel's sides (#389)
 		var r: Rect2 = c.get_global_rect()

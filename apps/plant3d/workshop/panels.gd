@@ -33,6 +33,7 @@ var note: Label
 var slider: HSlider
 var only_cb: CheckBox
 var back_btn: Button
+var tools_btn: Button           # folds the tools away and back
 var manual_btn: Button
 var top_bar: PanelContainer     # Back to the plant, the title and the panels' toggles
 var middle: HBoxContainer       # the tree, the view's gap, the properties or the bench
@@ -85,6 +86,7 @@ func setup(w) -> void:
 	top_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE   # (a drag between its buttons still turns the view, as before)
 	col.add_child(top_bar)
 	var top := HBoxContainer.new()
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE   # (with the bar: only its buttons take a press)
 	top_bar.add_child(top)
 	back_btn = W.button("Back to the plant", func(): ws.close())
 	back_btn.name = "back"
@@ -110,7 +112,7 @@ func setup(w) -> void:
 	manual_btn.name = "manual"
 	top.add_child(manual_btn)
 	# the tools fold away too, so that the view can fill the screen (WORKSHOP.md §3)
-	var tools_btn := W.button("Tools", func(): tools_panel.visible = not tools_panel.visible)
+	tools_btn = W.button("Tools", func(): tools_panel.visible = not tools_panel.visible)
 	tools_btn.name = "tools"
 	top.add_child(tools_btn)
 	strip = W.label("", FONT, Color(1.0, 0.8, 0.4), false)
@@ -257,7 +259,7 @@ func setup(w) -> void:
 	step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	step_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	step_label.add_theme_stylebox_override("normal", backing())
-	step_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	step_label.mouse_filter = Control.MOUSE_FILTER_STOP   # (a tap on its backing picks nothing hidden behind it)
 	step_label.visible = false
 	# on a canvas layer of its own, just above the Workshop's: in the panels' layer this wrapped sentence (outlined then)
 	# cost about two draw calls a letter (a long assembly step ~440, the pile's view ~510 in all against §8's 300)
@@ -358,6 +360,7 @@ func open_manual() -> bool:
 ## While the scene loads (or when it could not).
 func loading(what: String) -> void:
 	title.text = what
+	step_label.text = ""           # (the last machine's step line goes with it)
 	props.text = ""
 	note.text = "Loading…" if not what.begins_with("The Workshop could not") else what
 	tree.clear()

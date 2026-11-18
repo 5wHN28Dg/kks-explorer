@@ -30,6 +30,7 @@ func setup(w) -> void:
 	name = "run_panel"
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true      # (the D-pad's focus brings a fault's button into view)
 	add_child(scroll)
 	box = VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -52,7 +53,7 @@ func machine_shown() -> void:
 		note = null
 		return
 	var ro: bool = ws.mirror_code != ""     # a mirror: read only (§6.5)
-	box.add_child(W.label("Run", 24, Color.WHITE, false))
+	box.add_child(W.label("Run", 24, Color.WHITE))
 	if ro:
 		var ml := W.label("Mirror of %s, read only" % ws.mirror_code, FONT, Color(0.55, 0.85, 1.0))
 		ml.name = "run_mirror"
@@ -81,12 +82,12 @@ func machine_shown() -> void:
 			var ob := W.button(String(o.get("title", "%s %s" % [String(o.do).capitalize(), _title(o.at)])),
 				ws.run_op.bind(o.at, o.do, o.get("trip")))
 			ob.name = "run_op_%s_%s" % [o.at, o.do] + ("_" + String(o.trip) if o.has("trip") else "")
-			row.add_child(ob)
+			row.add_child(_wrapping(ob))
 	for o in ([] if ro else c.m.ops_ui):
 		if o.has("machine"):
 			var bt := W.button(String(o.get("title", o.do.capitalize())), ws.run_command.bind(o.at, o.do))
 			bt.name = "run_%s_%s" % [o.machine, o.do]
-			row.add_child(bt)
+			row.add_child(_wrapping(bt))
 	var row2 := HFlowContainer.new()   # (it wraps in a narrow panel or a large UI: #389)
 	box.add_child(row2)
 	if ro:
@@ -128,7 +129,7 @@ func machine_shown() -> void:
 			var vl := W.label("", FONT, Color.WHITE, false)
 			r.add_child(vl)
 			sliders.append([s, o, vl])
-	box.add_child(W.label("Readings", FONT, W.DIM, false))
+	box.add_child(W.label("Readings", FONT, W.DIM))
 	for k in c.m.readouts:   # (its name and its value with the unit: the value goes under the name where it is narrow)
 		var rr := HFlowContainer.new()
 		box.add_child(rr)
@@ -152,7 +153,7 @@ func machine_shown() -> void:
 	ack.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	box.add_child(ack)
 	if not c.m.faults.is_empty() and not ro:
-		box.add_child(W.label("Faults (the trainer's)", FONT, W.DIM, false))
+		box.add_child(W.label("Faults (the trainer's)", FONT, W.DIM))
 	for f in ([] if ro else c.m.faults):
 		var b := W.button(String(f.text), ws.toggle_fault.bind(String(f.id)))
 		b.name = "fault_" + String(f.id)
@@ -204,7 +205,7 @@ func _legend(lg: Dictionary, kind: String) -> void:
 	var rows: Array = lg.table if lg.has("unit") else []   # (a legend: unit and table, ref/plant3d_bench.py)
 	if rows.size() < 2:
 		return
-	legend_box.add_child(W.label("%s, %s" % [kind.capitalize(), lg.unit], FONT, W.DIM, false))
+	legend_box.add_child(W.label("%s, %s" % [kind.capitalize(), lg.unit], FONT, W.DIM))
 	var g := Gradient.new()
 	var lo := float(rows[0][0])
 	var hi := float(rows[-1][0])
@@ -232,6 +233,19 @@ func _legend(lg: Dictionary, kind: String) -> void:
 	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ends.add_child(a)
 	ends.add_child(W.label("%s" % _num(hi), FONT, W.DIM, false))
+
+
+## A button of a row whose words are long ("Reset: exhaust temperature") wraps them at BUTTON_MAX instead of making the
+## row, and so the panel, wider than its share of the screen (#389: the bench widened on the phone at 150 %).
+const BUTTON_MAX := 200.0       # canvas px at scale 1
+
+static func _wrapping(b: Button) -> Button:
+	var fs := int(FONT * W.scale)
+	var w: float = ThemeDB.fallback_font.get_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 24.0 * W.scale
+	if w > BUTTON_MAX * W.scale:
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.custom_minimum_size.x = BUTTON_MAX * W.scale
+	return b
 
 
 static func _num(x: float) -> String:
