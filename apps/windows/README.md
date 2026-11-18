@@ -130,6 +130,8 @@ It covers:
   Confirm valve type and Confirm description, a corrected reading through Edit and Cancel;
 - About Walkdown from the setup screen, F1 and Manage (the version and commit, the licence and its full text, the
   source link, libjxl's and a font's notices and licences, a photo credit's links, Copy details, Esc);
+- the tabs and the sidebar's pages beside the drawing at 1366 × 768 and 1920 × 1080, never under it (rectangles apart,
+  each control what the hit test finds at its middle; `tests/test_tabs.nim` the tabs at 100, 125 and 150 % scaling);
 - removal and the self-wipe.
 
 ## A real (borrowed) Windows laptop

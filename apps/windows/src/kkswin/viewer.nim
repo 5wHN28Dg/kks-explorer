@@ -697,8 +697,10 @@ proc newViewer*(parent: HWND, hinst: HINSTANCE): Viewer =
     discard RegisterClassExW(addr wc)
     viewClassDone = true
   result = Viewer(z: 1, linkSel: -1)
+  # (WS_CLIPSIBLINGS: Direct2D paints the whole window; without it, a sibling over its edge, such as a tab that ran
+  # past the sidebar, was painted over and came back only when the mouse made it redraw: the user, 2026-11-18)
   result.hwnd = CreateWindowExW(0, newWideCString("KKSDrawing"), newWideCString("Drawing"),
-                                WS_CHILD or WS_VISIBLE or WS_TABSTOP, 0, 0, 10, 10, parent, nil, hinst, nil)
+                                WS_CHILD or WS_VISIBLE or WS_TABSTOP or WS_CLIPSIBLINGS, 0, 0, 10, 10, parent, nil, hinst, nil)
   result.v = viewNew(result.hwnd)
   viewers[result.hwnd] = result
   result.uia = uiaNew(result.hwnd, cast[pointer](a11yCount), cast[pointer](a11yInfo), cast[pointer](a11yInvoke),
