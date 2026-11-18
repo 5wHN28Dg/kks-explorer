@@ -172,10 +172,13 @@ class Windows(unittest.TestCase):
         cls.boss = Client('http://127.0.0.1:%d' % cls.port)
         cls.tunnel = None
         if LAPTOP:
-            cls.tunnel = subprocess.Popen(['ssh'] + SSH + ['-N', '-o', 'ExitOnForwardFailure=yes', '-R',
+            cls.tunnel = subprocess.Popen(['ssh'] + SSH + ['-N', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15',
+                                                           '-o', 'ServerAliveCountMax=3', '-R',
                                                            '%d:127.0.0.1:%d' % (cls.sport, cls.sport), 'kks@' + VM])
             time.sleep(3)
             assert cls.tunnel.poll() is None, 'the SSH reverse tunnel to the laptop did not open'
+            # (ended even when the rest of setUpClass fails: tearDownClass then never runs)
+            cls.addClassCleanup(lambda t=cls.tunnel: (t.terminate(), t.wait(5)) if t.poll() is None else None)
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
                                                    'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f: pdf = f.read()
@@ -215,9 +218,6 @@ class Windows(unittest.TestCase):
                'Remove-Item Cert:\\LocalMachine\\TrustedPeople\\$t' % os.path.basename(MSIX_CER))
         cls.server.terminate()
         cls.server.wait(5)
-        if cls.tunnel:
-            cls.tunnel.terminate()
-            cls.tunnel.wait(5)
         shutil.rmtree(cls.dir, ignore_errors=True)
 
     def wait_server(self, cond, what, tries=40):
@@ -327,7 +327,10 @@ class Windows(unittest.TestCase):
         pan = ['keys\tDrawing\t0x27,0x27,0x27,0x28,0x28', 'sleep\t700', 'keys\tDrawing\t0x25,0x25,0x26,0x26', 'sleep\t700'] * 3
         self.check('draw0.uia', ['wait\tDrawing\t10', 'sleep\t1000'] + zoom + pan + ['sleep\t1500'],
                    during=[('sleep\t1500', lambda: self.screenshot('draw-zoomed'))])
-        log = vm('Get-Content (Join-Path $env:LOCALAPPDATA "Walkdown\\timing.log") -ErrorAction SilentlyContinue')
+        # (the plain exe's data folder, or the MSIX package's: KKS_WIN_MSIX)
+        log = vm('@(Get-Content "$env:LOCALAPPDATA\\Walkdown\\timing.log", '
+                 '"$env:LOCALAPPDATA\\Packages\\Walkdown_*\\LocalCache\\Local\\Walkdown\\timing.log" '
+                 '-ErrorAction SilentlyContinue) -join "`n"')
         lines = [l.strip() for l in log.splitlines() if l.startswith('draw: ')]
         target = [l for l in lines if l.startswith('draw: render target ')]
         self.assertTrue(target, 'no render target line in timing.log:\n' + log[-2000:])
