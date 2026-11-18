@@ -1,8 +1,9 @@
 ## Pictures of the Workshop's panels (#388, #389, #390), to look at (not a test: it needs a display):
 ##   XH_SIZE=1600x900@60 tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/workshop_shots.gd \
-##       -- --out=DIR [--phone] [--scale=S] [--kinds=a,b]
+##       -- --out=DIR [--phone] [--ui-size=X] [--kinds=a,b]
 ## Each kind (default every kind the build has) opened, its first component picked, then its guided steps started
-## (where it has them): `<kind>.png` and `<kind>_steps.png`. --phone draws at the phone's UI scale (1.35, or --scale);
+## (where it has them): `<kind>.png` and `<kind>_steps.png`. --phone draws at the phone's UI scale (1.35) and its UI size
+## (150 %), --ui-size=X at that UI size (the settings' 1 to 1.5);
 ## the window is then made the Note 9's 2220 × 1080 (a 1850 × 900 canvas): run it with XH_SIZE=2220x1080@60.
 extends SceneTree
 
@@ -12,7 +13,7 @@ const SimClock = preload("res://ui/sim_clock.gd")
 
 var out := ""
 var phone := false
-var scale := ""
+var ui_size := ""
 var only: Array = []
 
 
@@ -22,8 +23,8 @@ func _init() -> void:
 			out = a.substr(6)
 		elif a == "--phone":
 			phone = true
-		elif a.begins_with("--scale="):
-			scale = a.substr(8)
+		elif a.begins_with("--ui-size="):
+			ui_size = a.substr(10)
 		elif a.begins_with("--kinds="):
 			only = Array(a.substr(8).split(",", false))
 	_run.call_deferred()
@@ -45,8 +46,10 @@ func _run() -> void:
 	RunSave.remove(Autosave.default_path)
 	var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
 	main.opts["quality"] = "lean+vis" if phone else "full"
-	if phone or scale != "":
-		main.opts["ui_scale"] = scale if scale != "" else "1.35"
+	if phone:
+		main.opts["ui_scale"] = "1.35"
+	if ui_size != "":
+		main.opts["ui_size"] = ui_size
 	if phone:
 		root.size = Vector2i(2220, 1080)   # (the Note 9's screen: a 1850 × 900 canvas)
 	root.add_child(main)

@@ -376,32 +376,11 @@ func _build_space() -> void:
 	world.add_child(cam)
 	cam.current = true
 	container.gui_input.connect(_on_view_input)
-	make_panels()
-	_apply_tier()
-
-## The panels, made again at the UI's scale as it is now (`W.scale`: a change of the UI size, #382), showing the
-## machine shown.
-func make_panels() -> void:
-	var folds := {}   # the panels folded or shown as the trainee left them
-	if panels != null:   # (queued: this may run from one of the old panels' own signals)
-		for n in ["tree_panel", "props_panel", "run_panel", "tools_panel"]:
-			folds[n] = (panels.get(n) as Control).visible
-		remove_child(panels)
-		panels.queue_free()
 	panels = Panels.new()
 	panels.name = "workshop_panels"
 	add_child(panels)
 	panels.setup(self)
-	if not is_open:
-		return
-	if machine != null and _loading == "":
-		panels.machine_shown()
-		panels.only_cb.set_pressed_no_signal(only_selected)
-		panels.refresh()
-	else:
-		panels.loading(title_of(part) if _loading != "" else "The Workshop could not load %s." % title_of(part))
-	for n in folds:
-		(panels.get(n) as Control).visible = folds[n]
+	_apply_tier()
 
 ## The plant's tier as it is now (it can change in the settings between two entries).
 func _apply_tier() -> void:

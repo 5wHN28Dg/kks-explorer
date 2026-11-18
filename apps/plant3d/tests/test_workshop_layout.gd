@@ -1,7 +1,7 @@
 ## The Workshop's panels laid out on the screens they are used on (#388, #389, #390; docs/UI-UX-POLICY.md T1, T3, R1,
 ## S1, S2, L2, K5), for every kind the build has:
-## - on a desktop (1600 × 900 canvas) and on the Note 9 (2220 × 1080 at 420 dpi: a 1850 × 900 canvas), each at the UI
-##   scale it has today and at 150 % of it (the UI size setting of #382: 1.0, 1.5, 1.35, 2.025);
+## - on a desktop (1600 × 900 canvas) and on the Note 9 (2220 × 1080 at 420 dpi: a 1850 × 900 canvas, the phone's UI
+##   scale 1.35), each at the UI size's 100 % and 150 % (the settings' UI size, #382: the canvas 1.5 times smaller);
 ## - the panels fill the screen; the top bar with Back to the plant, the parts tree, the properties, the bench and the
 ##   tools are shown, inside the screen, apart, and big enough to use (the tree three rows high or more, the side
 ##   panels at least SIDE_MIN wide, the tools a row high);
@@ -12,15 +12,16 @@
 ##   between the panels and the tools, over none of them.
 extends RefCounted
 
-const App = preload("res://tests/ui_app.gd")
 const W = preload("res://ui/widgets.gd")
+const SimClock = preload("res://ui/sim_clock.gd")
+const Autosave = preload("res://ui/autosave.gd")
+const RunSave = preload("res://ui/run_save.gd")
 
-## [name, the window's size in pixels (the canvas is 1600 × 900 stretched, expanded to its shape), the UI scale]
+## [name, the window's size in pixels (the canvas is 1600 × 900 stretched, expanded to its shape), the UI scale the
+## app starts with (the phone's on the Note 9), the UI sizes (the settings' 100 % and 150 %, applied as the app does)]
 const SCREENS := [
-	["desktop", Vector2i(1600, 900), 1.0],
-	["desktop at 150 %", Vector2i(1600, 900), 1.5],
-	["Note 9", Vector2i(2220, 1080), 1.35],
-	["Note 9 at 150 %", Vector2i(2220, 1080), 2.025],
+	["desktop", Vector2i(1600, 900), "", [1.0, 1.5]],
+	["Note 9", Vector2i(2220, 1080), "1.35", [1.0, 1.5]],
 ]
 const SIDE_MIN := 300.0          # a side panel's least width (canvas px) on these screens
 const ROWS := 4                  # the tree and the properties show at least this many rows of text
@@ -34,46 +35,48 @@ func check(ok: bool, what: String) -> void:
 		p.append(what)
 
 func run(tree: SceneTree) -> Array:
-	var main := App.start(tree)
-	if main.workshop == null:
-		main.free()
-		return ["the app did not start with its Workshop"]
-	await tree.process_frame
-	var ws = main.workshop
 	var size0: Vector2i = tree.root.size
-	var scale0: float = W.scale
-	var kinds: Array = ws.kinds()
-	check(not kinds.is_empty(), "the build has Workshop kinds")
-	var first := true
-	for kind in kinds:
-		tree.root.size = SCREENS[0][1]
-		W.scale = scale0
-		check(ws.open(kind), "%s: the Workshop opens" % kind)
-		if not await _wait_shown(tree, ws):
-			check(false, "%s: the machine did not show" % kind)
-			continue
-		if first:   # the panels the Workshop made itself (not remade): on the desktop at the scale it has
-			first = false
-			await _frames(tree, 3)
-			await _layout(tree, ws, "%s, the panels as first made (scale %.2f)" % [kind, scale0])
-			if not ws.has_method("make_panels"):
-				check(false, "the Workshop can't make its panels again at another scale (make_panels)")
-				break
-		for sc in SCREENS:
-			tree.root.size = sc[1]
-			W.scale = sc[2]
-			ws.make_panels()
-			await _frames(tree, 3)
-			var at := "%s, %s" % [kind, sc[0]]
-			await _layout(tree, ws, at)
-			await _steps(tree, ws, at)
-		ws.close()
-		await ws.left
-	tree.root.size = size0
-	W.scale = scale0
-	for i in 3:   # (not while the last close's signal is still being sent; the panels made last freed first)
+	for sc in SCREENS:
+		tree.root.size = sc[1]
+		RunSave.remove(Autosave.default_path)   # (the run the app before saved: no offer to go on with it, a modal layer)
+		var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
+		if sc[2] != "":
+			main.opts["ui_scale"] = sc[2]
+		main.opts["ui_size"] = "1"
+		tree.root.add_child(main)
+		if main.workshop == null:
+			main.free()
+			tree.root.size = size0
+			return ["the app did not start with its Workshop"]
+		if main.ui != null and main.ui.clock != null:
+			main.ui.clock.set_speed(SimClock.Speed.PAUSED)
 		await tree.process_frame
-	main.free()
+		var ws = main.workshop
+		check(not ws.is_open and ws.can_open(), "%s: the Workshop can be opened (open %s, scripted %s, map %s)" % [sc[0],
+			ws.is_open, main.player.scripted, main.map.active])
+		var kinds: Array = ws.kinds()
+		check(not kinds.is_empty(), "the build has Workshop kinds")
+		for kind in kinds:
+			check(ws.open(kind), "%s: the Workshop opens" % kind)
+			if not await _wait_shown(tree, ws):
+				check(false, "%s: the machine did not show" % kind)
+				continue
+			for size in sc[3]:
+				# the settings' UI size, applied live as the app applies it (app/main.gd set_ui_size, without saving)
+				W.apply_ui_size(tree.root, size)
+				ws.fit_resolution()
+				await _frames(tree, 3)
+				var at := "%s, %s at %d %%" % [kind, sc[0], roundi(size * 100.0)]
+				await _layout(tree, ws, at)
+				await _steps(tree, ws, at)
+			W.apply_ui_size(tree.root, 1.0)
+			ws.close()
+			await ws.left
+		for i in 3:   # (not while the last close's signal is still being sent)
+			await tree.process_frame
+		main.free()
+		await tree.process_frame
+	tree.root.size = size0
 	return p
 
 func _frames(tree: SceneTree, n: int) -> void:
