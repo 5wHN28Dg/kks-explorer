@@ -13,7 +13,6 @@ const
   TimerRefresh = 2'u
   IdmAbout = 0x1010         ## "About Walkdown…" in the window's system menu (below 0xF000, low four bits 0)
   VkF1 = 0x70
-  TabH = 44
   SideW = 380
   PanelW = 420
   StatusH = 28
@@ -40,12 +39,10 @@ proc layoutMain() =
   let side = int(px(SideW))
   let panelW = if w.selected.len > 0 or w.picking: int(px(PanelW)) else: 0
   let st = int(px(StatusH))
-  var x = 0
-  for b in w.tabButtons:
-    let bw = int(px(92))
-    MoveWindow(b, int32(x + int(px(4))), px(6), int32(bw - int(px(4))), px(32), 1)
-    x += bw
-  MoveWindow(w.side.hwnd, 0, px(TabH), int32(side), int32(H - int(px(TabH)) - st), 1)
+  # the tabs within the sidebar's width, wrapped when they don't fit (they ran 472 px into a 380 px sidebar, Manage
+  # under the drawing); the sidebar's page under them
+  let tabH = placeTabs(w.tabButtons, 0, 0, side)
+  MoveWindow(w.side.hwnd, 0, int32(tabH), int32(side), int32(max(10, H - tabH - st)), 1)
   MoveWindow(w.v.hwnd, int32(side), 0, int32(max(10, W - side - panelW)), int32(H - st), 1)
   # the tag's heading (code, Copy, Close) above the panel, which scrolls under it (the user, 2026-11-15: "Close button
   # shouldn't be hidden or move away when I scroll down"); as tall as what it holds
@@ -306,6 +303,9 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     makeFonts(hiword(int(wp)))
     let r = cast[ptr RECT](lp)
     MoveWindow(h, r.left, r.top, r.right - r.left, r.bottom - r.top, 1)
+    # (again even when the rectangle stayed the same, a maximized window's: no WM_SIZE then, and the tabs would keep
+    # the old scale's widths and font)
+    if w != nil and w.v != nil or setupP != nil: layoutMain()
     return 0
   of WM_CLOSE:
     # a window holding something unsent (the photo mark-up) is asked first: closing this one closes it too (#365)
