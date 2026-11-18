@@ -95,7 +95,7 @@ private fun DraftFlag(key: String, typed: Boolean) {
 /** the equipment panel (R3–R6): decoded code, location list, the person's fields (read-only until Edit), review */
 @Composable
 fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, List<Float>?) -> Unit, snack: SnackbarHostState,
-             modifier: Modifier = Modifier, link: Pair<String, Int>? = null) {
+             modifier: Modifier = Modifier, link: Pair<String, Int>? = null, overlayOpen: Boolean = false) {
     val scope = rememberCoroutineScope()
     val t = remember(id, rev) { Core.api("GET", "/native/tag", query = mapOf("id" to id)).json }
     val screen = LocalConfiguration.current.screenHeightDp.toFloat()
@@ -111,14 +111,17 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
     var editing by rememberSaveable(id, reset) { mutableStateOf(false) }
     val eq0 = t.optJSONObject("equipment") ?: JSONObject()
     var values by rememberSaveable(id, reset) { mutableStateOf(HashMap(FIELDS.associate { (f, _) -> f to eq0.optString(f) })) }
+    // what the form was opened on: only what the person typed counts, not a change that arrived meanwhile
+    var opened by rememberSaveable(id, reset) { mutableStateOf(HashMap(values)) }
     var note by rememberSaveable(id, reset) { mutableStateOf("") }
-    val changed = editing && (FIELDS.any { (f, _) -> (values[f] ?: "").trim() != eq0.optString(f) } || note.isNotBlank())
+    val changed = editing && (FIELDS.any { (f, _) -> (values[f] ?: "").trim() != (opened[f] ?: "").trim() } || note.isNotBlank())
     DraftFlag("form", changed)
     // Back or Close with something typed in any of the panel's forms asks first (D3); without, they close as before
     val typed = PanelDrafts.any()
     var discarding by remember(id) { mutableStateOf<(() -> Unit)?>(null) }
     val leaveForm = { then: () -> Unit -> if (typed) discarding = then else { editing = false; then() } }
-    BackHandler(enabled = editing || typed) { leaveForm {} }
+    // (not while a layer above the panel is open, the sheet list: Back closes that first, R2)
+    BackHandler(enabled = (editing || typed) && !overlayOpen) { leaveForm {} }
     discarding?.let { then ->
         Confirm("Discard your edits?", "What you typed in the panel has not been saved.", "Discard", {
             PanelDrafts.drop(); then()
@@ -197,7 +200,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                 val eq = t.optJSONObject("equipment") ?: JSONObject()
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Heading("Location and notes", Modifier.weight(1f))
-                    if (!editing) TextButton(onClick = { values = HashMap(FIELDS.associate { (f, _) -> f to eq.optString(f) }); note = ""; editing = true }) { Text("Edit") }
+                    if (!editing) TextButton(onClick = { values = HashMap(FIELDS.associate { (f, _) -> f to eq.optString(f) }); opened = HashMap(values); note = ""; editing = true }) { Text("Edit") }
                 }
                 val eqBy = t.optJSONObject("equipment_by") ?: JSONObject()
                 if (editing) HoldLinks()        // (a link would take the panel, and what was typed, away)
@@ -301,10 +304,12 @@ private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: 
 private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
     val sug = t.optJSONObject("suggestion")
-    var code by rememberSaveable(t.optString("id"), PanelDrafts.reset) { mutableStateOf(sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) }
-    var isa by rememberSaveable(t.optString("id"), PanelDrafts.reset) { mutableStateOf(sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa")) }
-    val correcting = code != (sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) ||
-        isa != (sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa"))
+    // (the reading as the form was first shown: a suggestion that arrives by sync is not something typed)
+    val shown by rememberSaveable(t.optString("id"), PanelDrafts.reset) { mutableStateOf(arrayListOf(sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code"),
+        sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa"))) }
+    var code by rememberSaveable(t.optString("id"), PanelDrafts.reset) { mutableStateOf(shown[0]) }
+    var isa by rememberSaveable(t.optString("id"), PanelDrafts.reset) { mutableStateOf(shown[1]) }
+    val correcting = code != shown[0] || isa != shown[1]
     if (correcting) HoldLinks()     // (a correction being typed)
     DraftFlag("review", correcting)
     val read = t.optJSONArray("read")

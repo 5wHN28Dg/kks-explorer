@@ -165,7 +165,7 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
             withContext(Dispatchers.IO) {
                 val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
                 if (uri == camUri) camFile.delete()
-                orientedBitmap(raw)?.also { runCatching { editFile.writeBytes(raw) } }   // (kept only once it reads)
+                orientedBitmap(raw)?.also { EditFiles.write(editFile, raw) }   // (kept only once it reads)
             }
         } finally { preparing = false }
         awaiting = false
@@ -176,7 +176,7 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
     LaunchedEffect(editing) {
         if (editing && picked == null) {
             preparing = true
-            picked = try { withContext(Dispatchers.IO) { runCatching { orientedBitmap(editFile.readBytes()) }.getOrNull() } } finally { preparing = false }
+            picked = try { withContext(Dispatchers.IO) { EditFiles.read(editFile)?.let { orientedBitmap(it) } } } finally { preparing = false }
             if (picked == null) editing = false
         }
     }
@@ -523,5 +523,18 @@ fun PhotoQueueBar() {
             for (f in PhotoQueue.failures.takeLast(5)) Text(f, style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { PhotoQueue.dismissFailures(ctx) }, Modifier.align(Alignment.End)) { Text("Dismiss") }
         }
+    }
+}
+
+/** the picture in a photo editor, kept while the editor is open so that it comes back after Android stopped the app
+ *  (#366): sealed like the photo queue (decision 0049), removed with the plant and when a day old */
+object EditFiles {
+    private fun aad(f: java.io.File) = "kks-photo-edit/${f.name}".toByteArray()
+    fun write(f: java.io.File, raw: ByteArray) { runCatching { f.writeBytes(kks.explorer.core.Keys.seal(raw, aad(f))) } }
+    fun read(f: java.io.File): ByteArray? = runCatching { kks.explorer.core.Keys.open(f.readBytes(), aad(f)) }.getOrNull()
+    fun dir(ctx: android.content.Context) = java.io.File(ctx.cacheDir, "editing")
+    fun prune(ctx: android.content.Context) {
+        val old = System.currentTimeMillis() - 24 * 3600_000L
+        dir(ctx).listFiles()?.forEach { if (it.lastModified() < old) it.delete() }
     }
 }

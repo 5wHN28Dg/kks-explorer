@@ -2515,6 +2515,8 @@ class Phone(unittest.TestCase):
         the Edit form and what was typed in it; Back with typed text asks first (Keep editing keeps it, Discard drops
         it); Back leaves Mark a missing tag and full view before anything else"""
         PKG_ACT = f'{PKG}/kks.explorer.MainActivity'
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [1000, 300, 1120, 360],
+                                                                                           'kks': '11LAB70AA502', 'isa': '', 'note': ''}})['status'], 'approved')
         self.join()
         ui.type_into('Search KKS or description', 'LAB70AA501')
         ui.tap('11LAB70AA501', exact=True)
@@ -2551,13 +2553,26 @@ class Phone(unittest.TestCase):
         ui.find('Discard your edits?', exact=True, timeout=10)
         ui.tap('Keep editing', exact=True)
         ui.find('north door typed', exact=True, timeout=10)
-        # Close asks too; Discard drops the form, the panel stays
+        # another tag from the search, with text typed: asked first; Keep editing keeps this tag and the text
+        ui.type_into('Search KKS or description', 'LAB70AA502')
+        ui.tap('11LAB70AA502', exact=True, timeout=10)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('north door typed', exact=True, timeout=10)
+        self.assertTrue(ui.present('11LAB70AA501', exact=True), 'the panel moved to the other tag')
+        ui.sh('input', 'keyevent', '4')                    # (the search's keyboard)
+                # Close asks too; Keep editing keeps the panel and the text
         ui.tap('Close', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('north door typed', exact=True, timeout=10)
+        # Back again, Discard: the form goes, the panel stays (Back closed the top layer only)
+        ui.sh('input', 'keyevent', '4')
         ui.find('Discard your edits?', exact=True, timeout=10)
         ui.tap('Discard', exact=True)
         time.sleep(1)
         self.assertFalse(ui.present('north door typed', exact=True), 'Discard kept the text')
-        self.assertNotIn('near', self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}), 'Discard sent something')
+        self.assertTrue(ui.present('Feed water piping system'), 'Discard closed the panel too')
         # Back now closes the panel (nothing typed), and the app stays
         ui.sh('input', 'keyevent', '4')
         time.sleep(1)

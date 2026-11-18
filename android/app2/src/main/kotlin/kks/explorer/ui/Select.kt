@@ -291,7 +291,7 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
             withContext(Dispatchers.IO) {
                 val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
                 if (uri == camUri) camFile.delete()
-                orientedBitmap(raw)?.also { runCatching { editFile.writeBytes(raw) } }
+                orientedBitmap(raw)?.also { EditFiles.write(editFile, raw) }
             }
         } finally { preparing = false }
         editing = picked != null
@@ -300,7 +300,7 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
     LaunchedEffect(editing) {
         if (editing && picked == null) {
             preparing = true
-            picked = try { withContext(Dispatchers.IO) { runCatching { orientedBitmap(editFile.readBytes()) }.getOrNull() } } finally { preparing = false }
+            picked = try { withContext(Dispatchers.IO) { EditFiles.read(editFile)?.let { orientedBitmap(it) } } } finally { preparing = false }
             if (picked == null) editing = false
         }
     }
