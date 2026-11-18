@@ -15,9 +15,33 @@ K.nativeCall = (method, url, body, base64) => new Promise(res => {
   if (base64 !== undefined) K.native.requestBytes(id, url, base64);
   else K.native.request(id, method, url, body === undefined ? null : JSON.stringify(body));
 });
+// ---------- errors in plain words (#371, F2 in docs/UI-UX-POLICY.md) ----------
+// The core and the server send an error's kind ("code") with their own text. Their text is shown when it is already a
+// sentence ("Wrong username or password."); a terse one ("not found", "admin only") becomes this client's sentence for
+// its kind, the same words on every client. The raw text stays on the error as `detail` (and in the console).
+K.errorWords = {
+  sign_in: 'Your sign-in has ended. Sign in again; what you typed is kept.',
+  not_allowed: "You don't have the right to do that. An admin can.",
+  not_found: "It isn't there any more: someone may have removed it. Reload to see what is there now.",
+  conflict: 'It was changed meanwhile, so this was not saved. Look at the current value and try again.',
+  too_large: 'That is too large to send.',
+  too_many: 'Too many tries. Wait a few minutes, then try again.',
+  invalid: 'That was not accepted. Check what you entered and try again.',
+  server: 'The server had a problem, so this was not done. Try again in a moment.',
+  unreachable: "Couldn't reach the server. Check the network; what you changed is kept on this device.",
+};
+K.errorCode = status => ({401: 'sign_in', 403: 'not_allowed', 404: 'not_found', 409: 'conflict', 413: 'too_large', 429: 'too_many'})[status]
+  || (status >= 400 && status < 500 ? 'invalid' : 'server');
+K.isSentence = t => typeof t === 'string' && /^[A-Z]/.test(t) && /[.!?]$/.test(t.trim());
+K.errorText = (status, d) => K.isSentence(d?.error) ? d.error : K.errorWords[d?.code] || K.errorWords[K.errorCode(status)];
+K.apiError = (status, d) => {
+  const e = new Error(K.errorText(status, d)); e.status = status; e.data = d; e.detail = d?.error || '';
+  if (e.detail && e.detail !== e.message) console.info('the server said:', status, e.detail);
+  return e;
+};
 K.nativeResult = ([status, text]) => {
   let d = null; try { d = JSON.parse(text) } catch (e) {}
-  if (status >= 400) { const e = new Error(d?.error || 'error ' + status); e.status = status; e.data = d; throw e }
+  if (status >= 400) throw K.apiError(status, d);
   return d;
 };
 
@@ -29,12 +53,13 @@ K.api = async (url, body) => {
       {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   } catch (e) {
     K.setReauth(await K.accessExpired()); K.setOnline(false);
+    e.detail = e.message; try { e.message = K.errorWords.unreachable } catch (x) {}   // (said in plain words; no status: K.isNetErr)
     throw e;  // either way the server can't be used right now: callers queue changes / use the offline copy
   }
   const cached = r.headers.get('X-KKS-From-Cache');  // set by sw.js when it answered from the saved copy
   K.setReauth(cached === 'reauth'); K.setOnline(!cached);
   let d = null; try { d = await r.json() } catch (e) {}
-  if (!r.ok) { const e = new Error(d?.error || r.statusText); e.status = r.status; e.data = d; throw e }
+  if (!r.ok) throw K.apiError(r.status, d);
   return d;
 };
 K.isNetErr = e => !e.status;  // fetch rejects without a status when the server can't be reached
@@ -330,7 +355,7 @@ K.importBundle = async file => {
   }
   const r = await fetch('/api/bundle/import', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/octet-stream'}, body: file});
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || r.statusText);
+  if (!r.ok) throw K.apiError(r.status, d);
   return d;
 };
 K.joinScreen = (cfg, note = '') => {

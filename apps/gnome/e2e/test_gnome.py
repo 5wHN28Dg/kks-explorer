@@ -240,6 +240,18 @@ class Plant(unittest.TestCase):
 class Gnome(Plant):
     """the app's screens, one test after another on one server: later tests see what earlier ones added"""
 
+    def test_join_unreachable(self):
+        """#371 (F2): joining a server that isn't there says so in plain words, with the address, not the socket's
+        error text"""
+        a = self.start_app('unreach')
+        atspi.click(atspi.find(a, 'button', name='Join through a server', timeout=30))
+        atspi.set_text(atspi.find(a, 'text', name='Server address'), '127.0.0.1:1')
+        atspi.set_text(atspi.find(a, 'text', name='Username'), 'boss')
+        atspi.set_text(atspi.find(a, 'password text', name='Password'), 'a long password')
+        atspi.click(atspi.find(a, 'button', name='Join'))
+        said = atspi.find(a, None, contains="Couldn't reach the server at 127.0.0.1:1.", timeout=30)
+        self.assertNotIn('refused', said.get_name().lower())
+
     def test_scan_camera(self):
         """decision 0039: the scan dialog reads an invite from the camera; KKS_CAMERA_FILE plays a video of a QR code
         through the same GStreamer pipeline (a QR in front of a real webcam needs a person)"""

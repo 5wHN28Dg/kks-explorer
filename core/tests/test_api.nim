@@ -40,6 +40,11 @@ suite "plant API":
   var userNode = newNode(P, newMemStore(), P.p256Generate())
   let userApi = newApi(userNode)
 
+  test "every error says its kind (#371)":
+    check errorCode(401) == "sign_in" and errorCode(403) == "not_allowed" and errorCode(404) == "not_found"
+    check errorCode(409) == "conflict" and errorCode(413) == "too_large" and errorCode(429) == "too_many"
+    check errorCode(400) == "invalid" and errorCode(422) == "invalid" and errorCode(500) == "server" and errorCode(502) == "server"
+
   test "certify a join request, the user syncs in":
     let req = P.joinRequest(userNode.key, "ali", "Ali User", newStr("Technician"), "phone", now() div 1000)
     let r = mgrApi.call(mgr, "POST", "/api/devices/import-request", newObj(@[("request", req)]))
@@ -66,7 +71,7 @@ suite "plant API":
     check r.json["status"].s == "conflict"
     let sid = r.json["id"].i
     let x = mgrApi.call(mgr, "POST", "/api/submissions/" & $sid & "/approve")
-    check x.status == 409 and x.json["error"].s == "conflict"
+    check x.status == 409 and x.json["error"].s == "conflict" and x.json["code"].s == "conflict"   # (#371: its kind)
     let y = mgrApi.call(mgr, "POST", "/api/submissions/" & $sid & "/approve", j("""{"force":true}"""))
     check y.status == 200
     check mgrApi.call(mgr, "GET", "/api/state").json["equipment"]["11LAB70AA501"]["notes"].s == "fixed"

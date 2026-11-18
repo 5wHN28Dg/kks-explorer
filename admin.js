@@ -479,7 +479,7 @@ async function startImport(F){
   toast('Uploading…');
   try{
     const r=await fetch('/api/sheets/import?'+q,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/pdf'},body:f});
-    const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||r.statusText);
+    const d=await r.json().catch(()=>({})); if(!r.ok) throw K.apiError(r.status,d);
     idTouched=false; await show('drawings');
   }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message) }
 }

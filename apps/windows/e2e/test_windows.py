@@ -231,6 +231,13 @@ class Windows(unittest.TestCase):
             im = Image.open(ppm)
             im.crop((0, 0, im.width, im.height - 48)).save(os.path.join(out, name + '.png'))   # (not the taskbar: clock, weather)
 
+    def test_join_unreachable(self):
+        """#371 (F2): joining a server that isn't there says so in plain words, with the address, not Windows' socket
+        error text"""
+        self.check('unreach.uia', ['click\tJoin through a server', 'set\tServer address\t127.0.0.1:1', 'set\tUsername\tboss',
+                                   'set\tPassword\ta long password', 'click\tJoin',
+                                   "wait\t~Couldn't reach the server at 127.0.0.1:1.\t60", 'gone\t~refused the network connection'], keep=False)
+
     def test_about(self):
         """About Walkdown (about.nim, from the compiled-in data/about.json): from the setup screen's button and F1, and
         from Manage once joined. It says the version with the commit the exe was built from and links that commit's

@@ -661,7 +661,7 @@ private fun Account(rev: Int, say: (String) -> Unit) {
                             else try {
                                 kks.explorer.core.Net.syncWith(t.substring(0, colon), t.substring(colon + 1, at).toInt(), t.substring(at + 1))
                                 Sync.remember(ctx, t.substring(0, colon), t.substring(colon + 1, at).toInt(), t.substring(at + 1)); "Synced"
-                            } catch (e: Exception) { e.message ?: "failed" }
+                            } catch (e: Exception) { Errors.unreachable(t.substring(0, colon), t.substring(colon + 1, at).toIntOrNull() ?: 0, e) }
                         }
                     }
                     say(msg)

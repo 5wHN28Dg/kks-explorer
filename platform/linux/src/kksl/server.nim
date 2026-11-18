@@ -1694,7 +1694,11 @@ proc handle(s: Server, req: Request) {.async.} =
         await s.sendJson(req, 200, O(("ok", newBool(true)), ("result", O(("sent", newInt(st.sent)),
           ("received", newInt(st.received)), ("blobs_sent", newInt(st.blobsSent)), ("blobs_received", newInt(st.blobsReceived)),
           ("denied", newBool(st.denied)), ("they_denied", newBool(st.theyDenied))))))
-      except CatchableError as e: herr(502, "sync with " & addr0 & " failed: " & e.msg)
+      except CatchableError as e:
+        # in plain words; the system's own text (a socket or TLS error) goes to the log (#371, F2)
+        try: s.n.record("error", "sync with " & addr0 & " failed: " & e.msg, nowS() * 1000)
+        except CatchableError: discard
+        herr(502, "Couldn't sync with " & addr0 & ". Check that the device is on, on this network, and that its address and port are right.")
       return
     else: discard
     if parts.len == 5 and parts[2] == "persons" and parts[4] == "account":
@@ -1843,10 +1847,10 @@ proc serve*(s: Server): Future[void] =
       try:
         await s.handle(req)
       except HttpErr as e:
-        await s.sendJson(req, e.code, O(("error", S(e.msg))))
+        await s.sendJson(req, e.code, O(("error", S(e.msg)), ("code", S(errorCode(e.code)))))
       except CatchableError as e:
         stderr.writeLine "error: " & e.msg & "\n" & e.getStackTrace()
         try: s.n.record("error", req.url.path & ": " & $e.name & ": " & e.msg & "\n" & e.getStackTrace(), nowS() * 1000)
         except CatchableError: discard
-        await s.sendJson(req, 500, O(("error", S("internal error (see the server log)"))))
+        await s.sendJson(req, 500, O(("error", S("internal error (see the server log)")), ("code", S("server"))))
   http.serve(Port(s.cfg.port), cb, s.cfg.address, assumedDescriptorsPerRequest = 5)   # stop accepting near the descriptor limit instead of crashing

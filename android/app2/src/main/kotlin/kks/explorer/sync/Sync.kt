@@ -83,13 +83,15 @@ object Sync {
         val req = Core.api("POST", "/native/join-request", JSONObject().put("username", username).put("full_name", username)).json
         val ack = try {
             Net.ask(host, port, "", JSONObject().put("t", "enroll").put("username", username).put("password", password).put("request", req))
-        } catch (e: Exception) { return "cannot reach $host:$port: ${e.message}" }
-        if (ack.optString("state") != "accepted") return ack.optString("why").ifEmpty { "the server refused" }
+        } catch (e: Exception) { return kks.explorer.ui.Errors.unreachable(host, port, e) }
+        if (ack.optString("state") != "accepted") return ack.optString("why").takeIf { kks.explorer.ui.Errors.isSentence(it) }
+            ?: "The server did not accept this phone. Check your username and password, or ask an admin."
         val server = ack.getString("server")
         try {
             Net.syncWith(host, port, server, adoptRoot = if (config().optString("root").isEmpty()) ack.getString("root") else "")
         } catch (e: Exception) {
-            return "the server certified this phone, but syncing failed: ${e.message}. Try Sync now later."
+            android.util.Log.i("KKSErrors", "join, first sync: ${e.message}")
+            return "This phone was accepted, but the first sync did not finish. Press Sync in a moment."
         }
         if (!joined()) return "synced, but this phone is not certified in what came back"
         joinedNow(ctx, host, port, server)
