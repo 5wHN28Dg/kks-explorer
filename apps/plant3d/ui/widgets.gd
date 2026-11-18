@@ -110,7 +110,8 @@ static func tap_h(h: float) -> float:
 static func button(text: String, f: Callable, min_w := 0) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(min_w * scale, 52 * scale)
+	# (on a phone as wide as tall at least: 48 dp both ways at its UI size, T1; a desktop keeps a short word's width)
+	b.custom_minimum_size = Vector2(maxf(min_w, 0.0 if scale <= 1.0 else 52.0) * scale, 52 * scale)
 	b.focus_mode = Control.FOCUS_ALL
 	b.pressed.connect(f)
 	return b

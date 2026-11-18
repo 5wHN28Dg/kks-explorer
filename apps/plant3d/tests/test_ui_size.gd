@@ -60,7 +60,7 @@ func _at(tree: SceneTree, ui_scale: String, ui_size: float) -> Array:
 	var want: Vector2 = Vector2(tree.root.size) * (1600.0 if ui_scale == "" else 1850.0) / float(tree.root.size.x) / ui_size
 	if (canvas.size - want).length() > 2.0:
 		p.append("%s: the canvas is %s, %s expected" % [at, str(canvas.size), str(want)])
-	p += _bars(main, at, canvas, ui_scale != "" and ui_size >= 1.5, ui_size)
+	p += await _bars(main, at, canvas, ui_scale != "" and ui_size >= 1.5, ui_size)
 	if ui_scale == "" and ui_size == 1.0:
 		# a desktop at 100 % as before: the bar one row at 88 px, the panels from 160 px, with Instructor on too
 		ui.set_instructor(true)
@@ -143,13 +143,28 @@ func _bars(main, at: String, canvas: Rect2, phone: bool, ui_size: float) -> Arra
 			if rects[o].intersects(r):
 				p.append("%s: the bar's %s overlaps %s" % [at, _name(b), o])
 		rects[_name(b)] = r
-		if phone and b is BaseButton and r.size.y * ui_size * DP < 47.5:
-			p.append("%s: the bar's %s is %.1f dp tall (48 the least)" % [at, _name(b), r.size.y * ui_size * DP])
+		if phone and b is BaseButton and minf(r.size.x, r.size.y) * ui_size * DP < 47.5:
+			p.append("%s: the bar's %s is %s, %.1f dp the least way (48 the least)" % [at, _name(b), str(r.size), minf(r.size.x, r.size.y) * ui_size * DP])
 	# the touch sticks keep a thumb's size on the screen (420 px of the canvas at every UI size), in their corners
 	for st in hud.sticks:
 		var r: Rect2 = (st as Control).get_global_rect()
 		if absf(r.size.x * ui_size - 420.0) > 1.0 or not canvas.grow(0.5).encloses(r):
 			p.append("%s: the %s is %s (420 px of the screen's canvas, in its corner, expected)" % [at, st.name, str(r)])
+	# flying with the touch controls: Up and Down below the bars, on screen
+	var ud: Array = hud.updown
+	var shown0: Array = ud.map(func(b): return b.visible)
+	for b in ud:
+		b.visible = true
+	hud.updown_box.reset_size()
+	await main.get_tree().process_frame
+	await main.get_tree().process_frame
+	for b in ud:
+		var r: Rect2 = (b as Control).get_global_rect()
+		if not canvas.grow(0.5).encloses(r) or r.position.y < ui.bar.get_global_rect().end.y - 0.5:
+			p.append("%s: the flying %s %s is off screen or over the bar (it ends at %.0f)" % [at, b.text, str(r),
+				ui.bar.get_global_rect().end.y])
+	for i in ud.size():
+		ud[i].visible = shown0[i]
 	var sr: Rect2 = hud.top_box.get_global_rect()
 	sr.size.y = hud.top_box.get_combined_minimum_size().y
 	for o in rects:
@@ -247,6 +262,9 @@ func _check_panel(main, pn: String, at: String, canvas: Rect2, phone: bool, ui_s
 	if pn not in ["screens", "drawings", "manual", "monitoring"] and pr.position.y < main.ui.panels_top() - 0.5:
 		p.append("%s: the %s begins at %.0f, over the bars (they end at %.0f)" % [at, pn, pr.position.y,
 			main.ui.panels_top()])
+	if pn == "screens" and pr.end.y - main.ui.mimic.canvas_top() < canvas.size.y * 0.3:
+		p.append("%s: the screens leave %.0f px of %.0f to the screen itself (30 %% the least)" % [at,
+			pr.end.y - main.ui.mimic.canvas_top(), canvas.size.y])
 	var close: Button = null
 	for t in CLOSERS:
 		close = UiApp.find_button(n, t)
@@ -277,8 +295,8 @@ func _check_panel(main, pn: String, at: String, canvas: Rect2, phone: bool, ui_s
 			var cc := c as Control
 			if not cc.is_visible_in_tree():
 				continue
-			if cc is BaseButton and cc.size.y * ui_size * DP < 47.5:
-				small.append("%s %.0f dp" % [_name(cc), cc.size.y * ui_size * DP])
+			if cc is BaseButton and minf(cc.size.x, cc.size.y) * ui_size * DP < 47.5:
+				small.append("%s %.0f dp" % [_name(cc), minf(cc.size.x, cc.size.y) * ui_size * DP])
 			if (cc is Label or cc is BaseButton) and cc.get_theme_font_size("font_size") * ui_size * DP < 12.0 - 0.05:
 				tiny.append("%s %.1f sp" % [_name(cc), cc.get_theme_font_size("font_size") * ui_size * DP])
 		if not small.is_empty():
@@ -327,7 +345,7 @@ func _setting(tree: SceneTree) -> Array:
 	if not canvas.grow(0.5).encloses(hud.panel.get_global_rect()) \
 			or not canvas.grow(0.5).encloses(hud.close_btn.get_global_rect()):
 		p.append("after choosing 150 %% the settings or their Close are off the canvas: %s" % str(hud.panel.get_global_rect()))
-	p += _bars(main, "after choosing 150 %", canvas, false, 1.5)
+	p += await _bars(main, "after choosing 150 %", canvas, false, 1.5)
 	if hud.panel.get_global_rect().position.y < main.ui.panels_top() - 0.5:
 		p.append("after choosing 150 %% the settings (from %.0f) reach over the bar (to %.0f)" % [
 			hud.panel.get_global_rect().position.y, main.ui.panels_top()])
