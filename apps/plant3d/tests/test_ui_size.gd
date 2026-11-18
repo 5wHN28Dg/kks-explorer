@@ -502,6 +502,8 @@ func _check_panel_a(main, pn: String, at: String, canvas: Rect2, phone: bool, ui
 	# in use its line, which says how the screens are worked, shows over them on the canvas
 	if pn == "screens" and main.ui.compact:
 		var hud0 = main.hud
+		var touch0 = main.cf.get_value("controls", "touch", "auto")
+		main.cf.set_value("controls", "touch", "auto")   # (an earlier test file's choice: Always keeps the bar as it is)
 		hud0.input.pad = true
 		hud0.refresh()
 		for i in 3:
@@ -509,6 +511,7 @@ func _check_panel_a(main, pn: String, at: String, canvas: Rect2, phone: bool, ui
 		if not hud0.pad_hint.is_visible_in_tree() or not canvas.grow(0.5).encloses(hud0.pad_hint.get_global_rect()):
 			p.append("%s: over the screens the gamepad's line doesn't show (%s)" % [at, str(hud0.pad_hint.get_global_rect())])
 		hud0.input.pad = false
+		main.cf.set_value("controls", "touch", touch0)
 		hud0.refresh()
 		for i in 2:
 			await main.get_tree().process_frame
