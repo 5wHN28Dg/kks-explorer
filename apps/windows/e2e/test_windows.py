@@ -228,7 +228,8 @@ class Windows(unittest.TestCase):
         subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, ppm], capture_output=True)
         if os.path.exists(ppm):
             from PIL import Image
-            Image.open(ppm).save(os.path.join(out, name + '.png'))
+            im = Image.open(ppm)
+            im.crop((0, 0, im.width, im.height - 48)).save(os.path.join(out, name + '.png'))   # (not the taskbar: clock, weather)
 
     def test_about(self):
         """About Walkdown (about.nim, from the compiled-in data/about.json): from the setup screen's button and F1, and
@@ -1189,8 +1190,9 @@ class Windows(unittest.TestCase):
                                  'click\tOpen 11LAC30AP001 on the drawing', 'value\tNumber\t001',
                                  'wait\tTag plate: from a file…\t10', 'click\tClose',
                                  'click\tUse this one', 'wait\tReject the other photo?\t10',      # #365: asked first, with the count
-                                 'click\tUse this one and reject the other', 'wait\t~Photo chosen\t20', 'gone\tUse this one',
-                                 'gone\tEquipment photo (2)', 'wait\tTag plate photo\t20'])
+                                 'sleep\t2022', 'click\tUse this one and reject the other', 'wait\t~Photo chosen\t20', 'gone\tUse this one',
+                                 'gone\tEquipment photo (2)', 'wait\tTag plate photo\t20'],
+                   during=[('sleep\t2022', lambda: self.screenshot('win-use-this-one'))])
         def decided():
             subs = omar.req('GET', '/api/submissions?status=all')['submissions']
             got = sorted((s.get('payload', {}).get('caption', ''), s['status']) for s in subs if s['kind'] == 'photo')
@@ -1504,8 +1506,9 @@ class Windows(unittest.TestCase):
         self.assertEqual(eq().get('loc'), 'from the server')
         try:
             self.check('stale9.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA885', 'click\tNot a tag',
-                                             'wait\tMark this as not a tag?\t10', 'click\tMark as not a tag', 'gone\tCheck this tag',
-                                             'gone\tNot a tag', 'click\tDrawings'])
+                                             'wait\tMark this as not a tag?\t10', 'sleep\t2023', 'click\tMark as not a tag', 'gone\tCheck this tag',
+                                             'gone\tNot a tag', 'click\tDrawings'],
+                       during=[('sleep\t2023', lambda: self.screenshot('win-not-a-tag'))])
         finally:
             # the confirmed mark goes again: test_systems_follows_sync counts the codes on the drawings
             r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': ids[0].split(':', 1)[1]}})
