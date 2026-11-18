@@ -316,6 +316,10 @@ static int apart(DWORD &pid, IUIAutomationElement *drawing, const std::string &o
     UIA_HWND dh = 0; drawing->get_CurrentNativeWindowHandle(&dh);
     HWND root = dh ? GetAncestor((HWND)dh, GA_ROOT) : nullptr;
     if (!root) { say("ERROR: the drawing has no window"); return 1; }
+    // the window in front first, as a person sees it (the script's console window starts in front of it); then the
+    // hit test is about the window's own children
+    if (GetForegroundWindow() != root) { SetForegroundWindow(root); Sleep(500); }
+    if (GetForegroundWindow() != root) say("  (the window could not come to the front: a hit test may find what covers it)");
     RECT cr; GetClientRect(root, &cr);
     POINT c0{cr.left, cr.top}, c1{cr.right, cr.bottom}; ClientToScreen(root, &c0); ClientToScreen(root, &c1);
     MONITORINFO mi = {sizeof mi}; GetMonitorInfoW(MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST), &mi);
