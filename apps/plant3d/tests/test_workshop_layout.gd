@@ -254,11 +254,14 @@ func _touch_drag(tree: SceneTree, ws, at: String, kind: String) -> void:
 		await _frames(tree, 2)
 		for c in pn.tools_scroll.find_children("*", "Button", true, false):
 			var r: Rect2 = (c as Button).get_global_rect().intersection(pn.tools_scroll.get_global_rect())
-			if (c as Button).is_visible_in_tree() and not (c as Button).disabled and r.size.y >= 8.0:
+			if (c as Button).is_visible_in_tree() and not (c as Button).disabled \
+					and pn.tools_scroll.get_global_rect().encloses((c as Button).get_global_rect()):
 				hb = c
 				break
 	if hb != null:      # (at 200 % the first row may be the slider's alone: the bench's drag below stands for it)
 		await _drag_on(tree, pn.tools_scroll, hb, at + ", the tools")
+		ws.show_all()          # (the tap hid the part picked: shown again for the checks after)
+		pn.refresh()
 	if kind == "gas_turbine":
 		pn.show_run(true)
 		await _frames(tree, 3)
@@ -317,10 +320,14 @@ func _drag_on(tree: SceneTree, sc: ScrollContainer, b: Button, at: String) -> vo
 	await _frames(tree, 3)
 	check(sc.scroll_vertical > 20, "%s: a finger's drag up from %s scrolls (%d px)" % [at, b.name, sc.scroll_vertical])
 	check(presses[0] == 0, "%s: a finger's drag from %s pressed it" % [at, b.name])
-	# and a tap on it still presses it
+	# and a tap on it still presses it (scrolled whole into view first)
 	sc.scroll_vertical = 0
+	await _frames(tree, 2)     # (the children placed at that scroll before it measures where the button is)
+	sc.ensure_control_visible(b)
 	await _frames(tree, 2)
-	if b.is_visible_in_tree() and sc.get_global_rect().encloses(b.get_global_rect()):
+	if not (b.is_visible_in_tree() and sc.get_global_rect().grow(0.5).encloses(b.get_global_rect())):
+		check(false, "%s: %s isn't whole in its scroll: the tap isn't tested (%s in %s)" % [at, b.name, b.get_global_rect(), sc.get_global_rect()])
+	else:
 		var c: Vector2 = xf * b.get_global_rect().get_center()
 		t = InputEventScreenTouch.new()
 		t.index = 0
@@ -336,6 +343,7 @@ func _drag_on(tree: SceneTree, sc: ScrollContainer, b: Button, at: String) -> vo
 		check(presses[0] == 1, "%s: a tap on %s pressed it %d times" % [at, b.name, presses[0]])
 	b.pressed.disconnect(count)
 	sc.scroll_vertical = 0
+	await _frames(tree, 2)
 
 ## The lines of text the tree and the properties keep at the UI size now: ROWS up to 150 % (UI-UX-POLICY S2's
 ## range), one less above it (a phone at 200 %: 450 px high, its top bar and a row of tools).

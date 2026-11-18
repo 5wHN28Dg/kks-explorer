@@ -162,7 +162,7 @@ func setup(w) -> void:
 	ps.name = "props_scroll"
 	ps.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	props_panel.add_child(ps)
-	TouchScroll.attach(ps)
+	TouchScroll.attach(ps, func(): return ws._reader_on())
 	var pv := VBoxContainer.new()
 	pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ps.add_child(pv)
@@ -194,7 +194,7 @@ func setup(w) -> void:
 	tools_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	tools_scroll.follow_focus = true   # (the D-pad's focus brings its row into view)
 	tools_panel.add_child(tools_scroll)
-	TouchScroll.attach(tools_scroll)   # (a finger's drag that begins on a tool scrolls the tools: they fill the panel)
+	TouchScroll.attach(tools_scroll, func(): return ws._reader_on())   # (a finger's drag that begins on a tool scrolls the tools: they fill the panel)
 	tools_box = VBoxContainer.new()
 	tools_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tools_scroll.add_child(tools_box)

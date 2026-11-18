@@ -33,7 +33,7 @@ func setup(w) -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true      # (the D-pad's focus brings a fault's button into view)
 	add_child(scroll)
-	TouchScroll.attach(scroll)      # (a finger's drag that begins on a button scrolls the bench: its buttons fill it)
+	TouchScroll.attach(scroll, func(): return ws._reader_on())      # (a finger's drag that begins on a button scrolls the bench: its buttons fill it)
 	box = VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(box)

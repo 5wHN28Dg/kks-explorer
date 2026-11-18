@@ -13,12 +13,15 @@ var _index := -1                # the finger dragging (-1: none)
 var _from := Vector2.ZERO       # where it touched down
 var _scroll0 := Vector2.ZERO    # the scroll then
 var _dragging := false
+var _button: BaseButton         # the button the touch began on
+var blocked := Callable()       # true while something drawn over the panel takes the touches (the manual's reader)
 
 
-static func attach(s: ScrollContainer) -> Node:
+static func attach(s: ScrollContainer, over := Callable()) -> Node:
 	var n = load("res://ui/touch_scroll.gd").new()
 	n.name = "touch_scroll"
 	n.sc = s
+	n.blocked = over
 	s.add_child(n, false, Node.INTERNAL_MODE_BACK)
 	return n
 
@@ -30,21 +33,25 @@ func _input(e: InputEvent) -> void:
 	if e is InputEventScreenTouch:
 		var t := e as InputEventScreenTouch
 		if t.pressed and _index < 0:
-			if _button_at(t.position) != null:
+			if blocked.is_valid() and blocked.call():
+				return
+			_button = _button_at(t.position)
+			if _button != null:
 				_index = t.index
 				_from = t.position
-				_scroll0 = Vector2(sc.scroll_horizontal, sc.scroll_vertical)
 				_dragging = false
 		elif not t.pressed and t.index == _index:
-			_index = -1
-			if _dragging:
-				_dragging = false
-				get_viewport().set_input_as_handled()   # (the lift ends the drag: it presses nothing)
+			_index = -1                # (the button forgot its press when the drag began: the lift presses nothing)
+			_dragging = false
 	elif e is InputEventScreenDrag and (e as InputEventScreenDrag).index == _index:
 		var d: Vector2 = (e as InputEventScreenDrag).position - _from
 		if not _dragging and d.length() > DEADZONE:
 			_dragging = true
-			_cancel_presses()
+			_cancel_press()
+			# (from here: the panel may have scrolled the touched button into view since the touch)
+			_from = (e as InputEventScreenDrag).position
+			_scroll0 = Vector2(sc.scroll_horizontal, sc.scroll_vertical)
+			d = Vector2.ZERO
 		if _dragging:
 			if sc.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
 				sc.scroll_vertical = int(roundf(_scroll0.y - d.y))
@@ -64,16 +71,14 @@ func _button_at(p: Vector2) -> BaseButton:
 			continue
 		if cc is Range and not cc is ScrollBar:
 			return null
-		if cc is BaseButton and not (cc as BaseButton).disabled:
+		if cc is BaseButton:       # (a disabled one too: it stops the touch from reaching the scroll as well)
 			found = cc
 	return found
 
 
-## The press the touch began on a button is let go without pressing it: a button pressed while disabled forgets the
-## press (Godot's BaseButton), and it is enabled again at once.
-func _cancel_presses() -> void:
-	for c in sc.find_children("*", "BaseButton", true, false):
-		var b := c as BaseButton
-		if not b.disabled and b.is_visible_in_tree() and b.get_global_rect().has_point(_from):
-			b.disabled = true
-			b.disabled = false
+## The press the touch began on its button is let go without pressing it: a button disabled forgets the press (Godot's
+## BaseButton; a toggle keeps its state), and it is enabled again at once.
+func _cancel_press() -> void:
+	if is_instance_valid(_button) and not _button.disabled:
+		_button.disabled = true
+		_button.disabled = false
