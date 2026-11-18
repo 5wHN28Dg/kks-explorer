@@ -102,6 +102,16 @@ class SheetView(ctx: Context) : View(ctx) {
     private val pending = HashSet<String>()
     private val tile = 512
 
+    /** where the view is, to come back to after the screen was rebuilt (turned, the app stopped in the background:
+     *  #366): the sheet, its point at the view's centre and the zoom. Null before a sheet is shown. */
+    fun place(): Pair<String, FloatArray>? = when {
+        !fitted -> restore?.let { sheetId to it }          // (not laid out again yet: the place it is to go back to)
+        width < 2 -> null
+        else -> sheetId to floatArrayOf(ox + width / 2f / z, oy + height / 2f / z, z)
+    }
+    /** the place to show instead of the whole sheet, the first time this sheet is laid out */
+    var restore: FloatArray? = null
+
     fun setSheet(id: String, scale: Float, nLevels: Int) {
         gen++; sheetId = id; scale0 = scale; fitted = false
         supersedeLevels()
@@ -172,6 +182,13 @@ class SheetView(ctx: Context) : View(ctx) {
     fun fit() {
         val (w, h) = sheetSize()
         if (width < 2 || height < 2 || w <= 1f) return
+        restore?.let { p ->       // (the zoom kept within what pinching allows on this screen)
+            restore = null
+            z = p[2].coerceIn(min(width / w, height / h) * 0.25f, 16f * max(1f, scale0))
+            ox = p[0] - width / 2f / z; oy = p[1] - height / 2f / z
+            fitted = true; invalidate(); a11y.invalidateRoot()
+            return
+        }
         z = min(width / w, height / h) * 0.98f
         ox = -(width / z - w) / 2; oy = -(height / z - h) / 2
         fitted = true; invalidate(); a11y.invalidateRoot()
@@ -179,6 +196,7 @@ class SheetView(ctx: Context) : View(ctx) {
 
     /** zoom to a tag; cy = where its centre lands, as a fraction of the height (above the panel when one is open) */
     fun centerOn(x0: Float, y0: Float, x1: Float, y1: Float, cy: Float = 0.5f) {
+        restore = null
         val maxZ = 16f * max(1f, scale0)
         z = min(maxZ, max(z, min(width / max(1f, (x1 - x0) * 5), height / max(1f, (y1 - y0) * 8))))
         ox = (x0 + x1) / 2 - width / z / 2; oy = (y0 + y1) / 2 - height * cy / z

@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.onFocusEvent
@@ -88,7 +90,21 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
     val low = maxOf(104f, 44f + headDp); val high = maxOf(screen * 0.85f, low); val usual = maxOf(screen * 0.45f, low)
     var height by remember { mutableFloatStateOf(if (PanelSize.dp > 0) PanelSize.dp else usual) }
     val dens = androidx.compose.ui.platform.LocalDensity.current.density
-    var editing by remember(id) { mutableStateOf(false) }
+    // the Edit form and what is typed in it come back after the phone is turned or the app was stopped (#366)
+    var editing by rememberSaveable(id) { mutableStateOf(false) }
+    val eq0 = t.optJSONObject("equipment") ?: JSONObject()
+    var values by rememberSaveable(id) { mutableStateOf(HashMap(FIELDS.associate { (f, _) -> f to eq0.optString(f) })) }
+    var note by rememberSaveable(id) { mutableStateOf("") }
+    val changed = editing && (FIELDS.any { (f, _) -> (values[f] ?: "").trim() != eq0.optString(f) } || note.isNotBlank())
+    // Back or Close with something typed asks first (D3); without, they close as before
+    var discarding by remember(id) { mutableStateOf<(() -> Unit)?>(null) }
+    val leaveForm = { then: () -> Unit -> if (changed) discarding = then else { editing = false; then() } }
+    BackHandler(enabled = editing) { leaveForm {} }
+    discarding?.let { then ->
+        Confirm("Discard your edits?", "What you typed in the panel has not been saved.", "Discard", {
+            editing = false; values = HashMap(FIELDS.associate { (f, _) -> f to eq0.optString(f) }); note = ""; then()
+        }, { discarding = null }, no = "Keep editing")
+    }
     // The keyboard (UI/UX audit of #363, R3): while the panel is open the window is not panned up under the status bar
     // (the system's default, which put the heading, Copy and Close under it in landscape); the panel rises above the
     // keyboard and shrinks to what is left (imePadding before height: the height is held within it), the grip giving
@@ -121,7 +137,8 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
         // the heading stays above what scrolls (the user, 2026-11-15: "Close button shouldn't be hidden or move away
         // when I scroll down"): the code (selectable), Copy, Close
         PanelHeading(t.optString("code"), (if (t.optString("isa").isNotEmpty()) t.optString("isa") + " · " else "") + t.optString("kind"),
-            onClose, snack, Modifier.onSizeChanged { if (!keyboard) headDp = it.height / dens }, compact = keyboard)
+            { leaveForm(onClose) }, snack, Modifier.onSizeChanged { if (!keyboard) headDp = it.height / dens }, compact = keyboard)
+        // (rememberScrollState is saved: the panel opens again where it was scrolled to)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = if (keyboard) 0.dp else 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (t.optString("status") == "review") ReviewSection(t, snack)
             t.optJSONObject("decoded")?.let { d ->
@@ -161,7 +178,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                 val eq = t.optJSONObject("equipment") ?: JSONObject()
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Heading("Location and notes", Modifier.weight(1f))
-                    if (!editing) TextButton(onClick = { editing = true }) { Text("Edit") }
+                    if (!editing) TextButton(onClick = { values = HashMap(FIELDS.associate { (f, _) -> f to eq.optString(f) }); note = ""; editing = true }) { Text("Edit") }
                 }
                 val eqBy = t.optJSONObject("equipment_by") ?: JSONObject()
                 if (editing) HoldLinks()        // (a link would take the panel, and what was typed, away)
@@ -174,9 +191,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                         Field(c.str("k"), c.str("v"), by = credit(eqBy.optJSONObject("custom:" + c.str("k"))))
                     })
                 } else {
-                    val values = remember(id) { mutableStateMapOf<String, String>().apply { FIELDS.forEach { (f, _) -> put(f, eq.optString(f)) } } }
-                    var note by remember(id) { mutableStateOf("") }
-                    for ((f, title) in FIELDS) OutlinedTextField(values[f] ?: "", { values[f] = it }, label = { Text(title) }, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
+                    for ((f, title) in FIELDS) OutlinedTextField(values[f] ?: "", { values = HashMap(values).apply { put(f, it) } }, label = { Text(title) }, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
                     OutlinedTextField(note, { note = it }, label = { Text("Note for the approver (optional)") }, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
@@ -190,7 +205,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                             scope.launch { snack.showSnackbar(m) }
                             if (ok) editing = false
                         }) { Text("Save") }
-                        OutlinedButton(onClick = { editing = false }) { Text("Cancel") }
+                        OutlinedButton(onClick = { leaveForm {} }) { Text("Cancel") }
                     }
                 }
                 val where = t.optJSONArray("appears_on") ?: JSONArray()
@@ -267,8 +282,8 @@ private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: 
 private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
     val sug = t.optJSONObject("suggestion")
-    var code by remember(t.optString("id")) { mutableStateOf(sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) }
-    var isa by remember(t.optString("id")) { mutableStateOf(sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa")) }
+    var code by rememberSaveable(t.optString("id")) { mutableStateOf(sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) }
+    var isa by rememberSaveable(t.optString("id")) { mutableStateOf(sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa")) }
     if (code != (sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) ||
         isa != (sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa"))) HoldLinks()     // (a correction being typed)
     val read = t.optJSONArray("read")
@@ -313,8 +328,8 @@ fun credit(w: JSONObject?): String {
 @Composable
 private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
-    var editing by remember(code) { mutableStateOf(false) }
-    var text by remember(code, d.str("text")) { mutableStateOf(d.str("text")) }
+    var editing by rememberSaveable(code) { mutableStateOf(false) }
+    var text by rememberSaveable(code, d.str("text")) { mutableStateOf(d.str("text")) }
     val draft = d.str("status") == "draft"
     Heading("Description")
     Surface(color = if (draft) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,

@@ -2456,6 +2456,72 @@ class Phone(unittest.TestCase):
         self.wait_server(linked, 'Undo did not link it again')
         ui.find(f'Unlink {code} from step 1', exact=True, timeout=20)
 
+    def test_saved_place(self):
+        """#366 (G2, D3, R2): turning the phone and Android stopping the app in the background bring back the open tag,
+        the Edit form and what was typed in it; Back with typed text asks first (Keep editing keeps it, Discard drops
+        it); Back leaves Mark a missing tag and full view before anything else"""
+        PKG_ACT = f'{PKG}/kks.explorer.MainActivity'
+        self.join()
+        ui.type_into('Search KKS or description', 'LAB70AA501')
+        ui.tap('11LAB70AA501', exact=True)
+        ui.find('Feed water piping system', timeout=10)
+        ui.scroll_to('Edit', exact=True)
+        ui.tap('Edit', exact=True)
+        ui.type_into('Near / landmark', 'north door typed')
+        # turned on its side and back: the form and the text are still there
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
+        auto = ui.sh('settings', 'get', 'system', 'accelerometer_rotation').strip()
+        if auto in ('0', '1'):
+            self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', auto)
+        ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
+        ui.sh('settings', 'put', 'system', 'user_rotation', '1')
+        time.sleep(3)
+        ui.find('north door typed', exact=True, timeout=10)
+        ui.sh('settings', 'put', 'system', 'user_rotation', '0')
+        time.sleep(3)
+        ui.find('north door typed', exact=True, timeout=10)
+        # stopped by Android in the background (am kill: what the system does to a cached app), then opened again
+        pid = ui.sh('pidof', PKG).strip()
+        ui.sh('input', 'keyevent', '3')                       # Home
+        time.sleep(2)
+        ui.sh('am', 'kill', PKG)
+        for _ in range(20):
+            if ui.sh('pidof', PKG).strip() != pid: break
+            time.sleep(0.5)
+        self.assertNotEqual(ui.sh('pidof', PKG).strip(), pid, 'am kill did not stop the app')
+        ui.sh('am', 'start', '-n', PKG_ACT)
+        ui.find('north door typed', exact=True, timeout=30)   # the tag's panel, its Edit form and the typed text
+        self.assertTrue(ui.present('11LAB70AA501', exact=True), 'not the same tag')
+        # Back with typed text asks; Keep editing keeps it
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('north door typed', exact=True, timeout=10)
+        # Close asks too; Discard drops the form, the panel stays
+        ui.tap('Close', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        time.sleep(1)
+        self.assertFalse(ui.present('north door typed', exact=True), 'Discard kept the text')
+        self.assertNotIn('near', self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}), 'Discard sent something')
+        # Back now closes the panel (nothing typed), and the app stays
+        ui.sh('input', 'keyevent', '4')
+        time.sleep(1)
+        self.assertFalse(ui.present('Feed water piping system'), 'Back did not close the panel')
+        # full view: Back leaves it first, the app stays
+        ui.tap('Full screen: the drawing only', exact=True)
+        ui.find('Show the header and search', exact=True, timeout=10)
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Full screen: the drawing only', exact=True, timeout=10)
+        # Mark a missing tag: Back ends the mode, the app stays
+        ui.tap('More', exact=True)
+        ui.tap('Mark a missing tag', exact=True)
+        ui.find('Drag a box around the tag the app missed (two fingers move the drawing)', timeout=10)
+        ui.sh('input', 'keyevent', '4')
+        time.sleep(1)
+        self.assertFalse(ui.present('Drag a box around the tag the app missed (two fingers move the drawing)'), 'Back did not end marking')
+        self.assertTrue(ui.present('Search equipment by KKS code or description'), 'Back left the app')
+
     def test_member_pages(self):
         """requests 6, 9 and 10 as a member: the leaderboard; Updates on Manage's top level (not in Account); My
         proposals filtered by status and grouped by code"""
@@ -2506,7 +2572,7 @@ class Phone(unittest.TestCase):
 # 2026-11-18: part 3 ended at 7.90 GiB on one run (6.82 on another: the emulator's memory after booting differs by
 # ~0.8 GiB) while part 2 ended at 5.79, so test_description_and_credit and test_app_links went to part 2.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
-          'panel_keyboard', 'photo_size'),
+          'panel_keyboard', 'photo_size', 'saved_place'),
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links',
           'destructive'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',

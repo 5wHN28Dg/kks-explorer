@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,7 +29,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SetupScreen(onJoined: () -> Unit) {
     val ctx = LocalContext.current
-    var page by remember { mutableStateOf("") }
+    // (saved, with what is typed in the forms: turning the phone or the camera app in front keeps them, #366)
+    var page by rememberSaveable { mutableStateOf("") }
     BackHandler(enabled = page.isNotEmpty()) { page = "" }
     // (About scrolls by itself, so it stands outside the scrolling column)
     val aboutPage = remember(page) { mutableStateOf<Pair<String, String>?>(null) }
@@ -72,9 +74,9 @@ fun SetupScreen(onJoined: () -> Unit) {
 private fun ServerJoin(onJoined: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var url by remember { mutableStateOf("") }
-    var user by remember { mutableStateOf("") }
-    var pw by remember { mutableStateOf("") }
+    var url by rememberSaveable { mutableStateOf("") }
+    var user by rememberSaveable { mutableStateOf("") }
+    var pw by remember { mutableStateOf("") }          // (never in the saved state: Android may write it to storage)
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
     Text("Join through the plant's server", style = MaterialTheme.typography.titleMedium)
@@ -138,6 +140,11 @@ class Names {
     val user get() = username.value.trim().lowercase()
     val full get() = fullName.value.trim()
     val pos get() = position.value.trim()
+    companion object {
+        val Saver = androidx.compose.runtime.saveable.listSaver<Names, String>(
+            save = { listOf(it.username.value, it.fullName.value, it.position.value) },
+            restore = { l -> Names().apply { username.value = l[0]; fullName.value = l[1]; position.value = l[2] } })
+    }
 }
 
 const val NAMES_MISSING = "Fill in a username (2+ characters), your full name and your position (job title)."
@@ -153,8 +160,8 @@ private fun NameFields(n: Names) {
 @Composable
 private fun CodeJoin(onJoined: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf("") }
-    val names = remember { Names() }
+    var text by rememberSaveable { mutableStateOf("") }
+    val names = rememberSaveable(saver = Names.Saver) { Names() }
     var join by remember { mutableStateOf<Sync.Join?>(null) }
     var msg by remember { mutableStateOf("") }
     val scan = rememberLauncherForActivityResult(ScanQr.Contract()) { r -> if (r != null) text = r }
@@ -182,7 +189,7 @@ private fun CodeJoin(onJoined: () -> Unit) {
 @Composable
 private fun NearbyJoin(onJoined: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val names = remember { Names() }
+    val names = rememberSaveable(saver = Names.Saver) { Names() }
     var found by remember { mutableStateOf(listOf<Discovery.Found>()) }
     var join by remember { mutableStateOf<Sync.Join?>(null) }
     var msg by remember { mutableStateOf("") }
@@ -217,7 +224,7 @@ private fun FileJoin(onJoined: () -> Unit) {
             if (err.isEmpty()) onJoined() else msg = err
         }
     }
-    val names = remember { Names() }
+    val names = rememberSaveable(saver = Names.Saver) { Names() }
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {

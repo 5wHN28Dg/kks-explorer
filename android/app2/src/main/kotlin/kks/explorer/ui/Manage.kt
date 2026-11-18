@@ -560,10 +560,11 @@ private fun InviteDialog(say: (String) -> Unit, onClose: () -> Unit) {
         val res = call("POST", "/api/invites/$token", JSONObject().put("action", action).put("existing_ok", true))
         decided = res.error ?: if (action == "accept") "Accepted: the device syncs now." else "Refused."
     }
+    // (a tap beside it does nothing: it ended the invite, maybe while the new phone was scanning it; Back and Close still do)
     AlertDialog(onDismissRequest = {
         if (state?.str("state") !in setOf("accepted", "refused")) call("POST", "/api/invites/$token", JSONObject().put("action", "cancel"))
         onClose()
-    }, title = { Text("Add a device") }, text = {
+    }, properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false), title = { Text("Add a device") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (qr != null) Image(qr.asImageBitmap(), "QR code of the invite", Modifier.fillMaxWidth().aspectRatio(1f), filterQuality = FilterQuality.None)
             Dim("Scan this with the new phone, or copy the text to the new computer (Join with a code). Valid for 15 minutes, for one device.")

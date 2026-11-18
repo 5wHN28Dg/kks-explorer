@@ -132,12 +132,16 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var picked by remember { mutableStateOf<Bitmap?>(null) }
+    // the picture in the editor, as read, kept in a file while it is there: Android may stop the app in the background
+    // (the camera app in front of it is the usual case), and the photo then comes back to its editor (#366)
+    val editFile = remember(kks) { File(ctx.cacheDir, "editing/" + kks.filter { it.isLetterOrDigit() } + ".img").also { it.parentFile?.mkdirs() } }
+    var editing by rememberSaveable(kks) { mutableStateOf(false) }
     // from the camera or gallery opening until the photo is in its editor: a link waits (it could change the panel,
     // and the photo would come back to nothing)
-    var awaiting by remember { mutableStateOf(false) }
+    var awaiting by rememberSaveable(kks) { mutableStateOf(false) }
     if (awaiting) HoldLinks()
-    var fromCamera by remember { mutableStateOf(true) }       // for Retake: the camera again, or the gallery
-    var plate by remember { mutableStateOf(false) }           // this picture is of the equipment's tag plate
+    var fromCamera by rememberSaveable(kks) { mutableStateOf(true) }       // for Retake: the camera again, or the gallery
+    var plate by rememberSaveable(kks) { mutableStateOf(false) }           // this picture is of the equipment's tag plate
     var askPlate by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf("") }
     // the floor comes first when the code has none (the user, 2026-10-08): asked before the camera opens, sent with the
@@ -161,12 +165,23 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
             withContext(Dispatchers.IO) {
                 val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
                 if (uri == camUri) camFile.delete()
+                runCatching { editFile.writeBytes(raw) }
                 orientedBitmap(raw)
             }
         } finally { preparing = false }
         awaiting = false
+        editing = picked != null
         if (picked == null) snack.showSnackbar("Could not read that picture")
     }
+    // back after the app was stopped with a photo in the editor: read it again
+    LaunchedEffect(editing) {
+        if (editing && picked == null) {
+            preparing = true
+            picked = try { withContext(Dispatchers.IO) { runCatching { orientedBitmap(editFile.readBytes()) }.getOrNull() } } finally { preparing = false }
+            if (picked == null) editing = false
+        }
+    }
+    fun closeEditor() { picked = null; editing = false; scope.launch(Dispatchers.IO) { editFile.delete() } }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u: Uri? -> if (u != null) load(u) else awaiting = false }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) load(camUri) else awaiting = false }
     // the CAMERA permission is declared (QR scanning), so the camera app may only be asked once it is granted
@@ -218,9 +233,9 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         LinearProgressIndicator(Modifier.fillMaxWidth())
     }
     picked?.let { bmp ->
-        Annotate(bmp, plate, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { picked = null },
-            onRetake = { picked = null; if (fromCamera) shoot(plate) else { awaiting = true; gallery.launch("image/*") } }) { out, caption0, note ->
-            picked = null
+        Annotate(bmp, plate, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { closeEditor() },
+            onRetake = { closeEditor(); if (fromCamera) shoot(plate) else { awaiting = true; gallery.launch("image/*") } }) { out, caption0, note ->
+            closeEditor()
             val caption = if (plate) plateCaption(caption0) else caption0
             // the queue encodes and sends it in the background, in order, whether or not this panel stays open
             PhotoQueue.add(ctx, out, kks, caption, note, sendFloor)
@@ -295,6 +310,11 @@ fun isPlate(caption: String) = caption.startsWith(PLATE)
 private fun plateCaption(extra: String) = if (extra.isBlank()) PLATE else "$PLATE · ${extra.trim()}"
 
 private data class Mark(val kind: String, val color: Int, val a: Offset, val b: Offset, val size: Float = 1f)   // size: × the base line width
+/** the marks as text for the saved state ("arrow,-1,1.0,2.0,3.0,4.0,1.0" each) */
+private val MarksSaver = androidx.compose.runtime.saveable.listSaver<androidx.compose.runtime.snapshots.SnapshotStateList<Mark>, String>(
+    save = { l -> l.map { m -> listOf(m.kind, m.color, m.a.x, m.a.y, m.b.x, m.b.y, m.size).joinToString(",") } },
+    restore = { l -> mutableStateListOf<Mark>().apply { for (t in l) t.split(",").let { f ->
+        if (f.size == 7) add(Mark(f[0], f[1].toInt(), Offset(f[2].toFloat(), f[3].toFloat()), Offset(f[4].toFloat(), f[5].toFloat()), f[6].toFloat())) } } })
 private val COLORS = listOf(0xFFE53935.toInt(), 0xFFFDD835.toInt(), 0xFF1E88E5.toInt(), 0xFFFFFFFF.toInt())
 
 /** the annotation editor (v1 K.annotate, GNOME annotate): arrow / box / circle in 4 colours, 3 line sizes, undo,
@@ -308,14 +328,15 @@ private val COLORS = listOf(0xFFE53935.toInt(), 0xFFFDD835.toInt(), 0xFF1E88E5.t
 internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () -> Unit, onRetake: () -> Unit,
                      onDone: (Bitmap, String, String) -> Unit) {
     HoldLinks()           // (a link would take the photo being marked up away with the panel)
-    val marks = remember { mutableStateListOf<Mark>() }
+    // what was drawn and typed comes back after the phone is turned or the app was stopped (#366)
+    val marks = rememberSaveable(saver = MarksSaver) { mutableStateListOf<Mark>() }
     var kind by remember { mutableStateOf("arrow") }
     var color by remember { mutableIntStateOf(COLORS[0]) }
     var lineSize by remember { mutableFloatStateOf(1f) }
     var drawing by remember { mutableStateOf<Mark?>(null) }
     var finger by remember { mutableStateOf<Offset?>(null) }       // where a finger draws (view px): the loupe
-    var caption by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
+    var caption by rememberSaveable { mutableStateOf("") }
+    var note by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     val burnScope = rememberCoroutineScope()
     var box by remember { mutableStateOf(IntSize.Zero) }

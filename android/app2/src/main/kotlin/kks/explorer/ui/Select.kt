@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -125,7 +126,7 @@ fun SelectBar(n: Int, modifier: Modifier, onList: () -> Unit, onPhoto: () -> Uni
 @Composable
 fun SelectList(selected: List<String>, places: Map<String, List<Drawn>>?, onUntick: (String) -> Unit,
                onAdd: (List<String>) -> List<String>, onClose: () -> Unit) {
-    var typed by remember { mutableStateOf("") }
+    var typed by rememberSaveable { mutableStateOf("") }
     var said by remember { mutableStateOf("") }
     AlertDialog(onDismissRequest = onClose, title = { Text("Selected tags") }, text = {
         // scrolls as a whole: with the keyboard up on a small phone the field and Add must still be reachable
@@ -173,8 +174,9 @@ private val PLACE = FIELDS.filter { it.first != "notes" }
 @Composable
 fun PlaceForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
     HoldLinks()           // (a link waits: it would close this with what is typed or picked)
-    val values = remember { mutableStateMapOf<String, String>() }
-    var note by remember { mutableStateOf("") }
+    // (saved: turning the phone or the app stopped in the background keeps what is typed, #366)
+    var values by rememberSaveable { mutableStateOf(HashMap<String, String>()) }
+    var note by rememberSaveable { mutableStateOf("") }
     // the values shown (the bases): Send waits for them, or every code with a value would be sent as a clash
     var current by remember { mutableStateOf<Map<String, JSONObject>?>(null) }
     var sending by remember { mutableStateOf(false) }
@@ -185,7 +187,7 @@ fun PlaceForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Un
     AlertDialog(onDismissRequest = onClose, title = { Text("Place for ${codes.size} code" + if (codes.size == 1) "" else "s") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Dim("Only the fields you fill are sent; the others stay as they are.")
-            for ((f, title) in PLACE) OutlinedTextField(values[f] ?: "", { values[f] = it }, label = { Text(title) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            for ((f, title) in PLACE) OutlinedTextField(values[f] ?: "", { values = HashMap(values).apply { put(f, it) } }, label = { Text(title) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(note, { note = it }, label = { Text("Note for the approver (optional)") }, modifier = Modifier.fillMaxWidth())
             if (replaced > 0) Text("$replaced of ${codes.size} codes already have another value here: it will be replaced.",
                 color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
@@ -205,8 +207,8 @@ fun PlaceForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Un
 @Composable
 fun NoteForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
     HoldLinks()           // (a link waits: it would close this with what is typed or picked)
-    var text by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
+    var note by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     AlertDialog(onDismissRequest = onClose, title = { Text("Note for ${codes.size} code" + if (codes.size == 1) "" else "s") }, text = {
