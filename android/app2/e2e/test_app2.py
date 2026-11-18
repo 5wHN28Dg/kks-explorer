@@ -2483,6 +2483,7 @@ class Phone(unittest.TestCase):
         ui.find('Feed water piping system', timeout=10)
         ui.scroll_to('Edit', exact=True)
         ui.tap('Edit', exact=True)
+        ui.scroll_to('Near / landmark', exact=True)
         ui.type_into('Near / landmark', 'north door typed')
         # turned on its side and back: the form and the text are still there
         self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
