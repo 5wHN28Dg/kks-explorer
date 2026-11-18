@@ -463,6 +463,8 @@ func _exit_tree() -> void:
 	if _prep_task >= 0:
 		_prep_end()   # (a start that ended before its UI: no task left behind)
 	if _ui_size_set:
+		if get_tree().root.size_changed.is_connected(_on_window_resized):
+			get_tree().root.size_changed.disconnect(_on_window_resized)
 		W.apply_ui_size(get_tree().root, 1.0)   # the window as it was (the tests start the app again and again in one)
 
 var _ui_size_set := false
@@ -487,14 +489,27 @@ func _apply_ui_size() -> void:
 			print("ui size: window %dx%d, density %.0f (%s), default %d %%" % [win.x, win.y, W.screen_density(),
 				W.density_source, roundi(dflt * 100.0)])
 	W.ui_size_default = dflt
+	_ui_win = get_tree().root.size
 	var f: float = W.clamp_ui_size(opts["ui_size"], dflt) if opts.has("ui_size") \
 			else W.clamp_ui_size(cf.get_value("ui", "ui_size", dflt), dflt)
 	W.apply_ui_size(get_tree().root, f)
+	if not _ui_size_set:
+		get_tree().root.size_changed.connect(_on_window_resized)
 	_ui_size_set = true
 	if workshop != null and workshop.has_method("fit_resolution"):
 		workshop.fit_resolution()
 
 var _ui_size_logged := false
+var _ui_win := Vector2i.ZERO      # the window's size the default UI size was worked out for
+
+## The window took another size (Android's split screen, a foldable, a desktop window): the default size is worked out
+## again for it, when the size is the default (none chosen in the settings, none given at the start).
+func _on_window_resized() -> void:
+	if not _ui_size_set or get_tree().root.size == _ui_win:
+		return
+	if opts.has("ui_size") or cf.has_section_key("ui", "ui_size"):
+		return
+	_apply_ui_size()
 
 ## The UI size chosen in the settings: saved, and applied at once (the panels lay themselves out again).
 func set_ui_size(f: float) -> void:

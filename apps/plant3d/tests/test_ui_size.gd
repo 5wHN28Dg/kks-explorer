@@ -97,6 +97,19 @@ func _at(tree: SceneTree, ui_scale: String, size_given, density: float, dflt: fl
 		p.append("%s: the default is %d %% (%d %% expected)" % [at, roundi(W.ui_size_default * 100.0), roundi(dflt * 100.0)])
 	for i in 6:
 		await tree.process_frame
+	if size_given == null and who == "the Note 9" and density == 420.0:
+		# the window halved (Android's split screen): the default worked out again for it, and back
+		var w0: Vector2i = tree.root.size
+		tree.root.size = Vector2i(w0.x, w0.y / 2)
+		await tree.process_frame
+		if not is_equal_approx(W.ui_size, 2.0):
+			p.append("%s: in a window half as tall the default size is %d %% (200 %% expected)" % [at, roundi(W.ui_size * 100.0)])
+		tree.root.size = w0
+		await tree.process_frame
+		if not is_equal_approx(W.ui_size, dflt):
+			p.append("%s: back at its full window the size is %d %% (%d %% expected)" % [at, roundi(W.ui_size * 100.0), roundi(dflt * 100.0)])
+		for i in 3:
+			await tree.process_frame
 	var ui = main.ui
 	if ui == null or ui.clock == null:
 		main.free()
@@ -152,13 +165,15 @@ func _compact(main, at: String, canvas: Rect2, want: bool) -> Array:
 	# the choice doesn't depend on the bar's present state (the compact clock is narrower): no width flips it back
 	var c0: bool = ui.compact
 	for w in range(700, 2300, 7):
-		ui.compact = false
+		ui._set_compact(false)
 		var a: bool = ui._wants_compact(float(w))
-		ui.compact = true
+		ui._set_compact(true)
 		if ui._wants_compact(float(w)) != a:
 			p.append("%s: at %d px the bar is compact or not as it is now" % [at, w])
 			break
-	ui.compact = c0
+	ui._set_compact(c0)
+	ui._layout()
+	await main.get_tree().process_frame
 	if not want:
 		if more.visible or ui._overflow.get_child_count() > 0 or not hud.settings_btn.visible:
 			p.append("%s: the full bar has More or buttons in its list, or no Settings" % at)
