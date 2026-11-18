@@ -183,7 +183,7 @@ type
     rgb: seq[byte]
     w, h: int
     fail: bool                 ## tests: KKS_TEST_ENCODE_FAIL makes the first n encodes fail
-    holdMs: int                ## tests: KKS_TEST_ENCODE_MS, the least time an encode takes
+    holdMs: int                ## tests: KKS_TEST_ENCODE_MS, a wait before each encode
   EncDone = object
     key, clientId: string
     data: string
@@ -201,7 +201,7 @@ var
   polling = false
   failLeft = (try: max(0, parseInt(getEnv("KKS_TEST_ENCODE_FAIL", "0"))) except ValueError: 0)
   encodeMs = (try: max(0, parseInt(getEnv("KKS_TEST_ENCODE_MS", "0"))) except ValueError: 0)
-    ## tests: each encode takes at least this long, so that "Compressing" can be read before it ends (a real
+    ## tests: a wait before each encode, so that "Compressing" can be read before it ends (a real
     ## laptop compressed and sent a photo before the end-to-end test's next look at the status line)
   retryWait = (try: max(0, parseInt(getEnv("KKS_TEST_RETRY_MS", $RetryMs))) except ValueError: RetryMs)
     ## tests: a failed photo's wait before it is tried again

@@ -319,10 +319,10 @@ class Windows(unittest.TestCase):
         self.leave()
 
     def test_draw_timing(self):
-        """KKS_TIMING's draw lines (viewer.nim drawNote, docs/m6/MEASUREMENTS.md): the window's Direct2D target (GPU or
+        """KKS_DRAW_TIMING's draw lines (viewer.nim drawNote): the window's Direct2D target (GPU or
         software), each paint and each tile's render are timed while the drawing is zoomed in step by step and panned;
         the summary is printed (a real laptop's GPU against the VMs' WARP)"""
-        self.join('djoin.uia', env={'KKS_TIMING': '1'})
+        self.join('djoin.uia', env={'KKS_DRAW_TIMING': '1'})
         zoom = ['keys\tDrawing\t0x6B', 'sleep\t700'] * 8
         pan = ['keys\tDrawing\t0x27,0x27,0x27,0x28,0x28', 'sleep\t700', 'keys\tDrawing\t0x25,0x25,0x26,0x26', 'sleep\t700'] * 3
         self.check('draw0.uia', ['wait\tDrawing\t10', 'sleep\t1000'] + zoom + pan + ['sleep\t1500'],

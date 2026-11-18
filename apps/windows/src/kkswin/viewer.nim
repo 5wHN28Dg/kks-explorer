@@ -92,7 +92,7 @@ type
     uia: pointer                ## the UI Automation provider (kks_uia.cpp): tags and connectors on screen as buttons
     onScreen: seq[int]          ## indices into tags (a connector j: -(j + 1)), reading order, at most 200 (what the
                                 ## provider exposes)
-    targetSaid: bool            ## KKS_TIMING: the render target's kind was logged
+    targetSaid: bool            ## KKS_DRAW_TIMING: the render target's kind was logged
 
 const
   Tile = 512
@@ -100,17 +100,19 @@ const
 
 var viewers = initTable[HWND, Viewer]()
 
-let drawTiming = getEnv("KKS_TIMING").len > 0
+let drawTiming = getEnv("KKS_DRAW_TIMING").len > 0
 proc drawNote(line: string) =
-  ## KKS_TIMING (docs/m6/MEASUREMENTS.md): how long the drawing's work took, one "draw: …" line each in
+  ## KKS_DRAW_TIMING: how long the drawing's work took, one "draw: …" line each in
   ## <data dir>/timing.log beside the start's lines: whether the window's Direct2D target is on the GPU, each paint
   ## (BeginDraw to EndDraw, which waits for the GPU's work to be queued), each tile's render and each overview level's
-  ## decode on its worker thread. Written after the work it times, so the times don't include the writing.
+  ## decode on its worker thread (tiles are drawn on the CPU, into a WIC bitmap). Written after the work it times, so
+  ## the times don't include the writing; a variable of its own, so that KKS_TIMING's start measurement
+  ## (docs/m6/MEASUREMENTS.md) is not slowed by these writes.
   if not drawTiming or errorLog.len == 0: return
   try:
     let f = open(errorLog.parentDir / "timing.log", fmAppend)
-    f.writeLine("draw: " & line)
-    f.close()
+    try: f.writeLine("draw: " & line)
+    finally: f.close()
   except IOError: discard
 
 proc ms(t: Duration): string = formatFloat(float(t.inMicroseconds) / 1000, ffDecimal, 2)

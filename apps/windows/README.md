@@ -179,10 +179,10 @@ recommended scale for its panel).
 - **The e2e suite** at 125 %: 28 of 28 passed (32 minutes, with #427). Before, `test_photo_queue` failed twice:
   the photo was compressed and sent before the test's next look at "Compressing 1 photo"; the test now holds each
   compression 8 s (`KKS_TEST_ENCODE_MS`).
-- **Direct2D on a GPU** (`test_draw_timing`, `KKS_TIMING`: zoomed in eight steps and panned): the window's render
-  target is the hardware one (the VMs: WARP). Two runs: a paint of the drawing took 1.25 and 1.35 ms median, 46 and
-  33 ms at most (about 20 paints each); a tile's render 14.2 and 8.1 ms median, 64 and 58 ms at most (21 tiles, on
-  worker threads). Lines sharp zoomed in (screenshots at 125 %).
+- **Direct2D on a GPU** (`test_draw_timing`, `KKS_DRAW_TIMING`: zoomed in eight steps and panned): the window's render
+  target says it is hardware (not checked yet what the VMs, which have no GPU, report there). Two runs: a paint of the drawing took 1.25 and 1.35 ms median, 46 and
+  33 ms at most (about 20 paints each); a tile's render 14.2 and 8.1 ms median, 64 and 58 ms at most (21 tiles,
+  drawn on the CPU on worker threads). Lines sharp zoomed in (screenshots at 125 %).
 - **Scaling:** 100, 125 and 150 % set while the app runs (as Settings does) and at its start: the window follows
   (`WM_DPICHANGED`), the tabs stay in one row beside the drawing (#427's `test_tabs_beside_drawing` passes at each,
   main before #427 failed at each). Left from #377: the status line keeps the old scale's font after a live change.
