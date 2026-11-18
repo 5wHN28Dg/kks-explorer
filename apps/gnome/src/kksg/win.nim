@@ -79,6 +79,9 @@ type Win* = ref object
 proc toast*(w: Win, msg: string) =
   if not w.gone: toast(w.toasts, msg)
 
+proc toastUndo*(w: Win, msg: string, undo: proc ()) =
+  if not w.gone: toastUndo(w.toasts, msg, undo)
+
 proc formOpen*(w: Win): bool =
   ## Something typed in the tag panel is not saved yet: an Edit form is open (whatever it holds: the person opened
   ## it to type), or the review form's text was changed. No reload rebuilds the panel under it then (#163): only
@@ -171,23 +174,25 @@ proc isAdmin*(w: Win): bool =
   let (ok, me) = w.a.me
   ok and me.isAdmin
 
-proc trySubmit*(w: Win, kind: string, payload: JNode, what: string, note = "", clientId = ""): string =
+proc trySubmit*(w: Win, kind: string, payload: JNode, what: string, note = "", clientId = "", quiet = false): string =
   ## as submit, but an error is raised (ApiError), not shown. `clientId`: the core keeps a change sent twice with the
-  ## same one once (the photo queue resends after a crash).
+  ## same one once (the photo queue resends after a crash). `quiet`: "approved" is not said (the caller says it, with
+  ## an Undo).
   var body = newObj(@[("kind", newStr(kind)), ("payload", payload)])
   if note.strip.len > 0: body["note"] = newStr(note.strip)
   if clientId.len > 0: body["client_id"] = newStr(clientId)
   let r = w.a.call("POST", "/api/submit", body)
   result = if r.get("status") != nil and r["status"].isStr: r["status"].s else: "pending"
   case result
-  of "approved": w.toast("Saved: " & what)
+  of "approved":
+    if not quiet: w.toast("Saved: " & what)
   of "conflict": w.toast("Held: it clashes with a pending change (see Approvals)")
   else: w.toast("Sent for approval: " & what)
 
-proc submit*(w: Win, kind: string, payload: JNode, what: string, note = ""): string =
+proc submit*(w: Win, kind: string, payload: JNode, what: string, note = "", quiet = false): string =
   ## Propose a change (members) or make it (admins). Returns "approved", "pending", "conflict" or "" on error,
-  ## and says what happened.
-  try: w.trySubmit(kind, payload, what, note)
+  ## and says what happened (`quiet`: not "approved", see trySubmit).
+  try: w.trySubmit(kind, payload, what, note, quiet = quiet)
   except ApiError as e:
     w.toast(e.msg)
     ""

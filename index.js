@@ -167,7 +167,7 @@ async function sendMark(){
   const r=await send('tag_add',{sheet:cur.id,bbox:mark.pending.map(v=>Math.round(v*10)/10),kks,isa,note:$('#mkN').value.trim()},kks||'marked tag');
   if(r){ markMode(false); closePanel() }
 }
-async function removeAdded(id,label){ if(!confirm(`Remove the hand-added tag ${label}?`)) return; if(await send('tag_remove',{id},'remove '+label)) closePanel() }
+async function removeAdded(id,label){ if(!await K.confirm(`Remove the tag ${label}?`,'This hand-marked tag goes away on every device once approved.','Remove tag')) return; if(await send('tag_remove',{id},'remove '+label)) closePanel() }
 
 // ---------- saving: every edit is a submission (applied at once for admins, otherwise queued for approval) ----------
 async function refreshState(){
@@ -189,9 +189,10 @@ async function refreshState(){
   }
 }
 const canApprove=()=>['admin','manager'].includes(K.me?.user?.role);   // their edits apply at once: no note needed
-async function send(kind,payload,what,note){
+// (`quiet`: a saved or queued change is not said here: the caller says it, with an Undo)
+async function send(kind,payload,what,note,quiet){
   let r; try{ r=await K.submit(kind,payload,note) }catch(e){ toast('Not saved: '+e.message); return null }
-  toast({approved:'Saved: ',pending:'Sent for approval: ',conflict:'Clashes with a newer change, an admin will decide: ',queued:K.reauth?'Queued until you sign in again: ':'Offline, queued: '}[r.status]+what);
+  if(!(quiet&&(r.status==='approved'||r.status==='queued'))) toast({approved:'Saved: ',pending:'Sent for approval: ',conflict:'Clashes with a newer change, an admin will decide: ',queued:K.reauth?'Queued until you sign in again: ':'Offline, queued: '}[r.status]+what);
   if(r.status!=='queued') await refreshState(); else updatePending();
   return r;
 }
@@ -756,6 +757,7 @@ async function review(id,status){
   let d={status};
   if(status==='confirmed'){ const m=kv.match(/^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]*)$/); if(!m){toast('That is not a valid KKS (e.g. 11LAB70AA501)');return}
     d={status,kks:m[1],suffix:m[2],isa:iv||null} }
+  else if(!await K.confirm('Mark this as not a tag?','It is no longer shown as a tag, on every device.','Mark as not a tag')) return;
   const r=await send('review',{tag_id:id,data:d,base:STATE.reviews[id]||null},status==='confirmed'?`${d.kks}${d.suffix}`:'not a tag'); if(!r) return;
   renderReview(); const t=TAGS.find(x=>x.id===id);
   if(r.status==='approved'){ if(status==='confirmed') select(eff(t)); else closePanel() }
@@ -813,7 +815,7 @@ async function photoData(f){
   return {dataUrl,note:a.note};
 }
 async function delPhoto(pid,tid){
-  const a=await K.ask('Delete this photo?',canApprove()?'':'An admin decides.',!canApprove(),'Delete'); if(!a) return;
+  const a=await K.confirm('Delete this photo?','It is removed for everyone'+(canApprove()?'.':' once an admin approves.'),'Delete photo',{note:canApprove()?'':'Note for the approver (optional)',draft:'del'+pid}); if(!a) return;
   if(await send('photo_delete',{photo_id:pid},'delete photo',a.note)) select(eff(TAGS.find(x=>x.id===tid)));
 }
 const lightbox=src=>K.lightbox(src);   // pinch / wheel zoom, drag to pan (common.js)
@@ -1121,15 +1123,32 @@ function renderProcDetail(id){
     const ls=L.filter(l=>l.step===s.n);
     out.push(h('div',{class:'step'},h('span',{class:'n'},`${s.n})`),s.text,h('div',{style:'margin-top:5px'},
       ls.map(l=>{const t=byKks(l.kks)[0];return [h('span',{class:'chip mono',onclick:()=>{ if(t) goTo(t.id) }},l.kks),
-        h('button',{class:'x',style:'font-size:14px',title:'Unlink','aria-label':`Unlink ${l.kks}`,onclick:()=>unlink(id,+s.n,l.kks)},'×')]}),
-      ' ',h('button',{class:'ghost',style:'font-size:12.5px;padding:3px 8px',onclick:()=>startLink(id,+s.n)},'+ Link equipment'))));
+        h('button',{class:'x',style:'font-size:14px',title:'Unlink','aria-label':`Unlink ${l.kks}`,onclick:e=>unlink(id,+s.n,l.kks,e.detail===0)},'×')]}),
+      ' ',h('button',{class:'ghost','data-step':s.n,style:'font-size:12.5px;padding:3px 8px',onclick:()=>startLink(id,+s.n)},'+ Link equipment'))));
   }
   put($('#procBody'),out);
 }
 function startLink(proc,step){ pickMode(false); linkTarget={proc,step}; $('#bannerText').textContent=`Tap tags on the drawing to link them to step ${step}`; $('#banner').style.display='flex';
   if(innerWidth<=720) $('#procDrawer').classList.remove('open') }
 $('#bannerDone').onclick=()=>{ if(mark.on){ markMode(false); closePanel(); return } const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
-async function unlink(proc,step,kks){ await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags() }
+// (no question first: Undo puts the links back, by sending them again). Unlinks made while the bar is up gather in
+// it, so each one's Undo stays (a gloved double tap can take the next chip's ×); the focus stays in the step (on its
+// "+ Link equipment"), or goes to Undo when the × was pressed with the keyboard.
+let UNLINKED=[];
+async function unlink(proc,step,kks,kb){
+  const r=await send('link',{proc,step,kks,on:false},`unlink ${kks}`,undefined,true); renderProcDetail(proc); drawTags()
+  if(activeProc===proc) $(`#procBody button[data-step="${step}"]`)?.focus({preventScroll:true});
+  if(r?.status!=='approved'&&r?.status!=='queued') return;   // (a member's proposal: withdrawn in My submissions)
+  if(!document.getElementById('kundo')) UNLINKED=[];
+  UNLINKED.push({proc,step,kks});
+  const all=[...UNLINKED], one=all.length===1;
+  const bar=K.undo(one?`Unlinked ${kks} from step ${step}`:`Unlinked ${all.length} codes`,async had=>{
+    UNLINKED=[];
+    for(const l of all) await send('link',{...l,on:true},`link ${l.kks}`);
+    if(all.some(l=>l.proc===activeProc)) renderProcDetail(activeProc); drawTags();
+    if(had) $(`#procBody button[data-step="${step}"]`)?.focus({preventScroll:true}) });
+  if(kb) bar.querySelector('button')?.focus();
+}
 
 // ---------- equipment by system (core views.systemsView, ported in systems.js) ----------
 // While filtering, every level opens when few codes match; otherwise blocks open and systems closed.

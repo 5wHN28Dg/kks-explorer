@@ -10,7 +10,7 @@ from playwright.sync_api import sync_playwright, expect
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors
+from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors, answer_confirms
 
 PW = 'a long password'
 CODE = 'team-7391-plant'
@@ -55,6 +55,7 @@ class WebSignup(unittest.TestCase):
             m = mctx.new_page()
             merr = PageErrors(m)
             m.on('dialog', lambda d: d.accept('ali2') if d.type == 'prompt' else d.accept())
+            answer_confirms(m, lambda msg: True)
             uctx = browser.new_context(viewport={'width': 390, 'height': 844})
             uctx.add_init_script(CSP_WATCH)
             u = uctx.new_page()

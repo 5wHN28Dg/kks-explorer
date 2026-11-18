@@ -790,7 +790,7 @@ proc photoSection*(w: Win, kks: string): W =
         if by.len > 0 or dd.len > 0:
           cell.add label((if by.len > 0: "by " & by else: "") & (if by.len > 0 and dd.len > 0: ", " else: "") & dd, "dim-label caption")
         let del = button("Delete", "flat caption", proc () =
-          confirm(w.window, "Delete this photo?", "It is removed for everyone once approved.", "Delete", true, proc () =
+          confirm(w.window, "Delete this photo?", "It is removed for everyone once approved.", "Delete photo", true, proc () =
             discard w.submit("photo_delete", newObj(@[("photo_id", newStr(pid))]), "delete a photo")))
         cell.add del
         adw_wrap_box_append(box, cell)

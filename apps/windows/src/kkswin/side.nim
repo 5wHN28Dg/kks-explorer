@@ -209,6 +209,8 @@ proc procedureDetail(w: Win, p: Page, id: string) =
               w.selectTag(ts[0].id, true)     # it shows the sheet (after asking whether to drop a selection)
             else: w.toast(k & " is not on any sheet"))
           specs.add ("Unlink " & k, proc () =
+            # asked first (#365): linking it again takes several steps (the GNOME and web apps offer Undo instead)
+            if not ask(w.hwnd, "Unlink " & k & " from step " & $n & "?", "The step no longer lists it, on every device. + Link equipment links it again.", "Unlink"): return
             discard w.submit("link", newObj(@[("proc", newStr(id)), ("step", newInt(n)), ("kks", newStr(k)), ("on", newBool(false))]),
                              "unlink " & k)
             w.loadModel()

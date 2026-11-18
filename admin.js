@@ -159,7 +159,7 @@ const VIEWS={
           h('div',{class:'photos'},L.map(s=>h('figure',null,tick(s),photoImg(s.payload.file),
             h('div',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`,kd.pick?` · ${s.votes} vote${s.votes===1?'':'s'}`:''),s.payload.caption?K.userText(s.payload.caption,'div'):null,rnote(s),
             h('div',{class:'row',style:'margin-top:6px'},
-              kd.pick?[button('primary','Use this one',()=>decide(s.id,'pick')),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
+              kd.pick?[button('primary','Use this one',()=>pickPhoto(s.id,g.code,kd.label,L.length-1)),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
               button('danger','Reject',()=>decide(s.id,'reject')))))));
         return h('div',{class:'kind','data-kind':kd.kind},h('h4',null,`${kd.label} (${L.length})`),L.map(s=>h('div',{class:'item',style:'margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)'},
           h('div',{class:'row'},tick(s),badge(s),h('span',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`)),rnote(s),
@@ -196,7 +196,7 @@ const VIEWS={
       K.outbox.map(i=>h('div',null,K.describe(i.kind,i.payload),i.raw?[' ',h('span',{class:'badge pending'},'converting')]:null,
         i.refused?[' ',h('span',{class:'badge conflict'},'refused: '+i.refused),' ',
           h('button',{class:'ghost',onclick:async()=>{await K.retryRefused(i.client_id);show(tab)}},'Try again'),' ',
-          h('button',{class:'ghost',onclick:async()=>{if(confirm('Discard this photo? It is not on the server.')){await K.discardQueued(i.client_id);show(tab)}}},'Discard')]:null))));
+          h('button',{class:'ghost',onclick:async()=>{if(await K.confirm('Discard this photo?','It was never sent to the server: it is lost.','Discard photo')){await K.discardQueued(i.client_id);show(tab)}}},'Discard')]:null))));
     if(toVote.length) out.push(h('div',{class:'card'},h('h3',null,'Photo proposals from others'),h('div',{class:'sub'},'Vote for the photo that shows the equipment best. An admin makes the final choice.'),
       h('div',{class:'photos'},toVote.map(s=>h('figure',null,photoImg(s.payload.file),h('div',{class:'sub'},`${s.payload.kks??''} · `,K.userText(s.by_name||s.by||''),` · ${s.votes} vote${s.votes===1?'':'s'}`),
         h('button',{class:s.voted?'primary':'ghost',onclick:()=>vote(s.id)},s.voted?'Voted ✓':'Vote'))))));
@@ -232,14 +232,14 @@ const VIEWS={
     const actions=u=>{
       const out=[];
       if(u.no_account){ if(canEdit(u)){
-          if(u.active) out.push(ghost('Remove devices',()=>confirm('Remove all devices of '+u.username+'? They stop syncing.')&&setPerson(u.person,{active:false})));
+          if(u.active) out.push(ghost('Remove devices',async()=>await K.confirm('Remove all devices of '+u.username+'?','They stop syncing.','Remove devices')&&setPerson(u.person,{active:false})));
           if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setPerson(u.person,{role:other(u)})));
           // someone who joined with the app has no account on the server: this makes one for the same person
           if(K.cfg?.mode==='server') out.push(ghost('Web sign-in',()=>webSignin(u))) } }
       else if(canEdit(u)&&u.id!==ME.user.id){
-        out.push(ghost(u.active?'Deactivate':'Activate',()=>setUser(+u.id,{active:!u.active})));
+        out.push(ghost(u.active?'Deactivate':'Activate',async()=>(!u.active||await K.confirm(`Deactivate ${u.username}?`,'Every device of theirs is removed: it stops syncing and wipes the plant from itself when it next connects.','Deactivate'))&&setUser(+u.id,{active:!u.active})));
         // the server's key for them was removed and a device of their own still syncs: Deactivate removes those too
-        if(!u.active&&u.own_devices) out.push(ghost('Remove devices',()=>confirm('Remove all devices of '+u.username+'? They stop syncing.')&&setUser(+u.id,{active:false})));
+        if(!u.active&&u.own_devices) out.push(ghost('Remove devices',async()=>await K.confirm('Remove all devices of '+u.username+'?','They stop syncing.','Remove devices')&&setUser(+u.id,{active:false})));
         if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setUser(+u.id,{role:other(u)})));
         out.push(ghost('Password link',()=>resetLink(u.id,u.username)));
         // a web sign-in renews while used: this ends them all now (a lost phone, a shared computer)
@@ -280,7 +280,7 @@ const VIEWS={
         h('div',{id:'signupState'},S.enabled?['Sign-up is ',h('b',null,'on'),` (code set ${when(S.set)}). The sign-in screen offers “Request an account” to whoever has the code.`]
           :['Sign-up is ',h('b',null,'off'),': only an admin can add accounts.']),
         isManager()?[h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); setSignupCode(code.value) }},code,h('button',{class:'primary'},S.enabled?'Change the code':'Switch sign-up on'),
-            S.enabled?h('button',{class:'ghost',type:'button',onclick:()=>confirm('Switch sign-up off? Requests already waiting stay until you decide them.')&&setSignupCode('')},'Switch sign-up off'):null),
+            S.enabled?h('button',{class:'ghost',type:'button',onclick:async()=>await K.confirm('Switch sign-up off?','Requests already waiting stay until you decide them.','Switch sign-up off')&&setSignupCode('')},'Switch sign-up off'):null),
           h('div',{class:'sub'},'Give the code to your team only. It is not shown again, here or anywhere: if it is forgotten or got out, set a new one. Changing it does not touch accounts or requests already made.')]
           :h('div',{class:'sub'},'The manager sets, changes or clears the code.'))]:null;
     queueMicrotask(()=>suBar());
@@ -306,14 +306,14 @@ const VIEWS={
         const F=h('form',{class:'inline',onsubmit:e=>{ e.preventDefault(); once(F,()=>act(()=>K.api('/api/devices/revoke',{device:d.device,password:F.password.value}),'Device removed')) }},
           h('input',{type:'password',name:'password',placeholder:'your password','aria-label':'Your password',autocomplete:'current-password',required:true}),
           h('button',{class:'ghost'},'Remove this device'),h('button',{class:'ghost',type:'button',onclick:()=>idle()},'Cancel'));
-        put(c,F,h('div',{class:'sub'},'It stops syncing; what it already holds stays on it. Your password, so that nobody who got hold of a sign-in of yours can remove your devices.')); F.password.focus() },
+        put(c,F,h('div',{class:'sub'},'It stops receiving data, and wipes the plant from itself if it ever connects again. Your password, so that nobody who got hold of a sign-in of yours can remove your devices.')); F.password.focus() },
       idle=()=>put(c,h('button',{class:'ghost',onclick:ask},'Remove'));
       idle(); return c };
     // (on a server, the account's own key, which its web sign-ins use: the server never removes the key the request comes with, so no Remove)
     const isSelf=d=>d.this_computer||d.this_signin;
     const devRow=(d,mine)=>h('tr',null,h('td',null,d.label?K.userText(d.label):'device',d.this_computer?[' ',h('span',{class:'sub'},'(this one)')]:d.this_signin?[' ',h('span',{class:'sub'},'(your web sign-in)')]:null,mine?null:h('div',{class:'sub'},d.username)),
       h('td',{class:'mono sub'},`${d.device.slice(0,12)}…`),h('td',null,d.revoked?h('span',{class:'del'},'removed'):'active'),
-      !d.revoked&&!isSelf(d)&&own(d)?ownRemove(d):h('td',null,!d.revoked&&!isSelf(d)?h('button',{class:'ghost',onclick:()=>confirm('Remove this device? It stops syncing; what it already holds stays on it.')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
+      !d.revoked&&!isSelf(d)&&own(d)?ownRemove(d):h('td',null,!d.revoked&&!isSelf(d)?h('button',{class:'ghost',onclick:async()=>await K.confirm('Remove this device?','It stops receiving data, and wipes the plant from itself if it ever connects again.','Remove device')&&act(()=>K.api('/api/devices/revoke',{device:d.device}),'Device removed')},'Remove')
         :d.revoked&&isAdmin()?h('button',{class:'ghost',onclick:()=>d.hidden?setHidden([d.device,d.person],false):setHidden([d.device],true)},d.hidden?'Show again':'Hide'):null));
     const N=S.internet||{}, syncs=Object.values(S.syncs);
     const addr=h('input',{name:'address',placeholder:'or an address, e.g. 192.168.1.20',style:'min-width:220px'});
@@ -475,7 +475,7 @@ function impId(inp,auto){ if(!auto) idTouched=true; $('#impReplace').style.displ
 async function startImport(F){
   const f=F.pdf.files[0]; if(!f) return;
   const q=new URLSearchParams({id:F.id.value.trim(),name:F.name.value.trim(),rotate:F.rotate.value,replace:F.replace.checked?'1':'0'});
-  if(F.replace.checked&&!confirm(`Replace sheet "${F.id.value}"? Its tags are re-read from this PDF (the current ones are backed up).`)) return;
+  if(F.replace.checked&&!await K.confirm(`Replace sheet "${F.id.value}"?`,'Its tags are re-read from this PDF (the current ones are backed up).','Replace sheet')) return;
   toast('Uploading…');
   try{
     const r=await fetch('/api/sheets/import?'+q,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/pdf'},body:f});
@@ -484,10 +484,10 @@ async function startImport(F){
   }catch(e){ toast(K.isNetErr(e)?'Offline: this needs the server.':e.message) }
 }
 async function reimport(id,rotate){
-  if(!confirm(`Re-read sheet "${id}" from its stored PDF (orientation: ${rotate})? The current tags are backed up.`)) return;
+  if(!await K.confirm(`Re-read sheet "${id}"?`,`Its tags are read again from its stored PDF (orientation: ${rotate}). The current tags are backed up.`,'Re-read sheet')) return;
   await act(()=>K.api('/api/sheets/reimport',{id,rotate}),'Import started');
 }
-function removeSheet(id,name){ confirm(`Remove "${name}" (${id}) from the app?`)&&act(()=>K.api(`/api/sheets/${encodeURIComponent(id)}/remove`,{}),'Sheet removed') }
+async function removeSheet(id,name){ await K.confirm(`Remove "${name}" (${id}) from the app?`,'Its drawing and tags leave every device once they sync (a backup is kept on the server).','Remove sheet')&&act(()=>K.api(`/api/sheets/${encodeURIComponent(id)}/remove`,{}),'Sheet removed') }
 function renderJob(job){
   const el=$('#job'); if(!el||!job) return;
   const r=job.result, title={running:'Importing…',done:'Import finished',failed:'Import failed'}[job.state], str=v=>String(v??'');
@@ -511,29 +511,25 @@ function pollJob(){ clearTimeout(pollT); pollT=setTimeout(async()=>{
 },1500) }
 
 // ---------- actions ----------
+// "Use this one" rejects the other photos of its kind for good: asked first, with how many (#365; the same words as
+// the apps)
+async function pickPhoto(id,code,label,others){
+  const kind=label.toLowerCase(), n=others===1?'the other':`the other ${others}`;
+  if(!await K.confirm(`Reject ${n} ${others===1?'photo':'photos'}?`,`Using #${id}${code?' for '+code:''} rejects ${others===1?'the other '+kind:`the other ${others} ${kind}s`} proposed for it. The submitters see that ${others===1?'it was':'they were'} rejected; this can't be undone.`,`Use this one and reject ${n}`)) return;
+  return decide(id,'pick');
+}
 async function decide(id,action,force){
   let note='';
-  if(action==='reject'){ note=prompt('Reason (optional, shown to the submitter):',''); if(note===null) return }
-  if(force&&!confirm('Overwrite the current value with this proposal?')) return;
+  if(action==='reject'){ const a=await askDanger('Reject this proposal?','The submitter sees that it was rejected, and the reason if you give one. It can\'t be decided again.','Reject','reason'+id); if(!a) return; note=a.note }
+  if(force&&!await K.confirm('Overwrite the current value?','This proposal replaces the newer value now in use.','Overwrite')) return;
   const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);   // hand-marked tag: approve with the edited code
   const edit=ek&&action==='approve'?{kks:ek.value.trim().toUpperCase(),isa:ei.value.trim().toUpperCase()}:undefined;
   await act(()=>K.api(`/api/submissions/${id}/${action}`,{force:!!force,note,edit}),{approve:'Approved',pick:'Photo chosen, the others of its kind rejected',reject:'Rejected'}[action]);
 }
-// A question before something that can't be taken back (several rejections at once): the page's own dialog, so the
-// confirming button names the action and is styled as dangerous, and the focus starts on Cancel (Enter or Escape
-// cancel). With `reason`: an optional reason, shown to the submitters. -> Promise of {note} (confirmed) or null.
-let REASON_DRAFT='';   // a reason typed and then cancelled: offered again next time, not lost
-function askDanger(title,text,action,reason){
-  return new Promise(done=>{
-    const note=reason?h('input',{id:'askNote',maxlength:500,placeholder:'Reason (optional, shown to the submitters)',value:REASON_DRAFT||null}):null;
-    const d=h('dialog',{class:'ask','aria-labelledby':'askT','aria-describedby':'askX'},h('h2',{id:'askT'},title),h('p',{id:'askX',class:'sub'},text),
-      note?h('label',{for:'askNote',class:'sub'},'Reason'):null,note,
-      h('div',{class:'btns'},h('button',{type:'button',class:'ghost',id:'askNo',onclick:()=>d.close('no')},'Cancel'),
-        h('button',{type:'button',class:'danger',id:'askYes',onclick:()=>d.close('yes')},action)));
-    d.addEventListener('close',()=>{ const yes=d.returnValue==='yes', v=note?.value.trim()||''; if(note) REASON_DRAFT=yes?'':v; d.remove(); done(yes?{note:v}:null) });
-    document.body.appendChild(d); d.showModal(); $('#askNo').focus();
-  });
-}
+// A question before something that can't be taken back (rejections): the page's own dialog (K.confirm). With
+// `reason`: an optional reason, shown to the submitters, offered again after a cancel. -> Promise of {note} or null.
+// (`reason`: the key its draft is kept under, one per proposal or selection: a reason typed for one never shows for another)
+const askDanger=(title,text,action,reason)=>K.confirm(title,text,action,reason?{note:'Reason (optional, shown to the submitters)',draft:reason}:{});
 // the bar sticks to the bottom of the window: a control the keyboard moves to stays above it (scroll-padding for the
 // browser's own scrolling; a nudge for what lands under it anyway)
 document.addEventListener('focusin',e=>{ const bar=$('#pickbar'); if(!bar||bar.contains(e.target)) return;
@@ -563,7 +559,7 @@ async function decideMany(action){
   if(action==='approve') for(const id of ids){ const ek=document.getElementById('ek-'+id), ei=document.getElementById('ei-'+id);
     if(ek) edits.set(id,{kks:ek.value.trim().toUpperCase(),isa:(ei?.value??'').trim().toUpperCase()}) }
   let note='';
-  if(action==='reject'){ const a=await askDanger(`Reject ${of}?`,'Each one is rejected as its own Reject button does. The submitters see that it was rejected, and the reason if you give one.',`Reject ${of}`,true);
+  if(action==='reject'){ const a=await askDanger(`Reject ${of}?`,'Each one is rejected as its own Reject button does. The submitters see that it was rejected, and the reason if you give one.',`Reject ${of}`,'reason'+[...ids].join(','));
     if(!a) return; note=a.note }
   if(deciding) return;      // (a second question answered while the first one's batch runs)
   deciding=true;
@@ -599,7 +595,7 @@ const hiddenBar=(any,n)=>isAdmin()&&(any||n)?h('div',{class:'row',style:'margin:
   any?h('button',{class:'ghost',onclick:clearRemoved},'Clear removed'):null,
   n?h('button',{class:'ghost','aria-pressed':String(SHOW_HIDDEN),onclick:()=>{ SHOW_HIDDEN=!SHOW_HIDDEN; show(tab) }},SHOW_HIDDEN?'Leave hidden out':`Show hidden (${n})`):null):null;
 const vote=id=>act(()=>K.api(`/api/submissions/${id}/vote`,{}));
-const withdraw=id=>confirm('Withdraw this submission?')&&act(()=>K.api(`/api/submissions/${id}/withdraw`,{}),'Withdrawn');
+const withdraw=async id=>await K.confirm('Withdraw this submission?','It is taken back before anyone decides it.','Withdraw')&&act(()=>K.api(`/api/submissions/${id}/withdraw`,{}),'Withdrawn');
 async function createUser(f){
   const r=await act(()=>K.api('/api/users',{username:f.username.value.trim(),role:f.role.value,full_name:f.full_name.value,position:f.position.value}),'Account created');
   if(r) put($('#newlink'),h('div',{class:'warn'},'Give this link to ',h('b',null,f.username.value),` (valid ${r.expires_days} days, works once):`,h('div',{class:'linkbox'},r.link)));
@@ -609,11 +605,12 @@ const setSignupCode=code=>act(()=>K.api('/api/signup-code',{code}),code?'Sign-up
 // "Full Name (username, position, role, 2 devices)": who a person without an account is, for the admin to recognise
 const whoIs=p=>`${p.full_name} (${[p.username,p.position,p.role,(p.devices?`${p.devices} device${p.devices===1?'':'s'}`:'no device')+(p.removed?`, ${p.removed} removed`:'')].filter(x=>x).join(', ')})`;
 function decideSignup(r,action){
-  if(action==='reject') return confirm(`Reject the request of ${r.full_name} (${r.username})? It is deleted.`)&&act(()=>K.api(`/api/signups/${r.id}/reject`,{}),'Request rejected');
+  if(action==='reject') return K.confirm(`Reject the request of ${r.full_name} (${r.username})?`,'It is deleted; they have to ask again.','Reject request').then(y=>y&&act(()=>K.api(`/api/signups/${r.id}/reject`,{}),'Request rejected'));
   const p=r.person;
   // never by itself: the admin says the request is that person's own
-  if(action==='same') return confirm(`This request (sent as “${r.full_name}”) asks for the username of ${whoIs(p)}.\n\nApproving as the same person lets whoever sent it act as ${p.full_name}${p.role==='admin'?', an admin':''} on the web: their submissions, their name on every change. Anyone with the sign-up code can send such a request, so check with ${p.full_name} that it is theirs.\n\nApprove as the same person?`)
-    &&act(()=>K.api(`/api/signups/${r.id}/approve`,{person:p.person}),`Approved: ${p.username} can sign in on the web as the same person`);
+  const iso=t=>`\u2068${t}\u2069`;   // (a name in its own direction: an Arabic one doesn't turn the sentence)
+  if(action==='same') return K.confirm('Approve as the same person?',`This request (sent as “${iso(r.full_name)}”) asks for the username of ${iso(whoIs(p))}.\n\nApproving as the same person lets whoever sent it act as ${iso(p.full_name)}${p.role==='admin'?', an admin':''} on the web: their submissions, their name on every change. Anyone with the sign-up code can send such a request, so check with ${iso(p.full_name)} that it is theirs.`,'Approve as the same person')
+    .then(y=>y&&act(()=>K.api(`/api/signups/${r.id}/approve`,{person:p.person}),`Approved: ${p.username} can sign in on the web as the same person`));
   let username=r.username;
   if(r.taken){ username=prompt(`The username ${r.username} exists already. Approve ${r.full_name} with which username? (Tell them: they sign in with it.)`,''); if(!username) return }
   return act(()=>K.api(`/api/signups/${r.id}/approve`,{username}),`Approved: ${username} can sign in now`);
@@ -756,17 +753,17 @@ async function importJoin(inp,existing_ok){
     password=>act(()=>K.api('/api/devices/import-request',{request,existing_ok:true,password}),'Certified a device of yours. Now give it a bundle.'),()=>{});
   try{ const r=await K.api('/api/devices/import-request',{request,existing_ok:!!existing_ok}); toast(`Certified a device for ${r.username}. Now give them a bundle.`); rebuild() }
   catch(e){ if(e.status===409&&e.data?.existing){ const x=e.data.existing;
-      if(confirm(`${x.full_name} (${x.username}, ${x.role}) already exists. Add this computer as another device of theirs? Only if you know it is them.`)) return importJoin({request},true) }
+      if(await K.confirm(`Add this computer as another device of ${x.full_name}?`,`${x.full_name} (${x.username}, ${x.role}) already exists. Only if you know it is them.`,'Add device',{danger:false})) return importJoin({request},true) }
     else toast(e.message) }
 }
 // a one-time link stays on top of the page it was put on (through rebuilds of it) until another tab is shown (LINK)
 const linkBox=(name,r)=>r&&(LINK?.remove(),$('#main').prepend(LINK=h('div',{class:'warn'},'Password link for ',h('b',null,name),` (valid ${r.expires_days} days, works once):`,h('div',{class:'linkbox'},r.link))));
 async function resetLink(id,name){
-  if(!confirm(`Create a new password link for ${name}? Their current password keeps working until they use it.`)) return;
+  if(!await K.confirm(`Create a new password link for ${name}?`,'Their current password keeps working until they use it.','Create link',{danger:false})) return;
   linkBox(name,await act(()=>K.api(`/api/users/${id}/reset`,{})));
 }
 async function signOutUser(u){
-  if(!confirm(`Sign ${u.full_name||u.username} (${u.username}${u.role==='admin'?', an admin':''}) out everywhere? Every web sign-in of theirs ends now, in every browser and on every device; one that is offline ends when it next reaches the server, and what that device saved for offline use stays readable on it until then (at most ${ME.offline_days} days). They sign in again with their password.\n\nThis does not change their password and does not remove their devices with the app.`)) return;
+  if(!await K.confirm(`Sign ${u.full_name||u.username} (${u.username}${u.role==='admin'?', an admin':''}) out everywhere?`,`Every web sign-in of theirs ends now, in every browser and on every device; one that is offline ends when it next reaches the server, and what that device saved for offline use stays readable on it until then (at most ${ME.offline_days} days). They sign in again with their password.\n\nThis does not change their password and does not remove their devices with the app.`,'Sign out everywhere')) return;
   const r=await act(()=>K.api(`/api/users/${u.id}/sign-out`,{}));
   if(r) toast(r.ended?`${u.username}: ${r.ended} web sign-in${r.ended===1?'':'s'} ended`:`${u.username} was not signed in on the web`);
 }
@@ -777,14 +774,14 @@ async function signOutOthers(f){
   if(r) toast(r.ended?`Signed out ${r.ended} other session${r.ended===1?'':'s'}`:'No other sessions: you are signed in here only');
 }
 async function webSignin(u){
-  if(!confirm(`Give ${u.full_name||u.username} (${u.username}${u.role==='admin'?', an admin':''}) a web sign-in? You get a one-time link to send them: with it they set a password and use the web app as the same person.`+(u.active?'':' Their devices were all removed: this lets them in again, on the web.'))) return;
+  if(!await K.confirm(`Give ${u.full_name||u.username} (${u.username}${u.role==='admin'?', an admin':''}) a web sign-in?`,`You get a one-time link to send them: with it they set a password and use the web app as the same person.`+(u.active?'':' Their devices were all removed: this lets them in again, on the web.'),'Create web sign-in',{danger:false})) return;
   linkBox(u.username,await act(()=>K.api(`/api/persons/${u.person}/account`,{}),'Web sign-in created'));
 }
 async function revert(rev,force){
   try{ await K.api(`/api/revisions/${rev}/revert`,{force:!!force}); toast('Reverted'); show('history') }
-  catch(e){ if(e.status===409&&confirm('This item was changed again after that revision. Revert anyway (discarding the later change)?')) return revert(rev,true); if(e.status!==409) toast(e.message) }
+  catch(e){ if(e.status===409&&await K.confirm('Revert anyway?','This item was changed again after that revision: reverting discards the later change.','Revert anyway')) return revert(rev,true); if(e.status!==409) toast(e.message) }
 }
-const restoreTo=(hid,rev)=>confirm(hid?`Put all plant data back to how it was right after revision ${rev}? Later changes stay in History and can be re-applied.`:'Put all plant data back to how it was before the first logged change?')&&act(()=>K.api('/api/restore',hid?{hid}:{rev:0}),'Restored');
+const restoreTo=async(hid,rev)=>await K.confirm(hid?`Put all plant data back to how it was right after revision ${rev}?`:'Put all plant data back to how it was before the first logged change?','Later changes stay in History and can be re-applied.','Restore')&&act(()=>K.api('/api/restore',hid?{hid}:{rev:0}),'Restored');
 // ---------- updates (M5b): signed GitHub releases, checked daily, installed only when asked ----------
 async function renderUpdate(u){
   const el=$('#upd'); if(!el) return;
@@ -817,5 +814,5 @@ async function editDetails(id,name,pos){
   await act(()=>K.api(`/api/users/${id}`,{full_name:n,position:p}),'Details updated');
 }
 async function changePw(f){ if(await act(()=>K.api('/api/password',{old:f.old.value,new:f.new.value}),'Password changed. Other devices are signed out.')) f.reset() }
-const mgr=(a,d={})=>(a!=='accept'||confirm('Become the manager?'))&&act(()=>K.api('/api/manager/'+a,d),{transfer:'Offer sent',accept:'You are now the manager',decline:'Declined',cancel:'Offer cancelled'}[a]).then(r=>{ if(r&&a==='accept') location.reload() });
+const mgr=async(a,d={})=>(a!=='accept'||await K.confirm('Become the manager?','','Become the manager',{danger:false}))&&act(()=>K.api('/api/manager/'+a,d),{transfer:'Offer sent',accept:'You are now the manager',decline:'Declined',cancel:'Offer cancelled'}[a]).then(r=>{ if(r&&a==='accept') location.reload() });
 init();

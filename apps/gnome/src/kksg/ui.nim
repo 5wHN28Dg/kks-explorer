@@ -115,20 +115,36 @@ proc toast*(overlay: W, msg: string) =
   adw_toast_set_timeout(t, 4)
   adw_toast_overlay_add_toast(overlay, t)
 
+proc toastUndo*(overlay: W, msg: string, undo: proc ()) =
+  ## a toast with Undo, for something the server can take back (#365, D1 in docs/UI-UX-POLICY.md: at least 4 s; 8
+  ## here). Undo runs `undo` once, from idle (it builds widgets; the press may come from an accessibility action).
+  if overlay == nil: return
+  let t = newToast(msg)
+  adw_toast_set_timeout(t, 8)
+  adw_toast_set_button_label(t, "Undo")
+  var done = false
+  t.on("button-clicked", proc () =
+    if done: return
+    done = true
+    idle(proc () = undo()))
+  adw_toast_overlay_add_toast(overlay, t)
+
 proc present*(d, parent: W) =
   ## (see onClick: never inside an accessibility action)
   idle(proc () = adw_dialog_present(d, parent))
 
 proc confirm*(parent: W, heading, body, yes: string, destructive: bool, fn: proc ()) =
-  let d = adw_alert_dialog_new(heading.cstring, body.cstring)
-  adw_alert_dialog_add_response(d, "cancel", "Cancel")
-  adw_alert_dialog_add_response(d, "yes", yes.cstring)
-  adw_alert_dialog_set_response_appearance(d, "yes", if destructive: ADW_RESPONSE_DESTRUCTIVE else: ADW_RESPONSE_SUGGESTED)
-  adw_alert_dialog_set_default_response(d, "cancel")
-  adw_alert_dialog_set_close_response(d, "cancel")
-  d.onResponse(proc (id: string) =
-    if id == "yes": fn())
-  present(d, parent)
+  ## built from idle, as `ask` is: a dialog built inside an accessibility action has no accessibility contents
+  idle(proc () =
+    let d = adw_alert_dialog_new(heading.cstring, body.cstring)
+    adw_alert_dialog_add_response(d, "cancel", "Cancel")
+    adw_alert_dialog_add_response(d, "yes", yes.cstring)
+    adw_alert_dialog_set_response_appearance(d, "yes", if destructive: ADW_RESPONSE_DESTRUCTIVE else: ADW_RESPONSE_SUGGESTED)
+    adw_alert_dialog_set_default_response(d, "cancel")
+    adw_alert_dialog_set_close_response(d, "cancel")
+    d.onResponse(proc (id: string) =
+      if id == "yes": fn())
+    adw_dialog_present(d, parent))
 
 proc ask*(parent: W, heading, body, yes, no: string, fn: proc (yes: bool)) =
   ## A question with a destructive answer (`yes`) and a safe one (`no`: the default, and what Escape gives). `fn`

@@ -11,6 +11,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
@@ -80,9 +82,24 @@ private fun ProcedureDetail(ui: Ui, id: String, rev: Int, snack: SnackbarHostSta
                             if (l.str("tag").isNotEmpty()) ui.show(l.getString("tag")) else scope.launch { snack.showSnackbar("$k is not on any sheet") }
                         }, label = { Text(k) }, trailingIcon = {
                             Text("✕", Modifier.clickable {
+                                // no question first: once made (an admin's), the snackbar's Undo links it again (#365)
                                 val (_, m) = linkSubmit(id, n, k, false)
-                                scope.launch { snack.showSnackbar("Unlink $k: $m") }
-                            }.semantics { contentDescription = "Unlink $k from step $n" })
+                                // unlinks made while its Undo shows gather in it, so each one keeps its Undo
+                                scope.launch {
+                                    if (m != "Saved") { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("Unlink $k: $m"); return@launch }
+                                    if (snack.currentSnackbarData?.visuals?.actionLabel != "Undo") Unlinked.list.clear()
+                                    Unlinked.list.add(Triple(id, n, k))
+                                    val all = Unlinked.list.toList()
+                                    snack.currentSnackbarData?.dismiss()
+                                    val r = snack.showSnackbar(if (all.size == 1) "Unlinked $k from step $n" else "Unlinked ${all.size} codes",
+                                        actionLabel = "Undo", duration = SnackbarDuration.Long)
+                                    if (r == SnackbarResult.ActionPerformed) {
+                                        Unlinked.list.clear()
+                                        val said = all.map { (p, s, c) -> linkSubmit(p, s, c, true).second }.distinct()
+                                        snack.showSnackbar((if (all.size == 1) "Link $k: " else "Link ${all.size} codes: ") + said.joinToString())
+                                    }
+                                }
+                            }.clearAndSetSemantics { contentDescription = "Unlink $k from step $n"; role = androidx.compose.ui.semantics.Role.Button })
                         })
                     }
                     AssistChip(onClick = { ui.linkProc = id; ui.linkStep = n; ui.tab = "drawings" }, label = { Text("+ Link equipment") })
@@ -91,3 +108,6 @@ private fun ProcedureDetail(ui: Ui, id: String, rev: Int, snack: SnackbarHostSta
         }
     }
 }
+
+/** the unlinks the Undo on screen takes back (#365) */
+private object Unlinked { val list = mutableListOf<Triple<String, Int, String>>() }

@@ -129,7 +129,7 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
         if (admin && !roomy) item { PickBar(subs, picked, competing, say) }
         item { Dim("One card per tag. Approving applies the change and records it in History, where it can be reverted. Tick several to approve or reject them at once.") }
         if (Picked.said.value.isNotEmpty()) item { Text(Picked.said.value, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        items(groups) { g ->
+        items(groups, key = { g -> g.str("code") + "|" + g.str("tag") }) { g ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val tag = g.str("tag")
@@ -145,7 +145,8 @@ private fun Approvals(rev: Int, admin: Boolean, say: (String) -> Unit, open: (St
                         HorizontalDivider()
                         Text(k.str("label") + if (items.size > 1) " (${items.size})" else "", style = MaterialTheme.typography.titleSmall)
                         if (pick) Dim("Several proposed. “Use this one” approves it and rejects the other ${k.str("label").lowercase()}s; votes are only a hint.")
-                        for (sub in items) ApprovalItem(sub, admin, pick, say, picked)
+                        // keyed by the proposal: a sync that reorders the list must not move an open question to another one
+                        for (sub in items) key(sub.optLong("id")) { ApprovalItem(sub, admin, pick, say, picked, title, k.str("label"), items.size - 1) }
                     }
                 }
             }
@@ -228,7 +229,8 @@ private fun PickBar(subs: List<JSONObject>, picked: MutableList<Long>, competing
 }
 
 @Composable
-private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (String) -> Unit, picked: MutableList<Long>) {
+private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (String) -> Unit, picked: MutableList<Long>,
+                         code: String = "", kindLabel: String = "", others: Int = 0) {
     val id = sub.optLong("id")
     val conflict = sub.str("status") == "conflict"
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -246,13 +248,24 @@ private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (S
         if (conflict) Text("Held: it clashes with the current value or another proposal. " + sub.str("note"), color = MaterialTheme.colorScheme.error)
         ProposalBody(sub)
         if (sub.str("kind") == "photo") PhotoOf(sub.optJSONObject("payload")?.str("file").orEmpty(), height = 160)
+        // #365: Reject and Use this one (which rejects the rivals) are final: asked first, naming what and how many
+        var asking by remember(id) { mutableStateOf("") }
         if (admin) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (pick) {
-                Button(onClick = { act(id, "pick", JSONObject(), "Photo chosen, the others of this kind rejected", say) }) { Text("Use this one") }
+                Button(onClick = { asking = "pick" }) { Text("Use this one") }
                 OutlinedButton(onClick = { act(id, "approve", JSONObject(), "Added", say) }) { Text("Add") }
             } else Button(onClick = { act(id, "approve", JSONObject().put("force", conflict), "Approved", say) }) { Text(if (conflict) "Approve anyway" else "Approve") }
-            OutlinedButton(onClick = { act(id, "reject", JSONObject(), "Rejected", say) }) { Text("Reject") }
+            OutlinedButton(onClick = { asking = "reject" }) { Text("Reject") }
         }
+        val kind = kindLabel.lowercase()
+        if (asking == "pick") Confirm("Reject the other " + (if (others == 1) "photo?" else "$others photos?"),
+            "Using #$id for $code rejects the other " + (if (others == 1) kind else "$others ${kind}s") +
+                " proposed for it. The submitters see that " + (if (others == 1) "it was" else "they were") + " rejected; this can't be undone.",
+            "Use this one and reject " + (if (others == 1) "the other" else "the other $others"),
+            { act(id, "pick", JSONObject(), "Photo chosen, the others of this kind rejected", say) }, { asking = "" })
+        if (asking == "reject") Confirm("Reject " + proposalTitle(sub) + "?",
+            "The proposal" + sub.str("by_name").ifEmpty { sub.str("by") }.let { if (it.isEmpty()) "" else " by \u2068$it\u2069" } + " is discarded; the submitter sees that it was rejected. This can't be undone.",
+            "Reject", { act(id, "reject", JSONObject(), "Rejected", say) }, { asking = "" })
     }
 }
 
@@ -441,7 +454,7 @@ private fun Devices(rev: Int, admin: Boolean, say: (String) -> Unit) {
     val reqs = remember(rev, poll) { if (admin) call("GET", "/api/join-requests").json.optJSONArray("requests").objects() else emptyList() }
     var remove by remember { mutableStateOf<JSONObject?>(null) }
     var invite by remember { mutableStateOf(false) }
-    remove?.let { d -> Confirm("Remove this device?", "It stops receiving data, and wipes the plant from itself if it ever connects again.", "Remove", {
+    remove?.let { d -> Confirm("Remove this device?", "It stops receiving data, and wipes the plant from itself if it ever connects again.", "Remove device", {
         val res = call("POST", "/api/devices/revoke", JSONObject().put("device", d.str("device"))); say(res.error ?: "Removed")
     }, { remove = null }) }
     if (invite) { InviteDialog(say) { invite = false } }
@@ -488,7 +501,7 @@ private fun Devices(rev: Int, admin: Boolean, say: (String) -> Unit) {
                 rows(all)
             }
             if (reqs.isNotEmpty()) Section("Waiting to join", "Accept only if the code on the other device is the same.") {
-                for (x in reqs) {
+                for (x in reqs) key(x.str("device")) {
                     val q = x.optJSONObject("request") ?: JSONObject()
                     ListItem(headlineContent = { Text(q.str("full_name") + " (" + q.str("username") + ") · " + q.str("label")) },
                         supportingContent = { Column {
@@ -498,10 +511,13 @@ private fun Devices(rev: Int, admin: Boolean, say: (String) -> Unit) {
                                 color = MaterialTheme.colorScheme.error)
                         } },
                         trailingContent = { Row {
-                            for ((lab, a) in listOf("Accept" to "accept", "Refuse" to "refuse")) TextButton(onClick = {
+                            val decide = { a: String ->
                                 val res = call("POST", "/api/join-requests/" + x.str("device"), JSONObject().put("action", a).put("existing_ok", true))
                                 say(res.error ?: if (a == "accept") "Accepted" else "Refused")
-                            }) { Text(lab) }
+                            }
+                            // (Refuse acts at once, as on the other clients: the device can ask again; #365 left it so)
+                            TextButton(onClick = { decide("accept") }) { Text("Accept") }
+                            TextButton(onClick = { decide("refuse") }) { Text("Refuse") }
                         } })
                 }
             }

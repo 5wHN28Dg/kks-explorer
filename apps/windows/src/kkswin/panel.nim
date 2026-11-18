@@ -69,6 +69,8 @@ proc reviewSection(w: Win, p: Page, t: Tag) =
     if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", data), ("base", base)]), code).len > 0:
       w.afterChange(id, sent = [k, isa])),
     ("Not a tag", proc () =
+      # asked first (#365): the tag leaves the drawing on every device
+      if not ask(w.hwnd, "Mark this as not a tag?", "It is no longer shown as a tag, on every device.", "Mark as not a tag"): return
       if w.submit("review", newObj(@[("tag_id", newStr(id)), ("data", newObj(@[("status", newStr("rejected"))])),
                                     ("base", base)]), "not a tag").len > 0:
         w.afterChange(id, sent = [k, isa])))
@@ -309,7 +311,7 @@ proc buildPanel*(w: Win, t: Tag) =
     let addedId = t.added
     let tagId = t.id
     p.buttons(("Remove this tag", proc () =
-      if ask(w.hwnd, "Remove this tag?", "The mark goes away on every device once approved.") and
+      if ask(w.hwnd, "Remove this tag?", "The mark goes away on every device once approved.", "Remove tag") and
          w.submit("tag_remove", newObj(@[("id", newStr(addedId))]), if k.len > 0: k else: "the mark").len > 0:
         w.afterChange(tagId, rebuild = false)))     # still there (it waits for approval): the panel stays as it is
   if k.len == 0: return

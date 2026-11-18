@@ -24,7 +24,7 @@ from playwright.sync_api import sync_playwright, expect
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 SERVER = os.environ.get('KKS_SERVER', '/tmp/kkslinux/kks_server')
 sys.path.insert(0, os.path.dirname(__file__))
-from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors
+from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors, answer_confirms
 from app_person import crypto2, proto2      # (the Python reference, ref/)
 
 PW = 'a long password'
@@ -70,6 +70,7 @@ class WebSignOut(unittest.TestCase):
         errors = PageErrors(page)
         if said is not None:
             page.on('dialog', lambda d: (said.append(d.message), d.accept() if answer['ok'] else d.dismiss()))
+            answer_confirms(page, lambda msg: (said.append(msg), answer['ok'])[1])
         page.goto(self.base + path)
         page.wait_for_function(SIGNED_IN % user)
         return page, errors
@@ -294,7 +295,7 @@ class WebSignOut(unittest.TestCase):
             expect(field).to_have_attribute('type', 'password')
             expect(field).to_have_attribute('autocomplete', 'current-password')
             expect(field).to_have_attribute('aria-label', 'Your password')
-            expect(row).to_contain_text('It stops syncing; what it already holds stays on it.')
+            expect(row).to_contain_text('It stops receiving data, and wipes the plant from itself if it ever connects again.')
             self.assertEqual(row.get_by_role('button', name='Remove', exact=True).count(), 0)
             field.fill(PW)
             row.get_by_role('button', name='Cancel').click()
@@ -425,7 +426,7 @@ class WebSignOut(unittest.TestCase):
             alis = join_file('ali', 'tablet')
             expect(page.locator('#toast')).to_have_text('Certified a device for ali. Now give them a bundle.')
             self.assertEqual(len(said), 1)
-            self.assertIn('already exists. Add this computer as another device of theirs?', said[0])
+            self.assertTrue(said[0].startswith('Add this computer as another device of ') and '(ali, user) already exists.' in said[0], said[0])
             self.assertEqual([x[1].get('password') for x in page.evaluate('window.asked')[n:]], [None, None])
             self.assertIn(alis, {d['device'] for d in self.boss.req('GET', '/api/devices')['all']})
             self.assertEqual(page.locator('#main input[type=password]').count(), 0)

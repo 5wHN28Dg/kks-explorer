@@ -228,7 +228,8 @@ class Windows(unittest.TestCase):
         subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, ppm], capture_output=True)
         if os.path.exists(ppm):
             from PIL import Image
-            Image.open(ppm).save(os.path.join(out, name + '.png'))
+            im = Image.open(ppm)
+            im.crop((0, 0, im.width, im.height - 48)).save(os.path.join(out, name + '.png'))   # (not the taskbar: clock, weather)
 
     def test_about(self):
         """About Walkdown (about.nim, from the compiled-in data/about.json): from the setup screen's button and F1, and
@@ -370,7 +371,7 @@ class Windows(unittest.TestCase):
             'wait\t2 selected\t10', 'state\t~11LAC20AA101\toff', 'click\tClose the list', 'gone\tSelected codes',
             # Place for all: a floor; one of the two has another floor already, so the app asks first
             'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t3', 'click\tSend',
-            'wait\t~1 of 2 already have a floor; it will be replaced.\t10', 'click\tOK',
+            'wait\t~1 of 2 already have a floor; it will be replaced.\t10', 'click\tReplace',
             'wait\t~Sent for 2 codes · saved\t20', 'state\tSelect tags\toff'])
         want = {'11LAC10AP001': '3', '11LAC10AP002': '3', '11LAC10AP003': '', '11LAC20AA101': ''}
         def floors():
@@ -446,7 +447,7 @@ class Windows(unittest.TestCase):
                    'click\tEquipment by system…', 'wait\tEquipment by system\t20',
                    'set\tSearch codes, systems, descriptions\tLAC10AP003', 'wait\t~ found\t20',
                    'select\t~11LAC10AP003 · ', 'click\tShow the selected code on its drawing',
-                   'wait\t~the selected code is dropped\t10', 'click\tOK', 'state\tSelect tags\toff',
+                   'wait\t~the selected code is dropped\t10', 'click\tLeave Select tags', 'state\tSelect tags\toff',
                    'wait\t11LAC10AP003\t10', 'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
         def photos():
             ph = [p for p in b.req('GET', '/api/state').get('photos', []) if p.get('caption') == 'Both drains']
@@ -566,7 +567,7 @@ class Windows(unittest.TestCase):
                    'click\tPlace for all…', 'wait\tPlace for all\t10', 'set\tFloor (0–10)\t3', 'click\tSend',
                    'wait\t~1 of 2 already have a floor; it will be replaced.\t10', 'sleep\t506',
                    'sleep\t12000',     # several sync rounds: the app has the new floor under the open question
-                   'click\tOK', 'wait\t~Sent for 2 codes · 1 held (they clash with pending changes)\t20'],
+                   'click\tReplace', 'wait\t~Sent for 2 codes · 1 held (they clash with pending changes)\t20'],
                    during=[('sleep\t506', floor5)])
         def floors():
             eq = b.req('GET', '/api/state')['equipment']
@@ -606,7 +607,7 @@ class Windows(unittest.TestCase):
                                    'sleep\t500', 'wait\tOther drawing — Walkdown\t5', 'gone\tSample sheet — Walkdown',
                                    'wait\t1 selected\t5',
                                    'click\tShow the selected code on its drawing', 'wait\tLeave Select tags?\t10',
-                                   'click\tOK', 'wait\tSample sheet — Walkdown\t10', 'state\tSelect tags\toff',
+                                   'click\tLeave Select tags', 'wait\tSample sheet — Walkdown\t10', 'state\tSelect tags\toff',
                                    'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
         # the same from an Approvals card (Open … on the drawing): the sheet stays until the person agreed
         self.check('switch3.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10',
@@ -616,7 +617,7 @@ class Windows(unittest.TestCase):
                                    'click\tOpen 11LAB70AA601 on the drawing', 'wait\tLeave Select tags?\t10',
                                    'click\tCancel', 'gone\tLeave Select tags?', 'sleep\t500',
                                    'wait\tSample sheet — Walkdown\t5', 'gone\tOther drawing — Walkdown', 'wait\t1 selected\t5',
-                                   'click\tOpen 11LAB70AA601 on the drawing', 'wait\tLeave Select tags?\t10', 'click\tOK',
+                                   'click\tOpen 11LAB70AA601 on the drawing', 'wait\tLeave Select tags?\t10', 'click\tLeave Select tags',
                                    'wait\tOther drawing — Walkdown\t10', 'gone\t1 selected', 'click\tDrawings',
                                    'state\tSelect tags\toff'])
         self.assertIn('Walkdown', vm('Get-Process Walkdown -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName'))
@@ -1096,9 +1097,9 @@ class Windows(unittest.TestCase):
         self.assertEqual(self.wait_server(floor_b, 'the floor never went with the next photo', tries=60), '6')
         # discard the kept photo of a (the first): its floor is lost, and the person is told
         self.check('floor1.uia', ['click\tPhotos not sent (3)…', 'wait\tPhotos not sent\t10', 'click\tDiscard',
-                                  'wait\tDiscard this photo?\t10', 'click\tOK',
+                                  'wait\tDiscard this photo?\t10', 'click\tDiscard photo',
                                   'wait\t~The floor of %s (4) was to be sent with that photo\t20' % a,
-                                  'click\tDiscard', 'wait\tDiscard this photo?\t10', 'click\tOK',
+                                  'click\tDiscard', 'wait\tDiscard this photo?\t10', 'click\tDiscard photo',
                                   'wait\tPhotos not sent (1)…\t20', 'click\tClose'] +
                    self.show(a) + ['click\tEquipment: from a file…', 'wait\tWhich floor is %s on?\t20' % a,
                                    'click\tCancel', 'gone\tWhich floor is %s on?' % a])
@@ -1108,7 +1109,7 @@ class Windows(unittest.TestCase):
         self.check('floor2.uia', self.show(c) + [
             'click\tEquipment: from a file…', 'wait\tPhoto to mark up\t30', 'set\tCaption (optional)\tFloor C2',
             'click\tPhotos not sent (1)…', 'wait\tPhotos not sent\t10', 'click\tDiscard', 'wait\tDiscard this photo?\t10',
-            'click\tOK', 'wait\t~The floor of %s (7) was to be sent with that photo\t20' % c,
+            'click\tDiscard photo', 'wait\t~The floor of %s (7) was to be sent with that photo\t20' % c,
             'wait\tEvery photo was sent or discarded.\t20',
             'click\tSend', 'wait\tWhich floor is %s on?\t20' % c, 'set\tFloor of %s (0–10)\t8' % c, 'click\tContinue',
             'wait\t~Saved: photo of %s\t90' % c])
@@ -1188,8 +1189,10 @@ class Windows(unittest.TestCase):
                                  'wait\tTag plate photo\t10', 'wait\t~by Omar Fieldman · \t10', 'wait\t11LAC30AP002\t10',
                                  'click\tOpen 11LAC30AP001 on the drawing', 'value\tNumber\t001',
                                  'wait\tTag plate: from a file…\t10', 'click\tClose',
-                                 'click\tUse this one', 'wait\t~Photo chosen\t20', 'gone\tUse this one',
-                                 'gone\tEquipment photo (2)', 'wait\tTag plate photo\t20'])
+                                 'click\tUse this one', 'wait\tReject the other photo?\t10',      # #365: asked first, with the count
+                                 'sleep\t2022', 'click\tUse this one and reject the other', 'wait\t~Photo chosen\t20', 'gone\tUse this one',
+                                 'gone\tEquipment photo (2)', 'wait\tTag plate photo\t20'],
+                   during=[('sleep\t2022', lambda: self.screenshot('win-use-this-one'))])
         def decided():
             subs = omar.req('GET', '/api/submissions?status=all')['submissions']
             got = sorted((s.get('payload', {}).get('caption', ''), s['status']) for s in subs if s['kind'] == 'photo')
@@ -1502,8 +1505,10 @@ class Windows(unittest.TestCase):
         # (that sync round came after the held Save: the server still has its own value)
         self.assertEqual(eq().get('loc'), 'from the server')
         try:
-            self.check('stale9.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA885', 'click\tNot a tag', 'gone\tCheck this tag',
-                                             'gone\tNot a tag', 'click\tDrawings'])
+            self.check('stale9.uia', pick + ['set\tKKS (with suffix)\t11LAB70AA885', 'click\tNot a tag',
+                                             'wait\tMark this as not a tag?\t10', 'sleep\t2023', 'click\tMark as not a tag', 'gone\tCheck this tag',
+                                             'gone\tNot a tag', 'click\tDrawings'],
+                       during=[('sleep\t2023', lambda: self.screenshot('win-not-a-tag'))])
         finally:
             # the confirmed mark goes again: test_systems_follows_sync counts the codes on the drawings
             r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': ids[0].split(':', 1)[1]}})
@@ -1653,9 +1658,13 @@ class Windows(unittest.TestCase):
                                 'choose\tNotes', 'wait\t~Location and notes · 11LAB70AA501\t20', 'value\tNotes\tGland repacked',
                                 'choose\tAll kinds', 'chosen\tAll kinds'])
         # deleting the photo sends its id (the Android bug: "bad photo id")
-        self.check('delete.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA501',
-                                  'select\t~11LAB70AA501', 'click\tShow on the drawing', 'click\tDelete',
-                                  'wait\tDelete this photo?\t10', 'click\tOK', 'wait\t~Saved: delete a photo\t20'])
+        log = self.check('delete.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA501',
+                                        'select\t~11LAB70AA501', 'click\tShow on the drawing', 'click\tDelete',
+                                        'wait\tDelete this photo?\t10', 'sleep\t2021', 'dump',     # (the UI audit's evidence, #365)
+                                        'click\tDelete photo', 'wait\t~Saved: delete a photo\t20'],
+                         during=[('sleep\t2021', lambda: self.screenshot('win-delete-photo'))])
+        if os.environ.get('KKS_SHOTS'):
+            with open(os.path.join(os.environ['KKS_SHOTS'], 'win-delete-photo-tree.txt'), 'w') as f: f.write(log)
         self.wait_server(lambda: not [p for p in self.boss.req('GET', '/api/state').get('photos', [])
                                       if p.get('caption') == 'Valve from Windows'], 'the photo was never deleted', tries=80)
         # the manager removes this device on the server; at its next sync it wipes itself and starts over

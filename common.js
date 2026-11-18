@@ -502,7 +502,8 @@ K.wipe = async () => {
   if (K.cfg?.mode === 'peer') try { localStorage.clear() } catch (e) {}
 };
 K.logout = async () => {
-  if (K.outbox.length && !confirm(`${K.outbox.length} change(s) not sent yet. They stay on this device and are sent the next time you sign in here. Log out?`)) return;
+  const n = K.outbox.length;
+  if (n && !await K.confirm('Log out?', `${n === 1 ? '1 change is' : n + ' changes are'} not sent yet. They stay on this device and are sent the next time you sign in here.`, 'Log out')) return;
   try { await K.api('/api/logout', {}) } catch (e) {}
   await K.wipe(); location.href = '/';
 };
@@ -1244,21 +1245,74 @@ K.progress = (title, estimateMs, id) => {
   return {done() { clearInterval(iv); bar.style.width = '100%'; t.textContent = '100 %'; setTimeout(() => box.remove(), 500) }};
 };
 
-// Ask a question with an optional note ("Delete this photo?"). -> Promise of {note} or null.
-K.ask = (title, text, askNote, okLabel = 'OK') => new Promise(done => {
-  const o = document.createElement('div');
-  o.style.cssText = 'position:fixed;inset:0;z-index:180;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px;font:14px system-ui,sans-serif';
-  const h = K.h, note = askNote ? h('input', {class: 'note', maxlength: 500, placeholder: 'Note for the approver (optional)',
-    style: 'width:100%;padding:8px;border-radius:6px;border:1px solid #3a5061;background:#1c2730;color:inherit;margin-bottom:10px'}) : null;
-  const answer = ok => () => { const v = ok ? {note: note?.value.trim() || ''} : null; o.remove(); done(v) };
-  o.append(h('div', {style: 'background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:16px;max-width:420px;width:100%'},
-    h('div', {style: 'font-weight:650;margin-bottom:6px'}, title), text ? h('div', {style: 'opacity:.8;margin-bottom:8px'}, text) : null, note,
-    h('div', {style: 'display:flex;gap:8px;justify-content:flex-end'},
-      h('button', {type: 'button', 'data-v': '0', style: 'padding:8px 12px;border-radius:6px;border:1px solid #3a5061;background:none;color:inherit;cursor:pointer', onclick: answer(false)}, 'Cancel'),
-      h('button', {type: 'button', 'data-v': '1', style: 'padding:8px 12px;border-radius:6px;border:0;background:#ff7a1a;color:#1c2730;font-weight:650;cursor:pointer', onclick: answer(true)}, okLabel))));
-  document.body.appendChild(o);
-  note?.focus();
+// ---------- a question before an action: the page's own dialog (never the browser's confirm()) ----------
+// The browser's confirm() can't name its buttons ("OK") and confirms on Enter. Here the confirming button names the
+// action ("Delete photo"); with `danger` (the default: it deletes, discards or can't be taken back) it is styled as
+// destructive. The focus starts on the safe button (`keep`, "Cancel" unless named), which is what Enter presses;
+// Escape keeps too. A modal <dialog>: the page under it takes no clicks or focus, and the focus goes back where it
+// was when the dialog closes. With `note` (a placeholder): an optional text field, typed text offered again after a
+// cancel (`draft`, a key). -> Promise of {note} (confirmed) or null (kept).
+const confirmDrafts = {};
+K.confirm = (title, text, action, {danger = true, keep = 'Cancel', note = '', draft = ''} = {}) => new Promise(done => {
+  const h = K.h, was = document.activeElement, id = 'kq' + Math.random().toString(36).slice(2, 8);
+  const btn = 'min-height:48px;min-width:88px;padding:8px 14px;border-radius:6px;cursor:pointer;font:inherit;font-weight:600;';
+  const label = note ? h('label', {for: id + 'n', style: 'display:block;margin:0 0 4px;color:var(--muted,#94a6b4)'}, note) : null;
+  const field = note ? h('input', {id: id + 'n', class: 'note', maxlength: 500,
+    style: 'width:100%;min-height:48px;padding:8px;border-radius:6px;border:1px solid var(--muted,#94a6b4);background:var(--chrome,#1c2730);color:inherit;font-size:16px;margin:0 0 12px'}) : null;
+  if (field && draft && confirmDrafts[draft]) field.value = confirmDrafts[draft];
+  const no = h('button', {type: 'button', class: 'kq-keep', style: btn + 'background:none;border:1px solid var(--muted,#94a6b4);color:inherit', onclick: () => d.close('no')}, keep);
+  const yes = h('button', {type: 'button', class: 'kq-yes' + (danger ? ' kq-danger' : ''), onclick: () => d.close('yes'),
+    // (#ff8a80, not the pages' --bad: 5.6:1 on the dialog, where #ff5a5a gave 4.2)
+    style: btn + (danger ? 'background:none;border:2px solid #ff8a80;color:#ff8a80'
+                         : 'border:0;background:var(--accent,#ff7a1a);color:#1c2730')}, action);
+  const d = h('dialog', {class: 'kconfirm', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': id + 't', 'aria-describedby': text ? id + 'x' : null,
+    style: 'background:var(--chrome2,#243440);color:var(--ink,#e9eef2);border:1px solid var(--line,#3a5061);border-radius:10px;padding:16px;width:min(440px,94vw);max-height:90vh;flex-direction:column;overflow:hidden;font:14px/1.45 var(--sans,system-ui,sans-serif)'},
+    h('h2', {id: id + 't', style: 'font-size:16px;margin:0 0 6px;overflow-wrap:anywhere'}, title),
+    // (the question and its text scroll if they must; the buttons stay in view under them, R1)
+    h('div', {style: 'overflow:auto;min-height:0;flex:1 1 auto'},
+      text ? h('p', {id: id + 'x', style: 'margin:0 0 12px;opacity:.9;white-space:pre-line;overflow-wrap:anywhere'}, text) : null, label, field),
+    h('div', {style: 'display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;flex:none;padding-top:4px'}, no, yes));
+  // Tab and Shift+Tab go round the dialog's own controls (a modal dialog alone lets them leave for the browser's)
+  d.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const f = [field, no, yes].filter(Boolean), i = f.indexOf(document.activeElement);
+    e.preventDefault();
+    f[(i < 0 ? 0 : i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+  });
+  d.addEventListener('close', () => {
+    const ok = d.returnValue === 'yes', v = field?.value.trim() || '';
+    if (draft) confirmDrafts[draft] = ok ? '' : v;
+    d.remove(); if (was?.isConnected) was.focus?.({preventScroll: true});
+    done(ok ? {note: v} : null);
+  });
+  document.body.appendChild(d);
+  try { d.showModal() } catch (e) { d.setAttribute('open', '') }
+  d.style.display = 'flex';       // (set once open: a closed <dialog> must stay display:none)
+  no.focus();
 });
+
+// ---------- Undo after something the server can take back (unlinking a step's code) ----------
+// A bar at the bottom for `ms` (at least 4 s: D1 in docs/UI-UX-POLICY.md), its text read out by screen readers
+// without moving the focus; Undo runs `undo` once. A new one replaces the last (whose undo is then gone).
+K.undo = (text, undo, ms = 8000) => {
+  document.getElementById('kundo')?.remove();
+  const h = K.h, box = h('div', {id: 'kundo', role: 'status', 'aria-live': 'polite',
+    // (above the pages' toasts, which sit 24 px from the bottom: a message said meanwhile stays in view)
+    style: 'position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:45;display:flex;gap:12px;align-items:center;' +
+           'background:var(--chrome3,#2f4352);color:var(--ink,#e9eef2);border:1px solid var(--line,#3a5061);border-radius:8px;padding:4px 4px 4px 14px;width:max-content;max-width:92vw;box-shadow:0 6px 24px #0008;font:14px/1.45 var(--sans,system-ui,sans-serif)'},
+    h('span', {style: 'overflow-wrap:anywhere'}, text),
+    h('button', {type: 'button', style: 'min-height:48px;min-width:72px;background:none;border:0;color:#ffa15c;font:inherit;font-weight:700;cursor:pointer',   // (5.1:1 on the bar; the accent gave 3.9)
+      // (undo gets whether the bar had the focus: then it puts the focus somewhere sensible, the bar being gone)
+      onclick: () => { const had = box.contains(document.activeElement); clearTimeout(box._t); box.remove(); undo(had) }}, 'Undo'));
+  document.body.appendChild(box);
+  // the time runs only while the bar is neither pointed at nor focused (a keyboard or slow hand reaches Undo)
+  const run = () => { clearTimeout(box._t); box._t = setTimeout(() => box.remove(), Math.max(4000, ms)) };
+  const hold = () => clearTimeout(box._t);
+  box.addEventListener('mouseenter', hold); box.addEventListener('focusin', hold);
+  box.addEventListener('mouseleave', run); box.addEventListener('focusout', run);
+  run();
+  return box;
+};
 
 // ---------- copy text to the clipboard ----------
 // The Clipboard API where the page may use it (a secure context: https or localhost), else the old way that Safari and

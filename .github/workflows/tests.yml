@@ -317,6 +317,9 @@ jobs:
       - name: Copy the code, the panel's heading in view, several approvals at once (test_web_batch)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_web_batch.py -v -k ${{ matrix.engine }}
+      - name: Undo after unlinking, the page's own question before removing (test_web_destructive)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
+        run: .venv/bin/python platform/linux/e2e/test_web_destructive.py -v -k ${{ matrix.engine }}
       - name: The Manage page (test_admin_web)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server, KKS_IMPORTER: /tmp/kksimp/kks_import}
         run: .venv/bin/python platform/linux/e2e/test_admin_web.py -v -k ${{ matrix.engine }}

@@ -151,7 +151,7 @@ proc decideMany(w: Win, action: string, again: proc (), only: seq[int64] = @[]) 
               " with the value as it is now; decide " & (if held.len == 1: "it on its" else: "them on their") & " own."
     if competing.len > 0:
       msg.add " Not approved: " & competing.join(", ") & ": several photos of one kind compete for " &
-              (if competing.len == 1: "its" else: "their") & " code; choose with “Pick this photo”."
+              (if competing.len == 1: "its" else: "their") & " code; choose with “Use this one”."
     if failed.len > 0: msg.add " Not done: " & failed.join("; ") & "."
     lastSaid = msg
     w.toast(msg)
@@ -277,7 +277,7 @@ proc approvals(w: Win, box: W) =
                   else: picked.keepItIf(it != id)
                   pickShow())
                 pickChecks.add (id, cb)
-                if pick:        # (a line of its own: with "Pick this photo", the votes and Reject the row was too wide)
+                if pick:        # (a line of its own: with "Use this one", the votes and Reject the row was too wide)
                   let top = hbox(8)
                   gtk_widget_set_margin_top(top, 6)
                   top.add cb
@@ -285,8 +285,15 @@ proc approvals(w: Win, box: W) =
                 else: btns.add cb
               if pick:
                 let votes = if sub.get("votes") != nil and sub["votes"].kind == jInt: sub["votes"].i else: 0
-                let pb = button("Pick this photo", "suggested-action", proc () =
-                  if w.act(id, "pick", newObj(), "Photo chosen; the other " & s(kd, "label").toLowerAscii & "s were rejected"): again())
+                let others = items.len - 1
+                let pb = button("Use this one", "suggested-action", proc () =
+                  # the others of its kind are rejected with it, for good (#365): said, with how many, first
+                  let kind = s(kd, "label").toLowerAscii
+                  ask(w.window, "Reject the other " & (if others == 1: "photo?" else: $others & " photos?"),
+                      "Using #" & $id & (if s(grp, "code").len > 0: " for " & s(grp, "code") else: "") & " rejects the other " & (if others == 1: kind else: $others & " " & kind & "s") &
+                      " proposed for it. The submitters see that " & (if others == 1: "it was" else: "they were") & " rejected; this can't be undone.",
+                      "Use this one and reject " & (if others == 1: "the other" else: "the other " & $others), "Cancel", proc (yes: bool) =
+                    if yes and w.act(id, "pick", newObj(), "Photo chosen; the other " & kind & "s were rejected"): again()))
                 setAccessibleDescription(pb, what & ", " & $votes & " votes")
                 btns.add pb
                 btns.add label($votes & (if votes == 1: " vote" else: " votes"), "dim-label")
@@ -296,7 +303,11 @@ proc approvals(w: Win, box: W) =
                 setAccessibleDescription(ab, what)
                 btns.add ab
               let rb = button("Reject", "destructive-action", proc () =
-                if w.act(id, "reject", newObj(), "Rejected"): again())
+                # final: the core takes no other decision on it afterwards (#365)
+                ask(w.window, "Reject " & proposalTitle(sub) & "?",
+                    "The proposal" & (if s(sub, "by_name").len > 0: " by \u2068" & s(sub, "by_name") & "\u2069" else: "") & " is discarded; the submitter sees that it was rejected. This can't be undone.",
+                    "Reject", "Cancel", proc (yes: bool) =
+                  if yes and w.act(id, "reject", newObj(), "Rejected"): again()))
               setAccessibleDescription(rb, what)
               btns.add rb
               adw_preferences_group_add(pg, btns)
@@ -372,7 +383,7 @@ proc myList(w: Win, box: W) =
         if st in ["pending", "conflict"]:
           let wb = button("Withdraw", "", proc () =
             let list = hold(box)    # a sync can rebuild the page (and free this list) while the question is up
-            confirm(w.window, "Withdraw this proposal?", "", "Withdraw", true, proc () =
+            confirm(w.window, "Withdraw this proposal?", proposalTitle(sub) & ": it is taken back before anyone decides it.", "Withdraw", true, proc () =
               if w.act(id, "withdraw", newObj(), "Withdrawn"):
                 if list.shown: w.refreshPage(box, proc (b: W) = w.myList(b))
                 else: w.refreshLive()))     # the page that replaced it, brought up to date
@@ -515,10 +526,32 @@ proc hide(w: Win, body: JNode, done: string, again: proc ()) =
 proc hiddenControls(w: Win, box: W, hiddenN: int, what: string, again: proc ()): W =
   ## "Clear removed" and "Show hidden (n)"
   result = hbox(8)
-  let clear = button("Clear removed", "", proc () =
-    w.hide(newObj(@[("clear_removed", newBool(true))]), "Removed devices and people hidden", again))
+  # how many it hides, on the button (#365, B2), and Undo after: hiding is display only, so it is taken back by
+  # showing the same ones again. Counted as the page is built: the lists as shown (hidden ones left out).
+  var ids: seq[string]
+  try:
+    let all = w.a.call("GET", "/api/devices").get("all")
+    if all != nil and all.kind == jArr:
+      for x in all.elems:
+        if x.get("revoked") != nil and x["revoked"].kind == jBool and x["revoked"].b and s(x, "device").len > 0: ids.add s(x, "device")
+    for u in w.a.call("GET", "/api/users")["users"].elems:
+      if u.get("active") != nil and u["active"].kind == jBool and not u["active"].b and
+         u.get("devices") != nil and u["devices"].kind == jInt and u["devices"].i > 0 and s(u, "person").len > 0: ids.add s(u, "person")
+  except ApiError, KeyError: discard
+  let clear = button("Clear removed (" & $ids.len & ")", "", proc () =
+    if ids.len == 0:
+      w.toast("Nothing to clear: no removed device or person is listed")
+      return
+    try:
+      discard w.a.call("POST", "/api/hidden", newObj(@[("clear_removed", newBool(true))]))
+      again()
+      w.toastUndo("Hid " & $ids.len & " removed " & (if ids.len == 1: "device or person" else: "devices and people"), proc () =
+        var arr = newArr()
+        for x in ids: arr.elems.add newStr(x)
+        w.hide(newObj(@[("ids", arr), ("hide", newBool(false))]), "Shown again", again))
+    except ApiError as e: w.toast(e.msg))
   setAccessibleDescription(clear, "Hide every removed device and every person with no active device from these lists")
-  result.add clear
+  if ids.len > 0: result.add clear
   if hiddenN > 0 or showHidden:
     let t = gtk_toggle_button_new_with_label((if showHidden: "Hide hidden" else: "Show hidden (" & $hiddenN & ")").cstring)
     gtk_toggle_button_set_active(t, cint(showHidden))
@@ -596,7 +629,7 @@ proc devices(w: Win, box: W) =
         if not x["revoked"].b and not x["this_computer"].b:
           let b = button("Remove", "flat destructive-action", proc () =
             confirm(w.window, "Remove this device?", "It stops receiving data, and wipes the plant from itself if it ever connects again.",
-                    "Remove", true, proc () =
+                    "Remove device", true, proc () =
               try:
                 discard w.a.call("POST", "/api/devices/revoke", newObj(@[("device", newStr(dev))]))
                 w.toast("Removed")

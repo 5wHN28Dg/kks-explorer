@@ -79,8 +79,19 @@ proc procedureDetail(w: Win, id: string, box: W) =
               w.goToTag(ts[0].sheet, ts[0].id)
             else: w.toast(k & " is not on any sheet"))
           chip.add iconButton("window-close-symbolic", "Unlink " & k & " from step " & $n, proc () =
-            discard w.submit("link", newObj(@[("proc", newStr(id)), ("step", newInt(n)), ("kks", newStr(k)), ("on", newBool(false))]),
-                             "unlink " & k)
+            # no question first: once made (an admin's), the toast's Undo links it again (#365); a member's
+            # proposal is withdrawn in My proposals instead
+            let link = proc (on: bool): string =
+              w.submit("link", newObj(@[("proc", newStr(id)), ("step", newInt(n)), ("kks", newStr(k)), ("on", newBool(on))]),
+                       (if on: "link " else: "unlink ") & k, quiet = not on)
+            let page = hold(box)
+            if link(false) == "approved":
+              w.toastUndo("Unlinked " & k & " from step " & $n, proc () =
+                if link(true).len > 0:
+                  w.loadModel()
+                  w.applyHighlights()
+                  if page.shown: w.procedureDetail(id, box)
+                  else: w.refreshLive())      # (the procedure opened again meanwhile: a page that follows the data)
             w.loadModel()
             w.applyHighlights()
             w.procedureDetail(id, box))

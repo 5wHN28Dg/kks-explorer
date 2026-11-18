@@ -102,7 +102,8 @@ proc doSelectTag(id: string, center: bool) =
       let before = w.picked
       let n = before.len
       if not ask(owner, "Leave Select tags?", "Opening this tag ends Select tags: the " &
-                 (if n == 1: "selected code is" else: $n & " selected codes are") & " dropped, nothing is sent for them."):
+                 (if n == 1: "selected code is" else: $n & " selected codes are") & " dropped, nothing is sent for them.",
+                 "Leave Select tags"):
         return
       # the main window stays usable under the question: a selection changed meanwhile wasn't the one asked about
       if w.picking and w.picked != before:
@@ -307,6 +308,11 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     MoveWindow(h, r.left, r.top, r.right - r.left, r.bottom - r.top, 1)
     return 0
   of WM_CLOSE:
+    # a window holding something unsent (the photo mark-up) is asked first: closing this one closes it too (#365)
+    var asks: seq[proc (): bool]
+    for _, f in popupMayClose: asks.add f
+    for f in asks:
+      if not f(): return 0
     # photos still waiting are kept on this computer (photos.nim) and sent when Walkdown next starts: say so, and
     # offer to wait for them
     let n = (if w != nil: queuedCount() else: 0)
@@ -316,8 +322,9 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
       if n > 0: what.add(if n == 1: "1 photo is still being prepared" else: $n & " photos are still being prepared")
       if f > 0: what.add(if f == 1: "1 photo was not sent" else: $f & " photos were not sent")
       if not ask(h, "Close Walkdown?", what.join(", and ") & ". " & (if n + f == 1: "It is" else: "They are") &
-                 " kept on this computer and sent when Walkdown next starts. Cancel to keep Walkdown open" &
-                 (if n > 0: " (the ones being prepared are sent in a moment)" else: "") & ", or OK to close now."):
+                 " kept on this computer and sent when Walkdown next starts" &
+                 (if n > 0: "; if Walkdown stays open, the ones being prepared are sent in a moment" else: "") & ".",
+                 "Close now", destructive = false):
         return 0
   of WM_DESTROY:
     PostQuitMessage(0)
