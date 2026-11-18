@@ -212,13 +212,13 @@ func _layout_top() -> void:
 	if hud_root == null or bar == null:
 		return
 	_layout_sticks()
-	# beside the buttons where there is room for a line of it; else at the bottom, across the canvas between the
-	# sticks' corners (a narrow canvas, a large UI size: beside the buttons it wrapped onto many lines and pushed the
-	# bars and every panel down; below, the panels may cover it, the bars keep their place)
+	# beside the buttons where there is room for a line of it; else at the bottom between the sticks' corners (a
+	# narrow canvas, a large UI size: beside the buttons it wrapped onto many lines and pushed the bars and every
+	# panel down). Down there it hides while a panel or view is open (it would lie under it: _each_frame).
 	var w := hud_root.size.x - bar.size.x - 50.0 - 16.0 - 24.0
 	var low := w < STATUS_W_MIN * W.scale
 	if low:
-		w = hud_root.size.x - 32.0
+		w = hud_root.size.x - 2.0 * _stick_side()
 	if absf(top_box.size.x - w) > 0.5 or low != _status_low:
 		_status_low = low
 		top_box.size = Vector2(w, 0)
@@ -227,9 +227,13 @@ func _layout_top() -> void:
 
 ## The status box's place: at the top left, or at the bottom when it is low (its height known: _measure_status).
 func _place_status() -> void:
-	var y := 12.0 if not _status_low else hud_root.size.y - _status_h - 8.0
-	if top_box.position != Vector2(16, y):
-		top_box.position = Vector2(16, y)
+	var at := Vector2(16, 12) if not _status_low else Vector2(_stick_side(), hud_root.size.y - _status_h - 8.0)
+	if top_box.position != at:
+		top_box.position = at
+
+## The width of a stick's corner (its touch area and its margin: _layout_sticks).
+func _stick_side() -> float:
+	return 440.0 / W.ui_size
 
 ## The status box measured again (a new width, the gamepad's line shown or hidden).
 func _status_reset() -> void:
@@ -709,3 +713,7 @@ func _each_frame(_d: float) -> void:
 		mode = "running"
 	status.text = "%s · %s · x %.0f  y %.0f  +%.1f m · %s" % [main.area_at(p), mode, p.x, -p.z, p.y, main.tier]
 	_measure_status()
+	if _status_low:
+		var covered: bool = panel.visible or (main.ui != null and main.ui.has_method("covers_bottom") and main.ui.covers_bottom())
+		if top_box.visible == covered:
+			top_box.visible = not covered

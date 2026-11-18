@@ -211,6 +211,14 @@ func _bars(main, at: String, canvas: Rect2, phone: bool, ui_size: float) -> Arra
 			p.append("%s: the status line %s overlaps the bar's %s %s" % [at, str(sr), o, str(rects[o])])
 	if not canvas.grow(0.5).encloses(sr):
 		p.append("%s: the status line is off screen: %s" % [at, str(sr)])
+	# at the bottom (a narrow canvas): between the sticks' corners, clear of Up and Down
+	if hud._status_low:
+		for c in hud.sticks + hud.updown:
+			var cr: Rect2 = (c as Control).get_global_rect()
+			if c in hud.updown:
+				cr = hud.updown_box.get_global_rect()
+			if cr.size.x > 0.0 and cr.grow(-0.5).intersects(sr.grow(-0.5)):
+				p.append("%s: the status line at the bottom %s overlaps %s %s" % [at, str(sr), c.name, str(cr)])
 	# the clock shows its whole text: as wide as the longest it can say, and on screen (it was cut at the left)
 	var clock: Label = ui._time
 	var f: Font = clock.get_theme_font("font")
@@ -306,6 +314,10 @@ func _check_panel(main, pn: String, at: String, canvas: Rect2, phone: bool, ui_s
 	if pn == "screens" and pr.end.y - main.ui.mimic.canvas_top() < canvas.size.y * 0.3:
 		p.append("%s: the screens leave %.0f px of %.0f to the screen itself (30 %% the least)" % [at,
 			pr.end.y - main.ui.mimic.canvas_top(), canvas.size.y])
+	# the status line at the bottom hides under what is open (it would be cut by it)
+	var hud = main.hud
+	if hud._status_low and hud.top_box.visible and hud.top_box.get_global_rect().intersects(pr):
+		p.append("%s: the %s lies over the status line at the bottom, which shows under it" % [at, pn])
 	var close: Button = null
 	for t in CLOSERS:
 		close = UiApp.find_button(n, t)

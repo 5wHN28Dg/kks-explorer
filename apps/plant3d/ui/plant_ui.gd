@@ -536,6 +536,13 @@ func _layout_toast() -> void:
 	_toast.position.y = (vs.y - h - 16.0) if screens_open() else minf(vs.y - 200.0 * W.scale, vs.y - h - 16.0)
 
 
+## Something open that reaches the bottom of the canvas (a side panel, the screens, the drawings, the tools, the
+## crew or the procedures): the HUD's status line, when it is at the bottom, hides under it (app/hud.gd).
+func covers_bottom() -> bool:
+	return _side_open() or procedure.visible or crew.visible or session_panel.visible or views_open() or manual_open() \
+			or (work != null and (work.tools_panel.visible or work.is_open)) or (monitoring != null and monitoring.is_open())
+
+
 ## A panel open at the card's place (the notice keeps clear of it).
 func _side_open() -> bool:
 	return card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible
