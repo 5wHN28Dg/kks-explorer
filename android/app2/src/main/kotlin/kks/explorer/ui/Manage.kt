@@ -617,7 +617,9 @@ private fun Account(rev: Int, say: (String) -> Unit) {
     var relayFrom by rememberSaveable(PanelDrafts.reset) { mutableStateOf(relay0) }
     var relay by rememberSaveable(PanelDrafts.reset) { mutableStateOf(relayFrom) }
     LaunchedEffect(relay0) { if (relay == relayFrom) relay = relay0; relayFrom = relay0 }
-    val accountTyped = fn != fn0 || pos != pos0 || addr.isNotBlank() || relay != relayFrom
+    // (as saved: the name and position trimmed, the relay without a trailing "/", so a saved value is not "typed")
+    val accountTyped = fn.trim() != fn0.trim() || pos.trim() != pos0.trim() || addr.isNotBlank() ||
+        relay.trim().trimEnd('/') != relayFrom.trim().trimEnd('/')
     if (accountTyped) HoldLinks()   // (typed, not saved)
     DraftFlag("account", accountTyped)
     var tick by remember { mutableIntStateOf(0) }

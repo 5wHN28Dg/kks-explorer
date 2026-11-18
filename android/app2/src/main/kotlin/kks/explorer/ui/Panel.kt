@@ -20,6 +20,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -102,13 +104,17 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
              modifier: Modifier = Modifier, link: Pair<String, Int>? = null, overlayOpen: Boolean = false) {
     val scope = rememberCoroutineScope()
     val tNow = remember(id, rev) { Core.api("GET", "/native/tag", query = mapOf("id" to id)).json }
-    // the tag removed meanwhile (by another device, arriving by sync) while something is typed in its panel: the panel
-    // goes on showing it as it was, so the typed text stays (D3); a line says it is gone. Nothing typed: as before.
-    val last = remember(id) { arrayOf(tNow) }
+    // the tag removed meanwhile (by another device, arriving by sync, or before the app came back after Android stopped
+    // it): the panel goes on showing it as it was last seen (saved with the panel), so what is typed in it stays (D3),
+    // with a line saying it is gone; with nothing typed (or once it is sent or discarded) the panel closes
+    var lastSeen by rememberSaveable(id) { mutableStateOf(if (tNow.has("sheet")) tNow.toString() else "") }
     val removed = !tNow.has("sheet")
-    val keptGone = removed && last[0].has("sheet") && PanelDrafts.any()
-    val t = if (keptGone) last[0] else tNow
-    SideEffect { if (!removed) last[0] = tNow }
+    val last = remember(lastSeen) { if (lastSeen.isEmpty()) JSONObject() else JSONObject(lastSeen) }
+    val keptGone = removed && last.has("sheet")
+    val t = if (keptGone) last else tNow
+    SideEffect { if (!removed) tNow.toString().let { if (it != lastSeen) lastSeen = it } }
+    val typedAny = PanelDrafts.any()
+    LaunchedEffect(removed, typedAny) { if (removed && !PanelDrafts.any()) onClose() }
     val screen = LocalConfiguration.current.screenHeightDp.toFloat()
     // resizable (the user, 2026-10-05: it took most of the screen): drag the handle, or tap it to go between a low
     // panel (the code and Close, the drawing above free to move around) and the usual height
@@ -174,7 +180,8 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
         // (rememberScrollState is saved: the panel opens again where it was scrolled to)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = if (keyboard) 0.dp else 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (keptGone) Text("This tag was removed from the drawing meanwhile. What you typed is still here: send it or discard it.",
-                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })      // (TalkBack says it when it comes, F4)
             if (t.optString("status") == "review") ReviewSection(t, snack)
             t.optJSONObject("decoded")?.let { d ->
                 Heading("From the drawing")

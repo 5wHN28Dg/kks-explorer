@@ -2610,6 +2610,21 @@ class Phone(unittest.TestCase):
         the panel; Account's fields follow a change that arrives while nothing is typed in them; the reading drill's
         answer is not kept for another reading after the screen is made again; the bottom tabs' question names the
         panel when its forms hold the text"""
+        PKG_ACT = f'{PKG}/kks.explorer.MainActivity'
+
+        def kill():
+            """Android stops the app in the background (am kill), then it is opened again"""
+            pid = ui.sh('pidof', PKG).strip()
+            ui.sh('input', 'keyevent', '3')                       # Home
+            time.sleep(2)
+            ui.sh('am', 'kill', PKG)
+            for _ in range(20):
+                if ui.sh('pidof', PKG).strip() != pid: break
+                time.sleep(0.5)
+            self.assertNotEqual(ui.sh('pidof', PKG).strip(), pid, 'am kill did not stop the app')
+            ui.sh('am', 'start', '-n', PKG_ACT)
+            time.sleep(3)
+
         def no_question():
             time.sleep(1.5)
             self.assertFalse(any(ui.present(q, exact=True) for q in ('Discard your edits?', 'Discard what you typed?')),
@@ -2617,6 +2632,13 @@ class Phone(unittest.TestCase):
         # Setup: the page's own Back button asks before the typed address goes
         ui.tap('Join through a server', exact=True)
         ui.type_into('Server address', 'typed.example:1')
+        ui.type_into('Username', 'typeduser')
+        ui.type_into('Password', 'typed password')
+        kill()                                                # the join page and what is typed come back
+        ui.find('typed.example:1', exact=True, timeout=30)
+        ui.find('typeduser', exact=True)
+        evidence('setup-after-kill')
+        self.assertFalse(ui.present('typed password'), 'the password is shown in clear')
         ui.tap('Back', exact=True)
         ui.find('Discard what you typed?', exact=True, timeout=10)
         ui.tap('Keep editing', exact=True)
@@ -2652,6 +2674,13 @@ class Phone(unittest.TestCase):
         describe('Second description')
         sync()
         ui.find('typed description', exact=True, timeout=10)
+        ui.tap('typed description', exact=True)               # the keyboard up, then Close: the question over it (R3)
+        time.sleep(1.5)
+        ui.tap('Close', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        evidence('discard-keyboard-up')
+        ui.tap('Keep editing', exact=True)
+        ui.hide_keyboard()
         ui.tap('Manage', exact=True)
         ui.find('What you typed in the panel has not been saved.', exact=True, timeout=10)
         ui.tap('Keep editing', exact=True)
@@ -2675,16 +2704,24 @@ class Phone(unittest.TestCase):
         ui.find('kept near', exact=True, timeout=10)
         self.assertTrue(ui.present('Copy 11LAB70AA502', exact=True), 'the panel closed under the typed text')
         ui.scroll_to('This tag was removed from the drawing meanwhile.', up=True, tries=6)
+        evidence('removed-tag-kept')
+        kill()                                                # still there after Android stopped the app
+        ui.find('Copy 11LAB70AA502', exact=True, timeout=30)
+        ui.scroll_to('kept near', exact=True, tries=8)
         ui.sh('input', 'keyevent', '4')
         ui.find('Discard your edits?', exact=True, timeout=10)
         ui.tap('Discard', exact=True)
-        ui.sh('input', 'keyevent', '4')
-        time.sleep(1)
+        time.sleep(2)                                         # nothing typed in a removed tag's panel: it closes
+        self.assertFalse(ui.present('Copy 11LAB70AA502', exact=True), 'an empty panel of a removed tag stayed')
+        self.assertTrue(ui.present('Search equipment by KKS code or description'), 'Discard left the app')
         # the Selected list: its Close asks before typed codes go
         ui.tap('More', exact=True)
         ui.tap('Select tags', exact=True)
         ui.tap('List', exact=True)
         ui.type_into('Add codes', '11LAB70AA501')
+        kill()
+        ui.find('11LAB70AA501', exact=True, timeout=30)       # the list and the typed codes come back
+        evidence('selected-after-kill')
         ui.tap('Close', exact=True)
         ui.find('Discard what you typed?', exact=True, timeout=10)
         ui.tap('Discard', exact=True)
@@ -2693,6 +2730,9 @@ class Phone(unittest.TestCase):
         ui.tap('Manage', exact=True)
         ui.tap('Account', exact=True)
         ui.type_into('The Manager', 'Typed Name', clear=True)                  # (the Full name field, by its text)
+        kill()
+        ui.find('Typed Name', exact=True, timeout=30)          # Manage's Account and the typed name come back
+        evidence('account-after-kill')
         ui.tap('‹ Manage', exact=True)
         ui.find('Discard your edits?', exact=True, timeout=10)
         ui.tap('Discard', exact=True)
@@ -2705,6 +2745,35 @@ class Phone(unittest.TestCase):
         ui.find('The Renamed Manager', exact=True, timeout=200)       # (the phone syncs on its own every 2 min on screen)
         ui.tap('‹ Manage', exact=True)
         no_question()
+        # the photo editor: Android stops the app while the camera app is in front; the photo comes back into the
+        # editor, and the editor with its marks after another stop
+        w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+        ui.tap('Drawings', exact=True)
+        self.open_tag()
+        ui.scroll_to('Equipment: take photo', exact=True)
+        ui.tap('Equipment: take photo', exact=True)
+        if ui.present('Which floor is it on?', exact=True):
+            ui.tap('Floor 5')
+            ui.tap('Continue', exact=True)
+        self.allow_camera()
+        time.sleep(5)
+        ui.sh('am', 'kill', PKG)                              # (Walkdown is in the background behind the camera)
+        time.sleep(2)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+        time.sleep(4)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+        ui.find('Send', exact=True, timeout=40)
+        ui.find('Add an equipment photo', exact=True)
+        ui.sh('input', 'swipe', str(w // 3), str(h // 2), str(w * 2 // 3), str(h * 3 // 5), '400')    # an arrow
+        time.sleep(1)
+        kill()
+        ui.find('Add an equipment photo', exact=True, timeout=30)
+        evidence('photo-editor-after-kill')
+        ui.tap('Cancel', exact=True)
+        ui.find('Discard the photo?', exact=True, timeout=10)  # the arrow came back: there is something to discard
+        ui.tap('Discard photo', exact=True)
+        ui.sh('input', 'keyevent', '4')                        # the panel closes
+        time.sleep(1)
         # the reading drill: an answer, then the screen made again (a font change): no verdict left over for whatever
         # reading shows now
         ui.tap('Learning', exact=True)
