@@ -13,9 +13,13 @@ APP = sys.argv[2] if len(sys.argv) > 2 else '/tmp/kkswin/Walkdown.exe'
 DRIVER = sys.argv[3] if len(sys.argv) > 3 else '/tmp/kkswin/uiadrive.exe'
 SERVER = sys.argv[4] if len(sys.argv) > 4 else '/tmp/kkslinux/kks_server'
 IMPORTER = sys.argv[5] if len(sys.argv) > 5 else '/tmp/kksimp/kks_import'
-HOST = os.environ.get('KKS_HOST_FROM_VM', '192.168.122.1')
+# KKS_LAPTOP=1: a real Windows machine on the LAN (apps/windows/README.md, "A real (borrowed) Windows laptop"): this
+# machine's ports stay closed to the LAN, so the server's sync port reaches it through an SSH reverse tunnel (the app
+# joins 127.0.0.1), and screenshots come from its desktop session (e2e/shot.ps1), not from virsh
+LAPTOP = os.environ.get('KKS_LAPTOP') == '1'
+HOST = '127.0.0.1' if LAPTOP else os.environ.get('KKS_HOST_FROM_VM', '192.168.122.1')
 PEER = os.environ.get('KKS_PEER', '/tmp/kksgnome/progress_peer')   # apps/gnome/e2e/progress_peer.nim: a second device
-KEY = os.path.expanduser('~/.ssh/kks_vm')
+KEY = os.path.expanduser(os.environ.get('KKS_VM_KEY', '~/.ssh/kks_vm'))   # a laptop's own key (e2e/host)
 del sys.argv[1:]
 SSH = ['-i', KEY, '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-o', 'BatchMode=yes']
 
@@ -61,6 +65,20 @@ def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=(),
             during.pop(0)[1]()
         if ' done' in log: return ('PASSED' in log and not during, log + ''.join('\n(never reached: %s)' % a for a, _ in during))
     return (False, log)
+
+
+def screen_shot(path):
+    """a real machine's screen (KKS_LAPTOP) into path, as a BMP: shot.exe (e2e/shot.cpp, built next to the driver)
+    in the desktop session; it opens no window, so the app keeps the keyboard focus"""
+    vm('Remove-Item C:\\kks\\shot.bmp -ErrorAction SilentlyContinue')
+    vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe C:\\kks\\shot.exe '
+       '-ArgB64 %s -Name kksshot' % base64.b64encode(b'C:\\kks\\shot.bmp').decode())
+    for _ in range(30):
+        time.sleep(1)
+        if vm('(Get-Item C:\\kks\\shot.bmp -ErrorAction SilentlyContinue).Length').strip() not in ('', '0'):
+            time.sleep(1)       # (written at once, but let it close the file)
+            subprocess.run(['scp', '-q'] + SSH + ['kks@%s:C:/kks/shot.bmp' % VM, path], check=True, timeout=120)
+            return
 
 
 def msix(args):
@@ -151,6 +169,12 @@ class Windows(unittest.TestCase):
         cls.server, setup = start_server(SERVER, cls.dir, cfg, sync=True)
         cls.port, cls.sport = cfg['port'], cfg['sync_port']
         cls.boss = Client('http://127.0.0.1:%d' % cls.port)
+        cls.tunnel = None
+        if LAPTOP:
+            cls.tunnel = subprocess.Popen(['ssh'] + SSH + ['-N', '-o', 'ExitOnForwardFailure=yes', '-R',
+                                                           '%d:127.0.0.1:%d' % (cls.sport, cls.sport), 'kks@' + VM])
+            time.sleep(3)
+            assert cls.tunnel.poll() is None, 'the SSH reverse tunnel to the laptop did not open'
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
                                                    'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         with open(os.path.join(REPO, 'importer', 'tests', 'vectors', 'kkp-sample.pdf'), 'rb') as f: pdf = f.read()
@@ -171,6 +195,7 @@ class Windows(unittest.TestCase):
         subprocess.run([sys.executable, '-c', 'from PIL import Image, ImageDraw; im = Image.new("RGB", (3200, 2400), (60, 90, 150)); '
                         'ImageDraw.Draw(im).rectangle([1067, 800, 2133, 1600], fill=(240, 240, 240)); im.save(%r, quality=92)' % photo], check=True)
         put(APP, DRIVER, os.path.join(HERE, 'run.ps1'), os.path.join(HERE, 'runapp.ps1'), photo)
+        if LAPTOP: put(os.path.join(os.path.dirname(DRIVER), 'shot.exe'))
         if MSIX:
             put(MSIX, MSIX_CER, os.path.join(HERE, 'msix.ps1'))
             vm('Import-Certificate -FilePath C:\\kks\\%s -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople | Out-Null'
@@ -189,6 +214,9 @@ class Windows(unittest.TestCase):
                'Remove-Item Cert:\\LocalMachine\\TrustedPeople\\$t' % os.path.basename(MSIX_CER))
         cls.server.terminate()
         cls.server.wait(5)
+        if cls.tunnel:
+            cls.tunnel.terminate()
+            cls.tunnel.wait(5)
         shutil.rmtree(cls.dir, ignore_errors=True)
 
     def wait_server(self, cond, what, tries=40):
@@ -224,8 +252,11 @@ class Windows(unittest.TestCase):
         if not out: return
         os.makedirs(out, exist_ok=True)
         ppm = os.path.join(self.dir, name + '.ppm')
-        dom = os.environ.get('KKS_VM_DOMAIN') or ('kks-win11' if VM.endswith('.20') else 'kks-win10')
-        subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, ppm], capture_output=True)
+        if LAPTOP:
+            screen_shot(ppm)
+        else:
+            dom = os.environ.get('KKS_VM_DOMAIN') or ('kks-win11' if VM.endswith('.20') else 'kks-win10')
+            subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, ppm], capture_output=True)
         if os.path.exists(ppm):
             from PIL import Image
             im = Image.open(ppm)
@@ -1435,9 +1466,7 @@ class Windows(unittest.TestCase):
         # untouched final check says how many questions it has (it said "0 / 0 right")
         self.check('course5.uia', ['select\tPlacement test', 'click\tOpen the selected page', 'wait\t~ · 4 · 4–20 mA\t20',
                                    'select\tFinal check', 'click\tOpen the selected page', 'wait\t0 / 20 answered\t20'])
-        shot = os.path.join(tempfile.gettempdir(), 'kks-win-course.ppm')
-        dom = 'kks-win11' if VM.endswith('.20') else 'kks-win10'
-        subprocess.run(['virsh', '-c', 'qemu:///system', 'screenshot', dom, shot], capture_output=True)
+        self.screenshot('win-course')
         self.leave()       # leave no device behind for test_flow (it finds this VM's device by its label)
 
     def test_stale_click(self):
