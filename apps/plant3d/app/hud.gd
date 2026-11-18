@@ -791,6 +791,9 @@ func _each_frame(_d: float) -> void:
 		mode = "running"
 	status.text = "%s · %s · x %.0f  y %.0f  +%.1f m · %s" % [main.area_at(p), mode, p.x, -p.z, p.y, main.tier]
 	_measure_status()
+	if not _status_low and not status.visible:
+		status.visible = true            # (it was hidden over a view in the compact layout, which has ended)
+		_status_reset()
 	if _status_low:
 		var covered: bool = panel.visible or (main.ui != null and main.ui.has_method("covers_bottom") and main.ui.covers_bottom())
 		# over the screens or the drawings the gamepad's line still shows (it says how they are worked), alone, on a
