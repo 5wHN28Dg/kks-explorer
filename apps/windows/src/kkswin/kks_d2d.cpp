@@ -9,6 +9,7 @@
 #include <jxl/decode.h>
 #include <jxl/decode_cxx.h>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstring>
 #include <deque>
@@ -273,7 +274,7 @@ static bool render_tile(const Sheet &s, float tz, float x0, float y0, int size, 
 // ---------------------------------------------------------------- the worker pool: tiles and JPEG XL decodes
 
 struct Job { long long key; int kind; void *sheet; float tz, x0, y0; int size; bool dark; std::vector<uint8_t> data; };
-struct Done { long long key; std::vector<uint8_t> px; int w, h; bool ok; };
+struct Done { long long key; std::vector<uint8_t> px; int w, h; bool ok; float ms; };   // ms: the render or decode's own time
 
 static std::mutex g_mu;
 static std::condition_variable g_cv;
@@ -292,9 +293,11 @@ static void worker() {
             j = std::move(g_jobs.front());
             g_jobs.pop_front();
         }
-        Done d{j.key, {}, 0, 0, false};
+        Done d{j.key, {}, 0, 0, false, 0};
+        auto t0 = std::chrono::steady_clock::now();
         if (j.kind == 0) { d.ok = render_tile(*(Sheet *)j.sheet, j.tz, j.x0, j.y0, j.size, j.dark, d.px); d.w = d.h = j.size; }
         else d.ok = jxl_bgra(j.data.data(), j.data.size(), d.px, d.w, d.h, j.dark);
+        d.ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - t0).count();
         {
             std::lock_guard<std::mutex> l(g_mu);
             g_done.push_back(std::move(d));
@@ -338,12 +341,14 @@ extern "C" void kks_jobs_clear(void) {
 extern "C" int kks_jobs_queued(void) { std::lock_guard<std::mutex> l(g_mu); return (int)g_jobs.size(); }
 
 // a finished job: returns 1 and fills key/size/pixels (malloc'd, the caller frees with kks_free), else 0
-extern "C" int kks_job_done(long long *key, int *w, int *h, uint8_t **px) {
+// ms: how long the job's render or decode took on its worker (KKS_TIMING's draw lines)
+extern "C" int kks_job_done(long long *key, int *w, int *h, uint8_t **px, float *ms) {
     std::lock_guard<std::mutex> l(g_mu);
     if (g_done.empty()) return 0;
     Done d = std::move(g_done.front());
     g_done.pop_front();
     *key = d.key; *w = d.ok ? d.w : 0; *h = d.ok ? d.h : 0;
+    *ms = d.ms;
     *px = nullptr;
     if (d.ok) { *px = (uint8_t *)malloc(d.px.size()); memcpy(*px, d.px.data(), d.px.size()); }
     return 1;
@@ -441,6 +446,13 @@ extern "C" void kks_view_circle(void *p, float cx, float cy, float r, unsigned r
     D2D1_ELLIPSE e = D2D1::Ellipse(D2D1::Point2F(cx, cy), r, r);
     if (fill) v->rt->FillEllipse(e, v->brush);
     else v->rt->DrawEllipse(e, v->brush, width, dashed ? v->dash : nullptr);
+}
+// 1 when the window's render target draws on the GPU, 0 when Direct2D fell back to software (WARP in the VMs),
+// -1 before it exists (KKS_TIMING's draw lines)
+extern "C" int kks_view_hardware(void *p) {
+    View *v = (View *)p;
+    if (!v->rt) return -1;
+    return v->rt->IsSupported(D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_HARDWARE)) ? 1 : 0;
 }
 // returns 1, or 0 when the device was lost (the caller re-uploads its bitmaps)
 extern "C" int kks_view_end(void *p) {

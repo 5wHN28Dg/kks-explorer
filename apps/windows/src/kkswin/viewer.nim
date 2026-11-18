@@ -5,7 +5,7 @@
 ## apps/common/darkcolor.nim); the "Select tags" mode (`selecting`): a click toggles a tag, a dragged box adds the tags
 ## it touches (multi.nim).
 
-import std/[tables, math, sets, algorithm]
+import std/[tables, math, sets, algorithm, monotimes, os, strutils, times]
 import w32, ui, darkcolor
 
 {.compile("kks_d2d.cpp", "-std=c++17").}
@@ -19,7 +19,7 @@ proc sheetH(s: pointer): cint {.importc: "kks_sheet_height", cdecl.}
 proc tileRequest(key: clonglong, s: pointer, tz, x0, y0: cfloat, size: cint, dark: cint) {.importc: "kks_tile_request", cdecl.}
 proc jxlRequest(key: clonglong, data: pointer, n: csize_t, dark: cint) {.importc: "kks_jxl_request", cdecl.}
 proc jobsClear() {.importc: "kks_jobs_clear", cdecl.}
-proc jobDone(key: ptr clonglong, w, h: ptr cint, px: ptr pointer): cint {.importc: "kks_job_done", cdecl.}
+proc jobDone(key: ptr clonglong, w, h: ptr cint, px: ptr pointer, ms: ptr cfloat): cint {.importc: "kks_job_done", cdecl.}
 proc cfree(p: pointer) {.importc: "kks_free", cdecl.}
 proc viewNew(h: HWND): pointer {.importc: "kks_view_new", cdecl.}
 proc viewResize(v: pointer, w, h: cint) {.importc: "kks_view_resize", cdecl.}
@@ -29,6 +29,7 @@ proc viewBegin(v: pointer, r, g, b: cfloat): cint {.importc: "kks_view_begin", c
 proc viewDrawBitmap(v: pointer, h: cint, x0, y0, x1, y1: cfloat, smooth: cint) {.importc: "kks_view_draw_bitmap", cdecl.}
 proc viewRect(v: pointer, x0, y0, x1, y1: cfloat, rgb: cuint, alpha: cfloat, fill: cint, width: cfloat, dashed: cint) {.importc: "kks_view_rect", cdecl.}
 proc viewEnd(v: pointer): cint {.importc: "kks_view_end", cdecl.}
+proc viewHardware(v: pointer): cint {.importc: "kks_view_hardware", cdecl.}
 proc viewCircle(v: pointer, cx, cy, r: cfloat, rgb: cuint, alpha: cfloat, fill: cint, width: cfloat, dashed: cint) {.importc: "kks_view_circle", cdecl.}
 {.compile("kks_uia.cpp", "-std=c++17").}
 {.passL: "-luiautomationcore -loleaut32".}
@@ -91,12 +92,28 @@ type
     uia: pointer                ## the UI Automation provider (kks_uia.cpp): tags and connectors on screen as buttons
     onScreen: seq[int]          ## indices into tags (a connector j: -(j + 1)), reading order, at most 200 (what the
                                 ## provider exposes)
+    targetSaid: bool            ## KKS_TIMING: the render target's kind was logged
 
 const
   Tile = 512
   MaxTiles = 160
 
 var viewers = initTable[HWND, Viewer]()
+
+let drawTiming = getEnv("KKS_TIMING").len > 0
+proc drawNote(line: string) =
+  ## KKS_TIMING (docs/m6/MEASUREMENTS.md): how long the drawing's work took, one "draw: …" line each in
+  ## <data dir>/timing.log beside the start's lines: whether the window's Direct2D target is on the GPU, each paint
+  ## (BeginDraw to EndDraw, which waits for the GPU's work to be queued), each tile's render and each overview level's
+  ## decode on its worker thread. Written after the work it times, so the times don't include the writing.
+  if not drawTiming or errorLog.len == 0: return
+  try:
+    let f = open(errorLog.parentDir / "timing.log", fmAppend)
+    f.writeLine("draw: " & line)
+    f.close()
+  except IOError: discard
+
+proc ms(t: Duration): string = formatFloat(float(t.inMicroseconds) / 1000, ffDecimal, 2)
 
 proc invalidate*(v: Viewer) = InvalidateRect(v.hwnd, nil, 0)
 
@@ -200,8 +217,12 @@ proc poll*(v: Viewer) =
   var key: clonglong
   var w, h: cint
   var px: pointer
+  var took: cfloat
   var any = false
-  while jobDone(addr key, addr w, addr h, addr px) == 1:
+  while jobDone(addr key, addr w, addr h, addr px, addr took) == 1:
+    if drawTiming:
+      drawNote((if int64(key) >= 1_000_000_000_000: "tile " else: "overview level " & $(int64(key) mod 100) & " decode ") &
+               $w & "x" & $h & " px " & formatFloat(float(took), ffDecimal, 2) & " ms")
     var p = Pixels(w: int(w), h: int(h))
     if px != nil:
       p.px = newSeq[byte](int(w) * int(h) * 4)
@@ -379,6 +400,7 @@ proc lighten(c: uint32): uint32 =
   (uint32(round(r * 255)) shl 16) or (uint32(round(g * 255)) shl 8) or uint32(round(b * 255))
 
 proc paint(v: Viewer) =
+  let t0 = getMonoTime()
   # around the sheet: lighter than the dark paper in dark drawings
   if (if v.dark: viewBegin(v.v, 0.24, 0.24, 0.26) else: viewBegin(v.v, 0.82, 0.83, 0.85)) == 0: return
   let (cw, ch) = v.client
@@ -469,6 +491,11 @@ proc paint(v: Viewer) =
       viewRect(v.v, cfloat((m[0] - v.ox) * v.z), cfloat((m[1] - v.oy) * v.z), cfloat((m[2] - v.ox) * v.z),
                cfloat((m[3] - v.oy) * v.z), (if v.selecting: 0x1A59D9'u32 else: 0x8C33BF'u32), 1, 0, cfloat(2 * dens), 1)
   if viewEnd(v.v) == 0: v.reupload()
+  elif drawTiming:
+    if not v.targetSaid:
+      v.targetSaid = true
+      drawNote("render target " & (if viewHardware(v.v) == 1: "hardware (GPU)" else: "software"))
+    drawNote("paint " & $int(cw) & "x" & $int(ch) & " px " & ms(getMonoTime() - t0) & " ms")
   v.updateOnScreen()
 
 proc zoomAt*(v: Viewer, f, px, py: float) =

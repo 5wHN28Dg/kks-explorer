@@ -2,6 +2,7 @@
 No plant data: the drawing is importer/tests/vectors/kkp-sample.pdf. The app is driven through the native UI
 Automation core (uiadrive.exe, what Narrator uses) inside the VM's desktop session.
   python3 apps/windows/e2e/test_windows.py VM_IP [APP.exe] [uiadrive.exe] [SERVER] [IMPORTER]
+KKS_TESTS=test_a,test_b runs only those; KKS_LAPTOP=1 and KKS_VM_KEY for a real laptop (below).
 The VM: OpenSSH with the test key (~/.ssh/kks_vm), auto-logon user kks, reachable from here; the host is 192.168.122.1
 from its side (libvirt's default network). See apps/windows/README.md."""
 import base64, json, os, re, shutil, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
@@ -315,6 +316,29 @@ class Windows(unittest.TestCase):
                                   'wait\t~Version %s (commit %s' % (version, commit[:12]), 'sleep\t2003',
                                   'keys\t%s\t0x1B' % notice, 'gone\tAbout Walkdown', 'wait\tManage'],
                    during=[('sleep\t2003', lambda: self.screenshot('about-manage'))])
+        self.leave()
+
+    def test_draw_timing(self):
+        """KKS_TIMING's draw lines (viewer.nim drawNote, docs/m6/MEASUREMENTS.md): the window's Direct2D target (GPU or
+        software), each paint and each tile's render are timed while the drawing is zoomed in step by step and panned;
+        the summary is printed (a real laptop's GPU against the VMs' WARP)"""
+        self.join('djoin.uia', env={'KKS_TIMING': '1'})
+        zoom = ['keys\tDrawing\t0x6B', 'sleep\t700'] * 8
+        pan = ['keys\tDrawing\t0x27,0x27,0x27,0x28,0x28', 'sleep\t700', 'keys\tDrawing\t0x25,0x25,0x26,0x26', 'sleep\t700'] * 3
+        self.check('draw0.uia', ['wait\tDrawing\t10', 'sleep\t1000'] + zoom + pan + ['sleep\t1500'],
+                   during=[('sleep\t1500', lambda: self.screenshot('draw-zoomed'))])
+        log = vm('Get-Content (Join-Path $env:LOCALAPPDATA "Walkdown\\timing.log") -ErrorAction SilentlyContinue')
+        lines = [l.strip() for l in log.splitlines() if l.startswith('draw: ')]
+        target = [l for l in lines if l.startswith('draw: render target ')]
+        self.assertTrue(target, 'no render target line in timing.log:\n' + log[-2000:])
+        def times(prefix):
+            return sorted(float(m.group(1)) for l in lines if l.startswith(prefix)
+                          for m in [re.search(r' ([0-9.]+) ms$', l)] if m)
+        paints, tiles = times('draw: paint '), times('draw: tile ')
+        self.assertTrue(paints and tiles, 'no paint or tile times in timing.log:\n' + log[-2000:])
+        def summary(t):
+            return 'n=%d median %.2f p95 %.2f max %.2f ms' % (len(t), t[len(t) // 2], t[int(len(t) * 0.95)], t[-1])
+        print('\n%s; paints %s; tiles %s' % (target[0][len('draw: '):], summary(paints), summary(tiles)), file=sys.stderr)
         self.leave()
 
     def test_dark_drawings(self):
@@ -1707,4 +1731,6 @@ class Windows(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    # KKS_TESTS=test_a,test_b: only these (the command line holds the machine and the builds)
+    only = [t for t in os.environ.get('KKS_TESTS', '').split(',') if t]
+    unittest.main(defaultTest=['Windows.' + t for t in only] or None)

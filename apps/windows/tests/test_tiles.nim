@@ -15,7 +15,7 @@ proc sheetsAlive(): cint {.importc: "kks_sheets_alive", cdecl.}
 proc tileRequest(key: clonglong, s: pointer, tz, x0, y0: cfloat, size: cint, dark: cint) {.importc: "kks_tile_request", cdecl.}
 proc jobsClear() {.importc: "kks_jobs_clear", cdecl.}
 proc jobsQueued(): cint {.importc: "kks_jobs_queued", cdecl.}
-proc jobDone(key: ptr clonglong, w, h: ptr cint, px: ptr pointer): cint {.importc: "kks_job_done", cdecl.}
+proc jobDone(key: ptr clonglong, w, h: ptr cint, px: ptr pointer, ms: ptr cfloat): cint {.importc: "kks_job_done", cdecl.}
 proc cfree(p: pointer) {.importc: "kks_free", cdecl.}
 
 proc busySheet(): string =
@@ -50,8 +50,9 @@ proc waitDone(timeoutS = 30.0): (bool, int) =
   var key: clonglong
   var w, h: cint
   var px: pointer
+  var took: cfloat
   while true:                         # at least once: timeoutS = 0 polls once
-    if jobDone(addr key, addr w, addr h, addr px) == 1:
+    if jobDone(addr key, addr w, addr h, addr px, addr took) == 1:
       if px != nil: cfree(px)
       return (true, int(w))
     if epochTime() - t0 >= timeoutS: return (false, 0)
