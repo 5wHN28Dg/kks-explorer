@@ -271,7 +271,7 @@ class Sinks(unittest.TestCase):
             self.assertEqual(names, ['Cancel', 'Delete photo'])
             self.assertEqual(pg.evaluate('document.activeElement.textContent'), 'Cancel')
             yes = pg.evaluate("getComputedStyle(document.querySelector('.kq-yes')).color")
-            self.assertEqual(yes, 'rgb(255, 90, 90)')                 # the --bad colour, not the accent
+            self.assertEqual(yes, 'rgb(255, 138, 128)')               # a red, not the accent
             # Enter presses the focused Cancel: kept, focus back on the opener
             pg.keyboard.press('Enter')
             pg.wait_for_function('window.answer !== undefined')

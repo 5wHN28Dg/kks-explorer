@@ -1257,11 +1257,12 @@ K.confirm = (title, text, action, {danger = true, keep = 'Cancel', note = '', dr
   const h = K.h, was = document.activeElement, id = 'kq' + Math.random().toString(36).slice(2, 8);
   const btn = 'min-height:48px;min-width:88px;padding:8px 14px;border-radius:6px;cursor:pointer;font:inherit;font-weight:600;';
   const field = note ? h('input', {id: id + 'n', class: 'note', maxlength: 500, placeholder: note, 'aria-label': note,
-    style: 'width:100%;min-height:44px;padding:8px;border-radius:6px;border:1px solid var(--line,#3a5061);background:var(--chrome,#1c2730);color:inherit;font-size:16px;margin:0 0 12px'}) : null;
+    style: 'width:100%;min-height:48px;padding:8px;border-radius:6px;border:1px solid var(--muted,#94a6b4);background:var(--chrome,#1c2730);color:inherit;font-size:16px;margin:0 0 12px'}) : null;
   if (field && draft && confirmDrafts[draft]) field.value = confirmDrafts[draft];
   const no = h('button', {type: 'button', class: 'kq-keep', style: btn + 'background:none;border:1px solid var(--muted,#94a6b4);color:inherit', onclick: () => d.close('no')}, keep);
   const yes = h('button', {type: 'button', class: 'kq-yes' + (danger ? ' kq-danger' : ''), onclick: () => d.close('yes'),
-    style: btn + (danger ? 'background:none;border:2px solid var(--bad,#ff5a5a);color:var(--bad,#ff5a5a)'
+    // (#ff8a80, not the pages' --bad: 5.6:1 on the dialog, where #ff5a5a gave 4.2)
+    style: btn + (danger ? 'background:none;border:2px solid #ff8a80;color:#ff8a80'
                          : 'border:0;background:var(--accent,#ff7a1a);color:#1c2730')}, action);
   const d = h('dialog', {class: 'kconfirm', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': id + 't', 'aria-describedby': text ? id + 'x' : null,
     style: 'background:var(--chrome2,#243440);color:var(--ink,#e9eef2);border:1px solid var(--line,#3a5061);border-radius:10px;padding:16px;width:min(440px,94vw);max-height:90vh;overflow:auto;font:14px/1.45 var(--sans,system-ui,sans-serif)'},
@@ -1287,9 +1288,9 @@ K.undo = (text, undo, ms = 8000) => {
   const plain = document.getElementById('toast'); if (plain) plain.style.display = 'none';   // (it says the same, under it)
   const h = K.h, box = h('div', {id: 'kundo', role: 'status', 'aria-live': 'polite',
     style: 'position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:45;display:flex;gap:12px;align-items:center;' +
-           'background:var(--chrome3,#2f4352);color:var(--ink,#e9eef2);border:1px solid var(--line,#3a5061);border-radius:8px;padding:4px 4px 4px 14px;max-width:92vw;box-shadow:0 6px 24px #0008;font:14px/1.45 var(--sans,system-ui,sans-serif)'},
+           'background:var(--chrome3,#2f4352);color:var(--ink,#e9eef2);border:1px solid var(--line,#3a5061);border-radius:8px;padding:4px 4px 4px 14px;width:max-content;max-width:92vw;box-shadow:0 6px 24px #0008;font:14px/1.45 var(--sans,system-ui,sans-serif)'},
     h('span', {style: 'overflow-wrap:anywhere'}, text),
-    h('button', {type: 'button', style: 'min-height:48px;min-width:72px;background:none;border:0;color:var(--accent,#ff7a1a);font:inherit;font-weight:700;cursor:pointer',
+    h('button', {type: 'button', style: 'min-height:48px;min-width:72px;background:none;border:0;color:#ffa15c;font:inherit;font-weight:700;cursor:pointer',   // (5.1:1 on the bar; the accent gave 3.9)
       onclick: () => { clearTimeout(box._t); box.remove(); undo() }}, 'Undo'));
   document.body.appendChild(box);
   box._t = setTimeout(() => box.remove(), Math.max(4000, ms));
