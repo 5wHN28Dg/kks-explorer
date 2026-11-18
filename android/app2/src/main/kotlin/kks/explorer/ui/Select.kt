@@ -269,12 +269,16 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
     var fromCamera by remember { mutableStateOf(true) }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
     val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
+    var preparing by remember { mutableStateOf(false) }       // reading and scaling the picture (a second or more)
     fun load(uri: Uri) = scope.launch {
-        picked = withContext(Dispatchers.IO) {
-            val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
-            if (uri == camUri) camFile.delete()
-            orientedBitmap(raw)
-        }
+        preparing = true
+        picked = try {
+            withContext(Dispatchers.IO) {
+                val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
+                if (uri == camUri) camFile.delete()
+                orientedBitmap(raw)
+            }
+        } finally { preparing = false }
         if (picked == null) onSaid("Could not read that picture")
     }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u: Uri? -> if (u != null) load(u) }
@@ -290,8 +294,12 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
     if (picked == null) AlertDialog(onDismissRequest = onClose, title = { Text(title) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Dim("One picture showing all of them; each code gets it.")
-            Button(onClick = { shoot() }, modifier = Modifier.fillMaxWidth()) { Text("Take a photo") }
-            OutlinedButton(onClick = { fromCamera = false; gallery.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("From the gallery") }
+            if (preparing) {
+                Text("Preparing the photo…", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            Button(onClick = { shoot() }, enabled = !preparing, modifier = Modifier.fillMaxWidth()) { Text("Take a photo") }
+            OutlinedButton(onClick = { fromCamera = false; gallery.launch("image/*") }, enabled = !preparing, modifier = Modifier.fillMaxWidth()) { Text("From the gallery") }
         }
     }, confirmButton = { TextButton(onClick = onClose) { Text("Cancel") } })
     picked?.let { bmp ->

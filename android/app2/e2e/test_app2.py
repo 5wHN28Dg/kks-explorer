@@ -1399,6 +1399,36 @@ class Phone(unittest.TestCase):
         ui.find('11LAB70AA599 is not on any drawing', timeout=10)
         n = main_activities(); self.assertTrue(n == 1, n)
 
+    def test_photo_size(self):
+        """decision 0074: a picture larger than 2560 px is stored at 2560 on its longer side, a smaller one as it is;
+        the reduction is Lanczos: 1-px black and white stripes become an even grey (bilinear scaling made bands)"""
+        if not ui.debuggable(PKG):
+            self.skipTest('not a debuggable build: the made-up picture comes from the debug build\'s receiver')
+        self.join()
+        ui.find('Sample sheet', timeout=40)
+        for k, side in (('11LAB70AA506', 4000), ('11LAB70AA507', 2000)):
+            ui.adb('shell', 'am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_PHOTO', '-p', PKG, '--es', 'kks', k,
+                   '--es', 'caption', f'side_{side}', '--ei', 'side', str(side))
+
+        def arrived():
+            ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['caption'].startswith('side_') and p.get('file')]
+            return ph if len(ph) == 2 else None
+        ph = {p['caption']: p for p in self.wait_server(arrived, 'the two photos never reached the server', tries=240)}
+        from jxl_header import jxl_size
+        blobs = {c: self.boss.op.open(self.boss.base + '/photos/' + p['file']).read() for c, p in ph.items()}
+        self.assertEqual(jxl_size(blobs['side_4000']), (2560, 1920))
+        self.assertEqual(jxl_size(blobs['side_2000']), (2000, 1500))
+        if shutil.which('djxl'):
+            from PIL import Image
+            jxl, png = os.path.join(self.dir, 'big.jxl'), os.path.join(self.dir, 'big.png')
+            with open(jxl, 'wb') as f: f.write(blobs['side_4000'])
+            subprocess.run(['djxl', jxl, png], check=True, capture_output=True)
+            im = Image.open(png).convert('L').crop((200, 200, 1000, 1700))     # inside the stripes (the left half)
+            px = list(im.getdata())
+            mean = sum(px) / len(px)
+            sd = (sum((v - mean) ** 2 for v in px) / len(px)) ** 0.5
+            self.assertTrue(110 < mean < 145 and sd < 16, f'the stripes scaled to mean {mean:.1f}, deviation {sd:.1f}: not an even grey')
+
     def test_photo_queue(self):
         """request 1: photos go through a background queue (WorkManager): sent in order with the panel closed, kept
         across the app being stopped, a floor sent with the first photo of a code without one, failures shown"""
@@ -2188,12 +2218,15 @@ class Phone(unittest.TestCase):
 # test_courses moved from part 1 to part 2 (#190: part 1 had ended at 7.8 GiB). test_app_links is in part 3: at the
 # end of part 1 it took the emulator to 7.25 GiB, of part 2 to 7.03 GiB (2026-10-16); part 3 had ended at 6.41.
 # test_copy_close_batch (2026-11-16) is in part 1: at the end of part 2 it took the emulator from 7.14 to 7.67 GiB;
-# part 1 had ended at 5.92 GiB.
+# part 1 had ended at 5.92 GiB. test_photo_size (a 12 MP picture through the app's own scaling) is in part 1 too: at
+# the end of part 2 it took the emulator from 6.68 to 7.34 GiB (2026-11-17).
+# 2026-11-18: part 3 ended at 7.90 GiB on one run (6.82 on another: the emulator's memory after booting differs by
+# ~0.8 GiB) while part 2 ended at 5.79, so test_description_and_credit and test_app_links went to part 2.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
-          'panel_keyboard'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about'),
+          'panel_keyboard', 'photo_size'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
-          'description_and_credit', 'flow', 'course_figures', 'app_links'))
+          'flow', 'course_figures'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))

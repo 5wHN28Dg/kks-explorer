@@ -114,7 +114,8 @@ K.idb = (() => {
   });
   const tx = async (store, mode, fn) => { const db = await open(); return new Promise((res, rej) => {
     const t = db.transaction(store, mode), r = fn(t.objectStore(store));
-    t.oncomplete = () => res(r?.result); t.onerror = () => rej(t.error) }) };
+    t.oncomplete = () => res(r?.result); t.onerror = () => rej(t.error);
+    t.onabort = () => rej(t.error || new Error('the browser did not keep it')) }) };   // (an abort at commit: quota, a Blob it can't store)
   return {
     get: k => tx('kv', 'readonly', s => s.get(k)), set: (k, v) => tx('kv', 'readwrite', s => s.put(v, k)),
     clear: () => tx('kv', 'readwrite', s => s.clear()),
@@ -585,17 +586,22 @@ K.retryRefused = async id => {
 K.discardQueued = async id => { await K.idb.unqueue(id); await K.emit() };
 
 // ---------- photos: converted one at a time in the background, sent in the order they were taken ----------
-// A photo goes into the outbox at once, as a PNG (`raw`, a data: URL), before it is converted: closing the panel, or the page,
+// A photo goes into the outbox at once, as a PNG (`raw`, a Blob, or a data: URL), before it is converted: closing the panel, or the page,
 // loses nothing, and the next start carries on. One loop converts the photos oldest first (JPEG XL in the worker, or
 // the type the server asks for) and puts the result in place of the PNG; the outbox is then sent as usual, in order
 // (K.flush stops at a photo that is not converted yet). `fresh` marks a photo taken online, for the toast's words.
 K.queuePhoto = async (canvas, payload, note) => {
-  // (a data: URL, not a Blob: nothing to read back that could fail, and IndexedDB keeps strings everywhere)
-  const raw = canvas.width && canvas.height ? canvas.toDataURL('image/png') : '';
-  if (!raw.startsWith('data:image/png')) throw new Error('The photo could not be kept.');
+  // `raw`: a PNG Blob (decision 0074: a 2560 px photo as a data: URL is a 13-20 MB string that IndexedDB copies on the
+  // main thread at every read; a Blob is stored and read by reference, and toBlob encodes off the main thread).
+  // Photos queued before are data: URLs, and so is a photo where IndexedDB refuses Blobs (Safari's private windows):
+  // both are read below.
+  const raw = !(canvas.width && canvas.height) ? null : await new Promise(ok => canvas.toBlob(ok, 'image/png'));
+  if (!raw || raw.type !== 'image/png' || !raw.size) throw new Error('The photo could not be kept.');
   const it = {client_id: K.uid(), kind: 'photo', payload, ...(note ? {note} : {}), user: K.me.user.id, ts: Date.now(),
               raw, mp: canvas.width * canvas.height / 1e6, fresh: true};
-  await K.idb.queue(it); await K.emit();
+  try { await K.idb.queue(it) }
+  catch (e) { it.raw = canvas.toDataURL('image/png'); await K.idb.queue(it) }   // (made from the canvas: such a browser may not read the Blob back either)
+  await K.emit();
   K.convertPhotos();
   return it.client_id;
 };
@@ -624,8 +630,16 @@ K.convertPhotos = async () => {
       bar = K.progress(`Converting photo ${K.converting.n} of ${K.converting.of} (${it.payload.kks})…`, est, 'photoq');
       let dataUrl = null, failed = null, timer;
       try {
-        const img = await new Promise((ok, no) => { const i = K.h('img', {onload: () => ok(i), onerror: () => no(new Error('the saved photo could not be read')), src: it.raw}) });
-        const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0);
+        const src = typeof it.raw === 'string' ? it.raw : URL.createObjectURL(it.raw);
+        let c;
+        try {
+          const img = await new Promise((ok, no) => { const i = K.h('img', {onload: () => ok(i), onerror: () => no(new Error('the saved photo could not be read')), src}) });
+          // JPEG XL from an ImageBitmap where the worker can read one (OffscreenCanvas): the pixels never pass the main thread
+          const bmp = up.type === 'image/jxl' && typeof OffscreenCanvas === 'function' && typeof createImageBitmap === 'function'
+            ? await img.decode().then(() => createImageBitmap(img)).catch(() => null) : null;   // (decode(): off the main thread)
+          c = bmp || document.createElement('canvas');
+          if (!bmp) { c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0) }
+        } finally { if (src !== it.raw) URL.revokeObjectURL(src) }
         // a worker the browser stopped without a word (memory, on phones) never answers: give up on this round
         const late = new Promise((_, no) => { timer = setTimeout(() => no(new Error('the converter did not answer')), Math.max(120000, est * 20)) });
         dataUrl = up.type === 'image/jxl' ? await Promise.race([K.jxlEncode(c, up.distance || 1.9, up.effort || 7), late]) : c.toDataURL(up.type, up.q);
@@ -974,8 +988,22 @@ K.jxl.watch();
 
 // A photo from this browser becomes JPEG XL here, before it is sent (decision 0018: no JPEG anywhere): our libjxl
 // build in a worker, so the page stays responsive. canvas → a data: URL of the JXL codestream.
+K.PHOTO_SIDE = 2560;   // the longest side a stored photo may have, on every client (decision 0074)
+// a picture (Blob or image) decoded and scaled to w × h off the main thread (createImageBitmap's resize); null where the
+// browser can't (no createImageBitmap or no resize: the caller scales on a canvas instead)
+K.scaledBitmap = async (src, w, h) => {
+  if (typeof createImageBitmap !== 'function') return null;
+  try {
+    const b = await createImageBitmap(src, {resizeWidth: w, resizeHeight: h, resizeQuality: 'high', imageOrientation: 'from-image'});
+    if (b.width === w && b.height === h) return b;
+    b.close(); return null;
+  } catch (e) { return null }
+};
+// (an ImageBitmap goes to the worker as it is, which reads its pixels there: getImageData of a 2560 px canvas held the
+// main thread for over a second on a slow phone; a canvas is read here)
 K.jxlEncode = (canvas, distance = 1.9, effort = 7) => new Promise((res, rej) => {
-  const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  const bitmap = typeof ImageBitmap !== 'undefined' && canvas instanceof ImageBitmap;
+  const d = bitmap ? null : canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
   if (!K.jxlWorker) {   // a worker whose module could not load (offline, before it was ever fetched) answers nothing: drop it
     const w = K.jxlWorker = new Worker('/kks-wasm-worker.js', {type: 'module'}); w.wait = new Map();
     w.addEventListener('error', e => { e.preventDefault?.(); if (K.jxlWorker === w) K.jxlWorker = null; w.terminate();
@@ -991,7 +1019,8 @@ K.jxlEncode = (canvas, distance = 1.9, effort = 7) => new Promise((res, rej) => 
     res('data:image/jxl;base64,' + btoa(s));
   };
   w.addEventListener('message', on); w.wait.set(id, e => { w.removeEventListener('message', on); rej(e) });
-  w.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
+  if (bitmap) w.postMessage({id, bitmap: canvas, distance, effort}, [canvas]);
+  else w.postMessage({id, rgba: d.data.buffer, width: d.width, height: d.height, distance, effort}, [d.data.buffer]);
 });
 
 
@@ -1197,7 +1226,8 @@ K.annotate = (src, askNote) => new Promise(done => {
 // device (estimate), stops at 95 % until the work is done, then fills.
 K.progress = (title, estimateMs, id) => {
   const box = document.createElement('div'); if (id) box.id = id; box.setAttribute('role', 'status');
-  box.style.cssText = 'position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:170;background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:12px 14px;min-width:260px;max-width:90vw;font:14px system-ui,sans-serif;box-shadow:0 6px 24px #0008';
+  // (pointer-events none: it only tells; while it fades it must not take a tap meant for what is under it)
+  box.style.cssText = 'pointer-events:none;position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:170;background:#243440;color:#e9eef2;border:1px solid #3a5061;border-radius:10px;padding:12px 14px;min-width:260px;max-width:90vw;font:14px system-ui,sans-serif;box-shadow:0 6px 24px #0008';
   const h = K.h, bar = h('i', {style: 'display:block;height:100%;width:0;background:#ff7a1a;transition:width .3s'}), t = h('div', {class: 't', style: 'font-size:12.5px;opacity:.75'});
   box.append(h('div', null, title), h('div', {style: 'height:6px;border-radius:3px;background:#3a5061;margin:8px 0 4px;overflow:hidden'}, bar), t);
   document.body.appendChild(box);

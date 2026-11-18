@@ -165,10 +165,11 @@ class Windows(unittest.TestCase):
         assert r.get('status') == 'approved', r
         vm('New-Item -ItemType Directory -Force C:\\kks | Out-Null; Get-Process Walkdown,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
         time.sleep(1)
-        # a synthetic picture for the photo step (blue with a white square)
+        # a synthetic picture for the photo step (blue with a white square), larger than a stored photo may be: it
+        # arrives at 2560 px on its longer side (decision 0074)
         photo = os.path.join(cls.dir, 'photo.jpg')
-        subprocess.run([sys.executable, '-c', 'from PIL import Image, ImageDraw; im = Image.new("RGB", (1200, 900), (60, 90, 150)); '
-                        'ImageDraw.Draw(im).rectangle([400, 300, 800, 600], fill=(240, 240, 240)); im.save(%r, quality=92)' % photo], check=True)
+        subprocess.run([sys.executable, '-c', 'from PIL import Image, ImageDraw; im = Image.new("RGB", (3200, 2400), (60, 90, 150)); '
+                        'ImageDraw.Draw(im).rectangle([1067, 800, 2133, 1600], fill=(240, 240, 240)); im.save(%r, quality=92)' % photo], check=True)
         put(APP, DRIVER, os.path.join(HERE, 'run.ps1'), os.path.join(HERE, 'runapp.ps1'), photo)
         if MSIX:
             put(MSIX, MSIX_CER, os.path.join(HERE, 'msix.ps1'))
@@ -1579,6 +1580,8 @@ class Windows(unittest.TestCase):
             except urllib.error.HTTPError: return None
         blob = self.wait_server(fetch_blob, 'the photo file never reached the server', tries=80)
         self.assertEqual(blob[:2], b'\xff\x0a', 'not a JPEG XL codestream')
+        from jxl_header import jxl_size
+        self.assertEqual(jxl_size(blob), (2560, 1920), 'the stored photo of a 3200 × 2400 picture')
         if shutil.which('djxl'):
             jxl = os.path.join(self.dir, 'got.jxl')
             png = os.path.join(self.dir, 'got.png')

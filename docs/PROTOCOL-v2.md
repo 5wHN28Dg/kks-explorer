@@ -221,6 +221,8 @@ replay only accepts or ignores.
   A caption that starts with `Tag plate` marks the photo of the equipment's tag plate (the metal plate with its KKS
   code); clients may show it apart. A convention, not a field: readers before 0.9.3 reject unknown photo fields, and
   read this one as a caption.
+  The blob is a JPEG XL image. Clients store a photo at most 2560 px on its longer side (1600 px before 2026-11),
+  at distance 1.9 (decision 0074); readers accept a photo of any size.
 - **`photo_delete`, `tag_remove`:** an ID.
 - **`tag_add`:**
   - `tag` an ID, `sheet` `[a-z0-9][a-z0-9-]{0,23}`;

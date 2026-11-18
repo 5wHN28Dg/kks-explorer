@@ -42,15 +42,19 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import kks.explorer.Jxl
+import kks.explorer.Resample
 import kks.explorer.core.Core
 import kks.explorer.sync.PhotoQueue
 import kotlinx.coroutines.Dispatchers
@@ -67,15 +71,36 @@ import kotlin.math.sin
 /** a photo's pixels, decoded from its JPEG XL blob; null while this phone doesn't hold it yet (on-demand photos) */
 private fun photoBitmap(file: String): Bitmap? = Core.file("photos/$file")?.let { Jxl.bitmap(it) }
 
+private object Missing
+
+/** photos are decoded two at a time: each whole one is up to 20 MB of pixels on the heap while it is made small, and a
+ *  page of thumbnails (Manage) would otherwise decode them all at once */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+private val photoDecode = Dispatchers.IO.limitedParallelism(2)
+
 @Composable
 fun PhotoOf(file: String, caption: String = "", height: Int = 90) {
     if (file.isEmpty()) return
-    val bmp by produceState<ImageBitmap?>(null, file) { value = withContext(Dispatchers.IO) { photoBitmap(file)?.asImageBitmap() } }
+    // the thumbnail is kept small (a 2560 px photo is 20 MB of pixels, and Manage lists many); the whole photo is
+    // decoded again only while it is open
+    val px = (height * LocalDensity.current.density * 2).toInt()
+    // null while it is decoded; Missing when this phone doesn't hold it (or it could not be decoded)
+    val bmp by produceState<Any?>(null, file) {
+        value = withContext(photoDecode) {
+            try { photoBitmap(file)?.let { full -> Resample.thumbnail(full, px).also { if (it !== full) full.recycle() } }?.asImageBitmap() }
+            catch (_: OutOfMemoryError) { null } ?: Missing
+        }
+    }
     var open by remember { mutableStateOf(false) }
     val b = bmp
-    if (b == null) { Dim("Not on this phone yet (it arrives with the next sync)"); return }
+    if (b == null) { Dim("Loading the photo…"); return }
+    if (b !is ImageBitmap) { Dim("Not on this phone yet (it arrives with the next sync)"); return }
     Image(b, "Open photo" + if (caption.isNotEmpty()) ": $caption" else "", Modifier.height(height.dp).clickable { open = true }, contentScale = ContentScale.Fit)
-    if (open) PhotoViewer(b, caption) { open = false }
+    if (open) {
+        // (not behind the thumbnails; a phone short of memory keeps showing the small copy)
+        val whole by produceState<ImageBitmap?>(null, file) { value = withContext(Dispatchers.IO) { try { photoBitmap(file)?.asImageBitmap() } catch (_: OutOfMemoryError) { null } } }
+        PhotoViewer(whole ?: b, caption) { open = false }
+    }
 }
 
 /** pinch to zoom, drag to pan (R6) */
@@ -129,12 +154,16 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
     }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
     val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
+    var preparing by remember { mutableStateOf(false) }       // reading and scaling the picture (a second or more)
     fun load(uri: Uri) = scope.launch {
-        picked = withContext(Dispatchers.IO) {
-            val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
-            if (uri == camUri) camFile.delete()
-            orientedBitmap(raw)
-        }
+        preparing = true
+        picked = try {
+            withContext(Dispatchers.IO) {
+                val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
+                if (uri == camUri) camFile.delete()
+                orientedBitmap(raw)
+            }
+        } finally { preparing = false }
         awaiting = false
         if (picked == null) snack.showSnackbar("Could not read that picture")
     }
@@ -176,9 +205,13 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         LinearProgressIndicator(Modifier.fillMaxWidth())
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { withFloor { shoot(false) } }) { Text("Take a photo") }
-        OutlinedButton(onClick = { withFloor { shoot(true) } }) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
-        OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; awaiting = true; gallery.launch("image/*") } }) { Text("From the gallery") }
+        OutlinedButton(onClick = { withFloor { shoot(false) } }, enabled = !preparing) { Text("Take a photo") }
+        OutlinedButton(onClick = { withFloor { shoot(true) } }, enabled = !preparing) { Text(if (hasPlate) "New tag plate photo" else "Photo of the tag plate") }
+        OutlinedButton(onClick = { withFloor { plate = false; fromCamera = false; awaiting = true; gallery.launch("image/*") } }, enabled = !preparing) { Text("From the gallery") }
+    }
+    if (preparing) {
+        Text("Preparing the photo…", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        LinearProgressIndicator(Modifier.fillMaxWidth())
     }
     picked?.let { bmp ->
         Annotate(bmp, plate, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { picked = null },
@@ -221,13 +254,24 @@ fun photoCredit(p: JSONObject): String {
     return listOf(if (who.isNotEmpty()) "by $who" else "", at).filter { it.isNotEmpty() }.joinToString(", ")
 }
 
-/** decoded, turned upright (EXIF), and at most 1600 px on the longer side (the size the other clients send) */
+/** decoded, turned upright (EXIF), and at most [Resample.PHOTO_SIDE] (2560) px on the longer side, the size every
+ *  client stores (decision 0074): decoded at the largest power-of-two reduction that keeps it at least that large,
+ *  then scaled with Lanczos (Android's own scaling is bilinear) */
 internal fun orientedBitmap(raw: ByteArray): Bitmap? {
+    val t0 = System.nanoTime()
     val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(raw, 0, raw.size, opts)
     var sample = 1
-    while (maxOf(opts.outWidth, opts.outHeight) / (sample * 2) >= 1600) sample *= 2
+    while (maxOf(opts.outWidth, opts.outHeight) / (sample * 2) >= Resample.PHOTO_SIDE) sample *= 2
     var bmp = BitmapFactory.decodeByteArray(raw, 0, raw.size, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }) ?: return null
+    val (fw, fh) = Resample.fit(bmp.width, bmp.height)
+    if (fw != bmp.width || fh != bmp.height) {
+        // Lanczos needs ~60 MB of heap for its passes; a phone short of it gets Android's own (bilinear) scaling
+        // rather than a crash
+        val src = bmp
+        bmp = try { Resample.scale(src, fw, fh) } catch (_: OutOfMemoryError) { Bitmap.createScaledBitmap(src, fw, fh, true) }
+        if (bmp !== src) src.recycle()
+    }
     val turn = runCatching {
         when (android.media.ExifInterface(raw.inputStream()).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
             android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90; android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
@@ -235,8 +279,7 @@ internal fun orientedBitmap(raw: ByteArray): Bitmap? {
         }
     }.getOrDefault(0)
     if (turn != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, android.graphics.Matrix().apply { postRotate(turn.toFloat()) }, true)
-    val side = maxOf(bmp.width, bmp.height)
-    if (side > 1600) bmp = Bitmap.createScaledBitmap(bmp, bmp.width * 1600 / side, bmp.height * 1600 / side, true)
+    android.util.Log.i("KKSTime", "photo ${opts.outWidth}x${opts.outHeight} -> ${bmp.width}x${bmp.height} in ${(System.nanoTime() - t0) / 1_000_000} ms")   // measurements
     return bmp
 }
 
@@ -269,6 +312,8 @@ internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () 
     var finger by remember { mutableStateOf<Offset?>(null) }       // where a finger draws (view px): the loupe
     var caption by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    val burnScope = rememberCoroutineScope()
     var box by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var centre by remember { mutableStateOf(Offset(src.width / 2f, src.height / 2f)) }   // the image point at the view's centre
@@ -388,7 +433,12 @@ internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () 
                     }
                     OutlinedButton(onClick = onRetake) { Text(retake) }
                     OutlinedButton(onClick = onCancel) { Text("Cancel") }
-                    Button(onClick = { onDone(burn(src, marks), caption.trim(), note.trim()) }) { Text("Send") }
+                    // the marks are burned in off the main thread (a 2560 px copy); Send waits meanwhile
+                    Button(onClick = {
+                        sending = true
+                        val m = marks.toList()
+                        burnScope.launch { val out = withContext(Dispatchers.Default) { burn(src, m) }; onDone(out, caption.trim(), note.trim()) }
+                    }, enabled = !sending) { Text("Send") }
                 }
             }
         }

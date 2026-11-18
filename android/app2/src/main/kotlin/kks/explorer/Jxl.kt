@@ -1,52 +1,24 @@
 package kks.explorer
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.media.ExifInterface
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * JPEG XL through libjxl (src/main/cpp): photos are stored as JXL at distance 1.9, effort 9 (the same settings as
- * server/photos.py). The WebView can't show JXL, so the app decodes it and hands the page the pixels as a BMP (no
+ * JPEG XL through libjxl (src/main/cpp): photos are stored as JXL at distance 1.9, effort 7, at most 2560 px (the
+ * same settings on every client, decision 0074). The WebView can't show JXL, so the app decodes it and hands the page the pixels as a BMP (no
  * lossy re-encoding, nothing cached on disk).
  */
 object Jxl {
     const val DISTANCE = 1.9f
-    const val EFFORT = 9
-    const val MAX_SIDE = 4096          // the page sends ≤ 1600 px; bigger is scaled down
-    /** How long encoding took on this phone lately, per megapixel (the progress bar's estimate); kept across starts. */
-    @Volatile var msPerMp: Long = 8000
+    const val EFFORT = 7
+    /** How long encoding took on this phone lately, per megapixel (the progress bar's estimate). */
+    @Volatile var msPerMp: Long = 1500
 
     init { System.loadLibrary("kksjxl") }
 
     @JvmStatic private external fun encodeRgba(rgba: ByteArray, width: Int, height: Int, distance: Float, effort: Int): ByteArray?
     @JvmStatic private external fun decodeRgba(data: ByteArray, dims: IntArray): ByteArray?
-
-    /** A PNG / JPEG / WebP -> JXL (orientation applied, metadata dropped). Throws if it can't be read. */
-    fun fromImage(bytes: ByteArray): ByteArray {
-        var bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
-            ?: throw IllegalArgumentException("unreadable image")
-        val turn = runCatching {
-            when (ExifInterface(bytes.inputStream()).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> 90; ExifInterface.ORIENTATION_ROTATE_180 -> 180
-                ExifInterface.ORIENTATION_ROTATE_270 -> 270; else -> 0
-            }
-        }.getOrDefault(0)
-        if (turn != 0) bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(turn.toFloat()) }, true)
-        val side = maxOf(bmp.width, bmp.height)
-        if (side > MAX_SIDE) bmp = Bitmap.createScaledBitmap(bmp, bmp.width * MAX_SIDE / side, bmp.height * MAX_SIDE / side, true)
-        if (bmp.config != Bitmap.Config.ARGB_8888) bmp = bmp.copy(Bitmap.Config.ARGB_8888, false)
-        val buf = ByteBuffer.allocate(bmp.byteCount)
-        bmp.copyPixelsToBuffer(buf)        // memory order R, G, B, A
-        val t0 = System.nanoTime()
-        val out = encodeRgba(buf.array(), bmp.width, bmp.height, DISTANCE, EFFORT) ?: throw IllegalStateException("JPEG XL encoding failed")
-        val took = (System.nanoTime() - t0) / 1e6 / maxOf(bmp.width.toLong() * bmp.height / 1e6, 0.01)
-        msPerMp = ((msPerMp + took) / 2).toLong()
-        android.util.Log.i("KKSTime", "jxl encode ${bmp.width}x${bmp.height} ${took.toLong()} ms/MP")   // measurements
-        return out
-    }
 
     /** A ready Bitmap (upright, scaled) -> JXL at the photo settings */
     fun fromBitmap(src: Bitmap): ByteArray {

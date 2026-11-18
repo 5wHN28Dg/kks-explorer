@@ -198,6 +198,25 @@ class WebRequests(unittest.TestCase):
         page.unroute('**/api/submit')
         page.evaluate("K.flush()")
         self.idle(page)
+        # a photo queued by an older page (its PNG kept as a data: URL, before decision 0074 kept a Blob) still goes
+        page.evaluate("""async k => { const c = document.createElement('canvas'); c.width = 200; c.height = 150;
+            c.getContext('2d').fillRect(0, 0, 50, 50);
+            await K.idb.queue({client_id: K.uid(), kind: 'photo', payload: {kks: k, caption: 'queued as a data URL'}, user: K.me.user.id,
+                               ts: Date.now(), raw: c.toDataURL('image/png'), mp: 0.03});
+            await K.emit(); K.convertPhotos() }""", plain)
+        page.wait_for_function("() => K.outbox.length === 0 && !K.converting", timeout=90000)
+        self.assertIn('queued as a data URL', [s['payload'].get('caption') for s in self.subs(tom, 'mine=1&status=all') if s['kind'] == 'photo'])
+        # a browser whose IndexedDB refuses to keep the Blob (Safari's private windows): the photo is kept as a data: URL
+        kept = page.evaluate("""async k => { const q = K.idb.queue; let n = 0;
+            K.idb.queue = it => (n++ === 0 && it.raw instanceof Blob) ? Promise.reject(new Error('no Blobs here')) : q(it);
+            K.converting = {n: 0, of: 0, kks: ''};     // (held: the stored form is read before it is converted)
+            const c = document.createElement('canvas'); c.width = 200; c.height = 150; c.getContext('2d').fillRect(0, 0, 50, 50);
+            try { await K.queuePhoto(c, {kks: k, caption: 'kept without a Blob'}) } finally { K.idb.queue = q; K.converting = null }
+            const it = (await K.idb.all()).find(i => i.payload.caption === 'kept without a Blob');
+            K.convertPhotos(); return typeof it.raw === 'string' && it.raw.startsWith('data:image/png') }""", plain)
+        self.assertTrue(kept, 'the photo was not kept as a data: URL when the Blob was refused')
+        page.wait_for_function("() => K.outbox.length === 0 && !K.converting", timeout=90000)
+        self.assertIn('kept without a Blob', [s['payload'].get('caption') for s in self.subs(tom, 'mine=1&status=all') if s['kind'] == 'photo'])
         self.assertIn('after 503', [s['payload'].get('caption') for s in self.subs(tom, 'mine=1&status=all&kind=photo') if s.get('code') == plain])
 
         # a proxy refusing the body (413, a smaller limit than the server's): the photo is kept, marked refused and shown,
