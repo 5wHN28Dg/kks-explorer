@@ -84,7 +84,7 @@ func _at(tree: SceneTree, ui_scale: String, ui_size: float) -> Array:
 
 
 ## The Workshop at the UI size: its way back on screen, and its 3D view drawn with as many pixels as at 100 % (its
-## resolution scaled up as the canvas's units grow). (Its panels' own layout: tests/test_workshop_layout.gd.)
+## resolution scaled up as the canvas's units grow).
 func _workshop(tree: SceneTree, main, at: String, ui_size: float) -> Array:
 	var p: Array = []
 	var ws = main.workshop
@@ -104,8 +104,26 @@ func _workshop(tree: SceneTree, main, at: String, ui_size: float) -> Array:
 	var want: float = canvas.size.x * ui_size * main.get_viewport().scaling_3d_scale
 	if absf(px - want) > 2.0:
 		p.append("%s: the Workshop's view is drawn %.0f px across, %.0f expected (as many as at 100 %%)" % [at, px, want])
+	# a drag turns the view as far as it moves on the screen, whatever the UI size: 30 screen px are 30 / ui_size of
+	# the canvas's units
+	var m := InputEventMouseMotion.new()
+	m.button_mask = MOUSE_BUTTON_MASK_LEFT
+	m.relative = Vector2(30.0, 0.0) / ui_size
+	var y0: float = ws.cam.yaw
+	ws.cam.handle(m, 600.0)
+	if absf((y0 - ws.cam.yaw) - 30.0 * ws.cam.ORBIT_RATE) > 1e-4:
+		p.append("%s: 30 px of drag on the screen turn the Workshop's view %.4f rad (%.4f expected)" % [at, y0 - ws.cam.yaw,
+			30.0 * ws.cam.ORBIT_RATE])
 	ws.close()
 	await tree.process_frame
+	# and the map pans as far as the finger moves
+	var mv = main.map
+	var t0: Vector3 = mv.target
+	mv._pan(Vector2(30.0, 0.0) / ui_size)
+	var got: float = (mv.target - t0).length()
+	if absf(got - 30.0 * mv.dist * 0.0015) > 1e-3:
+		p.append("%s: 30 px of drag on the screen pan the map %.2f m (%.2f expected)" % [at, got, 30.0 * mv.dist * 0.0015])
+	mv.target = t0
 	return p
 
 

@@ -925,7 +925,7 @@ func _show_offer(p: Dictionary, why: String) -> void:
 
 
 func _place_offer() -> void:
-	if offer_panel == null:
+	if offer_panel == null or not offer_panel.is_inside_tree():
 		return
 	var vs: Vector2 = ui.root.get_viewport_rect().size
 	var w := minf(640.0 * W.scale, vs.x - 32.0)

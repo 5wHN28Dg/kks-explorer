@@ -4,6 +4,7 @@
 extends CharacterBody3D
 
 const Controls = preload("res://app/controls.gd")
+const W = preload("res://ui/widgets.gd")   # (W.ui_size: drags come in the canvas's units, larger at a larger UI size)
 
 enum Mode { WALK, FLY, CLIMB }
 const MOVE_ACTIONS := ["move_forward", "move_back", "move_left", "move_right"]
@@ -319,7 +320,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if scripted or not input_enabled:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		look(event.relative.x * mouse_sensitivity, event.relative.y * mouse_sensitivity)
+		var r: Vector2 = event.relative * W.ui_size   # (the mouse's move on the screen, whatever the UI size)
+		look(r.x * mouse_sensitivity, r.y * mouse_sensitivity)
 	elif driving:
 		return                          # (at a bus's wheel: its keys are app/bus_drive.gd's, the look stays)
 	elif event.is_action_pressed("run") and run_toggle:
