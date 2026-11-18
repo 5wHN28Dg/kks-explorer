@@ -8,6 +8,7 @@ extends PanelContainer
 
 const W = preload("res://ui/widgets.gd")
 const Mirror = preload("res://workshop/mirror.gd")
+const FONT := 20                # the text's size at scale 1 (the theme's, as the Workshop's other panels: #389)
 
 var ws                          # workshop/workshop.gd
 var box: VBoxContainer
@@ -45,15 +46,15 @@ func machine_shown() -> void:
 	_shown_for = ws.part
 	if c == null or not c.loaded():
 		box.add_child(W.label("This machine has no bench model yet: it can be taken apart and looked into, not run.",
-			18, W.DIM))
+			FONT, W.DIM))
 		state_label = null
 		alarm_label = null
 		note = null
 		return
 	var ro: bool = ws.mirror_code != ""     # a mirror: read only (§6.5)
-	box.add_child(W.label("Run", 22, Color.WHITE, false))
+	box.add_child(W.label("Run", 24, Color.WHITE, false))
 	if ro:
-		var ml := W.label("Mirror of %s, read only" % ws.mirror_code, 20, Color(0.55, 0.85, 1.0))
+		var ml := W.label("Mirror of %s, read only" % ws.mirror_code, FONT, Color(0.55, 0.85, 1.0))
 		ml.name = "run_mirror"
 		box.add_child(ml)
 		var wo: Dictionary = Mirror.words_of(ws.mirror_info)
@@ -64,11 +65,12 @@ func machine_shown() -> void:
 			" as it runs" if ws.mirror_live else " as you left it", ", ".join(got)]
 		for x in wo.missing:
 			t += "\nNot mirrored: %s (%s)." % [_title(x[0]).to_lower(), x[1]]
-		var fl := W.label(t, 16, W.DIM)
+		var fl := W.label(t, FONT, W.DIM)
 		fl.name = "run_mirror_from"
 		box.add_child(fl)
 		var lb := W.button("Leave the mirror: the bench is yours", func(): ws.leave_mirror())
 		lb.name = "run_leave_mirror"
+		lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # (alone on its row: its words wrap in a narrow panel)
 		box.add_child(lb)
 	var row := HFlowContainer.new()   # (the machine's commands and the bench's other ops: as many as the file has)
 	box.add_child(row)
@@ -85,7 +87,7 @@ func machine_shown() -> void:
 			var bt := W.button(String(o.get("title", o.do.capitalize())), ws.run_command.bind(o.at, o.do))
 			bt.name = "run_%s_%s" % [o.machine, o.do]
 			row.add_child(bt)
-	var row2 := HBoxContainer.new()
+	var row2 := HFlowContainer.new()   # (it wraps in a narrow panel or a large UI: #389)
 	box.add_child(row2)
 	if ro:
 		rb.free()
@@ -94,7 +96,7 @@ func machine_shown() -> void:
 	pause_btn = W.button("Pause", func(): ws.bench.paused = not ws.bench.paused)
 	pause_btn.name = "run_pause"
 	row2.add_child(pause_btn)
-	speed_label = W.label("1.0×", 18, W.DIM, false)
+	speed_label = W.label("1.0×", FONT, W.DIM, false)
 	row2.add_child(speed_label)
 	var sp := HSlider.new()
 	sp.name = "run_speed"
@@ -102,58 +104,63 @@ func machine_shown() -> void:
 	sp.max_value = c.SPEED_MAX
 	sp.step = 0.1
 	sp.value = c.speed
-	sp.custom_minimum_size = Vector2(160 * W.scale, 40 * W.scale)
+	sp.custom_minimum_size = Vector2(160 * W.scale, 52 * W.scale)
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sp.value_changed.connect(func(v): ws.bench.set_speed(v))
 	row2.add_child(sp)
 	for o in ([] if ro else c.m.ops_ui):
 		if o.get("do") == "set" and o.has("range"):
-			var r := HBoxContainer.new()
+			var r := HFlowContainer.new()
 			box.add_child(r)
-			r.add_child(W.label(String(o.get("title", o.input)), 18, W.DIM, false))
+			r.add_child(W.label(String(o.get("title", o.input)), FONT, W.DIM, false))
 			var s := HSlider.new()
 			s.name = "set_" + String(o.input)
 			s.min_value = float(o.range[0])
 			s.max_value = float(o.range[1])
 			s.step = (s.max_value - s.min_value) / 260.0
 			s.value = c.now(o.input)
-			s.custom_minimum_size = Vector2(160 * W.scale, 40 * W.scale)
+			s.custom_minimum_size = Vector2(160 * W.scale, 52 * W.scale)
 			s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			s.value_changed.connect(func(v): ws.bench.op_set(o.at, v))
 			s.drag_started.connect(func(): s.set_meta("dragging", true))
 			s.drag_ended.connect(func(_c): s.set_meta("dragging", false))
 			r.add_child(s)
-			var vl := W.label("", 18, Color.WHITE, false)
+			var vl := W.label("", FONT, Color.WHITE, false)
 			r.add_child(vl)
 			sliders.append([s, o, vl])
-	box.add_child(W.label("Readings", 18, W.DIM, false))
-	for k in c.m.readouts:
-		var l := W.label("", 18, Color.WHITE, false)
+	box.add_child(W.label("Readings", FONT, W.DIM, false))
+	for k in c.m.readouts:   # (its name and its value with the unit: the value goes under the name where it is narrow)
+		var rr := HFlowContainer.new()
+		box.add_child(rr)
+		rr.add_child(W.label(_title(k), FONT, Color.WHITE, false))
+		var l := W.label("", FONT, Color.WHITE, false)
 		l.name = "read_" + String(k)
-		box.add_child(l)
+		rr.add_child(l)
 		readouts.append([l, k])
 	# the colour legend of the heat or pressure colours shown (§3 "See inside")
 	legend_box = VBoxContainer.new()
 	legend_box.name = "run_legend"
 	box.add_child(legend_box)
 	_legend_for = ""
-	state_label = W.label("", 18, Color.WHITE)
+	state_label = W.label("", FONT, Color.WHITE)
 	box.add_child(state_label)
-	alarm_label = W.label("", 18, W.PRIO_COLOURS[2])
+	alarm_label = W.label("", FONT, W.PRIO_COLOURS[2])
 	alarm_label.name = "run_alarms"
 	box.add_child(alarm_label)
 	var ack := W.button("Acknowledge", func(): ws.ack_bench_alarms())
 	ack.name = "run_ack"
+	ack.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	box.add_child(ack)
 	if not c.m.faults.is_empty() and not ro:
-		box.add_child(W.label("Faults (the trainer's)", 18, W.DIM, false))
+		box.add_child(W.label("Faults (the trainer's)", FONT, W.DIM, false))
 	for f in ([] if ro else c.m.faults):
 		var b := W.button(String(f.text), ws.toggle_fault.bind(String(f.id)))
 		b.name = "fault_" + String(f.id)
 		b.toggle_mode = true
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # (a fault's words wrap in a narrow panel)
 		box.add_child(b)
 		fault_btns[f.id] = b
-	note = W.label("", 18, Color(1.0, 0.75, 0.35))
+	note = W.label("", FONT, Color(1.0, 0.75, 0.35))
 	note.name = "run_note"
 	box.add_child(note)
 
@@ -171,7 +178,7 @@ func tick() -> void:
 		if not s[0].get_meta("dragging", false) and absf(s[0].value - c.now(s[1].input)) > s[0].step:
 			s[0].set_value_no_signal(c.now(s[1].input))
 	for r in readouts:
-		var t: String = "%s  %s" % [_title(r[1]), c.shown(r[1])]
+		var t: String = c.shown(r[1])
 		if r[0].text != t:
 			r[0].text = t
 	var st := PackedStringArray()
@@ -197,7 +204,7 @@ func _legend(lg: Dictionary, kind: String) -> void:
 	var rows: Array = lg.table if lg.has("unit") else []   # (a legend: unit and table, ref/plant3d_bench.py)
 	if rows.size() < 2:
 		return
-	legend_box.add_child(W.label("%s, %s" % [kind.capitalize(), lg.unit], 18, W.DIM, false))
+	legend_box.add_child(W.label("%s, %s" % [kind.capitalize(), lg.unit], FONT, W.DIM, false))
 	var g := Gradient.new()
 	var lo := float(rows[0][0])
 	var hi := float(rows[-1][0])
@@ -221,10 +228,10 @@ func _legend(lg: Dictionary, kind: String) -> void:
 	legend_box.add_child(bar)
 	var ends := HBoxContainer.new()
 	legend_box.add_child(ends)
-	var a := W.label("%s" % _num(lo), 16, W.DIM, false)
+	var a := W.label("%s" % _num(lo), FONT, W.DIM, false)
 	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ends.add_child(a)
-	ends.add_child(W.label("%s" % _num(hi), 16, W.DIM, false))
+	ends.add_child(W.label("%s" % _num(hi), FONT, W.DIM, false))
 
 
 static func _num(x: float) -> String:
