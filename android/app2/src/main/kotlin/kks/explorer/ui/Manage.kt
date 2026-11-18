@@ -264,7 +264,7 @@ private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (S
             "Use this one and reject " + (if (others == 1) "the other" else "the other $others"),
             { act(id, "pick", JSONObject(), "Photo chosen, the others of this kind rejected", say) }, { asking = "" })
         if (asking == "reject") Confirm("Reject " + proposalTitle(sub) + "?",
-            sub.str("by_name").ifEmpty { sub.str("by") }.let { if (it.isEmpty()) "The proposal" else "$it's proposal" } + " is discarded; the submitter sees that it was rejected. This can't be undone.",
+            "The proposal" + sub.str("by_name").ifEmpty { sub.str("by") }.let { if (it.isEmpty()) "" else " by \u2068$it\u2069" } + " is discarded; the submitter sees that it was rejected. This can't be undone.",
             "Reject", { act(id, "reject", JSONObject(), "Rejected", say) }, { asking = "" })
     }
 }
@@ -511,16 +511,13 @@ private fun Devices(rev: Int, admin: Boolean, say: (String) -> Unit) {
                                 color = MaterialTheme.colorScheme.error)
                         } },
                         trailingContent = { Row {
-                            var refusing by remember(x.str("device")) { mutableStateOf(false) }
                             val decide = { a: String ->
                                 val res = call("POST", "/api/join-requests/" + x.str("device"), JSONObject().put("action", a).put("existing_ok", true))
                                 say(res.error ?: if (a == "accept") "Accepted" else "Refused")
                             }
+                            // (Refuse acts at once, as on the other clients: the device can ask again; #365 left it so)
                             TextButton(onClick = { decide("accept") }) { Text("Accept") }
-                            // #365: refusing ends their request; asked first, naming whose
-                            TextButton(onClick = { refusing = true }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Refuse") }
-                            if (refusing) Confirm("Refuse ${q.str("full_name")}'s request?", "Their device does not join; they have to ask again.",
-                                "Refuse", { decide("refuse") }, { refusing = false })
+                            TextButton(onClick = { decide("refuse") }) { Text("Refuse") }
                         } })
                 }
             }

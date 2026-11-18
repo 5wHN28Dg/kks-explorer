@@ -90,11 +90,19 @@ EVIDENCE = os.environ.get('KKS_EVIDENCE', '')
 def evidence(name):
     if not EVIDENCE: return
     os.makedirs(EVIDENCE, exist_ok=True)
+    land = os.environ.get('KKS_EVIDENCE_LAND')       # (the screen turned on its side for the shot, then back)
+    if land:
+        ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
+        ui.sh('settings', 'put', 'system', 'user_rotation', '1')
+        time.sleep(3)
     with open(os.path.join(EVIDENCE, name + '.png'), 'wb') as f:
         f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
     ui.sh('uiautomator', 'dump', '/sdcard/ev.xml')
     with open(os.path.join(EVIDENCE, name + '.xml'), 'wb') as f:
         f.write(subprocess.run(ui.ADB + ['exec-out', 'cat', '/sdcard/ev.xml'], capture_output=True).stdout)
+    if land:
+        ui.sh('settings', 'put', 'system', 'user_rotation', '0')
+        time.sleep(3)
 
 
 class Phone(unittest.TestCase):
@@ -1958,22 +1966,42 @@ class Phone(unittest.TestCase):
         """request 5: one card per code with the equipment and tag plate photos together; Approve/Reject only, unless
         several photos of one kind compete (then "Use this one", which leaves the other kind alone); the full name; the
         code opens its tag on the drawing"""
-        omar = self.member('omar', 'Omar Fullname', 'omar password 1')
+        name = 'عمر الفني' if os.environ.get('KKS_EVIDENCE_ARABIC') else 'Omar Fullname'   # (the UI audit's L1 evidence)
+        omar = self.member('omar', name, 'omar password 1')
         for cap, tag in (('', 'eq1'), ('Tag plate', 'plate1')):
             r = omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': cap, 'dataUrl': self.jxl(tag)}})
             self.assertIn(r.get('status'), ('pending', 'conflict'), r)
         self.join()
         ui.tap('Manage', exact=True)
         ui.tap('Approvals', exact=True)
+        if os.environ.get('KKS_EVIDENCE_QUESTIONS_ONLY'):
+            # (the UI audit at the largest font size, where the cards need scrolling: only the two questions' shots)
+            ui.scroll_to('Reject', exact=True)
+            ui.tap('Reject', exact=True)
+            ui.find('Cancel', exact=True, timeout=10)
+            evidence('reject')
+            ui.tap('Cancel', exact=True)
+            omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'second', 'dataUrl': self.jxl('eq2')}})
+            ui.sh('input', 'keyevent', '4')
+            ui.tap('Drawings', exact=True)
+            ui.tap('Sync', exact=True)
+            time.sleep(3)
+            ui.tap('Manage', exact=True)
+            ui.tap('Approvals', exact=True)
+            ui.scroll_to('Use this one', exact=True)
+            ui.tap('Use this one', exact=True)
+            ui.find('Cancel', exact=True, timeout=10)
+            evidence('use-this-one')
+            return
         ui.find('Equipment photo', exact=True, timeout=20)
         ui.find('Tag plate photo', exact=True)
-        self.assertTrue(ui.present('by Omar Fullname'), 'the full name of the sender')
+        self.assertTrue(ui.present('by ' + name), 'the full name of the sender')
         self.assertFalse(ui.present('by omar ·'), 'the username instead of the full name')
         self.assertFalse(ui.present('Use this one', exact=True), 'Pick offered with one photo per kind')
         self.assertEqual(sum(1 for n in ui.nodes() if ui.label(n) == '11LAB70AA501'), 1, 'one card for the code')
         # #365: Reject is final, so it asks first, naming whose proposal; Cancel leaves it waiting
         ui.tap('Reject', exact=True)
-        ui.find('Omar Fullname\'s proposal is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        ui.find(f'The proposal by \u2068{name}\u2069 is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
         evidence('reject')
         ui.tap('Cancel', exact=True)
         time.sleep(1)
@@ -2436,8 +2464,10 @@ class Phone(unittest.TestCase):
         r = subprocess.run([SERVER, 'publish-data', plant, '--config', cfg], cwd=self.dir, capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         code = '11LAB70AA501'
-        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'P-1', 'step': 1, 'kks': code, 'on': True}})['status'], 'approved')
-        linked = lambda: any(l['kks'] == code and l['proc'] == 'P-1' for l in self.boss.req('GET', '/api/state')['links'])
+        other = '11LAB70AA599'
+        for k in (code, other):
+            self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'P-1', 'step': 1, 'kks': k, 'on': True}})['status'], 'approved')
+        linked = lambda k=code: any(l['kks'] == k and l['proc'] == 'P-1' for l in self.boss.req('GET', '/api/state')['links'])
         reviewed = lambda: self.boss.req('GET', '/api/state')['reviews'].get('sample:doubt')
         self.join()
         # Not a tag: asked, and Cancel sends nothing
@@ -2471,6 +2501,14 @@ class Phone(unittest.TestCase):
         ui.tap('Undo', exact=True)
         self.wait_server(linked, 'Undo did not link it again')
         ui.find(f'Unlink {code} from step 1', exact=True, timeout=20)
+        # two unlinks in a row: the second joins the first in the snackbar, and Undo links both again
+        ui.tap(f'Unlink {code} from step 1', exact=True)
+        ui.find(f'Unlinked {code} from step 1', exact=True, timeout=10)
+        ui.tap(f'Unlink {other} from step 1', exact=True, timeout=10)
+        ui.find('Unlinked 2 codes', exact=True, timeout=10)
+        self.wait_server(lambda: not linked() and not linked(other), 'the two unlinks never reached the server')
+        ui.tap('Undo', exact=True)
+        self.wait_server(lambda: linked() and linked(other), 'Undo did not link both again')
 
     def test_saved_place(self):
         """#366 (G2, D3, R2): turning the phone and Android stopping the app in the background bring back the open tag,
@@ -2549,7 +2587,7 @@ class Phone(unittest.TestCase):
         ui.tap('Approvals', exact=True)
         ui.find('11LAB70AA509', exact=True, timeout=20)
         ui.tap('Reject', exact=True)
-        ui.find('Omar Fullname\'s proposal is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        ui.find('The proposal by \u2068Omar Fullname\u2069 is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
         title = [ui.label(n) for n in ui.nodes() if ui.label(n).startswith('Reject ') and ui.label(n).endswith('?')]
         self.assertEqual(len(title), 1, title)
         # a newer proposal for another code: the list puts it first once the phone has synced (every 2 min on screen)

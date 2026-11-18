@@ -159,7 +159,8 @@ class WebSignIn(unittest.TestCase):
             self.assertEqual(len(said), n + 1)
             for words in ('sent as “K. Field”', 'asks for the username of Kim Field (Kim, Technician, user, 1 device)',
                           'lets whoever sent it act as Kim Field', 'check with Kim Field that it is theirs'):
-                self.assertIn(words, said[-1])
+                self.assertIn(words, said[-1].replace('\u2068', '').replace('\u2069', ''))   # (names isolated)
+            self.assertIn('\u2068Kim Field\u2069', said[-1])
             m.wait_for_timeout(300)
             self.assertIs(self.users()['Kim']['no_account'], True)
             self.assertEqual(len(self.boss.req('GET', '/api/signups')['requests']), 2)

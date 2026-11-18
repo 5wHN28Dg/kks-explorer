@@ -84,11 +84,20 @@ private fun ProcedureDetail(ui: Ui, id: String, rev: Int, snack: SnackbarHostSta
                             Text("✕", Modifier.clickable {
                                 // no question first: once made (an admin's), the snackbar's Undo links it again (#365)
                                 val (_, m) = linkSubmit(id, n, k, false)
+                                // unlinks made while its Undo shows gather in it, so each one keeps its Undo
                                 scope.launch {
+                                    if (m != "Saved") { snack.currentSnackbarData?.dismiss(); snack.showSnackbar("Unlink $k: $m"); return@launch }
+                                    if (snack.currentSnackbarData?.visuals?.actionLabel != "Undo") Unlinked.list.clear()
+                                    Unlinked.list.add(Triple(id, n, k))
+                                    val all = Unlinked.list.toList()
                                     snack.currentSnackbarData?.dismiss()
-                                    if (m != "Saved") { snack.showSnackbar("Unlink $k: $m"); return@launch }
-                                    val r = snack.showSnackbar("Unlinked $k from step $n", actionLabel = "Undo", duration = SnackbarDuration.Long)
-                                    if (r == SnackbarResult.ActionPerformed) snack.showSnackbar("Link $k: " + linkSubmit(id, n, k, true).second)
+                                    val r = snack.showSnackbar(if (all.size == 1) "Unlinked $k from step $n" else "Unlinked ${all.size} codes",
+                                        actionLabel = "Undo", duration = SnackbarDuration.Long)
+                                    if (r == SnackbarResult.ActionPerformed) {
+                                        Unlinked.list.clear()
+                                        val said = all.map { (p, s, c) -> linkSubmit(p, s, c, true).second }.distinct()
+                                        snack.showSnackbar((if (all.size == 1) "Link $k: " else "Link ${all.size} codes: ") + said.joinToString())
+                                    }
                                 }
                             }.clearAndSetSemantics { contentDescription = "Unlink $k from step $n"; role = androidx.compose.ui.semantics.Role.Button })
                         })
@@ -99,3 +108,6 @@ private fun ProcedureDetail(ui: Ui, id: String, rev: Int, snack: SnackbarHostSta
         }
     }
 }
+
+/** the unlinks the Undo on screen takes back (#365) */
+private object Unlinked { val list = mutableListOf<Triple<String, Int, String>>() }

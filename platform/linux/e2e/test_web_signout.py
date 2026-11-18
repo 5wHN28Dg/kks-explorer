@@ -295,7 +295,7 @@ class WebSignOut(unittest.TestCase):
             expect(field).to_have_attribute('type', 'password')
             expect(field).to_have_attribute('autocomplete', 'current-password')
             expect(field).to_have_attribute('aria-label', 'Your password')
-            expect(row).to_contain_text('It stops syncing; what it already holds stays on it.')
+            expect(row).to_contain_text('It stops receiving data, and wipes the plant from itself if it ever connects again.')
             self.assertEqual(row.get_by_role('button', name='Remove', exact=True).count(), 0)
             field.fill(PW)
             row.get_by_role('button', name='Cancel').click()
