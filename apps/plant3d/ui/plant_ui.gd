@@ -622,6 +622,10 @@ func _fill_more() -> void:
 	var pm := _more.get_popup()
 	pm.clear()
 	_more_acts.clear()
+	# Settings first: reached without scrolling where the list is longer than the canvas (a 360 dp tall phone)
+	if main != null and main.hud != null and main.hud.has_method("show_settings"):
+		pm.add_item("Settings", _more_acts.size())
+		_more_acts.append(func(): main.hud.show_settings(true))
 	var names := {"1×": "Normal speed (1×)", "Fast": "Fast-forward"}
 	for it in _bar_items:
 		var b := it as Button
@@ -636,9 +640,6 @@ func _fill_more() -> void:
 			pm.add_item(t, _more_acts.size())
 		pm.set_item_disabled(pm.item_count - 1, b.disabled)
 		_more_acts.append(b)
-	if main != null and main.hud != null and main.hud.has_method("show_settings"):
-		pm.add_item("Settings", _more_acts.size())
-		_more_acts.append(func(): main.hud.show_settings(true))
 
 
 func _on_more(id: int) -> void:

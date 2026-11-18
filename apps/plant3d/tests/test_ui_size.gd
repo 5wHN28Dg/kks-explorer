@@ -201,11 +201,16 @@ func _compact(main, at: String, canvas: Rect2, want: bool) -> Array:
 	var listed: Array = []
 	for i in pm.item_count:
 		listed.append(pm.get_item_text(i))
-	var wanted: Array = []
+	var wanted: Array = ["Settings"]
 	for c in ui._bar_items:
 		if c is Button and c.visible and c.get_parent() != ui.bar:
 			wanted.append({"1×": "Normal speed (1×)", "Fast": "Fast-forward"}.get(c.text, c.text))
-	wanted.append("Settings")
+	# its highlighted row's text 4.5:1 on its backing (UI-UX-POLICY K1)
+	var hs = pm.get_theme_stylebox("hover")
+	var hc: Color = pm.get_theme_color("font_hover_color")
+	if not (hs is StyleBoxFlat) or _contrast(hc, (hs as StyleBoxFlat).bg_color) < 4.5:
+		p.append("%s: More's highlighted row has %.2f:1 contrast (4.5 the least)" % [at,
+			_contrast(hc, (hs as StyleBoxFlat).bg_color) if hs is StyleBoxFlat else 0.0])
 	if listed != wanted:
 		p.append("%s: More's list is %s (%s expected)" % [at, str(listed), str(wanted)])
 	if listed.size() < 2:
@@ -397,6 +402,17 @@ func _bars(main, at: String, canvas: Rect2, phone: bool, ui_size: float) -> Arra
 		if sp < 14.0 - 0.05:
 			p.append("%s: the panels' text is %.1f sp (14 the least)" % [at, sp])
 	return p
+
+
+static func _lum(c: Color) -> float:
+	var f := func(v: float) -> float: return v / 12.92 if v <= 0.04045 else pow((v + 0.055) / 1.055, 2.4)
+	return 0.2126 * f.call(c.r) + 0.7152 * f.call(c.g) + 0.0722 * f.call(c.b)
+
+
+static func _contrast(a: Color, b: Color) -> float:
+	var x := _lum(a)
+	var y := _lum(b)
+	return (maxf(x, y) + 0.05) / (minf(x, y) + 0.05)
 
 
 static func t_lines(t: String) -> int:
