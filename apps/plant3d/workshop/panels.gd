@@ -82,6 +82,7 @@ func setup(w) -> void:
 	# the top bar: Back to the plant always here, whatever the panels below scroll to (UI-UX-POLICY R1)
 	top_bar = PanelContainer.new()
 	top_bar.name = "top_bar"
+	top_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE   # (a drag between its buttons still turns the view, as before)
 	col.add_child(top_bar)
 	var top := HBoxContainer.new()
 	top_bar.add_child(top)
@@ -93,6 +94,7 @@ func setup(w) -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.custom_minimum_size.x = 160 * W.scale
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(title)
 	var parts_btn := W.button("Parts", func(): tree_panel.visible = not tree_panel.visible)
 	parts_btn.name = "parts"
@@ -133,6 +135,7 @@ func setup(w) -> void:
 	tree.hide_root = false
 	tree.select_mode = Tree.SELECT_SINGLE
 	tree.scroll_horizontal_enabled = false   # (long names wrap instead: _fill_tree)
+	tree.set_column_clip_content(0, true)    # (and never widen the panel: the column may be narrower than a name)
 	tree.item_selected.connect(_on_tree_selected)
 	tree.add_theme_font_size_override("font_size", int(FONT * W.scale))
 	tree_panel.add_child(tree)
@@ -154,6 +157,7 @@ func setup(w) -> void:
 	props = W.rich()
 	props.name = "props"
 	props.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	props.mouse_filter = Control.MOUSE_FILTER_PASS   # (a finger's drag on the text scrolls it: #389)
 	pv.add_child(props)
 	note = W.label("", FONT, Color(1.0, 0.75, 0.35))
 	note.name = "note"

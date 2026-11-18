@@ -115,13 +115,28 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 	check(pn.props_panel.size.y >= ROWS * row, "%s: the properties are %d rows high or more (%.0f)" % [at, ROWS, pn.props_panel.size.y])
 	check(pn.tools_scroll.size.y >= TARGET_H * s - 1.0, "%s: the tools show a row at least (%.0f px)" % [at, pn.tools_scroll.size.y])
 	_apart(at, [pn.top_bar, pn.tree_panel, pn.props_panel, pn.tools_panel])
+	# the side panels at their width, a long part name wrapping in the tree rather than widening it (#389)
+	var want_side: float = minf(pn.SIDE_W * s, screen.size.x * pn.SIDE_MAX)
+	var long_it: TreeItem = pn.tree.create_item(pn.tree.get_root())
+	long_it.set_text(0, "A part with a very long name that would never fit in the parts tree's width at all, however wide")
+	long_it.set_autowrap_mode(0, TextServer.AUTOWRAP_WORD_SMART)
+	await _frames(tree, 3)
+	for c in [pn.tree_panel, pn.props_panel]:
+		check(absf(c.size.x - want_side) <= 1.0, "%s: %s is %.0f wide with a long name in the tree (%.0f expected)" % [at, c.name,
+			c.size.x, want_side])
+	long_it.free()
 	# Back to the plant: always in the top bar, whole, in the screen (R1)
 	check(pn.back_btn.is_visible_in_tree() and _inside(pn.back_btn.get_global_rect(), screen)
 		and pn.top_bar.is_ancestor_of(pn.back_btn), "%s: Back to the plant is in the top bar, on the screen" % at)
-	# every control whole (never squeezed below its own size, never cut at the edge), and reachable by scrolling
+	# every control whole: within its panel's sides (a control too big for its place spills past them: Godot never makes
+	# one smaller than it needs) and the screen's, and reachable by scrolling
 	for c in _controls(pn):
-		var m: Vector2 = c.get_combined_minimum_size()
-		check(c.size.x >= m.x - 0.5 and c.size.y >= m.y - 0.5, "%s: %s is squeezed (%s, needs %s)" % [at, c.name, c.size, m])
+		var box := _panel_of(c)
+		if box != null:
+			var br := box.get_global_rect()
+			var cr: Rect2 = c.get_global_rect()
+			check(cr.position.x >= br.position.x - 0.5 and cr.end.x <= br.end.x + 0.5, "%s: %s runs past its panel %s's sides (%s in %s)" % [
+				at, c.name, box.name, cr, br])
 		check(c.size.y >= TARGET_H * s - 0.5 or not _target(c), "%s: %s is %.0f px high (a target: %.0f)" % [at, c.name, c.size.y, TARGET_H * s])
 		var r: Rect2 = c.get_global_rect()
 		check(r.position.x >= -0.5 and r.end.x <= screen.size.x + 0.5, "%s: %s is cut at the screen's edge (%s)" % [at, c.name, r])
@@ -144,19 +159,21 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 	_apart(at, [pn.top_bar, pn.tree_panel, pn.run_panel, pn.tools_panel])
 	var rr: Rect2 = pn.run_panel.get_global_rect()
 	for c in _controls(pn.run_panel):   # its rows wrap: nothing squeezed or past the panel's sides (#389)
-		var m: Vector2 = c.get_combined_minimum_size()
 		var r: Rect2 = c.get_global_rect()
-		check(c.size.x >= m.x - 0.5 and c.size.y >= m.y - 0.5 and r.position.x >= rr.position.x - 0.5 and r.end.x <= rr.end.x + 0.5,
-			"%s: the bench's %s is squeezed or cut (%s, needs %s, the panel %s)" % [at, c.name, r, m, rr])
+		check(r.position.x >= rr.position.x - 0.5 and r.end.x <= rr.end.x + 0.5,
+			"%s: the bench's %s runs past the panel's sides (%s, the panel %s)" % [at, c.name, r, rr])
 	pn.show_info(true)
 	# the session's strip, when shown, takes its own place in the column (over nothing else)
-	pn.strip.text = "The plant runs on (a session).  12 new alarms: Back to the plant."
-	pn.strip.visible = true
+	# (as a session the Workshop was opened in and that has ended: the panels' own tick shows the strip)
+	ws._session = true
+	pn._strip_n = -1          # (shown again: an earlier pass left the ended session's count)
 	await _frames(tree, 3)
+	check(pn.strip.is_visible_in_tree(), "%s: the strip shows in a session" % at)
 	check(_inside(pn.strip.get_global_rect(), screen), "%s: the strip is on the screen (%s)" % [at, pn.strip.get_global_rect()])
 	_apart(at, [pn.strip, pn.top_bar, pn.tree_panel, pn.props_panel, pn.tools_panel])
 	check(pn.tree.size.y >= ROWS * row, "%s: with the strip the tree still shows %d rows (%.0f)" % [at, ROWS, pn.tree.size.y])
-	pn.strip.visible = false
+	ws._session = false
+	await _frames(tree, 1)
 	# a long properties text scrolls inside its panel: it never runs under the tools (#389)
 	var long := PackedStringArray()
 	for i in 60:
@@ -189,8 +206,10 @@ func _steps(tree: SceneTree, ws, at: String) -> void:
 	check(ws.guide.on() and sl.text.begins_with("Step 1"), "%s: the steps start (%s)" % [at, sl.text])
 	var screen := Rect2(Vector2.ZERO, pn.get_viewport_rect().size)
 	check(sl.is_visible_in_tree() and _inside(sl.get_global_rect(), screen), "%s: the step line is on the screen (%s)" % [at, sl.get_global_rect()])
-	var mn: Vector2 = sl.get_minimum_size()
-	check(sl.size.y >= mn.y - 0.5, "%s: the step line shows all its words (%s, needs %s)" % [at, sl.size, mn])
+	var slot: Rect2 = pn.step_slot.get_global_rect()
+	check(sl.get_global_rect().position.distance_to(slot.position) <= 1.0 and absf(sl.size.x - slot.size.x) <= 1.0
+		and absf(sl.size.y - slot.size.y) <= 1.0, "%s: the step line is not in its place in the column (%s, its place %s)" % [
+		at, sl.get_global_rect(), slot])
 	_apart(at, [sl, pn.top_bar, pn.tree_panel, pn.props_panel, pn.tools_panel])
 	var fs: int = pn.tree.get_theme_font_size("font_size")
 	var row: float = pn.tree.get_theme_font("font").get_height(fs) + pn.tree.get_theme_constant("v_separation")
@@ -214,6 +233,13 @@ func _apart(at: String, cs: Array) -> void:
 				continue
 			var ov := a.get_global_rect().grow(-0.5).intersects(b.get_global_rect().grow(-0.5))
 			check(not ov, "%s: %s and %s overlap (%s, %s)" % [at, a.name, b.name, a.get_global_rect(), b.get_global_rect()])
+
+## The panel a control is in (the top bar, the tree's, the properties', the bench's, the tools').
+func _panel_of(c: Node) -> Control:
+	var n := c.get_parent()
+	while n != null and not (n is PanelContainer):
+		n = n.get_parent()
+	return n as Control
 
 func _target(c: Control) -> bool:
 	return c is BaseButton or c is Range
