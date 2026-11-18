@@ -470,7 +470,7 @@ var _ui_size_set := false
 ## The settings' UI size (ui/widgets.gd ui_size; issue #382): `ui_size=` for a test or a shot, else the saved one, else
 ## the device's default (on a phone the size its screen needs for 48 dp buttons: W.phone_ui_size). The phone's scale on
 ## a desktop (`ui_scale=`, tests/mimic_shots.gd --phone) takes a phone's default for the window's size, at `density=`
-## (the Note 9's 420 if not given).
+## (if not given, the density that makes the window as tall as the Note 9's: 150 %).
 func _apply_ui_size() -> void:
 	W.pick_scale()                           # (the HUD, made before the interaction layer, sizes itself by it too)
 	if opts.has("ui_scale"):
@@ -478,7 +478,8 @@ func _apply_ui_size() -> void:
 	var win := Vector2(get_tree().root.size)
 	var dflt: float
 	if opts.has("ui_scale") and float(opts["ui_scale"]) > 1.0:
-		dflt = W.phone_ui_size(win, float(opts.get("density", W.NOTE9_DENSITY)))
+		# (without `density=` the window is a phone as tall as the Note 9, 411 dp: 420 at 1080 px, 560 at 1440)
+		dflt = W.phone_ui_size(win, float(opts["density"]) if opts.has("density") else W.NOTE9_DENSITY * win.y / 1080.0)
 	else:
 		dflt = W.default_ui_size(win)
 		if OS.has_feature("mobile") and not _ui_size_logged:

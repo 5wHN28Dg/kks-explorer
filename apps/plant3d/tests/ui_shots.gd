@@ -1,6 +1,6 @@
 ## Screenshots of the interaction layer in use, to look at (not a test: it needs a display):
 ##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/ui_shots.gd -- --out=DIR
-##     [--phone]      at the phone's UI scale (as tests/mimic_shots.gd --phone), and its UI size (150 %)
+##     [--phone]      at the phone's UI scale (as tests/mimic_shots.gd --phone), and the Note 9's UI size (150 %)
 ##     [--ui-size=X]  at UI size X (1 to 1.5: the settings' UI size, ui/widgets.gd ui_size)
 ##     [--settings]   the settings panel only (folded, with the controls' help open, over the alarm list), then quits
 ## The app as a trainee has it (app/main.tscn, the full tier), driven through the layer: a refused start at the
@@ -16,7 +16,7 @@ const RunSave = preload("res://ui/run_save.gd")
 
 var out := ""
 var phone := false
-var ui_size := ""    # --ui-size=1.5: at that UI size (the settings' 100 % to 150 %; a phone starts at 150 %)
+var ui_size := ""    # --ui-size=1.5: at that UI size (the settings' 100 % to 200 %; a phone starts at the size its screen needs, 150 % on the Note 9)
 var settings_only := false
 var main: Node
 var ui
