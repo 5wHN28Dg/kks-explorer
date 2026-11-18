@@ -1256,7 +1256,8 @@ const confirmDrafts = {};
 K.confirm = (title, text, action, {danger = true, keep = 'Cancel', note = '', draft = ''} = {}) => new Promise(done => {
   const h = K.h, was = document.activeElement, id = 'kq' + Math.random().toString(36).slice(2, 8);
   const btn = 'min-height:48px;min-width:88px;padding:8px 14px;border-radius:6px;cursor:pointer;font:inherit;font-weight:600;';
-  const field = note ? h('input', {id: id + 'n', class: 'note', maxlength: 500, placeholder: note, 'aria-label': note,
+  const label = note ? h('label', {for: id + 'n', style: 'display:block;margin:0 0 4px;color:var(--muted,#94a6b4)'}, note) : null;
+  const field = note ? h('input', {id: id + 'n', class: 'note', maxlength: 500,
     style: 'width:100%;min-height:48px;padding:8px;border-radius:6px;border:1px solid var(--muted,#94a6b4);background:var(--chrome,#1c2730);color:inherit;font-size:16px;margin:0 0 12px'}) : null;
   if (field && draft && confirmDrafts[draft]) field.value = confirmDrafts[draft];
   const no = h('button', {type: 'button', class: 'kq-keep', style: btn + 'background:none;border:1px solid var(--muted,#94a6b4);color:inherit', onclick: () => d.close('no')}, keep);
@@ -1265,10 +1266,12 @@ K.confirm = (title, text, action, {danger = true, keep = 'Cancel', note = '', dr
     style: btn + (danger ? 'background:none;border:2px solid #ff8a80;color:#ff8a80'
                          : 'border:0;background:var(--accent,#ff7a1a);color:#1c2730')}, action);
   const d = h('dialog', {class: 'kconfirm', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': id + 't', 'aria-describedby': text ? id + 'x' : null,
-    style: 'background:var(--chrome2,#243440);color:var(--ink,#e9eef2);border:1px solid var(--line,#3a5061);border-radius:10px;padding:16px;width:min(440px,94vw);max-height:90vh;overflow:auto;font:14px/1.45 var(--sans,system-ui,sans-serif)'},
+    style: 'background:var(--chrome2,#243440);color:var(--ink,#e9eef2);border:1px solid var(--line,#3a5061);border-radius:10px;padding:16px;width:min(440px,94vw);max-height:90vh;flex-direction:column;overflow:hidden;font:14px/1.45 var(--sans,system-ui,sans-serif)'},
     h('h2', {id: id + 't', style: 'font-size:16px;margin:0 0 6px;overflow-wrap:anywhere'}, title),
-    text ? h('p', {id: id + 'x', style: 'margin:0 0 12px;opacity:.9;white-space:pre-line;overflow-wrap:anywhere'}, text) : null, field,
-    h('div', {style: 'display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap'}, no, yes));
+    // (the question and its text scroll if they must; the buttons stay in view under them, R1)
+    h('div', {style: 'overflow:auto;min-height:0;flex:1 1 auto'},
+      text ? h('p', {id: id + 'x', style: 'margin:0 0 12px;opacity:.9;white-space:pre-line;overflow-wrap:anywhere'}, text) : null, label, field),
+    h('div', {style: 'display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;flex:none;padding-top:4px'}, no, yes));
   // Tab and Shift+Tab go round the dialog's own controls (a modal dialog alone lets them leave for the browser's)
   d.addEventListener('keydown', e => {
     if (e.key !== 'Tab') return;
@@ -1284,6 +1287,7 @@ K.confirm = (title, text, action, {danger = true, keep = 'Cancel', note = '', dr
   });
   document.body.appendChild(d);
   try { d.showModal() } catch (e) { d.setAttribute('open', '') }
+  d.style.display = 'flex';       // (set once open: a closed <dialog> must stay display:none)
   no.focus();
 });
 
@@ -1300,7 +1304,12 @@ K.undo = (text, undo, ms = 8000) => {
     h('button', {type: 'button', style: 'min-height:48px;min-width:72px;background:none;border:0;color:#ffa15c;font:inherit;font-weight:700;cursor:pointer',   // (5.1:1 on the bar; the accent gave 3.9)
       onclick: () => { clearTimeout(box._t); box.remove(); undo() }}, 'Undo'));
   document.body.appendChild(box);
-  box._t = setTimeout(() => box.remove(), Math.max(4000, ms));
+  // the time runs only while the bar is neither pointed at nor focused (a keyboard or slow hand reaches Undo)
+  const run = () => { clearTimeout(box._t); box._t = setTimeout(() => box.remove(), Math.max(4000, ms)) };
+  const hold = () => clearTimeout(box._t);
+  box.addEventListener('mouseenter', hold); box.addEventListener('focusin', hold);
+  box.addEventListener('mouseleave', run); box.addEventListener('focusout', run);
+  run();
   return box;
 };
 

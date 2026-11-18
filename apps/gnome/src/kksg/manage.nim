@@ -290,9 +290,9 @@ proc approvals(w: Win, box: W) =
                   # the others of its kind are rejected with it, for good (#365): said, with how many, first
                   let kind = s(kd, "label").toLowerAscii
                   ask(w.window, "Reject the other " & (if others == 1: "photo?" else: $others & " photos?"),
-                      "Picking #" & $id & (if s(grp, "code").len > 0: " for " & s(grp, "code") else: "") & " rejects the other " & (if others == 1: kind else: $others & " " & kind & "s") &
+                      "Using #" & $id & (if s(grp, "code").len > 0: " for " & s(grp, "code") else: "") & " rejects the other " & (if others == 1: kind else: $others & " " & kind & "s") &
                       " proposed for it. The submitters see that " & (if others == 1: "it was" else: "they were") & " rejected; this can't be undone.",
-                      "Pick and reject " & (if others == 1: "the other" else: "the other " & $others), "Cancel", proc (yes: bool) =
+                      "Use this one and reject " & (if others == 1: "the other" else: "the other " & $others), "Cancel", proc (yes: bool) =
                     if yes and w.act(id, "pick", newObj(), "Photo chosen; the other " & kind & "s were rejected"): again()))
                 setAccessibleDescription(pb, what & ", " & $votes & " votes")
                 btns.add pb
@@ -551,7 +551,7 @@ proc hiddenControls(w: Win, box: W, hiddenN: int, what: string, again: proc ()):
         w.hide(newObj(@[("ids", arr), ("hide", newBool(false))]), "Shown again", again))
     except ApiError as e: w.toast(e.msg))
   setAccessibleDescription(clear, "Hide every removed device and every person with no active device from these lists")
-  result.add clear
+  if ids.len > 0: result.add clear
   if hiddenN > 0 or showHidden:
     let t = gtk_toggle_button_new_with_label((if showHidden: "Hide hidden" else: "Show hidden (" & $hiddenN & ")").cstring)
     gtk_toggle_button_set_active(t, cint(showHidden))

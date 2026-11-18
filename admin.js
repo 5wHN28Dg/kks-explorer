@@ -159,7 +159,7 @@ const VIEWS={
           h('div',{class:'photos'},L.map(s=>h('figure',null,tick(s),photoImg(s.payload.file),
             h('div',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`,kd.pick?` · ${s.votes} vote${s.votes===1?'':'s'}`:''),s.payload.caption?K.userText(s.payload.caption,'div'):null,rnote(s),
             h('div',{class:'row',style:'margin-top:6px'},
-              kd.pick?[button('primary','Use this one',()=>decide(s.id,'pick')),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
+              kd.pick?[button('primary','Use this one',()=>pickPhoto(s.id,g.code,kd.label,L.length-1)),button('ghost','Add',()=>decide(s.id,'approve'))]:button('primary','Approve',()=>decide(s.id,'approve')),
               button('danger','Reject',()=>decide(s.id,'reject')))))));
         return h('div',{class:'kind','data-kind':kd.kind},h('h4',null,`${kd.label} (${L.length})`),L.map(s=>h('div',{class:'item',style:'margin:8px 0;padding-top:6px;border-top:1px solid var(--chrome3)'},
           h('div',{class:'row'},tick(s),badge(s),h('span',{class:'sub'},`#${s.id} · `,who(s),` · ${when(s.created)}`)),rnote(s),
@@ -511,6 +511,13 @@ function pollJob(){ clearTimeout(pollT); pollT=setTimeout(async()=>{
 },1500) }
 
 // ---------- actions ----------
+// "Use this one" rejects the other photos of its kind for good: asked first, with how many (#365; the same words as
+// the apps)
+async function pickPhoto(id,code,label,others){
+  const kind=label.toLowerCase(), n=others===1?'the other':`the other ${others}`;
+  if(!await K.confirm(`Reject ${n} ${others===1?'photo':'photos'}?`,`Using #${id}${code?' for '+code:''} rejects ${others===1?'the other '+kind:`the other ${others} ${kind}s`} proposed for it. The submitters see that ${others===1?'it was':'they were'} rejected; this can't be undone.`,`Use this one and reject ${n}`)) return;
+  return decide(id,'pick');
+}
 async function decide(id,action,force){
   let note='';
   if(action==='reject'){ const a=await askDanger('Reject this proposal?','The submitter sees that it was rejected, and the reason if you give one. It can\'t be decided again.','Reject','reason'+id); if(!a) return; note=a.note }

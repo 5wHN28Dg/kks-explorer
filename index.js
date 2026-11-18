@@ -1132,7 +1132,8 @@ function startLink(proc,step){ pickMode(false); linkTarget={proc,step}; $('#bann
 $('#bannerDone').onclick=()=>{ if(mark.on){ markMode(false); closePanel(); return } const p=linkTarget?.proc; linkTarget=null; $('#banner').style.display='none'; if(p){openDrawer('procDrawer'); renderProcDetail(p)} };
 // (no question first: Undo puts the link back, by sending it again)
 async function unlink(proc,step,kks){ const r=await send('link',{proc,step,kks,on:false},`unlink ${kks}`); renderProcDetail(proc); drawTags()
-  if(r?.status==='approved') K.undo(`Unlinked ${kks} from step ${step}`,async()=>{ if(await send('link',{proc,step,kks,on:true},`link ${kks}`)){ if(activeProc===proc) renderProcDetail(proc); drawTags() } }) }
+  // (offline, queued: Undo queues the link again after it)
+  if(r?.status==='approved'||r?.status==='queued') K.undo(`Unlinked ${kks} from step ${step}`,async()=>{ if(await send('link',{proc,step,kks,on:true},`link ${kks}`)){ if(activeProc===proc) renderProcDetail(proc); drawTags() } }) }
 
 // ---------- equipment by system (core views.systemsView, ported in systems.js) ----------
 // While filtering, every level opens when few codes match; otherwise blocks open and systems closed.
