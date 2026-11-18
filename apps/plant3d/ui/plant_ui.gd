@@ -440,7 +440,7 @@ func _build_toast() -> void:
 func _bar_button(to: Control, text: String, f: Callable) -> Button:
 	var b := W.button(text, f)
 	b.focus_mode = Control.FOCUS_NONE       # the bar is reached by its keys; focus stays in the panels
-	b.custom_minimum_size = Vector2(0, 56 * W.scale)
+	b.custom_minimum_size.y = 56 * W.scale
 	to.add_child(b)
 	return b
 
@@ -498,11 +498,17 @@ func _layout() -> void:
 	debrief.size = card.size
 	session_panel.position = procedure.position
 	session_panel.size = procedure.size
-	mimic.position = Vector2(0.0, top0)
-	mimic.size = Vector2(vs.x, vs.y - top0)
+	# the screens and the drawings: below the bar; where it leaves them under 60 % of the height (a phone at a large UI
+	# size, the bar on two rows) over the bar instead, below the HUD's buttons: their own bars have Close, and the
+	# screen or sheet keeps room to be read
+	var vtop := top0 if vs.y - top0 >= vs.y * 0.6 else bar_top()
+	mimic.position = Vector2(0.0, vtop)
+	mimic.size = Vector2(vs.x, vs.y - vtop)
+	if main != null and main.hud != null and main.hud.has_method("place_updown"):
+		main.hud.place_updown(top0)
 	if drawing_view != null:
-		drawing_view.position = Vector2(0.0, top0)
-		drawing_view.size = Vector2(vs.x, vs.y - top0)
+		drawing_view.position = Vector2(0.0, vtop)
+		drawing_view.size = Vector2(vs.x, vs.y - vtop)
 	_hint.position = Vector2(vs.x * 0.5 - 400.0, vs.y * 0.5 + 24.0)
 	_hint.size = Vector2(800.0, 60.0)
 	_layout_toast()

@@ -49,6 +49,8 @@ var _status_h := 0.0             # top_box's height (the most it had since the l
 var _status_len := Vector2i(-1, -1)   # the lengths of the status line's and the gamepad line's texts last measured
 signal top_changed               # top_bottom() may have changed: the interaction layer's bar moves (ui/plant_ui.gd)
 const BUTTON := Vector2(120, 64) # the HUD's buttons at UI scale 1
+## Up and Down (flying, touch): right of the middle, below the bars (place_updown)
+var updown_box: VBoxContainer
 var ui_size_opt: OptionButton    # the settings' UI size (100 % to 150 %, ui/widgets.gd ui_size)
 var settings_layer: CanvasLayer
 var _theme_scale := 0.0        # the UI scale the settings' theme was made for
@@ -124,6 +126,8 @@ func setup(m) -> void:
 	pad_hint.visibility_changed.connect(_status_reset)
 	_layout_top()
 	var ud := VBoxContainer.new()
+	ud.name = "updown"
+	updown_box = ud
 	ud.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	ud.offset_left = -140.0 * W.scale
 	ud.offset_top = -120.0 * W.scale
@@ -174,6 +178,15 @@ func top_bottom() -> float:
 	if top_box != null:
 		b = maxf(b, top_box.position.y + _status_h)
 	return b
+
+## Up and Down at the middle of the right edge, or lower when the bars reach below their top there (a large UI size:
+## the interaction layer's bar wraps), never over them (ui/plant_ui.gd _layout calls this with where its panels begin).
+func place_updown(below: float) -> void:
+	if updown_box == null or hud_root == null:
+		return
+	var top := maxf(-120.0 * W.scale, below - hud_root.size.y * 0.5)
+	if not is_equal_approx(updown_box.offset_top, top):
+		updown_box.offset_top = top
 
 ## The two sticks the same size on the screen at every UI size (a thumb does not grow with the text): 420 px square
 ## at 100 %, in the bottom corners, less at a larger size (the canvas's units are larger).
@@ -310,6 +323,7 @@ func _settings(_hud_root: Control) -> void:
 	var l := Label.new(); l.text = "Quality  "; row.add_child(l)
 	tier_opt = OptionButton.new()
 	tier_opt.focus_mode = Control.FOCUS_ALL
+	tier_opt.accessibility_name = "Quality"
 	for s in ["Automatic", "Full (laptops)", "Lean (phones)"]:
 		tier_opt.add_item(s)
 	tier_opt.item_selected.connect(_on_tier)
@@ -325,6 +339,7 @@ func _settings(_hud_root: Control) -> void:
 	ui_size_opt = OptionButton.new()
 	ui_size_opt.name = "ui_size"
 	ui_size_opt.focus_mode = Control.FOCUS_ALL
+	ui_size_opt.accessibility_name = "UI size"   # (its label is beside it, not its name: A5)
 	for f in W.UI_SIZES:
 		ui_size_opt.add_item("%d %%" % roundi(f * 100.0))
 	ui_size_opt.item_selected.connect(_on_ui_size)
@@ -339,6 +354,7 @@ func _settings(_hud_root: Control) -> void:
 	var l2 := Label.new(); l2.text = "Touch controls  "; row2.add_child(l2)
 	touch_opt = OptionButton.new()
 	touch_opt.focus_mode = Control.FOCUS_ALL
+	touch_opt.accessibility_name = "Touch controls"
 	for s in ["Automatic", "Always", "Never"]:
 		touch_opt.add_item(s)
 	touch_opt.item_selected.connect(_on_touch)
@@ -353,6 +369,7 @@ func _settings(_hud_root: Control) -> void:
 	var lg := Label.new(); lg.text = "Walking pace  "; row_g.add_child(lg)
 	pace_opt = OptionButton.new()
 	pace_opt.focus_mode = Control.FOCUS_ALL
+	pace_opt.accessibility_name = "Walking pace"
 	for s in ["Slow", "Normal", "Brisk"]:
 		pace_opt.add_item(s)
 	pace_opt.item_selected.connect(_on_pace)

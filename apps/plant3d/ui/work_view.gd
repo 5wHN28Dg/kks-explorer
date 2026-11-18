@@ -866,8 +866,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 
 
 func _turn(rel: Vector2) -> void:
-	_yaw -= rel.x * 0.008
-	_pitch = clampf(_pitch + rel.y * 0.008, -1.3, 1.3)
+	_yaw -= rel.x * W.ui_size * 0.008      # (as far as the finger moves on the screen, whatever the UI size)
+	_pitch = clampf(_pitch + rel.y * W.ui_size * 0.008, -1.3, 1.3)
 	_orbit_cam()
 
 
