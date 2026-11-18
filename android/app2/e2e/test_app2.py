@@ -1343,7 +1343,8 @@ class Phone(unittest.TestCase):
                 f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
             ns = ui.nodes()
             # the first result's code is above the keyboard; on its side the legend gives way to it when both don't fit
-            # (#401's UI/UX audit, pass 2: the legend left the list about 30 dp, under the code's line)
+            # (#401's UI/UX audit, pass 2: the legend took the room and the result was gone). On its side the room left
+            # shows only the top of the code's line: #408
             n = [n for n in ns if n.get('text') == '11LCB50AA101']
             self.assertTrue(n, f'the first result is not on screen with the keyboard up ({how})')
             b = list(map(int, re.findall(r'\d+', n[0].get('bounds'))))
