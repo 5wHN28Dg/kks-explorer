@@ -64,6 +64,10 @@ func _run() -> void:
 		return
 	main.ui.clock.set_speed(SimClock.Speed.PAUSED)
 	await shot("0_bars")
+	if main.ui.compact:               # the compact row's More, its list open
+		main.ui._more.show_popup()
+		await shot("0_more")
+		main.ui._more.get_popup().hide()
 	var t = SizeTest.new()
 	var i := 1
 	for pn in t._panels():
