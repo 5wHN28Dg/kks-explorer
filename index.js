@@ -1142,10 +1142,11 @@ async function unlink(proc,step,kks,kb){
   if(!document.getElementById('kundo')) UNLINKED=[];
   UNLINKED.push({proc,step,kks});
   const all=[...UNLINKED], one=all.length===1;
-  const bar=K.undo(one?`Unlinked ${kks} from step ${step}`:`Unlinked ${all.length} codes`,async()=>{
+  const bar=K.undo(one?`Unlinked ${kks} from step ${step}`:`Unlinked ${all.length} codes`,async had=>{
     UNLINKED=[];
     for(const l of all) await send('link',{...l,on:true},`link ${l.kks}`);
-    if(all.some(l=>l.proc===activeProc)) renderProcDetail(activeProc); drawTags() });
+    if(all.some(l=>l.proc===activeProc)) renderProcDetail(activeProc); drawTags();
+    if(had) $(`#procBody button[data-step="${step}"]`)?.focus({preventScroll:true}) });
   if(kb) bar.querySelector('button')?.focus();
 }
 

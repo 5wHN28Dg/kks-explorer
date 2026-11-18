@@ -1966,7 +1966,8 @@ class Phone(unittest.TestCase):
         """request 5: one card per code with the equipment and tag plate photos together; Approve/Reject only, unless
         several photos of one kind compete (then "Use this one", which leaves the other kind alone); the full name; the
         code opens its tag on the drawing"""
-        omar = self.member('omar', 'Omar Fullname', 'omar password 1')
+        name = 'عمر الفني' if os.environ.get('KKS_EVIDENCE_ARABIC') else 'Omar Fullname'   # (the UI audit's L1 evidence)
+        omar = self.member('omar', name, 'omar password 1')
         for cap, tag in (('', 'eq1'), ('Tag plate', 'plate1')):
             r = omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': cap, 'dataUrl': self.jxl(tag)}})
             self.assertIn(r.get('status'), ('pending', 'conflict'), r)
@@ -1994,13 +1995,13 @@ class Phone(unittest.TestCase):
             return
         ui.find('Equipment photo', exact=True, timeout=20)
         ui.find('Tag plate photo', exact=True)
-        self.assertTrue(ui.present('by Omar Fullname'), 'the full name of the sender')
+        self.assertTrue(ui.present('by ' + name), 'the full name of the sender')
         self.assertFalse(ui.present('by omar ·'), 'the username instead of the full name')
         self.assertFalse(ui.present('Use this one', exact=True), 'Pick offered with one photo per kind')
         self.assertEqual(sum(1 for n in ui.nodes() if ui.label(n) == '11LAB70AA501'), 1, 'one card for the code')
         # #365: Reject is final, so it asks first, naming whose proposal; Cancel leaves it waiting
         ui.tap('Reject', exact=True)
-        ui.find('The proposal by \u2068Omar Fullname\u2069 is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        ui.find(f'The proposal by \u2068{name}\u2069 is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
         evidence('reject')
         ui.tap('Cancel', exact=True)
         time.sleep(1)

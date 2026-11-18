@@ -91,9 +91,11 @@ class Destructive(unittest.TestCase):
             expect(chip2()).to_have_count(0)
             expect(bar).to_contain_text('Unlinked 2 codes')
             self.assertNotIn('unlink', page.text_content('#toast') or '')
-            bar.get_by_role('button', name='Undo').click()
+            bar.get_by_role('button', name='Undo').focus()
+            page.keyboard.press('Enter')                          # Undo from the keyboard: the focus stays in the step
             expect(chip()).to_have_count(1, timeout=15000)
             expect(chip2()).to_have_count(1, timeout=15000)
+            page.wait_for_function("document.activeElement && document.activeElement.textContent === '+ Link equipment'")
             # offline (F3): the unlink is queued, and its Undo too, in that order; back online both go, and the link
             # stays
             links = lambda: [l for l in self.boss.req('GET', '/api/state')['links'] if l['kks'] == other and l['proc'] == 'EP-1']

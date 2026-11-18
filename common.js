@@ -1302,7 +1302,8 @@ K.undo = (text, undo, ms = 8000) => {
            'background:var(--chrome3,#2f4352);color:var(--ink,#e9eef2);border:1px solid var(--line,#3a5061);border-radius:8px;padding:4px 4px 4px 14px;width:max-content;max-width:92vw;box-shadow:0 6px 24px #0008;font:14px/1.45 var(--sans,system-ui,sans-serif)'},
     h('span', {style: 'overflow-wrap:anywhere'}, text),
     h('button', {type: 'button', style: 'min-height:48px;min-width:72px;background:none;border:0;color:#ffa15c;font:inherit;font-weight:700;cursor:pointer',   // (5.1:1 on the bar; the accent gave 3.9)
-      onclick: () => { clearTimeout(box._t); box.remove(); undo() }}, 'Undo'));
+      // (undo gets whether the bar had the focus: then it puts the focus somewhere sensible, the bar being gone)
+      onclick: () => { const had = box.contains(document.activeElement); clearTimeout(box._t); box.remove(); undo(had) }}, 'Undo'));
   document.body.appendChild(box);
   // the time runs only while the bar is neither pointed at nor focused (a keyboard or slow hand reaches Undo)
   const run = () => { clearTimeout(box._t); box._t = setTimeout(() => box.remove(), Math.max(4000, ms)) };
