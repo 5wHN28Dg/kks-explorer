@@ -930,7 +930,9 @@ func _place_offer() -> void:
 	var vs: Vector2 = ui.root.get_viewport_rect().size
 	var w := minf(640.0 * W.scale, vs.x - 32.0)
 	offer_panel.size = Vector2(w, 0)
-	offer_panel.position = Vector2((vs.x - w) * 0.5, vs.y * 0.3)
+	# at 30 % of the height, higher when its words would take it past the bottom (a large UI size): its buttons on screen
+	var h := offer_panel.get_combined_minimum_size().y
+	offer_panel.position = Vector2((vs.x - w) * 0.5, maxf(16.0, minf(vs.y * 0.3, vs.y - h - 16.0)))
 
 
 static func _tz_offset() -> int:

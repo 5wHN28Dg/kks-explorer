@@ -21,7 +21,8 @@ func run(tree: SceneTree) -> Array:
 	var p: Array = []
 	var size0: Vector2i = tree.root.size
 	for c in [[Vector2i(1600, 900), "", 1.0], [Vector2i(1600, 900), "", 1.5],
-			[Vector2i(2220, 1080), "1.35", 1.0], [Vector2i(2220, 1080), "1.35", 1.5]]:
+			[Vector2i(2220, 1080), "1.35", 1.0], [Vector2i(2220, 1080), "1.35", 1.5],
+			[Vector2i(1920, 1080), "1.35", 1.5]]:     # (a 16:9 phone: its canvas narrower, 1067 × 600 at 150 %)
 		tree.root.size = c[0]
 		p += await _at(tree, c[1], c[2])
 	tree.root.size = size0
@@ -48,7 +49,8 @@ func _start(tree: SceneTree, ui_scale: String, ui_size) -> Node:
 
 func _at(tree: SceneTree, ui_scale: String, ui_size: float) -> Array:
 	var p: Array = []
-	var at := "%s at %d %%" % ["the phone" if ui_scale != "" else "a desktop", roundi(ui_size * 100.0)]
+	var at := "%s at %d %%" % [("the phone" if tree.root.size.x > 2000 else "a 16:9 phone") if ui_scale != "" else "a desktop",
+		roundi(ui_size * 100.0)]
 	var main := _start(tree, ui_scale, ui_size)
 	for i in 6:
 		await tree.process_frame
@@ -57,10 +59,18 @@ func _at(tree: SceneTree, ui_scale: String, ui_size: float) -> Array:
 		main.free()
 		return ["%s: the app did not start" % at]
 	var canvas: Rect2 = ui.root.get_viewport_rect()
-	var want: Vector2 = Vector2(tree.root.size) * (1600.0 if ui_scale == "" else 1850.0) / float(tree.root.size.x) / ui_size
+	var want: Vector2 = Vector2(1600.0 * maxf(1.0, float(tree.root.size.x) / float(tree.root.size.y) * 900.0 / 1600.0), 900.0) / ui_size
 	if (canvas.size - want).length() > 2.0:
 		p.append("%s: the canvas is %s, %s expected" % [at, str(canvas.size), str(want)])
+	# the status line at its longest (the area with the longest name, running, far out): the bars still fit
+	main.hud.status.text = "Auxiliary boiler, demineralised water, instrument air, closed cooling water · running · x -1234  y -1234  +123.4 m · lean+vis"
+	main.hud.set_process(false)
+	main.hud._measure_status()
+	for i in 3:
+		await tree.process_frame
 	p += await _bars(main, at, canvas, ui_scale != "" and ui_size >= 1.5, ui_size)
+	main.hud.set_process(true)
+	p += await _popups(tree, main, at, canvas, ui_scale != "" and ui_size >= 1.5, ui_size)
 	if ui_scale == "" and ui_size == 1.0:
 		# a desktop at 100 % as before: the bar one row at 88 px, the panels from 160 px, with Instructor on too
 		ui.set_instructor(true)
@@ -124,6 +134,35 @@ func _workshop(tree: SceneTree, main, at: String, ui_size: float) -> Array:
 	if absf(got - 30.0 * mv.dist * 0.0015) > 1e-3:
 		p.append("%s: 30 px of drag on the screen pan the map %.2f m (%.2f expected)" % [at, got, 30.0 * mv.dist * 0.0015])
 	mv.target = t0
+	return p
+
+
+## The lists' popups: on the canvas, and their rows 48 dp tall on the phone at 150 % (the settings' UI size, the
+## drawings' sheets).
+func _popups(tree: SceneTree, main, at: String, canvas: Rect2, phone: bool, ui_size: float) -> Array:
+	var p: Array = []
+	main.hud.show_settings(true)
+	main.ui.open_drawing()
+	await tree.process_frame
+	for ob in [main.hud.ui_size_opt, main.ui.drawing_view.picker]:
+		var o := ob as OptionButton
+		o.show_popup()
+		for i in 3:
+			await tree.process_frame
+		var pm: PopupMenu = o.get_popup()
+		var r := Rect2(Vector2(pm.position), Vector2(pm.size))
+		if not canvas.grow(0.5).encloses(r):
+			p.append("%s: the list of %s opens off the canvas: %s in %s" % [at, o.name, str(r), str(canvas.size)])
+		# a row's height as the list lays it out: its text's line and the gap (a list taller than the canvas scrolls)
+		var row: float = pm.get_theme_font("font").get_height(pm.get_theme_font_size("font_size")) \
+			+ pm.get_theme_constant("v_separation")
+		if phone and row * ui_size * DP < 47.5:
+			p.append("%s: the list of %s has rows %.1f dp tall (48 the least)" % [at, o.name, row * ui_size * DP])
+		pm.hide()
+		await tree.process_frame
+	main.ui.close_drawings()
+	main.hud.show_settings(false)
+	await tree.process_frame
 	return p
 
 
@@ -259,7 +298,9 @@ func _check_panel(main, pn: String, at: String, canvas: Rect2, phone: bool, ui_s
 		p.append("%s: the %s (%s) is not inside the canvas %s" % [at, pn, str(pr), str(canvas.size)])
 	# (the full views have their own bars; condition monitoring's view stands at the right from the top, as the work
 	# view's, by design)
-	if pn not in ["screens", "drawings", "manual", "monitoring"] and pr.position.y < main.ui.panels_top() - 0.5:
+	# (the settings keep half the canvas at least: app/hud.gd settings_top_min)
+	var top_ok: float = main.ui.panels_top() if pn != "settings" else minf(main.ui.panels_top(), main.hud.settings_top_min(canvas.size.y))
+	if pn not in ["screens", "drawings", "manual", "monitoring"] and pr.position.y < top_ok - 0.5:
 		p.append("%s: the %s begins at %.0f, over the bars (they end at %.0f)" % [at, pn, pr.position.y,
 			main.ui.panels_top()])
 	if pn == "screens" and pr.end.y - main.ui.mimic.canvas_top() < canvas.size.y * 0.3:

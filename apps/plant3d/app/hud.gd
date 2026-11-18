@@ -49,6 +49,8 @@ var _status_h := 0.0             # top_box's height (the most it had since the l
 var _status_len := Vector2i(-1, -1)   # the lengths of the status line's and the gamepad line's texts last measured
 signal top_changed               # top_bottom() may have changed: the interaction layer's bar moves (ui/plant_ui.gd)
 const BUTTON := Vector2(120, 64) # the HUD's buttons at UI scale 1
+const STATUS_W_MIN := 500.0      # the status line goes to the bottom when it has less beside the buttons (at scale 1)
+var _status_low := false         # the status line at the bottom (_layout_top)
 ## Up and Down (flying, touch): right of the middle, below the bars (place_updown)
 var updown_box: VBoxContainer
 var ui_size_opt: OptionButton    # the settings' UI size (100 % to 150 %, ui/widgets.gd ui_size)
@@ -175,7 +177,7 @@ static func button_h() -> float:
 ## narrow canvas). The interaction layer's bar goes below it (ui/plant_ui.gd _layout).
 func top_bottom() -> float:
 	var b := 12.0 + button_h()
-	if top_box != null:
+	if top_box != null and not _status_low:
 		b = maxf(b, top_box.position.y + _status_h)
 	return b
 
@@ -185,6 +187,9 @@ func place_updown(below: float) -> void:
 	if updown_box == null or hud_root == null:
 		return
 	var top := maxf(-120.0 * W.scale, below - hud_root.size.y * 0.5)
+	# never past the bottom (above the margin): on screen first, over the bar's lowest row if it must
+	var h := updown_box.get_combined_minimum_size().y
+	top = minf(top, hud_root.size.y * 0.5 - 16.0 - h)
 	if not is_equal_approx(updown_box.offset_top, top):
 		updown_box.offset_top = top
 
@@ -207,10 +212,24 @@ func _layout_top() -> void:
 	if hud_root == null or bar == null:
 		return
 	_layout_sticks()
-	var w := maxf(hud_root.size.x - bar.size.x - 50.0 - 16.0 - 24.0, 160.0)
-	if absf(top_box.size.x - w) > 0.5:
+	# beside the buttons where there is room for a line of it; else at the bottom, across the canvas between the
+	# sticks' corners (a narrow canvas, a large UI size: beside the buttons it wrapped onto many lines and pushed the
+	# bars and every panel down; below, the panels may cover it, the bars keep their place)
+	var w := hud_root.size.x - bar.size.x - 50.0 - 16.0 - 24.0
+	var low := w < STATUS_W_MIN * W.scale
+	if low:
+		w = hud_root.size.x - 32.0
+	if absf(top_box.size.x - w) > 0.5 or low != _status_low:
+		_status_low = low
 		top_box.size = Vector2(w, 0)
 		_status_reset()
+	_place_status()
+
+## The status box's place: at the top left, or at the bottom when it is low (its height known: _measure_status).
+func _place_status() -> void:
+	var y := 12.0 if not _status_low else hud_root.size.y - _status_h - 8.0
+	if top_box.position != Vector2(16, y):
+		top_box.position = Vector2(16, y)
 
 ## The status box measured again (a new width, the gamepad's line shown or hidden).
 func _status_reset() -> void:
@@ -233,7 +252,10 @@ func _measure_status() -> void:
 	var h := _text_h(status, w) + (_text_h(pad_hint, w) if pad_hint.visible else 0.0)
 	if h > _status_h + 0.5:
 		_status_h = h
-		top_changed.emit()
+		if _status_low:
+			_place_status()
+		else:
+			top_changed.emit()
 
 static func _text_h(l: Label, w: float) -> float:
 	if l.text == "":
