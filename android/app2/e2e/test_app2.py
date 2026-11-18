@@ -2562,7 +2562,7 @@ class Phone(unittest.TestCase):
         ui.tap('Keep editing', exact=True)
         ui.find('north door typed', exact=True, timeout=10)
         self.assertTrue(ui.present('11LAB70AA501', exact=True), 'the panel moved to the other tag')
-        ui.sh('input', 'keyevent', '4')                    # (the search's keyboard)
+        ui.sh('input', 'keyevent', '111')                  # (Escape: the search's keyboard away, not Back)
                 # Close asks too; Keep editing keeps the panel and the text
         ui.tap('Close', exact=True)
         ui.find('Discard your edits?', exact=True, timeout=10)
