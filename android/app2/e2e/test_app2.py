@@ -82,6 +82,21 @@ def diag_fail(text, ns):
 ui.on_fail = diag_fail
 
 
+# UI/UX audit evidence (docs/UI-UX-POLICY.md §3.3): with KKS_EVIDENCE=folder, the tests that call evidence() save a
+# screenshot and the screen's accessibility tree there (synthetic data only)
+EVIDENCE = os.environ.get('KKS_EVIDENCE', '')
+
+
+def evidence(name):
+    if not EVIDENCE: return
+    os.makedirs(EVIDENCE, exist_ok=True)
+    with open(os.path.join(EVIDENCE, name + '.png'), 'wb') as f:
+        f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
+    ui.sh('uiautomator', 'dump', '/sdcard/ev.xml')
+    with open(os.path.join(EVIDENCE, name + '.xml'), 'wb') as f:
+        f.write(subprocess.run(ui.ADB + ['exec-out', 'cat', '/sdcard/ev.xml'], capture_output=True).stdout)
+
+
 class Phone(unittest.TestCase):
     def run(self, result=None):
         if not DIAG:
@@ -1072,6 +1087,7 @@ class Phone(unittest.TestCase):
         ui.tap('Cancel', exact=True)
         ui.find('Discard the photo?', exact=True, timeout=10)
         ui.find('Discard photo', exact=True)
+        evidence('discard-photo')
         ui.tap('Keep editing', exact=True)
         self.assertTrue(undo_enabled(), 'the marks went with Keep editing')
         ui.tap('Retake', exact=True)
@@ -1958,6 +1974,7 @@ class Phone(unittest.TestCase):
         # #365: Reject is final, so it asks first, naming whose proposal; Cancel leaves it waiting
         ui.tap('Reject', exact=True)
         ui.find('Omar Fullname\'s proposal is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        evidence('reject')
         ui.tap('Cancel', exact=True)
         time.sleep(1)
         self.assertEqual({x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}, {'pending'})
@@ -1973,6 +1990,7 @@ class Phone(unittest.TestCase):
         ui.tap('Use this one', exact=True)
         # #365: it rejects the rival for good: asked first, with how many (B2)
         ui.find('Reject the other photo?', exact=True, timeout=10)
+        evidence('use-this-one')
         ui.tap('Use this one and reject the other', exact=True)
 
         def decided():
@@ -2429,6 +2447,7 @@ class Phone(unittest.TestCase):
         ui.tap('Not a tag', exact=True)
         ui.find('Mark this as not a tag?', exact=True, timeout=10)
         ui.find('It is no longer shown as a tag, on every device.', exact=True)
+        evidence('not-a-tag')
         ui.tap('Cancel', exact=True)
         time.sleep(2)
         self.assertIsNone(reviewed(), 'Not a tag was sent before it was confirmed')
@@ -2451,6 +2470,7 @@ class Phone(unittest.TestCase):
         ui.tap('P-1  Start the test pump', exact=True, timeout=20)
         ui.tap(f'Unlink {code} from step 1', exact=True, timeout=20)
         ui.find(f'Unlinked {code} from step 1', exact=True, timeout=10)
+        evidence('unlink-undo')
         self.wait_server(lambda: not linked(), 'Unlink unlinked nothing')
         ui.tap('Undo', exact=True)
         self.wait_server(linked, 'Undo did not link it again')

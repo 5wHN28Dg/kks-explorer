@@ -112,6 +112,37 @@ class Plant(unittest.TestCase):
             return None
         return atspi.app_pid(p.pid, name=('walkdown', 'kks_explorer'), before=before)
 
+    def evidence(self, a, name):
+        """UI/UX audit evidence (docs/UI-UX-POLICY.md §3.3, synthetic data only): with KKS_EVIDENCE=folder and
+        KKS_SHOT_ON_SIGNAL=file in the environment, a screenshot of the app's window and its accessibility tree
+        (role, name, extents) go to the folder"""
+        ev, shot = os.environ.get('KKS_EVIDENCE'), os.environ.get('KKS_SHOT_ON_SIGNAL')
+        if not ev or not shot:
+            return
+        os.makedirs(ev, exist_ok=True)
+        if os.path.exists(shot):
+            os.remove(shot)
+        time.sleep(1)
+        os.kill(a.get_process_id(), signal.SIGUSR1)
+        for _ in range(40):
+            time.sleep(0.25)
+            if os.path.exists(shot):
+                break
+        time.sleep(0.5)
+        if os.path.exists(shot):
+            shutil.copy(shot, os.path.join(ev, name + '.png'))
+        rows = []
+        for n in atspi.walk(a):
+            try:
+                if not n.get_state_set().contains(Atspi.StateType.SHOWING):
+                    continue
+                e = n.get_component_iface().get_extents(Atspi.CoordType.WINDOW) if n.get_component_iface() else None
+                rows.append([n.get_role_name(), n.get_name(), *( [e.x, e.y, e.width, e.height] if e else [])])
+            except Exception:
+                continue
+        with open(os.path.join(ev, name + '.json'), 'w') as f:
+            json.dump(rows, f, indent=0, ensure_ascii=False)
+
     def criticals(self, name):
         """What went wrong inside the app, from its output (start_app's log): GTK's complaints (a call on a widget
         that was freed shows there as a failed assertion, GTK_IS_WIDGET, GTK_IS_BOX …, when it doesn't crash) and the
@@ -622,6 +653,7 @@ class Gnome(Plant):
         # #365: it says how many it hides (B2), and offers Undo (D1)
         atspi.find(a, None, name='Hid 2 removed devices and people', timeout=10)    # with Undo (it shows them again)
         atspi.find(a, 'button', name='Undo', timeout=5)
+        self.evidence(a, 'clear-removed-undo')
         for _ in range(20):
             if not atspi.find_all(a, contains='· sara'):
                 break
@@ -1487,6 +1519,7 @@ class Gnome(Plant):
             try:
                 # #365: picking rejects the rival for good: asked first, the count in the question (B2)
                 atspi.find(a, None, name='Reject the other photo?', timeout=4)
+                self.evidence(a, 'pick-question')
                 self.assertEqual(omar.req('GET', '/api/submissions?status=all&kind=photo')['submissions'][0]['status'], 'pending')
                 atspi.click(atspi.find(a, 'button', name='Pick and reject the other', timeout=5))
                 atspi.find(a, 'label', contains='Photo chosen', timeout=4)
@@ -2131,6 +2164,7 @@ class Gnome(Plant):
         linked = lambda: any(l['kks'] == code and l['proc'] == 'P-1' and l.get('step') == 1 for l in self.boss.req('GET', '/api/state')['links'])
         atspi.click(atspi.find(a, 'button', name=unlink))
         undo = atspi.find(a, 'button', name='Undo', timeout=10)
+        self.evidence(a, 'unlink-undo')
         for _ in range(40):
             if not linked(): break
             time.sleep(0.25)
@@ -2297,6 +2331,7 @@ class Gnome(Plant):
         # #365: Not a tag asks first; Cancel sends nothing and leaves the form as it was
         atspi.click(atspi.find(a, 'button', name='Not a tag'))
         atspi.find(a, None, name='Mark this as not a tag?', timeout=10)
+        self.evidence(a, 'not-a-tag')
         atspi.click(atspi.find(a, 'button', name='Cancel', timeout=5))
         wait_for('Cancel left the question up', lambda: not atspi.find_all(a, None, name='Mark this as not a tag?'), 10)
         self.assertIsNone(reviewed(), 'Not a tag sent before it was confirmed')

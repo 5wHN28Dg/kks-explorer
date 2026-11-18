@@ -1653,9 +1653,13 @@ class Windows(unittest.TestCase):
                                 'choose\tNotes', 'wait\t~Location and notes · 11LAB70AA501\t20', 'value\tNotes\tGland repacked',
                                 'choose\tAll kinds', 'chosen\tAll kinds'])
         # deleting the photo sends its id (the Android bug: "bad photo id")
-        self.check('delete.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA501',
-                                  'select\t~11LAB70AA501', 'click\tShow on the drawing', 'click\tDelete',
-                                  'wait\tDelete this photo?\t10', 'click\tDelete photo', 'wait\t~Saved: delete a photo\t20'])
+        log = self.check('delete.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA501',
+                                        'select\t~11LAB70AA501', 'click\tShow on the drawing', 'click\tDelete',
+                                        'wait\tDelete this photo?\t10', 'sleep\t2021', 'dump',     # (the UI audit's evidence, #365)
+                                        'click\tDelete photo', 'wait\t~Saved: delete a photo\t20'],
+                         during=[('sleep\t2021', lambda: self.screenshot('win-delete-photo'))])
+        if os.environ.get('KKS_SHOTS'):
+            with open(os.path.join(os.environ['KKS_SHOTS'], 'win-delete-photo-tree.txt'), 'w') as f: f.write(log)
         self.wait_server(lambda: not [p for p in self.boss.req('GET', '/api/state').get('photos', [])
                                       if p.get('caption') == 'Valve from Windows'], 'the photo was never deleted', tries=80)
         # the manager removes this device on the server; at its next sync it wipes itself and starts over
