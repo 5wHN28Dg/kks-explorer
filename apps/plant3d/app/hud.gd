@@ -51,9 +51,13 @@ signal top_changed               # top_bottom() may have changed: the interactio
 const BUTTON := Vector2(120, 64) # the HUD's buttons at UI scale 1
 const STATUS_W_MIN := 500.0      # the status line goes to the bottom when it has less beside the buttons (at scale 1)
 var _status_low := false         # the status line at the bottom (_layout_top)
+## The compact bar (ui/plant_ui.gd compact: a phone): the HUD's buttons as narrow as their words, Settings in the
+## layer's More, the status line at the bottom, and the layer's buttons in the same row left of them.
+var compact := false
+const COMPACT_MARGIN := 16.0     # right of the HUD's buttons in the compact row (the full bar keeps 50)
 ## Up and Down (flying, touch): right of the middle, below the bars (place_updown)
 var updown_box: VBoxContainer
-var ui_size_opt: OptionButton    # the settings' UI size (100 % to 150 %, ui/widgets.gd ui_size)
+var ui_size_opt: OptionButton    # the settings' UI size (100 % to 200 %, ui/widgets.gd ui_size)
 var settings_layer: CanvasLayer
 var _theme_scale := 0.0        # the UI scale the settings' theme was made for
 const SETTINGS_W := 700.0      # the settings panel's width at UI scale 1 (less on a narrower canvas)
@@ -118,10 +122,8 @@ func setup(m) -> void:
 	map_btn = _button(bar, "Map", func(): main.toggle_map())
 	settings_btn = _button(bar, "Settings", func(): show_settings(not panel.visible))
 	_layout_sticks()
-	var bw := 4.0 * BUTTON.x * W.scale + 3.0 * 10.0
-	# (offsets from the right edge: a position would be taken from the canvas's width at this moment)
-	bar.offset_left = -bw - 50.0
-	bar.offset_right = -50.0
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE   # (its empty part lies over nothing it should take)
+	_place_bar()
 	bar.offset_top = 12.0
 	bar.offset_bottom = 12.0 + button_h()
 	root.resized.connect(_layout_top)
@@ -167,6 +169,45 @@ func _exit_tree() -> void:
 		# else: out of the tree but still under the root, which is tearing the tree down at a quit (it left before
 		# the HUD: it is the root's last child) and frees it itself; freeing it here corrupted the heap (tests/test_app_quit.gd)
 		input = null
+
+## The HUD's buttons' row at the top right: four 120 px buttons 50 px from the edge; in the compact bar Fly (or Walk),
+## Use and Map, each as wide as the widest of their words (a touch that brings Fly and Use back moves nothing), Settings
+## in the layer's More.
+func _place_bar() -> void:
+	var bw := 4.0 * BUTTON.x * W.scale + 3.0 * 10.0
+	var right := 50.0
+	var bw1 := BUTTON.x * W.scale
+	if compact:
+		bw1 = compact_button_w()
+		bw = 3.0 * bw1 + 2.0 * 10.0
+		right = COMPACT_MARGIN
+	for b in [fly_btn, use_btn, map_btn, settings_btn]:
+		b.custom_minimum_size.x = bw1
+	settings_btn.visible = not compact
+	# (offsets from the right edge: a position would be taken from the canvas's width at this moment)
+	bar.offset_left = -bw - right
+	bar.offset_right = -right
+
+## A HUD button's width in the compact bar: its widest word and the button's margins, square at the least.
+func compact_button_w() -> float:
+	var f: Font = fly_btn.get_theme_font("font")
+	var fs: int = fly_btn.get_theme_font_size("font_size")
+	var w := 0.0
+	for t in ["Walk", "Fly", "Use", "Map"]:
+		w = maxf(w, f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	return maxf(ceilf(w) + fly_btn.get_theme_stylebox("normal").get_minimum_size().x, button_h())
+
+## The width the HUD's buttons take at the right in the compact bar, their margin included.
+func compact_width() -> float:
+	return 3.0 * compact_button_w() + 2.0 * 10.0 + COMPACT_MARGIN
+
+## The compact bar on or off (ui/plant_ui.gd _set_compact).
+func set_compact(on: bool) -> void:
+	if on == compact:
+		return
+	compact = on
+	_place_bar()
+	_layout_top()
 
 ## The HUD's buttons' height: 64 px on a desktop; on a phone the layer's buttons' (ui/widgets.gd: 52 at its scale),
 ## which reaches 48 dp at the phone's UI size (issue #382).
@@ -216,7 +257,7 @@ func _layout_top() -> void:
 	# narrow canvas, a large UI size: beside the buttons it wrapped onto many lines and pushed the bars and every
 	# panel down). Down there it hides while a panel or view is open (it would lie under it: _each_frame).
 	var w := hud_root.size.x - bar.size.x - 50.0 - 16.0 - 24.0
-	var low := w < STATUS_W_MIN * W.scale
+	var low := compact or w < STATUS_W_MIN * W.scale
 	if low:
 		w = hud_root.size.x - 2.0 * _stick_side()
 	if absf(top_box.size.x - w) > 0.5 or low != _status_low:
@@ -367,12 +408,12 @@ func _settings(_hud_root: Control) -> void:
 	ui_size_opt.focus_mode = Control.FOCUS_ALL
 	ui_size_opt.accessibility_name = "UI size"   # (its label is beside it, not its name: A5)
 	for f in W.UI_SIZES:
-		ui_size_opt.add_item("%d %%" % roundi(f * 100.0))
+		ui_size_opt.add_item(ui_size_text(f))
 	ui_size_opt.item_selected.connect(_on_ui_size)
 	row_s.add_child(ui_size_opt)
 	var ui_note := Label.new()
 	ui_note.name = "ui_size_note"
-	ui_note.text = "Text, buttons and panels: larger, or smaller to see more of the plant. A phone starts at 150 %."
+	ui_note.text = "Text, buttons and panels: larger, or smaller to see more of the plant. The size marked \"default\" is where this device starts: on a phone, the size that makes its buttons big enough for a finger."
 	ui_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(ui_note)
 	var row2 := HBoxContainer.new()
@@ -568,6 +609,8 @@ func show_settings(on: bool) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var mode: String = main.cf.get_value("quality", "mode", "auto")
 		tier_opt.selected = ["auto", "full", "lean+vis"].find(mode)
+		for i in W.UI_SIZES.size():               # (the device's start marked: it is known once the app has started)
+			ui_size_opt.set_item_text(i, ui_size_text(W.UI_SIZES[i]))
 		ui_size_opt.selected = W.UI_SIZES.find(W.ui_size)
 		touch_opt.selected = TOUCH.find(touch_setting())
 		var pi: int = Player.PACES.keys().find(main.cf.get_value("controls", "pace", "normal"))
@@ -580,6 +623,10 @@ func _on_tier(i: int) -> void:
 	Quality.save(main.cf)
 	main.choose_tier()
 	show_settings(true)
+
+## A UI size as the settings' list says it: "150 %", and "(default)" after the one this device starts at.
+static func ui_size_text(f: float) -> String:
+	return "%d %%" % roundi(f * 100.0) + (" (default)" if is_equal_approx(f, W.ui_size_default) else "")
 
 func _on_ui_size(i: int) -> void:
 	main.set_ui_size(W.UI_SIZES[i])
@@ -651,6 +698,8 @@ func refresh() -> void:
 		_show(s, touch and not main.map.active and not screens and not away, [s.action_left, s.action_right, s.action_up, s.action_down])
 	var flying: bool = main.player.mode == Player.Mode.FLY
 	fly_btn.text = "Walk" if flying else "Fly"
+	# (the screens over the whole compact row: ui/plant_ui.gd views_over_row; Map would lie over their tabs)
+	map_btn.visible = not (main.ui != null and main.ui.get("views_over_row") == true and main.ui.screens_open())
 	fly_btn.visible = not screens and not pad   # walking and flying do nothing on the screens; Y on a gamepad
 	use_btn.visible = not screens and not pad   # A on a gamepad
 	for i in updown.size():

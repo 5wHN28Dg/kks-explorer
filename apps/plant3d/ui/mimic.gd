@@ -57,6 +57,19 @@ var canvas: Control
 var banner: Control
 var tabs: HFlowContainer
 var _tab_btns: Array = []
+var _banner_btns: BoxContainer      # Acknowledge screen and Alarm list: one above the other, or side by side (short)
+const SIDE_BY_SIDE_H := 620.0       # the view's height below which they stand side by side
+const TWO_LINES_H := 470.0          # the view's height below which the banner has two lines
+var _banner_lines := 3
+
+
+func _fit_banner() -> void:
+	_banner_btns.vertical = size.y >= SIDE_BY_SIDE_H
+	var n := 3 if size.y >= TWO_LINES_H else 2
+	if n != _banner_lines:
+		_banner_lines = n
+		banner.custom_minimum_size.y = n * 26 * W.scale + 8
+		banner.queue_redraw()
 var ack_btn: Button              # "Acknowledge screen (N)": N the alarms it acknowledges (screen_unacked)
 var _layouts := {}              # screen index -> layout (below)
 var _view := {}                 # screen index -> [zoom, offset]
@@ -125,13 +138,19 @@ func setup(u, screens_model, trend_buffer) -> void:
 		b.name = "tab_" + ("overview" if i == 0 else sm.screens[i - 1].id)
 		tabs.add_child(b)
 		_tab_btns.append(b)
+	# −, + and Fit after the tabs, in their rows (a row less where they wrap: a phone at a large UI size); Close on its
+	# own at the right, always in the same place (UI-UX-POLICY R1)
 	for z in [["−", func(): zoom_by(1.0 / 1.25)], ["+", func(): zoom_by(1.25)], ["Fit", func(): fit(true)],
 			["Close", func(): ui.close_screens()]]:
 		var b := W.button(z[0], z[1], 52)
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size.y = W.tap_h(44)
 		b.name = "btn_" + String(z[0]).to_lower()
-		top.add_child(b)
+		if z[0] == "Close":
+			b.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+			top.add_child(b)
+		else:
+			tabs.add_child(b)
 	var brow := HBoxContainer.new()
 	v.add_child(brow)
 	banner = Control.new()
@@ -142,8 +161,14 @@ func setup(u, screens_model, trend_buffer) -> void:
 	banner.draw.connect(_draw_banner)
 	banner.gui_input.connect(_banner_input)
 	brow.add_child(banner)
-	var bb := VBoxContainer.new()
+	var bb := BoxContainer.new()               # (a VBoxContainer can't turn)
+	bb.vertical = true
+	_banner_btns = bb
 	brow.add_child(bb)
+	# on a short view (a phone at a large UI size) the two buttons stand side by side: the banner's row as tall as its
+	# three lines, not two buttons; shorter still (200 %), the banner shows the two newest alarms: the screen itself
+	# keeps that much more room
+	resized.connect(_fit_banner)
 	for a in [["Acknowledge screen", func(): ack_screen()], ["Alarm list", func(): ui.toggle_alarms()]]:
 		var b := W.button(a[0], a[1])
 		b.focus_mode = Control.FOCUS_NONE
@@ -166,7 +191,7 @@ func setup(u, screens_model, trend_buffer) -> void:
 
 ## Where the canvas begins, in the layer's coordinates (below the tabs and the banner).
 func canvas_top() -> float:
-	var y := canvas.position.y if canvas.position.y > 0.0 else (44.0 + 3 * 26.0 + 20.0) * W.scale
+	var y := canvas.position.y if canvas.position.y > 0.0 else (44.0 + _banner_lines * 26.0 + 20.0) * W.scale
 	return position.y + y
 
 
@@ -1423,7 +1448,8 @@ func _draw_banner() -> void:
 	if list.is_empty():
 		_text(banner, Vector2(10, 6), "No alarms", fs, Color(0.75, 0.75, 0.75))
 		return
-	for i in mini(3, list.size()):
+	var n := _banner_lines
+	for i in mini(n, list.size()):
 		var k: int = list[i]
 		var a: Dictionary = ui.model.alarms[k]
 		var y := 4.0 + i * rh
@@ -1438,8 +1464,8 @@ func _draw_banner() -> void:
 		var since: int = ui.alarms.since.get(a["id"], 0)
 		var line := "%s  %s %s  %s  · %s" % [W.model_time(since), a.get("kks", a.get("where", "")), a.get("isa", ""),
 				a.get("text", a["id"]), STATE_WORDS.get(String(e.astate[k]), String(e.astate[k]))]
-		var more := 160.0 * W.scale if list.size() > 3 and i == 2 else 0.0
+		var more := 160.0 * W.scale if list.size() > n and i == n - 1 else 0.0
 		_text(banner, Vector2(box.end.x + 10, y + 1), line, fs, Color.WHITE, banner.size.x - box.end.x - 20 - more)
 		_banner_rows.append([Rect2(0, y, banner.size.x, rh), k])
-	if list.size() > 3:
-		_text(banner, Vector2(banner.size.x - 150 * W.scale, 4.0 + 2 * rh), "+%d more" % (list.size() - 3), fs, Color(0.8, 0.8, 0.8))
+	if list.size() > n:
+		_text(banner, Vector2(banner.size.x - 150 * W.scale, 4.0 + (n - 1) * rh), "+%d more" % (list.size() - n), fs, Color(0.8, 0.8, 0.8))

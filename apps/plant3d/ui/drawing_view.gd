@@ -80,7 +80,7 @@ func setup(u, drawings) -> void:
 	# the sheet's number (its identifier, first) always shows whole; a title too long for the bar ends in "…", whole in
 	# the list it opens and on the sheet's title block (UI-UX-POLICY S3)
 	picker.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	picker.custom_minimum_size.x = 260 * W.scale
+	picker.custom_minimum_size.x = 200 * W.scale    # (the bar with Close fits a 16:9 phone at 200 %: 800 px)
 	# its list: rows as tall as the buttons (48 dp on a phone, T1), never wider or taller than the canvas (its longest
 	# titles ran off a narrow one: the numbers, first, stay in view)
 	var pm := picker.get_popup()

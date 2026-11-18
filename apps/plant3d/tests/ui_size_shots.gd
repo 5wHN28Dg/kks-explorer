@@ -1,8 +1,9 @@
 ## Screenshots of every panel at a UI size, to look at (not a test: it needs a display; tests/test_ui_size.gd checks
 ## the same panels' places):
 ##   tools/plant3d/bench/offscreen.sh godot --resolution 1600x900 --path apps/plant3d --script res://tests/ui_size_shots.gd \
-##     -- --out=DIR [--phone] [--ui-size=1.5]
-## --phone: at the phone's UI scale (run it at the Note 9's canvas, `--resolution 1850x900`). Each panel opened in turn
+##     -- --out=DIR [--phone] [--density=420] [--ui-size=1.5]
+## --phone: at the phone's UI scale, at the phone's own default size unless --ui-size is given (run it at the phone's
+## window, `--resolution 2220x1080` for the Note 9; --density: the phone's, 420 the Note 9's if not given). Each panel opened in turn
 ## as tests/test_ui_size.gd opens it, in the aged plant's shift (its crews, work orders and stores have something to
 ## show); then the settings with the keyboard and gamepad help open.
 extends SceneTree
@@ -15,6 +16,7 @@ const SizeTest = preload("res://tests/test_ui_size.gd")
 var out := ""
 var phone := false
 var ui_size := ""
+var density := ""
 var main: Node
 
 
@@ -24,6 +26,8 @@ func _init() -> void:
 			out = a.substr(6)
 		elif a.begins_with("--ui-size="):
 			ui_size = a.substr(10)
+		elif a.begins_with("--density="):
+			density = a.substr(10)
 		elif a == "--phone":
 			phone = true
 	_run.call_deferred()
@@ -47,6 +51,8 @@ func _run() -> void:
 	main.opts["scenario"] = "shift_aged"
 	if phone:
 		main.opts["ui_scale"] = "1.35"
+		if density != "":
+			main.opts["density"] = density
 	if ui_size != "":
 		main.opts["ui_size"] = ui_size
 	root.add_child(main)

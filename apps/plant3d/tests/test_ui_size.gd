@@ -1,9 +1,13 @@
-## The settings' UI size (issue #382; UI-UX-POLICY T1, S1, S2, R1, L2): 100 % to 150 %, a phone at 150 % by default.
-## At both ends, on a desktop's 1600 × 900 canvas and on the Note 9's (2220 × 1080 at the phone's UI scale, a
-## 1850 × 900 canvas), the HUD's buttons, the layer's bar and its clock are all on screen and overlap nothing; every
-## panel opened lies inside the canvas below the bars with its Close (or Back) on screen, and nothing in it runs out at
-## its sides; at the phone's 150 % its buttons are 48 dp tall at least and its text 14 sp. The size is chosen in the
-## settings, applied at once (the panel open stays inside the smaller canvas) and kept in the settings file.
+## The settings' UI size (issue #382; UI-UX-POLICY T1, S1, S2, R1, L2): 100 % to 200 %. A phone starts at the size
+## that gives its buttons 48 dp and its text 14 sp on its own screen (ui/widgets.gd phone_ui_size: the Note 9 at its
+## density 420 150 %, at the density class 480 Godot reports 180 %, a 360 dp tall phone 180 %), a desktop at 100 %.
+## On a desktop's 1600 × 900 canvas, on the Note 9's (2220 × 1080 at the phone's UI scale), a 360 dp tall phone's and a
+## 16:9 phone's, at their default and at 200 %, the HUD's buttons, the layer's bar and its clock are all on screen and
+## overlap nothing; where the bar doesn't fit on one row (every phone, a desktop at a large size) the bars are ONE row,
+## the rest of the buttons and the settings in More's list; every panel opened lies inside the canvas below the bars
+## with its Close (or Back) on screen, and nothing in it runs out at its sides; on a phone at its size or above its
+## targets are 48 dp at least and its text 14 sp. The size is chosen in the settings, applied at once (the panel open
+## stays inside the smaller canvas) and kept in the settings file.
 extends RefCounted
 
 const W = preload("res://ui/widgets.gd")
@@ -13,18 +17,28 @@ const RunSave = preload("res://ui/run_save.gd")
 const UiApp = preload("res://tests/ui_app.gd")
 const Quality = preload("res://app/quality.gd")
 
-const DP := 0.457             # dp per canvas px on the Note 9 (docs/UI-UX-POLICY.md §2, units)
 const CLOSERS := ["Close", "Back", "Leave", "Done"]
+var DP := 0.457                 # dp per canvas px at 100 % on the screen tested (docs/UI-UX-POLICY.md §2, units)
 
 
 func run(tree: SceneTree) -> Array:
-	var p: Array = []
+	var p: Array = _defaults()
 	var size0: Vector2i = tree.root.size
-	for c in [[Vector2i(1600, 900), "", 1.0], [Vector2i(1600, 900), "", 1.5],
-			[Vector2i(2220, 1080), "1.35", 1.0], [Vector2i(2220, 1080), "1.35", 1.5],
-			[Vector2i(1920, 1080), "1.35", 1.5]]:     # (a 16:9 phone: its canvas narrower, 1067 × 600 at 150 %)
+	# [window, UI scale ("" a desktop), UI size (null: the device's default), density, the default expected, name]
+	for c in [[Vector2i(1600, 900), "", null, 0.0, 1.0, "a desktop"],
+			[Vector2i(1600, 900), "", 1.5, 0.0, 1.0, "a desktop"],
+			[Vector2i(1600, 900), "", 2.0, 0.0, 1.0, "a desktop"],
+			[Vector2i(2220, 1080), "1.35", 1.0, 420.0, 1.5, "the Note 9"],
+			[Vector2i(2220, 1080), "1.35", null, 420.0, 1.5, "the Note 9"],
+			[Vector2i(2220, 1080), "1.35", null, 480.0, 1.8, "the Note 9 at its density class"],
+			[Vector2i(2220, 1080), "1.35", 2.0, 420.0, 1.5, "the Note 9"],
+			[Vector2i(2340, 1080), "1.35", null, 480.0, 1.8, "a 360 dp tall phone"],
+			[Vector2i(1920, 1080), "1.35", null, 420.0, 1.5, "a 16:9 phone"],
+			[Vector2i(1920, 1080), "1.35", null, 480.0, 1.8, "a 16:9 360 dp tall phone"],
+			[Vector2i(1920, 1080), "1.35", 2.0, 480.0, 1.8, "a 16:9 360 dp tall phone"]]:
 		tree.root.size = c[0]
-		p += await _at(tree, c[1], c[2])
+		DP = minf(c[0].x / 1600.0, c[0].y / 900.0) * 160.0 / c[3] if c[3] > 0.0 else 0.0
+		p += await _at(tree, c[1], c[2], c[3], c[4], c[5])
 	tree.root.size = size0
 	p += await _setting(tree)
 	if tree.root.content_scale_factor != 1.0:
@@ -33,12 +47,37 @@ func run(tree: SceneTree) -> Array:
 	return p
 
 
-func _start(tree: SceneTree, ui_scale: String, ui_size) -> Node:
+## The size a phone starts at: the least of the settings' sizes with 48 dp buttons and 14 sp text on its screen.
+func _defaults() -> Array:
+	var p: Array = []
+	# [window, density, expected]
+	for c in [[Vector2(2220, 1080), 420.0, 1.5], [Vector2(2220, 1080), 480.0, 1.8], [Vector2(2340, 1080), 480.0, 1.8],
+			[Vector2(1920, 1080), 420.0, 1.5], [Vector2(1920, 1080), 480.0, 1.8], [Vector2(2400, 1080), 380.0, 1.4],
+			[Vector2(3200, 1440), 560.0, 1.5], [Vector2(1280, 720), 384.0, 2.0], [Vector2(800, 480), 240.0, 2.0]]:
+		var got := W.phone_ui_size(c[0], c[1], 1.35)
+		if not is_equal_approx(got, c[2]):
+			p.append("a phone %s at density %.0f starts at %d %% (%d %% expected)" % [str(c[0]), c[1], roundi(got * 100.0),
+				roundi(c[2] * 100.0)])
+		var dp: float = minf(c[0].x / 1600.0, c[0].y / 900.0) * 160.0 / c[1]
+		if got < 2.0 and (52.0 * 1.35 * got * dp < 48.0 - 1e-3 or 20.0 * 1.35 * got * dp < 14.0 - 1e-3):
+			p.append("at %d %% a phone %s at %.0f has %.1f dp buttons and %.1f sp text" % [roundi(got * 100.0), str(c[0]), c[1],
+				52.0 * 1.35 * got * dp, 20.0 * 1.35 * got * dp])
+		if got > 1.0 and 52.0 * 1.35 * (got - 0.1) * dp >= 48.0:
+			p.append("a phone %s at %.0f starts at %d %%, but %d %% gives 48 dp already" % [str(c[0]), c[1],
+				roundi(got * 100.0), roundi(got * 100.0) - 10])
+	if not is_equal_approx(W.default_ui_size(Vector2(1600, 900)), 1.0):
+		p.append("a desktop starts at %d %% (100 expected)" % roundi(W.default_ui_size(Vector2(1600, 900)) * 100.0))
+	return p
+
+
+func _start(tree: SceneTree, ui_scale: String, ui_size, density := 0.0) -> Node:
 	RunSave.remove(Autosave.default_path)
 	var main: Node = (load("res://app/main.tscn") as PackedScene).instantiate()
 	main.opts["scenario"] = "shift_aged"          # (the crews' and the work orders' panels have something to show)
 	if ui_scale != "":
 		main.opts["ui_scale"] = ui_scale
+	if density > 0.0:
+		main.opts["density"] = str(density)
 	if ui_size != null:
 		main.opts["ui_size"] = str(ui_size)
 	tree.root.add_child(main)
@@ -47,11 +86,15 @@ func _start(tree: SceneTree, ui_scale: String, ui_size) -> Node:
 	return main
 
 
-func _at(tree: SceneTree, ui_scale: String, ui_size: float) -> Array:
+func _at(tree: SceneTree, ui_scale: String, size_given, density: float, dflt: float, who: String) -> Array:
 	var p: Array = []
-	var at := "%s at %d %%" % [("the phone" if tree.root.size.x > 2000 else "a 16:9 phone") if ui_scale != "" else "a desktop",
-		roundi(ui_size * 100.0)]
-	var main := _start(tree, ui_scale, ui_size)
+	var main := _start(tree, ui_scale, size_given, density)
+	var ui_size: float = W.ui_size
+	var at := "%s at %d %%%s" % [who, roundi(ui_size * 100.0), " (its default)" if size_given == null else ""]
+	if size_given == null and not is_equal_approx(ui_size, dflt):
+		p.append("%s starts at %d %% (%d %% expected)" % [who, roundi(ui_size * 100.0), roundi(dflt * 100.0)])
+	if not is_equal_approx(W.ui_size_default, dflt):
+		p.append("%s: the default is %d %% (%d %% expected)" % [at, roundi(W.ui_size_default * 100.0), roundi(dflt * 100.0)])
 	for i in 6:
 		await tree.process_frame
 	var ui = main.ui
@@ -62,34 +105,108 @@ func _at(tree: SceneTree, ui_scale: String, ui_size: float) -> Array:
 	var want: Vector2 = Vector2(1600.0 * maxf(1.0, float(tree.root.size.x) / float(tree.root.size.y) * 900.0 / 1600.0), 900.0) / ui_size
 	if (canvas.size - want).length() > 2.0:
 		p.append("%s: the canvas is %s, %s expected" % [at, str(canvas.size), str(want)])
+	# a phone at its size or above: 48 dp and 14 sp (below it, by the user's choice, less)
+	var phone: bool = ui_scale != "" and ui_size >= dflt - 0.001
 	# the status line at its longest (the area with the longest name, running, far out): the bars still fit
 	main.hud.status.text = "Auxiliary boiler, demineralised water, instrument air, closed cooling water · running · x -1234  y -1234  +123.4 m · lean+vis"
 	main.hud.set_process(false)
 	main.hud._measure_status()
 	for i in 3:
 		await tree.process_frame
-	p += await _bars(main, at, canvas, ui_scale != "" and ui_size >= 1.5, ui_size)
+	p += await _bars(main, at, canvas, phone, ui_size)
+	p += await _compact(main, at, canvas, ui_scale != "" or ui_size > 1.0)
 	main.hud.set_process(true)
-	p += await _popups(tree, main, at, canvas, ui_scale != "" and ui_size >= 1.5, ui_size)
+	p += await _popups(tree, main, at, canvas, phone, ui_size)
 	if ui_scale == "" and ui_size == 1.0:
 		# a desktop at 100 % as before: the bar one row at 88 px, the panels from 160 px, with Instructor on too
 		ui.set_instructor(true)
 		for i in 3:
 			await tree.process_frame
-		if absf(ui.bar.get_global_rect().position.y - 88.0) > 0.5 or absf(ui.panels_top() - 160.0) > 0.5:
-			p.append("%s: the bar is at %.0f and the panels begin at %.0f with Instructor on (88 and 160 before)" % [at,
-				ui.bar.get_global_rect().position.y, ui.panels_top()])
+		if absf(ui.bar.get_global_rect().position.y - 88.0) > 0.5 or absf(ui.panels_top() - 160.0) > 0.5 or ui.compact:
+			p.append("%s: the bar is at %.0f and the panels begin at %.0f with Instructor on (88 and 160 before), compact %s" % [at,
+				ui.bar.get_global_rect().position.y, ui.panels_top(), str(ui.compact)])
 		ui.set_instructor(false)
 	for pn in _panels():
 		await _open(tree, main, pn)
 		for i in 3:
 			await tree.process_frame
-		p += _check_panel(main, pn, at, canvas, ui_scale != "" and ui_size >= 1.5, ui_size)
+		p += _check_panel(main, pn, at, canvas, phone, ui_size)
 		_close(main, pn)
 		await tree.process_frame
 	p += await _workshop(tree, main, at, ui_size)
 	main.free()
 	await tree.process_frame
+	return p
+
+
+## The compact bar (`want`: every phone, a desktop above 100 %): one row with the HUD's buttons, at the top, the 3D
+## view below it from a fifth of the height at most; the clock, Alarms and More in it; every other button and the
+## settings in More's list, which does what the button does. Off it (a desktop at 100 %) every button is on the bar.
+func _compact(main, at: String, canvas: Rect2, want: bool) -> Array:
+	var p: Array = []
+	var ui = main.ui
+	var hud = main.hud
+	if ui.compact != want:
+		return ["%s: the bar is %s (%s expected)" % [at, "compact" if ui.compact else "full", "compact" if want else "full"]]
+	var more: MenuButton = ui._more
+	if not want:
+		if more.visible or ui._overflow.get_child_count() > 0 or not hud.settings_btn.visible:
+			p.append("%s: the full bar has More or buttons in its list, or no Settings" % at)
+		return p
+	# one row: every control on the bar and the HUD's at the same height band, the band from y 12
+	var rows := {}
+	for c in ui.bar.get_children() + hud.bar.get_children():
+		if (c as Control).is_visible_in_tree():
+			rows[roundi((c as Control).get_global_rect().position.y)] = true
+	var band: float = maxf(ui.bar.get_global_rect().end.y, hud.bar.get_global_rect().end.y)
+	if ui.bar.get_global_rect().position.y > 12.5 or band > canvas.size.y * 0.2 + 0.5 or ui.panels_top() > band + 16.5:
+		p.append("%s: the compact row runs %.0f to %.0f of %.0f (a fifth at most), the panels from %.0f" % [at,
+			ui.bar.get_global_rect().position.y, band, canvas.size.y, ui.panels_top()])
+	var top_y := 12.0
+	for c in ui.bar.get_children() + hud.bar.get_children():
+		var cc := c as Control
+		if cc.is_visible_in_tree() and (cc.get_global_rect().position.y > top_y + 0.5 or cc.get_global_rect().end.y > band + 0.5):
+			p.append("%s: the compact row's %s is on a row of its own: %s" % [at, _name(cc), str(cc.get_global_rect())])
+	for c in [ui._time, ui._alarm_btn, more]:
+		if not (c as Control).is_visible_in_tree() or (c as Control).get_parent() != ui.bar:
+			p.append("%s: the compact row has no %s (its %.0f px: the clock %.0f, Alarms %.0f, More %.0f; the HUD's %.0f)" % [at,
+				_name(c), ui._compact_room, ui._time.get_combined_minimum_size().x, ui._alarm_btn.get_combined_minimum_size().x,
+				more.get_combined_minimum_size().x, hud.compact_width()])
+	if hud.settings_btn.is_visible_in_tree():
+		p.append("%s: Settings is on the compact row (it is in More's list)" % at)
+	# More's list: each button not on the row (that would show), then Settings, and each does what its button does
+	ui._fill_more()
+	var pm: PopupMenu = more.get_popup()
+	var listed: Array = []
+	for i in pm.item_count:
+		listed.append(pm.get_item_text(i))
+	var wanted: Array = []
+	for c in ui._bar_items:
+		if c is Button and c.visible and c.get_parent() != ui.bar:
+			wanted.append({"1×": "Normal speed (1×)", "Fast": "Fast-forward"}.get(c.text, c.text))
+	wanted.append("Settings")
+	if listed != wanted:
+		p.append("%s: More's list is %s (%s expected)" % [at, str(listed), str(wanted)])
+	if listed.size() < 2:
+		p.append("%s: More's list holds only %s" % [at, str(listed)])
+	var si: int = listed.find("Settings")
+	ui._on_more(pm.get_item_id(si))
+	await main.get_tree().process_frame
+	if not hud.panel.visible:
+		p.append("%s: Settings in More's list did not open the settings" % at)
+	hud.show_settings(false)
+	var ci: int = listed.find("Crew")
+	if ci >= 0:
+		ui._on_more(pm.get_item_id(ci))
+		await main.get_tree().process_frame
+		if not ui.crew.visible:
+			p.append("%s: Crew in More's list did not open the crew" % at)
+		ui.close_top()
+		await main.get_tree().process_frame
+	# More's rows 48 dp on a phone (the theme's list rows)
+	var row: float = pm.get_theme_font("font").get_height(pm.get_theme_font_size("font_size")) + pm.get_theme_constant("v_separation")
+	if DP > 0.0 and row * W.ui_size * DP < 47.5 and W.ui_size >= W.ui_size_default - 0.001:
+		p.append("%s: More's list has rows %.1f dp tall (48 the least)" % [at, row * W.ui_size * DP])
 	return p
 
 
@@ -223,10 +340,13 @@ func _bars(main, at: String, canvas: Rect2, phone: bool, ui_size: float) -> Arra
 	var clock: Label = ui._time
 	var f: Font = clock.get_theme_font("font")
 	var fs: int = clock.get_theme_font_size("font_size")
-	for t in ["Day 999 Wed 23:59 paused", clock.text]:
-		var tw: float = f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		if clock.size.x + 0.5 < tw:
-			p.append("%s: the clock is %.0f px wide, its text \"%s\" %.0f" % [at, clock.size.x, t, tw])
+	for t in [ui.clock_label("Day 999 Wed 23:59", "paused", ui.compact), clock.text]:
+		for line in t.split("\n"):
+			var tw: float = f.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			if clock.size.x + 0.5 < tw:
+				p.append("%s: the clock is %.0f px wide, its text \"%s\" %.0f" % [at, clock.size.x, line, tw])
+	if clock.size.y + 0.5 < f.get_height(fs) * t_lines(clock.text):
+		p.append("%s: the clock is %.0f px tall for %d lines" % [at, clock.size.y, t_lines(clock.text)])
 	if not canvas.grow(0.5).encloses(clock.get_global_rect()):
 		p.append("%s: the clock is off screen: %s" % [at, str(clock.get_global_rect())])
 	if ui.panels_top() < ui.bar.get_global_rect().end.y:
@@ -237,6 +357,10 @@ func _bars(main, at: String, canvas: Rect2, phone: bool, ui_size: float) -> Arra
 		if sp < 14.0 - 0.05:
 			p.append("%s: the panels' text is %.1f sp (14 the least)" % [at, sp])
 	return p
+
+
+static func t_lines(t: String) -> int:
+	return t.split("\n").size()
 
 
 func _panels() -> Array:
@@ -312,8 +436,14 @@ func _check_panel(main, pn: String, at: String, canvas: Rect2, phone: bool, ui_s
 		p.append("%s: the %s begins at %.0f, over the bars (they end at %.0f)" % [at, pn, pr.position.y,
 			main.ui.panels_top()])
 	if pn == "screens" and pr.end.y - main.ui.mimic.canvas_top() < canvas.size.y * 0.3:
-		p.append("%s: the screens leave %.0f px of %.0f to the screen itself (30 %% the least)" % [at,
-			pr.end.y - main.ui.mimic.canvas_top(), canvas.size.y])
+		p.append("%s: the screens leave %.0f px of %.0f to the screen itself (30 %% the least; from %.0f, over the row %s)" % [at,
+			pr.end.y - main.ui.mimic.canvas_top(), canvas.size.y, pr.position.y, str(main.ui.views_over_row)])
+	# the screens' tabs and Close: no HUD button over them (the screens over the compact row hide Map)
+	if pn == "screens":
+		var chrome := Rect2(pr.position, Vector2(pr.size.x, main.ui.mimic.canvas_top() - pr.position.y))
+		for b in main.hud.bar.get_children():
+			if (b as Control).is_visible_in_tree() and (b as Control).get_global_rect().intersects(chrome):
+				p.append("%s: the HUD's %s lies over the screens' tabs" % [at, _name(b)])
 	# the status line at the bottom hides under what is open (it would be cut by it)
 	var hud = main.hud
 	if hud._status_low and hud.top_box.visible and hud.top_box.get_global_rect().intersects(pr):
@@ -385,11 +515,14 @@ func _setting(tree: SceneTree) -> Array:
 	if opt == null or not opt.is_visible_in_tree():
 		main.free()
 		return p + ["the settings have no UI size"]
-	if opt.item_count != W.UI_SIZES.size() or opt.get_item_text(0) != "100 %" or opt.get_item_text(opt.item_count - 1) != "150 %":
-		p.append("the UI size's choices are not 100 %% to 150 %%: %d, %s to %s" % [opt.item_count, opt.get_item_text(0),
-			opt.get_item_text(opt.item_count - 1)])
-	opt.select(opt.item_count - 1)
-	opt.item_selected.emit(opt.item_count - 1)
+	# 100 % to 200 % in steps of 10, the desktop's start marked
+	if opt.item_count != 11 or opt.get_item_text(0) != "100 % (default)" or opt.get_item_text(5) != "150 %" \
+			or opt.get_item_text(opt.item_count - 1) != "200 %":
+		p.append("the UI size's choices are not 100 %% (default) to 200 %%: %d, %s to %s" % [opt.item_count,
+			opt.get_item_text(0), opt.get_item_text(opt.item_count - 1)])
+	var i150: int = W.UI_SIZES.find(1.5)
+	opt.select(i150)
+	opt.item_selected.emit(i150)
 	for i in 4:
 		await tree.process_frame
 	var canvas: Rect2 = main.ui.root.get_viewport_rect()
@@ -409,8 +542,18 @@ func _setting(tree: SceneTree) -> Array:
 	if absf(main.ui.panels_top() - 160.0) > 0.5 or absf(main.ui.bar.size.y - main.ui.bar.get_combined_minimum_size().y) > 0.5:
 		p.append("100 %% chosen again: the panels begin at %.0f (160 expected), the bar %.0f tall for %.0f" % [
 			main.ui.panels_top(), main.ui.bar.size.y, main.ui.bar.get_combined_minimum_size().y])
+	# 200 %, the most: the settings and their Close still inside the 800 × 450 canvas
 	opt.select(opt.item_count - 1)
 	opt.item_selected.emit(opt.item_count - 1)
+	for i in 4:
+		await tree.process_frame
+	canvas = main.ui.root.get_viewport_rect()
+	if absf(canvas.size.y - 450.0) > 1.0 or not canvas.grow(0.5).encloses(hud.panel.get_global_rect()) \
+			or not canvas.grow(0.5).encloses(hud.close_btn.get_global_rect()):
+		p.append("after choosing 200 %% the canvas is %s, the settings %s" % [str(canvas.size), str(hud.panel.get_global_rect())])
+	p += await _bars(main, "after choosing 200 %", canvas, false, 2.0)
+	opt.select(i150)
+	opt.item_selected.emit(i150)
 	for i in 4:
 		await tree.process_frame
 	if float(main.cf.get_value("ui", "ui_size", 0.0)) != 1.5:

@@ -16,7 +16,7 @@ const App = preload("res://tests/ui_app.gd")
 
 var out := ""
 var phone := false
-var ui_size := ""    # --ui-size=1.5: at that UI size (the settings' 100 % to 150 %; a phone starts at 150 %)
+var ui_size := ""    # --ui-size=1.5: at that UI size (the settings' 100 % to 200 %; a phone starts at the size its screen needs, 150 % on the Note 9)
 var main: Node
 var ui
 
