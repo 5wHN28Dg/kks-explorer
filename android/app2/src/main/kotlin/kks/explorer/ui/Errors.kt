@@ -22,7 +22,12 @@ object Errors {
     val terse = mapOf(
         "manager only" to "Only the plant's manager can do that.",
         "admin only" to "Only an admin can do that.",
-        "cross-origin request refused" to "The request came from another page and was refused. Open Walkdown from its own address.")
+        "cross-origin request refused" to "The request came from another page and was refused. Open Walkdown from its own address.",
+        "not saved on this device" to "This isn't saved on this device for offline use. Connect to the server to see it.",
+        "method not allowed" to "This needs a newer Walkdown here or on the server.")
+
+    /** a readable text of the core's ("this invite has expired; ask for a new one") as a sentence */
+    fun asSentence(t: String) = t.trim().let { if (it.isEmpty()) it else it.replaceFirstChar { c -> c.uppercase() } + if (it.last() in ".!?") "" else "." }
 
     fun codeOf(status: Int) = when (status) {
         401 -> "sign_in"; 403 -> "not_allowed"; 404 -> "not_found"; 409 -> "conflict"; 413 -> "too_large"; 429 -> "too_many"
@@ -41,8 +46,8 @@ object Errors {
         terse[raw]?.let { return it }
         if (isSentence(raw)) return raw
         if (raw.isNotEmpty()) android.util.Log.i("KKSErrors", "$status $raw")
-        if (code in setOf("invalid", "too_large", "too_many", "not_allowed") && raw.split(Regex("\\s+")).size >= 3)
-            return raw.replaceFirstChar { it.uppercase() } + if (raw.last() in ".!?") "" else "."
+        if (code in setOf("invalid", "too_large", "too_many", "not_allowed", "conflict") && raw.split(Regex("\\s+")).size >= 3)
+            return asSentence(raw)
         return words.getValue(code)
     }
 

@@ -461,7 +461,7 @@ proc joinServer*(a: App, address, username, password: string): Future[string] {.
     stderr.writeLine "join " & host & ":" & $port & ": " & e.msg       # (the system's text, for the log: #371)
     return unreachable(host, port)
   if ack.get("state") == nil or ack["state"].s != "accepted":
-    return (if ack.get("why") != nil and ack["why"].isStr and ack["why"].s.isSentence: ack["why"].s
+    return (if ack.get("why") != nil and ack["why"].isStr and ack["why"].s.strip.len > 0: ack["why"].s.asSentence
             else: "The server did not accept this device. Check your username and password, or ask an admin.")
   try:
     discard await a.syncOne(host, port, ack["server"].s, adoptRoot = if a.n.root.len > 0: "" else: ack["root"].s)

@@ -20,7 +20,9 @@ const ErrorWords* = [
 const ErrorTerse* = [
   ("manager only", "Only the plant's manager can do that."),
   ("admin only", "Only an admin can do that."),
-  ("cross-origin request refused", "The request came from another page and was refused. Open Walkdown from its own address.")]
+  ("cross-origin request refused", "The request came from another page and was refused. Open Walkdown from its own address."),
+  ("not saved on this device", "This isn't saved on this device for offline use. Connect to the server to see it."),
+  ("method not allowed", "This needs a newer Walkdown here or on the server.")]
 
 proc errorWords*(code: string): string =
   for (k, v) in ErrorWords:
@@ -37,6 +39,11 @@ proc codeOf*(status: int): string =
   elif status == 429: "too_many"
   elif status >= 400 and status < 500: "invalid"
   else: "server"
+
+proc asSentence*(t: string): string =
+  ## a readable text of the core's ("this invite has expired; ask for a new one") as a sentence
+  let s = t.strip
+  if s.len == 0: "" else: s[0].toUpperAscii & s[1 .. ^1] & (if s[^1] in {'.', '!', '?'}: "" else: ".")
 
 proc isSentence*(t: string): bool =
   let s = t.strip
@@ -56,8 +63,8 @@ proc errorText*(status: int, j: JNode): string =
   for (k, v) in ErrorTerse:
     if k == raw: return v
   if raw.isSentence: return raw
-  if code in ["invalid", "too_large", "too_many", "not_allowed"] and raw.splitWhitespace.len >= 3:
-    return raw[0].toUpperAscii & raw[1 .. ^1] & (if raw[^1] in {'.', '!', '?'}: "" else: ".")
+  if code in ["invalid", "too_large", "too_many", "not_allowed", "conflict"] and raw.splitWhitespace.len >= 3:
+    return raw.asSentence
   errorWords(code)
 
 proc unreachable*(host: string, port: int): string =
@@ -69,8 +76,8 @@ const LostJoin* = "The connection to the admin's device was lost before they dec
 const FirstSyncFailed* = "Accepted, but the first sync did not finish. Try again in a moment."
 
 proc notJoined*(state, why: string): string =
-  if why.isSentence: why
-  elif state == "expired": "The invite has expired. Ask the admin for a new one."
+  ## the core's own reason ("this invite has expired; ask for a new one"), else plain words for the state
+  if why.strip.len > 0: why.asSentence
   else: "Not joined: the admin refused, or the request ended. Ask the admin to try again."
 
 proc syncFailed*(host: string, port: int): string =

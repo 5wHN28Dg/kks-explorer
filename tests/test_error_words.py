@@ -37,7 +37,7 @@ class ErrorWords(unittest.TestCase):
         self.assertEqual(len(words[0]), 9, words[0])
         self.assertEqual(words[0], words[1])
         self.assertEqual(words[0], words[2])
-        self.assertEqual(len(terse[0]), 3, terse[0])
+        self.assertEqual(len(terse[0]), 5, terse[0])
         self.assertEqual(terse[0], terse[1])
         self.assertEqual(terse[0], terse[2])
         for s in list(words[0].values()) + list(terse[0].values()):

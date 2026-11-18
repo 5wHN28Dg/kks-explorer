@@ -84,7 +84,7 @@ object Sync {
         val ack = try {
             Net.ask(host, port, "", JSONObject().put("t", "enroll").put("username", username).put("password", password).put("request", req))
         } catch (e: Exception) { return kks.explorer.ui.Errors.unreachable(host, port, e) }
-        if (ack.optString("state") != "accepted") return ack.optString("why").takeIf { kks.explorer.ui.Errors.isSentence(it) }
+        if (ack.optString("state") != "accepted") return ack.optString("why").takeIf { it.isNotBlank() }?.let { kks.explorer.ui.Errors.asSentence(it) }
             ?: "The server did not accept this phone. Check your username and password, or ask an admin."
         val server = ack.getString("server")
         try {

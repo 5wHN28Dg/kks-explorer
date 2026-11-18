@@ -35,6 +35,8 @@ K.errorTerse = {
   'manager only': "Only the plant's manager can do that.",
   'admin only': 'Only an admin can do that.',
   'cross-origin request refused': 'The request came from another page and was refused. Open Walkdown from its own address.',
+  'not saved on this device': "This isn't saved on this device for offline use. Connect to the server to see it.",
+  'method not allowed': 'This needs a newer Walkdown here or on the server.',
 };
 K.errorCode = status => ({401: 'sign_in', 403: 'not_allowed', 404: 'not_found', 409: 'conflict', 413: 'too_large', 429: 'too_many'})[status]
   || (status >= 400 && status < 500 ? 'invalid' : 'server');
@@ -43,10 +45,11 @@ K.isSentence = t => typeof t === 'string' && /^[A-Z]/.test(t.trim()) && /[.!?]$/
 // too many, not allowed) its specific text of three words or more made a sentence ("Note: up to 500 characters.");
 // else the sentence for the kind
 K.errorText = (status, d) => {
-  const raw = typeof d?.error === 'string' ? d.error.trim() : '', code = K.errorWords[d?.code] ? d.code : K.errorCode(status);
-  if (K.errorTerse[raw]) return K.errorTerse[raw];
+  const raw = typeof d?.error === 'string' ? d.error.trim() : '', own = (o, k) => Object.hasOwn(o, k) ? o[k] : undefined;
+  const code = own(K.errorWords, d?.code) ? d.code : K.errorCode(status);
+  if (own(K.errorTerse, raw)) return K.errorTerse[raw];
   if (K.isSentence(raw)) return raw;
-  if (['invalid', 'too_large', 'too_many', 'not_allowed'].includes(code) && raw.split(/\s+/).length >= 3)
+  if (['invalid', 'too_large', 'too_many', 'not_allowed', 'conflict'].includes(code) && raw.split(/\s+/).length >= 3)
     return raw[0].toUpperCase() + raw.slice(1) + (/[.!?]$/.test(raw) ? '' : '.');
   return K.errorWords[code];
 };
