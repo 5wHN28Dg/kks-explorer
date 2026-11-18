@@ -572,7 +572,7 @@ func _fit_compact(room: float) -> void:
 			if c == null or not c.visible:
 				continue
 			var cw := c.get_combined_minimum_size().x
-			if used + sep + cw <= room + 0.5:
+			if ceilf(used + sep + cw) <= floorf(room):   # (whole px: a fraction over and the row would wrap)
 				used += sep + cw
 				keep[c] = true
 			else:
@@ -580,7 +580,8 @@ func _fit_compact(room: float) -> void:
 	var i := 0
 	for it in _bar_items:
 		var c := it as Control
-		var inside: bool = not compact or keep.has(c) or not c.visible
+		# (a hidden one stays where it is: shown again, it doesn't sit in the row for a frame before going to More)
+		var inside: bool = not compact or keep.has(c) or (not c.visible and c.get_parent() == bar)
 		var want: Control = bar if inside else _overflow
 		if c.get_parent() != want:
 			c.get_parent().remove_child(c)
@@ -668,8 +669,20 @@ func _layout() -> void:
 		main.hud._queue_fit()               # (the settings stand below the bar too)
 	if work != null and work.tools_panel != null:
 		work._layout()                      # (its tools below the bar too)
-	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach
-	var top := maxf(top0, mimic.canvas_top() + 8.0) if screens_open() else top0
+	# In the compact row (a phone) the screens go over the whole row where below it their tabs and banner would leave
+	# the screen itself under 30 % of the height (a 360 dp tall phone at its 180 %); the HUD's Map hides meanwhile
+	# (app/hud.gd refresh: it would lie over their tabs), and their own bar has Close.
+	var below := vs.y - top0
+	var chrome: float = mimic.canvas_top() - mimic.position.y
+	var over := (not compact and below < vs.y * 0.6) or (compact and screens_open() and below - chrome < vs.y * 0.3)
+	var vtop := top0 if not over else (0.0 if compact else bar_top())
+	if (over and compact) != views_over_row:
+		views_over_row = over and compact
+		if main != null and main.hud != null:
+			main.hud.refresh.call_deferred()
+	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach (from where
+	# the screens are going now, over the row or below it)
+	var top := maxf(top0, vtop + chrome + 8.0) if screens_open() else top0
 	if drawings_open():
 		top = maxf(top, drawing_view.canvas_top())      # below the drawings' bar (its sheet list, Fit and Close)
 	# (a narrow canvas, a phone at a large UI size: half of it at least, a row of the panels' widest buttons)
@@ -700,17 +713,6 @@ func _layout() -> void:
 	# the screens and the drawings: below the bar; where it leaves them under 60 % of the height (a phone at a large UI
 	# size, the bar on two rows) over the bar instead, below the HUD's buttons: their own bars have Close, and the
 	# screen or sheet keeps room to be read
-	# In the compact row (a phone) the screens go over the whole row where below it their tabs and banner would leave
-	# the screen itself under 30 % of the height (a 360 dp tall phone at its 180 %); the HUD's Map hides meanwhile
-	# (app/hud.gd refresh: it would lie over their tabs), and their own bar has Close.
-	var below := vs.y - top0
-	var chrome: float = mimic.canvas_top() - mimic.position.y
-	var over := (not compact and below < vs.y * 0.6) or (compact and screens_open() and below - chrome < vs.y * 0.3)
-	var vtop := top0 if not over else (0.0 if compact else bar_top())
-	if (over and compact) != views_over_row:
-		views_over_row = over and compact
-		if main != null and main.hud != null:
-			main.hud.refresh.call_deferred()
 	mimic.position = Vector2(0.0, vtop)
 	mimic.size = Vector2(vs.x, vs.y - vtop)
 	if main != null and main.hud != null and main.hud.has_method("place_updown"):
