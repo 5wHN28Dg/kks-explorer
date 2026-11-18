@@ -99,7 +99,8 @@ class WebRequests(unittest.TestCase):
         errors = []
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.on('dialog', lambda d: d.accept(''))
-        answer_confirms(page, lambda msg: True)
+        self.asked = []
+        answer_confirms(page, lambda msg: (self.asked.append(msg), True)[1])
         return browser, ctx, page, errors
 
     def tag(self, code, n):
@@ -322,6 +323,9 @@ class WebRequests(unittest.TestCase):
         self.assertNotIn('vote', plate.text_content())
         self.assertIn('Stairs', card.locator('[data-kind=equipment]').text_content())
         eqp.locator('figure', has_text='front').get_by_role('button', name='Use this one').click()
+        # #365: it rejects the other photo for good, so it asks first, with how many
+        page.wait_for_function("c => !document.querySelector(`.card.group[data-code='${c}'] [data-kind=equipment_photo]`)", arg=code)
+        self.assertTrue(self.asked and self.asked[-1].startswith('Reject the other photo?'), self.asked)
         page.wait_for_function("c => !document.querySelector(`.card.group[data-code='${c}'] [data-kind=equipment_photo]`)", arg=code)
         self.assertEqual(card.locator('[data-kind=plate_photo]').count(), 1)   # the tag plate photo was not rejected by the pick
         st = {s['id']: s['status'] for s in self.subs(boss, 'status=all&kind=photo') if s['id'] in ids}
