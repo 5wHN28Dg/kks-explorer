@@ -17,7 +17,8 @@ const W = preload("res://ui/widgets.gd")
 const RunPanel = preload("res://workshop/run_panel.gd")
 
 const SIDE_W := 380.0           # a side panel's width at scale 1 (canvas px)...
-const SIDE_MAX := 0.3           # ...and at most this share of the screen's width
+const SIDE_MAX := 0.3           # ...and at most this share of the screen's width...
+const SIDE_LEAST := 240.0       # ...but this much at the least (at scale 1)
 const TOOLS_MAX := 0.4          # the tools' panel: at most this share of the screen's height (it scrolls past it)
 const MIDDLE_MIN := 0.35        # the tree's and the properties' row keeps at least this share of the height
 const FONT := 20                # the panels' text size at scale 1 (the theme's): nothing smaller (UI-UX-POLICY S1)
@@ -304,7 +305,7 @@ func fit() -> void:
 	if tools_scroll == null:
 		return
 	var vs := get_viewport_rect().size
-	var side := minf(SIDE_W * W.scale, vs.x * SIDE_MAX)
+	var side := side_width(vs.x)
 	if tree_panel.custom_minimum_size.x != side:
 		tree_panel.custom_minimum_size.x = side
 		props_panel.custom_minimum_size.x = side
@@ -328,6 +329,11 @@ func fit() -> void:
 	if not is_equal_approx(tools_scroll.custom_minimum_size.y, want):
 		tools_scroll.custom_minimum_size.y = want
 	_put_step()
+
+## A side panel's width on a screen `w` wide: SIDE_W, at most SIDE_MAX of the screen, but SIDE_LEAST at the least (a
+## phone at 200 %: the bench's wrapped buttons, BUTTON_MAX, and its margins).
+static func side_width(w: float) -> float:
+	return minf(SIDE_W * W.scale, maxf(w * SIDE_MAX, SIDE_LEAST * W.scale))
 
 ## The step line's place: shown while there are words (its height the wrapped words' at the column's width).
 func _size_step(wdt: float) -> void:

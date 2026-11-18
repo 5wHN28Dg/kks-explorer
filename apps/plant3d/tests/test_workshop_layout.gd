@@ -27,7 +27,8 @@ const SCREENS := [
 	["16:9 phone", Vector2i(1920, 1080), "1.35", [1.5]],   # (the top bar's least room: 1067 px across at 150 %)
 ]
 const SIDE_MIN := 300.0          # a side panel's least width (canvas px) on these screens
-const ROWS := 4                  # the tree and the properties are at least this many lines of text high
+const ROWS := 4                  # the tree and the properties are at least this many lines of text high (up to 150 %,
+                                 # the policy's S2; 3 at 200 % on a phone: rows())
 const TARGET_H := 52             # a control's height at scale 1 (W.button's)
 const FONT := 20                 # the panels' least text size at scale 1 (the theme's)
 
@@ -120,12 +121,12 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 	var line: float = pn.tree.get_theme_font("font").get_height(fs) + 4.0 * W.scale
 	if s > 1.0:   # (the phone: a row is a target, 52 at its scale: 48 dp at 150 %)
 		check(row >= TARGET_H * s - 1.0, "%s: the parts tree's rows are %.0f px tall (a target: %.0f)" % [at, row, TARGET_H * s])
-	check(row > 0.0 and pn.tree.size.y >= ROWS * line, "%s: the parts tree shows %d rows or more (%.0f px high, a row %.0f)" % [at, ROWS, pn.tree.size.y, row])
-	check(pn.props_panel.size.y >= ROWS * line, "%s: the properties are %d rows high or more (%.0f)" % [at, ROWS, pn.props_panel.size.y])
+	check(row > 0.0 and pn.tree.size.y >= rows() * line, "%s: the parts tree shows %d rows or more (%.0f px high, a row %.0f)" % [at, rows(), pn.tree.size.y, row])
+	check(pn.props_panel.size.y >= rows() * line, "%s: the properties are %d rows high or more (%.0f)" % [at, rows(), pn.props_panel.size.y])
 	check(pn.tools_scroll.size.y >= TARGET_H * s - 1.0, "%s: the tools show a row at least (%.0f px)" % [at, pn.tools_scroll.size.y])
 	_apart(at, [pn.top_bar, pn.tree_panel, pn.props_panel, pn.tools_panel])
 	# the side panels at their width, a long part name wrapping in the tree rather than widening it (#389)
-	var want_side: float = minf(pn.SIDE_W * s, screen.size.x * pn.SIDE_MAX)
+	var want_side: float = pn.side_width(screen.size.x)
 	var long_it: TreeItem = pn.tree.create_item(pn.tree.get_root())
 	long_it.set_text(0, "A part with a very long name that would never fit in the parts tree's width at all, however wide")
 	long_it.set_autowrap_mode(0, TextServer.AUTOWRAP_WORD_SMART)
@@ -173,7 +174,7 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 	pn.show_run(true)
 	await _frames(tree, 2)
 	check(pn.run_panel.is_visible_in_tree() and _inside(pn.run_panel.get_global_rect(), screen) and pn.run_panel.size.x >= side
-		and pn.run_panel.size.y >= ROWS * line, "%s: the bench's panel shows, inside the screen (%s)" % [at, pn.run_panel.get_global_rect()])
+		and pn.run_panel.size.y >= rows() * line, "%s: the bench's panel shows, inside the screen (%s)" % [at, pn.run_panel.get_global_rect()])
 	_apart(at, [pn.top_bar, pn.tree_panel, pn.run_panel, pn.tools_panel])
 	check(absf(pn.run_panel.size.x - want_side) <= 1.0, "%s: the bench's panel is %.0f wide (%.0f, as the others)" % [at,
 		pn.run_panel.size.x, want_side])
@@ -191,7 +192,7 @@ func _layout(tree: SceneTree, ws, at: String) -> void:
 	check(pn.strip.is_visible_in_tree(), "%s: the strip shows in a session" % at)
 	check(_inside(pn.strip.get_global_rect(), screen), "%s: the strip is on the screen (%s)" % [at, pn.strip.get_global_rect()])
 	_apart(at, [pn.strip, pn.top_bar, pn.tree_panel, pn.props_panel, pn.tools_panel])
-	check(pn.tree.size.y >= ROWS * line, "%s: with the strip the tree still shows %d rows (%.0f)" % [at, ROWS, pn.tree.size.y])
+	check(pn.tree.size.y >= rows_with_line() * line, "%s: with the strip the tree still shows %d rows (%.0f)" % [at, rows_with_line(), pn.tree.size.y])
 	ws._session = false
 	await _frames(tree, 1)
 	# a long properties text scrolls inside its panel: it never runs under the tools (#389)
@@ -235,8 +236,8 @@ func _steps(tree: SceneTree, ws, at: String) -> void:
 	var row: float = pn.tree.get_theme_font("font").get_height(fs) + pn.tree.get_theme_constant("v_separation")
 	# (a line of text: on a phone the tree's rows are taller, targets of 48 dp, and it scrolls through them)
 	var line: float = pn.tree.get_theme_font("font").get_height(fs) + 4.0 * W.scale
-	check(pn.tree.size.y >= ROWS * line and pn.props_panel.size.y >= ROWS * line, "%s: with the step line the tree and the properties still show %d rows (%.0f, %.0f px; a row %.0f)" % [
-		at, ROWS, pn.tree.size.y, pn.props_panel.size.y, row])
+	check(pn.tree.size.y >= rows_with_line() * line and pn.props_panel.size.y >= rows_with_line() * line, "%s: with the step line the tree and the properties still show %d rows (%.0f, %.0f px; a row %.0f)" % [
+		at, rows_with_line(), pn.tree.size.y, pn.props_panel.size.y, row])
 	ws.reset()
 	await _frames(tree, 2)
 	check(not sl.is_visible_in_tree() or sl.text == "", "%s: the step line goes with the steps" % at)
@@ -245,7 +246,19 @@ func _steps(tree: SceneTree, ws, at: String) -> void:
 ## gas turbine's bench's first button): on a phone those panels are full of 48 dp targets, with nowhere else to drag.
 func _touch_drag(tree: SceneTree, ws, at: String, kind: String) -> void:
 	var pn = ws.panels
-	await _drag_on(tree, pn.tools_scroll, pn.tools_panel.find_child("hide", true, false), at + ", the tools")
+	# (Hide; at 200 % the tools show their first row only: its first button)
+	var hb: Button = pn.tools_panel.find_child("hide", true, false)
+	if W.ui_size > 1.5:
+		hb = null
+		pn.tools_scroll.scroll_vertical = 0
+		await _frames(tree, 2)
+		for c in pn.tools_scroll.find_children("*", "Button", true, false):
+			var r: Rect2 = (c as Button).get_global_rect().intersection(pn.tools_scroll.get_global_rect())
+			if (c as Button).is_visible_in_tree() and not (c as Button).disabled and r.size.y >= 8.0:
+				hb = c
+				break
+	if hb != null:      # (at 200 % the first row may be the slider's alone: the bench's drag below stands for it)
+		await _drag_on(tree, pn.tools_scroll, hb, at + ", the tools")
 	if kind == "gas_turbine":
 		pn.show_run(true)
 		await _frames(tree, 3)
@@ -323,6 +336,15 @@ func _drag_on(tree: SceneTree, sc: ScrollContainer, b: Button, at: String) -> vo
 		check(presses[0] == 1, "%s: a tap on %s pressed it %d times" % [at, b.name, presses[0]])
 	b.pressed.disconnect(count)
 	sc.scroll_vertical = 0
+
+## The lines of text the tree and the properties keep at the UI size now: ROWS up to 150 % (UI-UX-POLICY S2's
+## range), one less above it (a phone at 200 %: 450 px high, its top bar and a row of tools).
+static func rows() -> int:
+	return ROWS if W.ui_size <= 1.5 else ROWS - 1
+
+## With the session's strip or the step line too, at 200 %: two lines (the Tools button folds the tools for more).
+static func rows_with_line() -> int:
+	return ROWS if W.ui_size <= 1.5 else 2
 
 func _inside(r: Rect2, outer: Rect2) -> bool:
 	return r.size.x > 0.0 and r.size.y > 0.0 and r.position.x >= outer.position.x - 0.5 and r.position.y >= outer.position.y - 0.5 \
