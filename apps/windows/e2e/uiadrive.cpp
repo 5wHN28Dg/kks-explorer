@@ -33,7 +33,8 @@
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
 //                           what a person's keyboard does there (an edit or list of that name before any other
 //                           element of it; `keys` posts to the first element, which may be the window or a label)
-//   resize <name> <w> <h>   the top-level window holding the element restored and resized to w x h (physical px)
+//   resize <name> <w> <h>   the top-level window holding the element restored and resized to w x h (physical px; at
+//                           most what the screen allows, logged)
 //   apart <drawing>         no control of the drawing's window meets the drawing's rectangle, and every button, field,
 //                           list and check box wholly in view is what UI Automation's hit test finds at its middle
 //   clear <drawing> <name>  the same for the controls of that name only (at least one must be there)
@@ -316,6 +317,8 @@ static int apart(DWORD &pid, IUIAutomationElement *drawing, const std::string &o
     if (!root) { say("ERROR: the drawing has no window"); return 1; }
     RECT cr; GetClientRect(root, &cr);
     POINT c0{cr.left, cr.top}, c1{cr.right, cr.bottom}; ClientToScreen(root, &c0); ClientToScreen(root, &c1);
+    MONITORINFO mi = {sizeof mi}; GetMonitorInfoW(MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST), &mi);
+    RECT work = mi.rcWork;
     IUIAutomationTreeWalker *tw = nullptr; ua->get_RawViewWalker(&tw);
     IUIAutomationElement *top = nullptr; ua->ElementFromHandle((UIA_HWND)root, &top);
     IUIAutomationCondition *all = nullptr; ua->CreateTrueCondition(&all);
@@ -347,10 +350,11 @@ static int apart(DWORD &pid, IUIAutomationElement *drawing, const std::string &o
             UIA_HWND hw = 0; el->get_CurrentNativeWindowHandle(&hw);
             bool test = hw && IsWindowVisible((HWND)hw) && (t == UIA_ButtonControlTypeId || t == UIA_EditControlTypeId ||
                         t == UIA_ListControlTypeId || t == UIA_CheckBoxControlTypeId || t == UIA_RadioButtonControlTypeId);
-            if (test) {      // wholly in view: inside its page and the main window's client area
+            if (test) {      // wholly in view: inside its page, the main window's client area and the work area (the
+                             // taskbar, always on top, may cover the bottom of a window as tall as the screen)
                 RECT pr; GetWindowRect(GetParent((HWND)hw), &pr);
-                test = r.left >= std::max(pr.left, c0.x) && r.top >= std::max(pr.top, c0.y) &&
-                       r.right <= std::min(pr.right, c1.x) && r.bottom <= std::min(pr.bottom, c1.y);
+                test = r.left >= std::max({pr.left, c0.x, work.left}) && r.top >= std::max({pr.top, c0.y, work.top}) &&
+                       r.right <= std::min({pr.right, c1.x, work.right}) && r.bottom <= std::min({pr.bottom, c1.y, work.bottom});
             }
             if (test) {
                 hit++;
@@ -534,7 +538,8 @@ int wmain(int argc, wchar_t **argv) {
             SetWindowPos(root, nullptr, 0, 0, std::stoi(f[2]), std::stoi(f[3]), SWP_NOZORDER | SWP_NOACTIVATE);
             Sleep(800);
             RECT r; GetWindowRect(root, &r);
-            say("  window " + std::to_string(r.right - r.left) + " x " + std::to_string(r.bottom - r.top));
+            say("  window " + std::to_string(r.right - r.left) + " x " + std::to_string(r.bottom - r.top) +
+                (r.right - r.left != std::stoi(f[2]) || r.bottom - r.top != std::stoi(f[3]) ? " (as large as the screen allows)" : ""));
             continue;
         }
         if (cmd == "apart" || cmd == "clear") {

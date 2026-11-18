@@ -60,9 +60,10 @@ proc checkTabs(d: int, labels: openArray[string]): int =
   ## the tabs at this DPI, the "drawing" (a sibling made after them, as in the app) beside the sidebar; -> rows
   makeFonts(d)
   let side = int(px(SideW))
+  # (the stand-in drawing first: above the tabs in z-order, so a tab under it is not what the hit test finds)
+  let drawing = control(main, "STATIC", "drawing", 0)[0]
   var tabs: seq[HWND]
   for l in labels: tabs.add control(main, "BUTTON", l, WS_TABSTOP or BS_PUSHBUTTON)[0]
-  let drawing = control(main, "STATIC", "drawing", 0)[0]
   let h = placeTabs(tabs, 0, 0, side)
   MoveWindow(drawing, int32(side), 0, 600, 600, 1)
   var tops: seq[int32]
@@ -77,16 +78,16 @@ proc checkTabs(d: int, labels: openArray[string]): int =
       let o = inMain(tabs[j])
       check r.left >= o.right or o.left >= r.right or r.top >= o.bottom or o.top >= r.bottom
     let mid = POINT(x: (r.left + r.right) div 2, y: (r.top + r.bottom) div 2)
-    check ChildWindowFromPoint(main, mid) == b         # what a click at its middle reaches
+    check ChildWindowFromPoint(main, mid) == b         # what a click at its middle reaches, not the drawing
     if r.top notin tops: tops.add r.top
   for b in tabs: DestroyWindow(b)
   DestroyWindow(drawing)
   tops.len
 
 suite "the tabs inside the sidebar":
-  test "the five tabs fit at 100, 125 and 150 % scaling":
+  test "the five tabs fit in one row at 100, 125 and 150 % scaling":
     for d in [96, 120, 144]:
-      check checkTabs(d, Labels) >= 1
+      check checkTabs(d, Labels) == 1
 
   test "longer labels wrap into more rows, still inside the sidebar":
     check checkTabs(96, ["Drawings and sheets", "Procedures to follow", "Review queue", "Learning courses",

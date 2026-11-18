@@ -497,7 +497,7 @@ proc placeTabs*(tabs: seq[HWND], x, y, w: int): int =
     var r = RECT()
     discard DrawTextW(dc, newWideCString(b.text), -1, addr r, DT_CALCRECT or DT_SINGLELINE)  # ("&&" is one "&")
     ReleaseDC(b, dc)
-    widths.add int(r.right - r.left) + int(px(20))
+    widths.add int(r.right - r.left) + int(px(12))   # (the least room around a label; a row's spare is shared out)
   let avail = max(1, w - 2 * m)
   let rows = tabRows(widths, avail, m)
   for ri, row in rows:
