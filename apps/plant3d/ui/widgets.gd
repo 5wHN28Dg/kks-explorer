@@ -86,6 +86,9 @@ static func make_theme() -> Theme:
 	t.set_font_size("normal_font_size", "RichTextLabel", int(20 * scale))
 	t.set_font_size("bold_font_size", "RichTextLabel", int(20 * scale))
 	t.set_font_size("font_size", "Button", int(20 * scale))
+	# a list's rows (an OptionButton's popup) as tall as the buttons: 48 dp on a phone at its UI size (T1)
+	t.set_font_size("font_size", "PopupMenu", int(20 * scale))
+	t.set_constant("v_separation", "PopupMenu", int(maxf(0.0, 52.0 * scale - 1.3 * 20.0 * scale)))
 	t.set_constant("separation", "VBoxContainer", int(8 * scale))
 	t.set_constant("separation", "HBoxContainer", int(8 * scale))
 	return t
@@ -114,6 +117,16 @@ static func button(text: String, f: Callable, min_w := 0) -> Button:
 	b.custom_minimum_size = Vector2(maxf(min_w, 0.0 if scale <= 1.0 else 52.0) * scale, 52 * scale)
 	b.focus_mode = Control.FOCUS_ALL
 	b.pressed.connect(f)
+	return b
+
+
+## "Copy CODE": on a narrow panel (a phone at a large UI size) "Copy" goes above the code, which stays whole on its
+## line (UI-UX-POLICY S3), instead of the button making its row wider than the panel.
+static func copy_button(code: String, f: Callable) -> Button:
+	var b := button("Copy " + code, f)
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var cw: float = ThemeDB.fallback_font.get_string_size(code, HORIZONTAL_ALIGNMENT_LEFT, -1, int(20 * scale)).x
+	b.custom_minimum_size.x = maxf(b.custom_minimum_size.x, ceilf(cw) + 2.0 * 12.0 * scale + 2.0)
 	return b
 
 
