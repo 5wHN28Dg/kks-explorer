@@ -160,7 +160,7 @@ private fun NameFields(n: Names) {
 @Composable
 private fun CodeJoin(onJoined: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var text by rememberSaveable { mutableStateOf("") }
+    var text by remember { mutableStateOf("") }      // (not saved: an invite is a one-time join token)
     val names = rememberSaveable(saver = Names.Saver) { Names() }
     var join by remember { mutableStateOf<Sync.Join?>(null) }
     var msg by remember { mutableStateOf("") }

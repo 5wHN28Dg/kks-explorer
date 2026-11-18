@@ -320,7 +320,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             ui.placeNow = null
         }
     }
-    LaunchedEffect(ui.sheet, view) {
+    LaunchedEffect(ui.sheet, view, current?.id) {
         val v = view ?: return@LaunchedEffect
         if (current != null) {
             v.restore = if (ui.placeSheet == current.id) ui.place else null
@@ -343,6 +343,13 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             linkBoxes.indexOfFirst { Math.abs(it.x0 - a.second) < 0.01f && Math.abs(it.y0 - a.third) < 0.01f } } ?: -1
     }
     val say: (String) -> Unit = { m -> scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar(m) } }
+    // another tag or sheet while the panel holds typed text: asked first (#366, D3)
+    var leaving by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val leavePanel = { then: () -> Unit -> if (ui.selected.isNotEmpty() && PanelDrafts.any()) leaving = then else then() }
+    leaving?.let { then ->
+        Confirm("Discard your edits?", "What you typed in the panel has not been saved.", "Discard", { PanelDrafts.drop(); then() },
+            { leaving = null }, no = "Keep editing")
+    }
     val capped = "At most $MAX_PICK tags at once: send these first"
     val toggleCode: (String) -> Unit = { code ->
         if (code in selection) selection = selection - code
@@ -473,7 +480,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                             val (_, m) = submit("link", JSONObject().put("proc", ui.linkProc).put("step", ui.linkStep).put("kks", code).put("on", true))
                             scope.launch { snack.showSnackbar("$code → step ${ui.linkStep}: $m") }
                         }
-                    } else ui.selected = id
+                    } else if (id != ui.selected) leavePanel { ui.selected = id }
                 }
             })
             if (list.isEmpty()) Card(Modifier.align(Alignment.Center).padding(24.dp)) {
@@ -558,7 +565,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     item { Text("Sheets", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp)) }
                     items(list) { s ->
                         ListItem(headlineContent = { Text(s.name) }, supportingContent = { Text("${s.tags} tags" + if (s.review > 0) ", ${s.review} to review" else "") },
-                            modifier = Modifier.clickable { ui.sheet = s.id; ui.selected = ""; drawer = false })
+                            modifier = Modifier.clickable { drawer = false; leavePanel { ui.sheet = s.id; ui.selected = "" } })
                     }
                 }
             }
@@ -594,7 +601,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 "note" -> NoteForAll(selectedCodes, sent) { multi = "" }
             }
             marked?.let { b ->
-                MarkDialog(current!!, b, view, snack, onDone = { ok -> marked = null; if (ok) marking = false })
+                // (current is null for a moment after the app was stopped with this open: the sheets are read again)
+                current?.let { c -> MarkDialog(c, b, view, snack, onDone = { ok -> marked = null; if (ok) marking = false }) }
             }
             if (ui.selected.isNotEmpty()) TagPanel(ui.selected, rev, onClose = { ui.selected = "" },
                 onGo = { id, _, _ -> ui.show(id) }, snack = snack, modifier = Modifier.align(Alignment.BottomCenter),

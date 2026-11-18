@@ -76,6 +76,22 @@ private fun Heading(text: String, modifier: Modifier = Modifier) =
 /** the panel's height, kept while the app runs: the person sets it once by dragging the handle */
 private object PanelSize { var dp = -1f }
 
+/** what is typed and not sent in the open tag's panel, by form ("form", "desc", "review"): Back, Close, another tag or
+ *  another sheet ask before it goes (#366, D3). `reset` empties them all (their saved state is keyed by it). */
+object PanelDrafts {
+    val dirty = mutableStateMapOf<String, Boolean>()
+    var reset by mutableIntStateOf(0)
+    fun any() = dirty.values.any { it }
+    fun drop() { dirty.clear(); reset++ }
+}
+
+/** register whether `key`'s form holds typed text, while it is on screen */
+@Composable
+private fun DraftFlag(key: String, typed: Boolean) {
+    SideEffect { PanelDrafts.dirty[key] = typed }
+    DisposableEffect(key) { onDispose { PanelDrafts.dirty.remove(key) } }
+}
+
 /** the equipment panel (R3–R6): decoded code, location list, the person's fields (read-only until Edit), review */
 @Composable
 fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, List<Float>?) -> Unit, snack: SnackbarHostState,
@@ -91,18 +107,21 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
     var height by remember { mutableFloatStateOf(if (PanelSize.dp > 0) PanelSize.dp else usual) }
     val dens = androidx.compose.ui.platform.LocalDensity.current.density
     // the Edit form and what is typed in it come back after the phone is turned or the app was stopped (#366)
-    var editing by rememberSaveable(id) { mutableStateOf(false) }
+    val reset = PanelDrafts.reset
+    var editing by rememberSaveable(id, reset) { mutableStateOf(false) }
     val eq0 = t.optJSONObject("equipment") ?: JSONObject()
-    var values by rememberSaveable(id) { mutableStateOf(HashMap(FIELDS.associate { (f, _) -> f to eq0.optString(f) })) }
-    var note by rememberSaveable(id) { mutableStateOf("") }
+    var values by rememberSaveable(id, reset) { mutableStateOf(HashMap(FIELDS.associate { (f, _) -> f to eq0.optString(f) })) }
+    var note by rememberSaveable(id, reset) { mutableStateOf("") }
     val changed = editing && (FIELDS.any { (f, _) -> (values[f] ?: "").trim() != eq0.optString(f) } || note.isNotBlank())
-    // Back or Close with something typed asks first (D3); without, they close as before
+    DraftFlag("form", changed)
+    // Back or Close with something typed in any of the panel's forms asks first (D3); without, they close as before
+    val typed = PanelDrafts.any()
     var discarding by remember(id) { mutableStateOf<(() -> Unit)?>(null) }
-    val leaveForm = { then: () -> Unit -> if (changed) discarding = then else { editing = false; then() } }
-    BackHandler(enabled = editing) { leaveForm {} }
+    val leaveForm = { then: () -> Unit -> if (typed) discarding = then else { editing = false; then() } }
+    BackHandler(enabled = editing || typed) { leaveForm {} }
     discarding?.let { then ->
         Confirm("Discard your edits?", "What you typed in the panel has not been saved.", "Discard", {
-            editing = false; values = HashMap(FIELDS.associate { (f, _) -> f to eq0.optString(f) }); note = ""; then()
+            PanelDrafts.drop(); then()
         }, { discarding = null }, no = "Keep editing")
     }
     // The keyboard (UI/UX audit of #363, R3): while the panel is open the window is not panned up under the status bar
@@ -282,10 +301,12 @@ private fun PanelHeading(code: String, sub: String, onClose: () -> Unit, snack: 
 private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
     val sug = t.optJSONObject("suggestion")
-    var code by rememberSaveable(t.optString("id")) { mutableStateOf(sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) }
-    var isa by rememberSaveable(t.optString("id")) { mutableStateOf(sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa")) }
-    if (code != (sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) ||
-        isa != (sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa"))) HoldLinks()     // (a correction being typed)
+    var code by rememberSaveable(t.optString("id"), PanelDrafts.reset) { mutableStateOf(sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) }
+    var isa by rememberSaveable(t.optString("id"), PanelDrafts.reset) { mutableStateOf(sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa")) }
+    val correcting = code != (sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) ||
+        isa != (sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa"))
+    if (correcting) HoldLinks()     // (a correction being typed)
+    DraftFlag("review", correcting)
     val read = t.optJSONArray("read")
     var notTag by remember(t.optString("id")) { mutableStateOf(false) }
     Text("Check this tag", style = MaterialTheme.typography.titleMedium)
@@ -328,8 +349,9 @@ fun credit(w: JSONObject?): String {
 @Composable
 private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
-    var editing by rememberSaveable(code) { mutableStateOf(false) }
-    var text by rememberSaveable(code, d.str("text")) { mutableStateOf(d.str("text")) }
+    var editing by rememberSaveable(code, PanelDrafts.reset) { mutableStateOf(false) }
+    var text by rememberSaveable(code, d.str("text"), PanelDrafts.reset) { mutableStateOf(d.str("text")) }
+    DraftFlag("desc", editing && text.trim() != d.str("text").trim())
     val draft = d.str("status") == "draft"
     Heading("Description")
     Surface(color = if (draft) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,

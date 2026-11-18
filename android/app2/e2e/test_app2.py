@@ -2523,18 +2523,17 @@ class Phone(unittest.TestCase):
         ui.tap('Edit', exact=True)
         ui.scroll_to('Near / landmark', exact=True)
         ui.type_into('Near / landmark', 'north door typed')
-        # turned on its side and back: the form and the text are still there
-        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'user_rotation', '0')
-        auto = ui.sh('settings', 'get', 'system', 'accelerometer_rotation').strip()
-        if auto in ('0', '1'):
-            self.addCleanup(ui.sh, 'settings', 'put', 'system', 'accelerometer_rotation', auto)
-        ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
-        ui.sh('settings', 'put', 'system', 'user_rotation', '1')
+        # the activity made again (a font size change: turning the phone is handled in place, configChanges in the
+        # manifest): the form and the text are still there
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', '1.0')
+        pid0 = ui.sh('pidof', PKG).strip()
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.15')
         time.sleep(3)
         ui.find('north door typed', exact=True, timeout=10)
-        ui.sh('settings', 'put', 'system', 'user_rotation', '0')
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
         time.sleep(3)
         ui.find('north door typed', exact=True, timeout=10)
+        self.assertEqual(ui.sh('pidof', PKG).strip(), pid0, 'the font change restarted the process, not just the screen')
         # stopped by Android in the background (am kill: what the system does to a cached app), then opened again
         pid = ui.sh('pidof', PKG).strip()
         ui.sh('input', 'keyevent', '3')                       # Home

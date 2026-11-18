@@ -134,11 +134,11 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
     var picked by remember { mutableStateOf<Bitmap?>(null) }
     // the picture in the editor, as read, kept in a file while it is there: Android may stop the app in the background
     // (the camera app in front of it is the usual case), and the photo then comes back to its editor (#366)
-    val editFile = remember(kks) { File(ctx.cacheDir, "editing/" + kks.filter { it.isLetterOrDigit() } + ".img").also { it.parentFile?.mkdirs() } }
+    val editFile = remember(kks) { File(ctx.cacheDir, "editing/" + java.net.URLEncoder.encode(kks, "UTF-8") + ".img").also { it.parentFile?.mkdirs() } }
     var editing by rememberSaveable(kks) { mutableStateOf(false) }
     // from the camera or gallery opening until the photo is in its editor: a link waits (it could change the panel,
     // and the photo would come back to nothing)
-    var awaiting by rememberSaveable(kks) { mutableStateOf(false) }
+    var awaiting by remember(kks) { mutableStateOf(false) }      // (not saved: a result that never comes would hold links for good)
     if (awaiting) HoldLinks()
     var fromCamera by rememberSaveable(kks) { mutableStateOf(true) }       // for Retake: the camera again, or the gallery
     var plate by rememberSaveable(kks) { mutableStateOf(false) }           // this picture is of the equipment's tag plate
@@ -165,8 +165,7 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
             withContext(Dispatchers.IO) {
                 val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
                 if (uri == camUri) camFile.delete()
-                runCatching { editFile.writeBytes(raw) }
-                orientedBitmap(raw)
+                orientedBitmap(raw)?.also { runCatching { editFile.writeBytes(raw) } }   // (kept only once it reads)
             }
         } finally { preparing = false }
         awaiting = false
@@ -181,7 +180,8 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
             if (picked == null) editing = false
         }
     }
-    fun closeEditor() { picked = null; editing = false; scope.launch(Dispatchers.IO) { editFile.delete() } }
+    // (deleted at once, not later: a picture chosen right after must not lose its file to this delete)
+    fun closeEditor() { picked = null; editing = false; editFile.delete() }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u: Uri? -> if (u != null) load(u) else awaiting = false }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) load(camUri) else awaiting = false }
     // the CAMERA permission is declared (QR scanning), so the camera app may only be asked once it is granted
