@@ -426,7 +426,7 @@ class WebSignOut(unittest.TestCase):
             alis = join_file('ali', 'tablet')
             expect(page.locator('#toast')).to_have_text('Certified a device for ali. Now give them a bundle.')
             self.assertEqual(len(said), 1)
-            self.assertIn('already exists. Add this computer as another device of theirs?', said[0])
+            self.assertTrue(said[0].startswith('Add this computer as another device of ') and '(ali, user) already exists.' in said[0], said[0])
             self.assertEqual([x[1].get('password') for x in page.evaluate('window.asked')[n:]], [None, None])
             self.assertIn(alis, {d['device'] for d in self.boss.req('GET', '/api/devices')['all']})
             self.assertEqual(page.locator('#main input[type=password]').count(), 0)

@@ -1063,6 +1063,17 @@ class Phone(unittest.TestCase):
         time.sleep(1)
         self.assertGreater(held, 2000, 'no loupe while the finger draws')
         self.assertLess(orange_pixels(), 200, 'the loupe stayed after the finger left')
+        # #365: with something drawn, Back and Cancel ask before the photo is dropped; Keep editing keeps it
+        self.assertTrue(undo_enabled(), 'the held stroke drew no mark')
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Discard the photo?', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('Add an equipment photo', exact=True)
+        ui.tap('Cancel', exact=True)
+        ui.find('Discard the photo?', exact=True, timeout=10)
+        ui.find('Discard photo', exact=True)
+        ui.tap('Keep editing', exact=True)
+        self.assertTrue(undo_enabled(), 'the marks went with Keep editing')
         ui.tap('Retake', exact=True)
         snap()
         ui.tap('Send', exact=True)
@@ -1095,7 +1106,7 @@ class Phone(unittest.TestCase):
         ui.scroll_to('Delete', exact=True)
         ui.tap('Delete', exact=True)
         ui.find('Delete this photo?', exact=True)
-        ui.tap('Delete', exact=True)
+        ui.tap('Delete photo', exact=True)
         self.assertFalse(ui.present('bad photo id'), 'the delete sent no photo id')
         def left():
             c = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501']
@@ -1944,6 +1955,12 @@ class Phone(unittest.TestCase):
         self.assertFalse(ui.present('by omar ·'), 'the username instead of the full name')
         self.assertFalse(ui.present('Use this one', exact=True), 'Pick offered with one photo per kind')
         self.assertEqual(sum(1 for n in ui.nodes() if ui.label(n) == '11LAB70AA501'), 1, 'one card for the code')
+        # #365: Reject is final, so it asks first, naming whose proposal; Cancel leaves it waiting
+        ui.tap('Reject', exact=True)
+        ui.find('Omar Fullname\'s proposal is discarded; they see that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        ui.tap('Cancel', exact=True)
+        time.sleep(1)
+        self.assertEqual({x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}, {'pending'})
         # a second equipment photo: now those two compete
         omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'second', 'dataUrl': self.jxl('eq2')}})
         ui.sh('input', 'keyevent', '4')
@@ -1954,6 +1971,9 @@ class Phone(unittest.TestCase):
         ui.tap('Approvals', exact=True)
         ui.find('Equipment photo (2)', exact=True, timeout=20)
         ui.tap('Use this one', exact=True)
+        # #365: it rejects the rival for good: asked first, with how many (B2)
+        ui.find('Reject the other photo?', exact=True, timeout=10)
+        ui.tap('Use this one and reject the other', exact=True)
 
         def decided():
             subs = [x for x in omar.req('GET', '/api/submissions?status=all')['submissions'] if x['kind'] == 'photo']
@@ -2383,6 +2403,59 @@ class Phone(unittest.TestCase):
                 x.strip() for x in ui.sh('dumpsys', 'activity', 'activities').splitlines() if 'dat=' in x)[:2000])
         ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
 
+    def test_destructive(self):
+        """#365 (D1, D2): "Not a tag" asks first (Cancel sends nothing; the named button does), and unlinking a
+        procedure step's code asks nothing but offers Undo in its snackbar, which links it again"""
+        plant = os.path.join(self.dir, 'plant-data')
+        cfg = os.path.join(self.dir, 'config.json')
+        with open(os.path.join(plant, 'tags.json')) as f: tags = json.load(f)
+        tags.append({'id': 'sample:doubt', 'sheet': 'sample', 'kks': '11LAE31AP001', 'suffix': '', 'isa': None, 'kind': 'equipment',
+                     'status': 'review', 'conf': 0.4, 'bbox': [800, 700, 920, 760], 'read': ['11LAE31', 'AP001']})
+        with open(os.path.join(plant, 'tags.json'), 'w') as f: json.dump(tags, f)
+        with open(os.path.join(plant, 'procedures.json'), 'w') as f:
+            json.dump([{'id': 'P-1', 'title': 'Start the test pump', 'path': ['Tests'], 'page': 1,
+                        'steps': [{'n': 1, 'text': 'Open the suction valve'}, {'n': 2, 'text': 'Start the pump'}]}], f)
+        r = subprocess.run([SERVER, 'publish-data', plant, '--config', cfg], cwd=self.dir, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        code = '11LAB70AA501'
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'P-1', 'step': 1, 'kks': code, 'on': True}})['status'], 'approved')
+        linked = lambda: any(l['kks'] == code and l['proc'] == 'P-1' for l in self.boss.req('GET', '/api/state')['links'])
+        reviewed = lambda: self.boss.req('GET', '/api/state')['reviews'].get('sample:doubt')
+        self.join()
+        # Not a tag: asked, and Cancel sends nothing
+        ui.type_into('Search KKS or description', 'LAE31AP001')
+        ui.tap('11LAE31AP001', exact=True)
+        ui.scroll_to('Not a tag', exact=True)
+        ui.tap('Not a tag', exact=True)
+        ui.find('Mark this as not a tag?', exact=True, timeout=10)
+        ui.find('It is no longer shown as a tag, on every device.', exact=True)
+        ui.tap('Cancel', exact=True)
+        time.sleep(2)
+        self.assertIsNone(reviewed(), 'Not a tag was sent before it was confirmed')
+        ui.tap('Not a tag', exact=True)
+        ui.find('Mark this as not a tag?', exact=True, timeout=10)
+        ui.sh('input', 'keyevent', '4')                       # Back keeps too
+        time.sleep(1)
+        self.assertFalse(ui.present('Mark this as not a tag?', exact=True))
+        panel = ui.find('Not a tag', exact=True).get('bounds')
+        ui.tap('Not a tag', exact=True)
+        ui.find('Mark this as not a tag?', exact=True, timeout=10)
+        named = [n for n in ui.nodes() if ui.label(n) == 'Not a tag' and n.get('bounds') != panel]
+        self.assertEqual(len(named), 1, 'the question names its button "Not a tag"')
+        b = [int(v) for v in re.findall(r'\d+', named[0].get('bounds'))]
+        ui.sh('input', 'tap', str((b[0] + b[2]) // 2), str((b[1] + b[3]) // 2))
+        self.wait_server(lambda: (reviewed() or {}).get('status') == 'rejected', 'Not a tag sent nothing')
+        ui.sh('input', 'keyevent', '4')
+        # Unlink: no question, an Undo in the snackbar
+        ui.tap('Procedures', exact=True)
+        ui.tap('P-1  Start the test pump', exact=True, timeout=20)
+        ui.tap(f'Unlink {code} from step 1', exact=True, timeout=20)
+        ui.find(f'Unlinked {code} from step 1', exact=True, timeout=10)
+        self.wait_server(lambda: not linked(), 'Unlink unlinked nothing')
+        ui.tap('Undo', exact=True)
+        self.wait_server(linked, 'Undo did not link it again')
+        ui.find(f'Unlink {code} from step 1', exact=True, timeout=20)
+
     def test_member_pages(self):
         """requests 6, 9 and 10 as a member: the leaderboard; Updates on Manage's top level (not in Account); My
         proposals filtered by status and grouped by code"""
@@ -2434,7 +2507,8 @@ class Phone(unittest.TestCase):
 # ~0.8 GiB) while part 2 ended at 5.79, so test_description_and_credit and test_app_links went to part 2.
 PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_queued_goes', 'course_pairing', 'copy_close_batch',
           'panel_keyboard', 'photo_size'),
-         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
+         ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links',
+          'destructive'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'flow', 'course_figures', 'photo_marks'))
 

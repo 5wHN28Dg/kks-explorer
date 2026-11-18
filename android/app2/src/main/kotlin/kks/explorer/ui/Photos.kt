@@ -178,7 +178,7 @@ fun PhotoStrip(kks: String, photos: List<JSONObject>, snack: SnackbarHostState, 
         if (ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera.launch(camUri) else perm.launch(Manifest.permission.CAMERA)
     }
     val hasPlate = photos.any { isPlate(it.str("caption")) }
-    if (delete.isNotEmpty()) Confirm("Delete this photo?", "It is removed for everyone once approved.", "Delete", {
+    if (delete.isNotEmpty()) Confirm("Delete this photo?", "It is removed for everyone once approved.", "Delete photo", {
         val (_, m) = submit("photo_delete", JSONObject().put("photo_id", delete)); scope.launch { snack.showSnackbar(m) }
     }, { delete = "" })
     Text("Photos", style = MaterialTheme.typography.titleMedium)
@@ -334,7 +334,13 @@ internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () 
         zoom = nz; centre = clamp(Offset(ip.x - (p.x - box.width / 2f) / s, ip.y - (p.y - box.height / 2f) / s), nz)
     }
     val baseW = maxOf(3f, src.width / 200f)                 // image px, × the mark's size
-    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    // #365: what was drawn or typed is not dropped by Cancel or Back without asking (an outside tap does nothing)
+    var discarding by remember { mutableStateOf(false) }
+    val tryCancel = { if (marks.isEmpty() && caption.isBlank() && note.isBlank()) onCancel() else discarding = true }
+    Dialog(onDismissRequest = tryCancel, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
+                                                                      dismissOnClickOutside = false)) {
+        if (discarding) Confirm("Discard the photo?", "The photo and what you drew or typed on it are not sent.", "Discard photo",
+            onCancel, { discarding = false }, no = "Keep editing")
         FullScreenDialogWindow()
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -436,7 +442,7 @@ internal fun Annotate(src: Bitmap, plate: Boolean, retake: String, onCancel: () 
                         Icon(Glyphs.UNDO, contentDescription = null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Undo")
                     }
                     OutlinedButton(onClick = onRetake) { Text(retake) }
-                    OutlinedButton(onClick = onCancel) { Text("Cancel") }
+                    OutlinedButton(onClick = tryCancel) { Text("Cancel") }
                     // the marks are burned in off the main thread (a 2560 px copy); Send waits meanwhile
                     Button(onClick = {
                         sending = true

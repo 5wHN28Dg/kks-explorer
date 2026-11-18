@@ -272,6 +272,7 @@ private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
     if (code != (sug?.optString("kks")?.ifEmpty { null } ?: t.optString("code")) ||
         isa != (sug?.optString("isa")?.ifEmpty { null } ?: t.optString("isa"))) HoldLinks()     // (a correction being typed)
     val read = t.optJSONArray("read")
+    var notTag by remember(t.optString("id")) { mutableStateOf(false) }
     Text("Check this tag", style = MaterialTheme.typography.titleMedium)
     Text("The reader saw ${read?.optString(0)} / ${read?.optString(1)}, confidence ${(t.optDouble("conf") * 100).toInt()} %")
     OutlinedTextField(code, { code = it }, label = { Text("KKS (with suffix)") }, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
@@ -286,11 +287,13 @@ private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
             val (_, msg) = submit("review", JSONObject().put("tag_id", t.getString("id")).put("data", data).put("base", JSONObject.NULL))
             scope.launch { snack.showSnackbar(msg) }
         }) { Text("Confirm") }
-        OutlinedButton(onClick = {
-            val (_, msg) = submit("review", JSONObject().put("tag_id", t.getString("id")).put("data", JSONObject().put("status", "rejected")).put("base", JSONObject.NULL))
-            scope.launch { snack.showSnackbar(msg) }
-        }) { Text("Not a tag") }
+        OutlinedButton(onClick = { notTag = true }) { Text("Not a tag") }
     }
+    // #365: asked first (the tag leaves the drawing on every device)
+    if (notTag) Confirm("Mark this as not a tag?", "It is no longer shown as a tag, on every device.", "Not a tag", {
+        val (_, msg) = submit("review", JSONObject().put("tag_id", t.getString("id")).put("data", JSONObject().put("status", "rejected")).put("base", JSONObject.NULL))
+        scope.launch { snack.showSnackbar(msg) }
+    }, { notTag = false })
 }
 
 /** the custom field a confirmed description lives in (core views.nim DescriptionKey) */

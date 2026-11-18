@@ -54,11 +54,15 @@ fun Dim(text: String) = Text(text, style = MaterialTheme.typography.bodyMedium, 
 
 /** ask before something that can't be undone in one tap */
 @Composable
-fun Confirm(title: String, text: String, yes: String, onYes: () -> Unit, onDismiss: () -> Unit) {
+fun Confirm(title: String, text: String, yes: String, onYes: () -> Unit, onDismiss: () -> Unit, destructive: Boolean = true,
+            no: String = "Cancel") {
+    // #365 (D2 in docs/UI-UX-POLICY.md): the confirming button names the action and, when it deletes, discards or can't
+    // be taken back, is in the error colour; Back, a tap outside and `no` keep
     AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { if (text.isNotEmpty()) Text(text) },
         // act first, then close: closing may clear the state the action reads (a photo delete sent an empty id)
-        confirmButton = { TextButton(onClick = { onYes(); onDismiss() }) { Text(yes) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+        confirmButton = { TextButton(onClick = { onYes(); onDismiss() },
+            colors = if (destructive) ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.textButtonColors()) { Text(yes) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(no) } })
 }
 
 /** Material icons (Apache-2.0) as vectors: one look for every icon, unlike text characters, whose glyphs come from

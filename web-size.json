@@ -70,10 +70,10 @@
  },
  "shell": {
   "files": {
-   "admin.html": 6703,
-   "admin.js": 85036,
+   "admin.html": 6313,
+   "admin.js": 85043,
    "apple-touch-icon.png": 1057,
-   "common.js": 99290,
+   "common.js": 102378,
    "course-bridge.js": 3936,
    "course-figure.js": 19419,
    "course.css": 15671,
@@ -83,11 +83,11 @@
    "icon-192.png": 709,
    "icon-512.png": 3047,
    "icon.svg": 303,
-   "index.html": 23980,
-   "index.js": 104963,
+   "index.html": 24033,
+   "index.js": 105534,
    "kks-wasm-worker.js": 822,
    "kks-wasm.js": 3590,
-   "learning.html": 2095,
+   "learning.html": 2148,
    "learning.js": 1904,
    "manifest.webmanifest": 477,
    "sw.js": 8971,
@@ -97,6 +97,6 @@
    "vendor/kks/kks-simd-dec.js": 7079,
    "vendor/kks/kks-simd-dec.wasm": 741170
   },
-  "total": 1201412
+  "total": 1204794
  }
 }

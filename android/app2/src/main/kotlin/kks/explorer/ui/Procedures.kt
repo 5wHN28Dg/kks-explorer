@@ -80,8 +80,14 @@ private fun ProcedureDetail(ui: Ui, id: String, rev: Int, snack: SnackbarHostSta
                             if (l.str("tag").isNotEmpty()) ui.show(l.getString("tag")) else scope.launch { snack.showSnackbar("$k is not on any sheet") }
                         }, label = { Text(k) }, trailingIcon = {
                             Text("✕", Modifier.clickable {
+                                // no question first: once made (an admin's), the snackbar's Undo links it again (#365)
                                 val (_, m) = linkSubmit(id, n, k, false)
-                                scope.launch { snack.showSnackbar("Unlink $k: $m") }
+                                scope.launch {
+                                    snack.currentSnackbarData?.dismiss()
+                                    if (m != "Saved") { snack.showSnackbar("Unlink $k: $m"); return@launch }
+                                    val r = snack.showSnackbar("Unlinked $k from step $n", actionLabel = "Undo", duration = SnackbarDuration.Long)
+                                    if (r == SnackbarResult.ActionPerformed) snack.showSnackbar("Link $k: " + linkSubmit(id, n, k, true).second)
+                                }
                             }.semantics { contentDescription = "Unlink $k from step $n" })
                         })
                     }
