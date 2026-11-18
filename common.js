@@ -336,7 +336,7 @@ K.aboutStyle = () => {
 };
 // what is shown when /api/about can't be had: offline and never opened before on this device, or the server's error
 K.aboutUnsaved = e => K.h('div', {class: 'kab'}, K.h('h1', null, 'Walkdown'),
-  K.h('p', null, e?.status ? `The About page could not be loaded: ${e.message}`
+  K.h('p', null, e?.status ? `The About page could not be loaded. ${e.message}`
                            : 'The About page is not saved on this device yet: open it once while the server can be reached.'));
 // -> the About for a page of its own (Manage → About)
 K.aboutPage = async () => {
