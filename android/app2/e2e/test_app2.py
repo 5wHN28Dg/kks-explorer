@@ -2528,12 +2528,13 @@ class Phone(unittest.TestCase):
         ui.type_into('Near / landmark', 'north door typed')
         # the activity made again (a font size change: turning the phone is handled in place, configChanges in the
         # manifest): the form and the text are still there
-        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', '1.0')
+        scale = ui.sh('settings', 'get', 'system', 'font_scale').strip() or '1.0'    # (put back as it was: a run at 1.3 stays at 1.3)
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', scale)
         pid0 = ui.sh('pidof', PKG).strip()
-        ui.sh('settings', 'put', 'system', 'font_scale', '1.15')
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.15' if scale != '1.15' else '1.2')
         time.sleep(3)
         ui.find('north door typed', exact=True, timeout=10)
-        ui.sh('settings', 'put', 'system', 'font_scale', '1.0')
+        ui.sh('settings', 'put', 'system', 'font_scale', scale)
         time.sleep(3)
         ui.find('north door typed', exact=True, timeout=10)
         self.assertEqual(ui.sh('pidof', PKG).strip(), pid0, 'the font change restarted the process, not just the screen')

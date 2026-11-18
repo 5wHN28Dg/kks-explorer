@@ -128,7 +128,10 @@ fun SelectList(selected: List<String>, places: Map<String, List<Drawn>>?, onUnti
                onAdd: (List<String>) -> List<String>, onClose: () -> Unit) {
     var typed by rememberSaveable { mutableStateOf("") }
     var said by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onClose, title = { Text("Selected tags") }, text = {
+    var discarding by remember { mutableStateOf(false) }
+    if (discarding) Confirm("Discard what you typed?", "The codes you typed are not added.", "Discard", onClose, { discarding = false }, no = "Keep editing")
+    AlertDialog(onDismissRequest = { if (typed.isNotBlank()) discarding = true else onClose() },
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false), title = { Text("Selected tags") }, text = {
         // scrolls as a whole: with the keyboard up on a small phone the field and Add must still be reachable
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (selected.isEmpty()) Dim("Nothing selected.")

@@ -85,9 +85,10 @@ object PanelDrafts {
     fun drop() { dirty.clear(); reset++ }
 }
 
-/** register whether `key`'s form holds typed text, while it is on screen */
+/** register whether `key`'s form holds typed text, while it is on screen (any screen's form: Back, the bottom tabs and
+ *  another tag ask before it goes) */
 @Composable
-private fun DraftFlag(key: String, typed: Boolean) {
+fun DraftFlag(key: String, typed: Boolean) {
     SideEffect { PanelDrafts.dirty[key] = typed }
     DisposableEffect(key) { onDispose { PanelDrafts.dirty.remove(key) } }
 }

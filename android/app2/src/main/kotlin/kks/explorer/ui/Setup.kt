@@ -31,7 +31,11 @@ fun SetupScreen(onJoined: () -> Unit) {
     val ctx = LocalContext.current
     // (saved, with what is typed in the forms: turning the phone or the camera app in front keeps them, #366)
     var page by rememberSaveable { mutableStateOf("") }
-    BackHandler(enabled = page.isNotEmpty()) { page = "" }
+    // Back to the list of ways: asked first when the form holds typed text (#366, D3)
+    var leaving by remember { mutableStateOf(false) }
+    BackHandler(enabled = page.isNotEmpty()) { if (PanelDrafts.any()) leaving = true else page = "" }
+    if (leaving) Confirm("Discard what you typed?", "What you typed here has not been sent.", "Discard", { PanelDrafts.drop(); page = "" },
+        { leaving = false }, no = "Keep editing")
     // (About scrolls by itself, so it stands outside the scrolling column)
     val aboutPage = remember(page) { mutableStateOf<Pair<String, String>?>(null) }
     if (page == "about") {
@@ -74,9 +78,11 @@ fun SetupScreen(onJoined: () -> Unit) {
 private fun ServerJoin(onJoined: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var url by rememberSaveable { mutableStateOf("") }
-    var user by rememberSaveable { mutableStateOf("") }
-    var pw by remember { mutableStateOf("") }          // (never in the saved state: Android may write it to storage)
+    var url by rememberSaveable(PanelDrafts.reset) { mutableStateOf("") }
+    var user by rememberSaveable(PanelDrafts.reset) { mutableStateOf("") }
+    // the password in the saved state only sealed with this phone's key (Android may write the saved state to storage)
+    var pw by rememberSaveable(PanelDrafts.reset, saver = SealedText) { mutableStateOf("") }
+    DraftFlag("join", url.isNotBlank() || user.isNotBlank() || pw.isNotEmpty())
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
     Text("Join through the plant's server", style = MaterialTheme.typography.titleMedium)
@@ -160,8 +166,10 @@ private fun NameFields(n: Names) {
 @Composable
 private fun CodeJoin(onJoined: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf("") }      // (not saved: an invite is a one-time join token)
+    var text by rememberSaveable(PanelDrafts.reset, saver = SealedText) { mutableStateOf("") }      // (an invite: sealed, as the password)
+    DraftFlag("join", text.isNotBlank())
     val names = rememberSaveable(saver = Names.Saver) { Names() }
+    DraftFlag("names", names.username.value.isNotBlank() || names.fullName.value.isNotBlank() || names.position.value.isNotBlank())
     var join by remember { mutableStateOf<Sync.Join?>(null) }
     var msg by remember { mutableStateOf("") }
     val scan = rememberLauncherForActivityResult(ScanQr.Contract()) { r -> if (r != null) text = r }
@@ -190,6 +198,7 @@ private fun CodeJoin(onJoined: () -> Unit) {
 private fun NearbyJoin(onJoined: () -> Unit) {
     val scope = rememberCoroutineScope()
     val names = rememberSaveable(saver = Names.Saver) { Names() }
+    DraftFlag("names", names.username.value.isNotBlank() || names.fullName.value.isNotBlank() || names.position.value.isNotBlank())
     var found by remember { mutableStateOf(listOf<Discovery.Found>()) }
     var join by remember { mutableStateOf<Sync.Join?>(null) }
     var msg by remember { mutableStateOf("") }
@@ -225,6 +234,7 @@ private fun FileJoin(onJoined: () -> Unit) {
         }
     }
     val names = rememberSaveable(saver = Names.Saver) { Names() }
+    DraftFlag("names", names.username.value.isNotBlank() || names.fullName.value.isNotBlank() || names.position.value.isNotBlank())
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
@@ -246,3 +256,9 @@ private fun FileJoin(onJoined: () -> Unit) {
     Button(onClick = { open.launch(arrayOf("*/*")) }) { Text("Open a bundle…") }
     if (msg.isNotEmpty()) Text(msg)
 }
+
+/** a secret typed into a form (a password, an invite's one-time token) in the saved state: sealed with this phone's
+ *  key, like the photo queue (decision 0049); one that can't be opened comes back empty (#366) */
+val SealedText = androidx.compose.runtime.saveable.Saver<MutableState<String>, ByteArray>(
+    save = { st -> runCatching { kks.explorer.core.Keys.seal(st.value.toByteArray(), "kks-saved-form".toByteArray()) }.getOrNull() },
+    restore = { b -> mutableStateOf(runCatching { String(kks.explorer.core.Keys.open(b, "kks-saved-form".toByteArray())) }.getOrDefault("")) })

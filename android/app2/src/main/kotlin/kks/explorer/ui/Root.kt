@@ -158,7 +158,7 @@ class Ui {
      *  its highlight back on the open tag). */
     var leaving by mutableStateOf<(() -> Unit)?>(null)
     var keptSeq by mutableIntStateOf(0)
-    fun guard(then: () -> Unit) { if (selected.isNotEmpty() && PanelDrafts.any()) leaving = then else then() }
+    fun guard(then: () -> Unit) { if (PanelDrafts.any()) leaving = then else then() }
 
     fun goLink(t: LinkTarget) = guard { goLinkNow(t) }
     private fun goLinkNow(t: LinkTarget) {
@@ -198,7 +198,7 @@ fun MainScreen() {
     val queue = remember(rev) { if (admin) call("GET", "/api/state").json.optInt("queue") else 0 }
     BackHandler(enabled = ui.tab != "drawings") { ui.tab = "drawings" }
     ui.leaving?.let { then ->
-        Confirm("Discard your edits?", "What you typed in the panel has not been saved.", "Discard", { PanelDrafts.drop(); ui.leaving = null; then() },
+        Confirm("Discard your edits?", "What you typed has not been saved.", "Discard", { PanelDrafts.drop(); ui.leaving = null; then() },
             { ui.leaving = null; ui.keptSeq++ }, no = "Keep editing")
     }
     Scaffold(
