@@ -137,7 +137,9 @@ class Plant(unittest.TestCase):
                 if not n.get_state_set().contains(Atspi.StateType.SHOWING):
                     continue
                 e = n.get_component_iface().get_extents(Atspi.CoordType.WINDOW) if n.get_component_iface() else None
-                rows.append([n.get_role_name(), n.get_name(), *( [e.x, e.y, e.width, e.height] if e else [])])
+                st = n.get_state_set()
+                rows.append([n.get_role_name(), n.get_name(), *( [e.x, e.y, e.width, e.height] if e else []),
+                             'focusable' if st.contains(Atspi.StateType.FOCUSABLE) else ''])
             except Exception:
                 continue
         with open(os.path.join(ev, name + '.json'), 'w') as f:
@@ -1400,7 +1402,9 @@ class Gnome(Plant):
                                                       'kks': code, 'isa': '', 'note': ''}})
             self.assertEqual(r.get('status'), 'approved', r)
         # a member proposes two equipment photos and a tag plate photo of one code
-        r = self.boss.req('POST', '/api/users', {'username': 'omar', 'full_name': 'Omar Tech', 'position': 'Technician', 'role': 'user'})
+        # (KKS_EVIDENCE_ARABIC: the member's name in Arabic, for the UI audit's L1 evidence of the questions naming him)
+        omar_name = 'عمر الفني' if os.environ.get('KKS_EVIDENCE_ARABIC') else 'Omar Tech'
+        r = self.boss.req('POST', '/api/users', {'username': 'omar', 'full_name': omar_name, 'position': 'Technician', 'role': 'user'})
         omar = Client(self.base)
         omar.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'omar password 1'})
         omar.req('POST', '/api/login', {'username': 'omar', 'password': 'omar password 1'})
@@ -1506,7 +1510,14 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name='Approvals'))
         atspi.find(a, 'label', name='Equipment photo (2)', timeout=15)
         atspi.find(a, 'label', name='Tag plate photo', timeout=10)
-        atspi.find(a, None, contains='by Omar Tech', timeout=10)
+        atspi.find(a, None, contains='by ' + omar_name, timeout=10)
+        # #365: Reject asks first, naming the proposal and whose it is; Cancel leaves it (the UI audit's evidence)
+        if os.environ.get('KKS_EVIDENCE'):
+            atspi.click(atspi.find_all(a, 'button', name='Reject')[0])
+            atspi.find(a, 'alert', contains='Reject ', timeout=10)
+            self.evidence(a, 'reject-question')
+            atspi.click(atspi.find(atspi.find(a, 'alert', contains='Reject ', timeout=5), 'button', name='Cancel', timeout=5))
+            time.sleep(1)
         # the page may be rebuilding (a photo's picture arrives after its entry): count it once it is complete
         for _ in range(20):
             picks = len(atspi.find_all(a, 'button', name='Use this one'))
@@ -1550,7 +1561,7 @@ class Gnome(Plant):
         # the leaderboard
         atspi.click(atspi.find(a, 'button', name='Back'))
         atspi.click(atspi.find(a, 'button', name='Leaderboard'))
-        atspi.find(a, None, contains='Omar Tech', timeout=10)
+        atspi.find(a, None, contains=omar_name, timeout=10)
         atspi.find(a, None, contains='1 approved · 1 rejected · 1 waiting', timeout=10)
         # a new plant's manager needs a position too
         f = self.start_app('founder')
