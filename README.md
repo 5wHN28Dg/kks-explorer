@@ -15,6 +15,15 @@ It reads the tags straight off vector P&ID PDFs (AutoCAD plots, no text layer). 
 append-only log and works offline. Devices sync with the plant's server and with each other, on the same Wi-Fi or
 across the internet.
 
+| | |
+|---|---|
+| ![A drawing with a tag selected and its panel](docs/screenshots/walkdown-drawing-and-tag.webp) | ![Search, with the tags coloured by their photos](docs/screenshots/walkdown-search-photo-marks.webp) |
+| A tag on the drawing and everything known about it: the decoded code, the sheets it is on, the procedures that use it, where it is, notes and photos. | Search by code or description. The photo marks show which tags still need an equipment or tag plate photo. |
+| ![Dark drawings](docs/screenshots/walkdown-dark-drawings.webp) | <img src="docs/screenshots/walkdown-phone.webp" alt="Walkdown on a phone" width="300"> |
+| Dark drawings, for night shifts and dim rooms. | The same on a phone. |
+
+The screenshots use made-up data: the drawings are Walkdown Plant's generated P&IDs of an invented plant.
+
 - **Apps:** Android, Windows, Linux (GNOME), and the web pages for browsers. Get them from the
   [releases](https://github.com/5wHN28Dg/kks-explorer/releases) (tags `v…`).
 - **Guides for teammates, the manager and the maintainer:** the [wiki](https://github.com/5wHN28Dg/kks-explorer/wiki).
@@ -36,6 +45,14 @@ across the internet.
 
 A walkable 3D combined-cycle plant for training, made with Godot (`apps/plant3d/`), released separately (tags
 `plant-v…`) for Android, Windows and Linux. The plant is generic and invented: it is not a copy of any real plant.
+
+| | |
+|---|---|
+| ![The plant from outside](docs/screenshots/plant-outside.webp) | ![The control room's screens](docs/screenshots/plant-control-room-screens.webp) |
+| The power block from outside: the HRSG and its stack, the steam turbine hall and the cooling tower. | The control room's screens at base load. |
+| ![The Workshop with the gas turbine taken apart](docs/screenshots/plant-workshop-taken-apart.webp) | ![Walkdown Plant on a phone](docs/screenshots/plant-phone.webp) |
+| The Workshop: the gas turbine taken apart, each part named and described. | On a phone: the gas turbine hall with the equipment's card. |
+
 It has:
 - the first train to walk and operate (a gas turbine, its HRSG, the steam turbine, a wet cooling tower and the
   balance of plant), with control room screens, alarms, procedures and tours, the instructor's faults and generated
