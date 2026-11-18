@@ -90,11 +90,19 @@ EVIDENCE = os.environ.get('KKS_EVIDENCE', '')
 def evidence(name):
     if not EVIDENCE: return
     os.makedirs(EVIDENCE, exist_ok=True)
+    land = os.environ.get('KKS_EVIDENCE_LAND')       # (the screen turned on its side for the shot, then back)
+    if land:
+        ui.sh('settings', 'put', 'system', 'accelerometer_rotation', '0')
+        ui.sh('settings', 'put', 'system', 'user_rotation', '1')
+        time.sleep(3)
     with open(os.path.join(EVIDENCE, name + '.png'), 'wb') as f:
         f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
     ui.sh('uiautomator', 'dump', '/sdcard/ev.xml')
     with open(os.path.join(EVIDENCE, name + '.xml'), 'wb') as f:
         f.write(subprocess.run(ui.ADB + ['exec-out', 'cat', '/sdcard/ev.xml'], capture_output=True).stdout)
+    if land:
+        ui.sh('settings', 'put', 'system', 'user_rotation', '0')
+        time.sleep(3)
 
 
 class Phone(unittest.TestCase):
@@ -1965,6 +1973,25 @@ class Phone(unittest.TestCase):
         self.join()
         ui.tap('Manage', exact=True)
         ui.tap('Approvals', exact=True)
+        if os.environ.get('KKS_EVIDENCE_QUESTIONS_ONLY'):
+            # (the UI audit at the largest font size, where the cards need scrolling: only the two questions' shots)
+            ui.scroll_to('Reject', exact=True)
+            ui.tap('Reject', exact=True)
+            ui.find('Cancel', exact=True, timeout=10)
+            evidence('reject')
+            ui.tap('Cancel', exact=True)
+            omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'second', 'dataUrl': self.jxl('eq2')}})
+            ui.sh('input', 'keyevent', '4')
+            ui.tap('Drawings', exact=True)
+            ui.tap('Sync', exact=True)
+            time.sleep(3)
+            ui.tap('Manage', exact=True)
+            ui.tap('Approvals', exact=True)
+            ui.scroll_to('Use this one', exact=True)
+            ui.tap('Use this one', exact=True)
+            ui.find('Cancel', exact=True, timeout=10)
+            evidence('use-this-one')
+            return
         ui.find('Equipment photo', exact=True, timeout=20)
         ui.find('Tag plate photo', exact=True)
         self.assertTrue(ui.present('by Omar Fullname'), 'the full name of the sender')
