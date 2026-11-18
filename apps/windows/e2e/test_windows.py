@@ -1313,15 +1313,17 @@ class Windows(unittest.TestCase):
         field and list in view is what UI Automation's hit test finds at its middle, without the mouse over it first.
         Both window sizes the user has; 125 and 150 % scaling are in tests/test_tabs.nim (a scale needs a new sign-in)"""
         self.join('tjoin.uia')
-        lines = ['wait\t~Sample sheet\t60']
         for size in ('1366\t768', '1920\t1080'):
-            lines += ['resize\tDrawing\t' + size, 'clear\tDrawing\tManage', 'apart\tDrawing']
+            # (first the tab itself, before any click: what the user saw on opening the app)
+            lines = ['wait\t~Sample sheet\t60', 'resize\tDrawing\t' + size, 'clear\tDrawing\tManage', 'apart\tDrawing']
             for tab in ('Procedures', 'Review', 'Learning', 'Manage', 'Drawings'):
                 lines += ['click\t' + tab, 'sleep\t1000', 'apart\tDrawing']
             for page in ('Account', 'Devices'):
                 lines += ['click\tManage', 'click\t' + page, 'wait\t‹ Manage\t20', 'sleep\t500', 'apart\tDrawing']
-            lines += ['click\tDrawings', 'wait\t~Sample sheet\t20']
-        self.check('tabs.uia', lines)
+            lines += ['click\tManage', 'wait\tAccount\t20', 'sleep\t500']
+            self.check('tabs.uia', lines)
+            self.screenshot('win-tabs-manage-' + size.replace('\t', 'x'))     # (KKS_SHOTS: evidence for the UI audit)
+            self.check('tabs1.uia', ['click\tDrawings', 'wait\t~Sample sheet\t20'])
         self.leave()
 
     def test_scan_camera(self):
