@@ -10,11 +10,16 @@ const DIM := Color(0.75, 0.75, 0.75)
 static var scale := 1.0
 ## The settings' "UI size" (issue #382): everything drawn on the canvas, panels, bars, the HUD and the Workshop's, is
 ## this much larger (the window's content scale: the canvas the layout sees is that much smaller), on top of `scale`.
-## 100 % to 150 %; a phone starts at 150 %, which gives its buttons 48 dp and its text 14 sp and more (UI-UX-POLICY T1,
-## S1; at 100 % they were 32 dp and 12 sp), a desktop at 100 %. It is also the text size setting of the policy's S2.
+## 100 % to 200 %. A phone starts at the size that gives its buttons 48 dp and its text 14 sp on its own screen
+## (UI-UX-POLICY T1, S1: `phone_ui_size`, from the screen's density and the canvas), a desktop at 100 %; either can go
+## above or below its start. It is also the text size setting of the policy's S2.
 static var ui_size := 1.0
-const UI_SIZES := [1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
-const UI_SIZE_PHONE := 1.5
+## The size this device starts at (`default_ui_size`, set when the app applies its size): the settings mark it.
+static var ui_size_default := 1.0
+const UI_SIZES := [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0]
+const BUTTON_DP := 48.0         # the least a phone's target is (UI-UX-POLICY T1)
+const TEXT_SP := 14.0           # the least a phone's body text is (S1)
+const NOTE9_DENSITY := 420.0    # the Note 9's at its default 2220 x 1080 (`adb shell wm density`; the policy's §2)
 
 
 ## The UI's scale: 1 on desktops; phones get bigger text and targets (a 1600 × 900 canvas on a 6" screen).
@@ -23,10 +28,45 @@ static func pick_scale() -> float:
 	return scale
 
 
-## The UI size a first start takes: 150 % on a phone, 100 % elsewhere (a desktop's touch screen keeps 100 %: its
-## canvas is a laptop's, not a 6" one).
-static func default_ui_size() -> float:
-	return UI_SIZE_PHONE if OS.has_feature("mobile") else 1.0
+## The UI size a first start takes: on a phone the one its screen needs (`phone_ui_size`), 100 % elsewhere (a desktop's
+## touch screen keeps 100 %: its canvas is a laptop's, not a 6" one). `win` is the window's size in the screen's pixels.
+static func default_ui_size(win: Vector2) -> float:
+	return phone_ui_size(win, screen_density()) if OS.has_feature("mobile") else 1.0
+
+
+## The least UI size at which a phone's buttons (52 canvas px at its UI scale `sc`) are 48 dp and its body text (20 at
+## `sc`) 14 sp on a window `win` screen px across at `density` dpi (Android's: 160 is 1 dp a px), in steps of 10 %,
+## 100 % to 200 % (a screen too small for 48 dp at 200 % gets 200 %). The canvas (`project.godot`, 1600 × 900,
+## `expand`) is stretched by the window's shorter side: a canvas px is that many screen px.
+static func phone_ui_size(win: Vector2, density: float, sc := -1.0) -> float:
+	if sc <= 0.0:
+		sc = scale
+	var base := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width", 1600),
+		ProjectSettings.get_setting("display/window/size/viewport_height", 900))
+	if win.x <= 0.0 or win.y <= 0.0 or density <= 0.0 or sc <= 0.0:
+		return 1.0
+	var dp := minf(win.x / base.x, win.y / base.y) * 160.0 / density   # dp a canvas px at 100 %
+	var need := maxf(BUTTON_DP / (52.0 * sc * dp), TEXT_SP / (20.0 * sc * dp))
+	return clampf(ceilf(need * 10.0 - 1e-4) / 10.0, UI_SIZES[0], UI_SIZES[-1])
+
+
+## The screen's density in Android's dpi (160 is 1 dp a px): Android's own figure (its DisplayMetrics, through the
+## Java bridge), else Godot's `screen_get_dpi()`, which on Android is the density's class (480 for the Note 9's 420:
+## a larger UI size than needed, never a smaller one). How it was found: `density_source`.
+static var density_source := ""
+static func screen_density() -> float:
+	if OS.get_name() == "Android" and Engine.has_singleton("AndroidRuntime"):
+		var rt = Engine.get_singleton("AndroidRuntime")
+		var act = rt.getActivity() if rt != null else null
+		var dm = act.getResources().getDisplayMetrics() if act != null else null
+		if dm != null:
+			# px for 160 dp: the density in dpi (TypedValue.COMPLEX_UNIT_DIP is 1)
+			var v = JavaClassWrapper.wrap("android.util.TypedValue").applyDimension(1, 160.0, dm)
+			if (v is float or v is int) and float(v) >= 80.0:
+				density_source = "android"
+				return float(v)
+	density_source = "godot"
+	return float(DisplayServer.screen_get_dpi())
 
 
 ## A UI size as saved or given (a number, or text such as "1.5"), held to the nearest of UI_SIZES; anything that is no

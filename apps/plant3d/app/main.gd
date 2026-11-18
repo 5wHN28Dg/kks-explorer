@@ -468,19 +468,32 @@ func _exit_tree() -> void:
 var _ui_size_set := false
 
 ## The settings' UI size (ui/widgets.gd ui_size; issue #382): `ui_size=` for a test or a shot, else the saved one, else
-## the device's default (150 % on a phone). The phone's scale on a desktop (`ui_scale=`, tests/mimic_shots.gd --phone)
-## takes the phone's default too.
+## the device's default (on a phone the size its screen needs for 48 dp buttons: W.phone_ui_size). The phone's scale on
+## a desktop (`ui_scale=`, tests/mimic_shots.gd --phone) takes a phone's default for the window's size, at `density=`
+## (the Note 9's 420 if not given).
 func _apply_ui_size() -> void:
 	W.pick_scale()                           # (the HUD, made before the interaction layer, sizes itself by it too)
 	if opts.has("ui_scale"):
 		W.scale = clampf(float(opts["ui_scale"]), 0.5, 3.0)
-	var dflt: float = W.UI_SIZE_PHONE if opts.has("ui_scale") and float(opts["ui_scale"]) > 1.0 else W.default_ui_size()
+	var win := Vector2(get_tree().root.size)
+	var dflt: float
+	if opts.has("ui_scale") and float(opts["ui_scale"]) > 1.0:
+		dflt = W.phone_ui_size(win, float(opts.get("density", W.NOTE9_DENSITY)))
+	else:
+		dflt = W.default_ui_size(win)
+		if OS.has_feature("mobile") and not _ui_size_logged:
+			_ui_size_logged = true      # (the walk's log says what the phone was given: apps/plant3d/README.md)
+			print("ui size: window %dx%d, density %.0f (%s), default %d %%" % [win.x, win.y, W.screen_density(),
+				W.density_source, roundi(dflt * 100.0)])
+	W.ui_size_default = dflt
 	var f: float = W.clamp_ui_size(opts["ui_size"], dflt) if opts.has("ui_size") \
 			else W.clamp_ui_size(cf.get_value("ui", "ui_size", dflt), dflt)
 	W.apply_ui_size(get_tree().root, f)
 	_ui_size_set = true
 	if workshop != null and workshop.has_method("fit_resolution"):
 		workshop.fit_resolution()
+
+var _ui_size_logged := false
 
 ## The UI size chosen in the settings: saved, and applied at once (the panels lay themselves out again).
 func set_ui_size(f: float) -> void:

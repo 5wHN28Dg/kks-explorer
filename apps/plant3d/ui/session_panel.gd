@@ -128,6 +128,12 @@ func _idle(keep_code: String, keep_addr: String) -> void:
 	body.add_child(W.label("Host", 20, Color(1.0, 0.85, 0.4)))
 	scen = OptionButton.new()
 	scen.custom_minimum_size.y = 52 * W.scale       # (the buttons' height: 48 dp on a phone)
+	# as wide as the panel, not as its longest title (it widened the panel past a phone's canvas at a large UI size); a
+	# long title ends in "…" on the button, whole in its list (UI-UX-POLICY S3: a description, not a code)
+	scen.fit_to_longest_item = false
+	scen.clip_text = true
+	scen.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	scen.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scen_ids = ui.model.scenarios.keys()
 	_scen_ids.sort()
 	for i in _scen_ids.size():
