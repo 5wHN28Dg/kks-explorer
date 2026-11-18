@@ -290,7 +290,7 @@ proc approvals(w: Win, box: W) =
                   # the others of its kind are rejected with it, for good (#365): said, with how many, first
                   let kind = s(kd, "label").toLowerAscii
                   ask(w.window, "Reject the other " & (if others == 1: "photo?" else: $others & " photos?"),
-                      "Picking #" & $id & " for " & s(grp, "code") & " rejects the other " & (if others == 1: kind else: $others & " " & kind & "s") &
+                      "Picking #" & $id & (if s(grp, "code").len > 0: " for " & s(grp, "code") else: "") & " rejects the other " & (if others == 1: kind else: $others & " " & kind & "s") &
                       " proposed for it. The submitters see that " & (if others == 1: "it was" else: "they were") & " rejected; this can't be undone.",
                       "Pick and reject " & (if others == 1: "the other" else: "the other " & $others), "Cancel", proc (yes: bool) =
                     if yes and w.act(id, "pick", newObj(), "Photo chosen; the other " & kind & "s were rejected"): again()))
@@ -305,7 +305,7 @@ proc approvals(w: Win, box: W) =
               let rb = button("Reject", "destructive-action", proc () =
                 # final: the core takes no other decision on it afterwards (#365)
                 ask(w.window, "Reject " & proposalTitle(sub) & "?",
-                    s(sub, "by_name") & "'s proposal is discarded; they see that it was rejected. This can't be undone.",
+                    (if s(sub, "by_name").len > 0: s(sub, "by_name") & "'s proposal" else: "The proposal") & " is discarded; the submitter sees that it was rejected. This can't be undone.",
                     "Reject", "Cancel", proc (yes: bool) =
                   if yes and w.act(id, "reject", newObj(), "Rejected"): again()))
               setAccessibleDescription(rb, what)

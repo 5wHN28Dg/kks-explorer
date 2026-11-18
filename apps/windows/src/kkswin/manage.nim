@@ -295,7 +295,7 @@ proc approvals(w: Win, p: Page) =
                     # the others of its kind are rejected with it, for good (#365): said, with how many, first
                     let kind = lab.toLowerAscii
                     if not ask(w.hwnd, "Reject the other " & (if others == 1: "photo?" else: $others & " photos?"),
-                               "Using #" & $id & " for " & code & " rejects the other " & (if others == 1: kind else: $others & " " & kind & "s") &
+                               "Using #" & $id & (if code.len > 0: " for " & code else: "") & " rejects the other " & (if others == 1: kind else: $others & " " & kind & "s") &
                                " proposed for it. The submitters see that " & (if others == 1: "it was" else: "they were") & " rejected; this can't be undone.",
                                "Use this one and reject " & (if others == 1: "the other" else: "the other " & $others)): return
                     if w.act(id, "pick", newObj(), "Photo chosen; the other " & kind & "s of this code were rejected"):
@@ -307,7 +307,7 @@ proc approvals(w: Win, p: Page) =
                     if w.act(id, "approve", newObj(@[("force", newBool(conflict))]), "Approved"): w.rebuildSide())
                 specs.add ("Reject", proc () =
                   # final: the core takes no other decision on it afterwards (#365)
-                  if ask(w.hwnd, "Reject " & proposalTitle(sub) & "?", s(sub, "by_name") & "'s proposal is discarded; they see that it was rejected. This can't be undone.", "Reject") and
+                  if ask(w.hwnd, "Reject " & proposalTitle(sub) & "?", (if s(sub, "by_name").len > 0: s(sub, "by_name") & "'s proposal" else: "The proposal") & " is discarded; the submitter sees that it was rejected. This can't be undone.", "Reject") and
                      w.act(id, "reject", newObj(), "Rejected"): w.rebuildSide())
               if specs.len > 0: p.buttons(specs)
       p.space()

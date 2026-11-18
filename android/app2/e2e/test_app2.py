@@ -1957,7 +1957,7 @@ class Phone(unittest.TestCase):
         self.assertEqual(sum(1 for n in ui.nodes() if ui.label(n) == '11LAB70AA501'), 1, 'one card for the code')
         # #365: Reject is final, so it asks first, naming whose proposal; Cancel leaves it waiting
         ui.tap('Reject', exact=True)
-        ui.find('Omar Fullname\'s proposal is discarded; they see that it was rejected. This can\'t be undone.', exact=True, timeout=10)
+        ui.find('Omar Fullname\'s proposal is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
         ui.tap('Cancel', exact=True)
         time.sleep(1)
         self.assertEqual({x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}, {'pending'})

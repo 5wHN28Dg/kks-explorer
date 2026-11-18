@@ -263,7 +263,7 @@ private fun ApprovalItem(sub: JSONObject, admin: Boolean, pick: Boolean, say: (S
             "Use this one and reject " + (if (others == 1) "the other" else "the other $others"),
             { act(id, "pick", JSONObject(), "Photo chosen, the others of this kind rejected", say) }, { asking = "" })
         if (asking == "reject") Confirm("Reject " + proposalTitle(sub) + "?",
-            sub.str("by_name").ifEmpty { sub.str("by") } + "'s proposal is discarded; they see that it was rejected. This can't be undone.",
+            sub.str("by_name").ifEmpty { sub.str("by") }.let { if (it.isEmpty()) "The proposal" else "$it's proposal" } + " is discarded; the submitter sees that it was rejected. This can't be undone.",
             "Reject", { act(id, "reject", JSONObject(), "Rejected", say) }, { asking = "" })
     }
 }

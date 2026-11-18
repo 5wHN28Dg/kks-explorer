@@ -237,7 +237,7 @@ const VIEWS={
           // someone who joined with the app has no account on the server: this makes one for the same person
           if(K.cfg?.mode==='server') out.push(ghost('Web sign-in',()=>webSignin(u))) } }
       else if(canEdit(u)&&u.id!==ME.user.id){
-        out.push(ghost(u.active?'Deactivate':'Activate',()=>setUser(+u.id,{active:!u.active})));
+        out.push(ghost(u.active?'Deactivate':'Activate',async()=>(!u.active||await K.confirm(`Deactivate ${u.username}?`,'Every device of theirs is removed: it stops syncing and wipes the plant from itself when it next connects.','Deactivate'))&&setUser(+u.id,{active:!u.active})));
         // the server's key for them was removed and a device of their own still syncs: Deactivate removes those too
         if(!u.active&&u.own_devices) out.push(ghost('Remove devices',async()=>await K.confirm('Remove all devices of '+u.username+'?','They stop syncing.','Remove devices')&&setUser(+u.id,{active:false})));
         if(isManager()) out.push(ghost(u.role==='admin'?'Make user':'Make admin',()=>setUser(+u.id,{role:other(u)})));

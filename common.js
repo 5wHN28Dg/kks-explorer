@@ -1269,6 +1269,13 @@ K.confirm = (title, text, action, {danger = true, keep = 'Cancel', note = '', dr
     h('h2', {id: id + 't', style: 'font-size:16px;margin:0 0 6px;overflow-wrap:anywhere'}, title),
     text ? h('p', {id: id + 'x', style: 'margin:0 0 12px;opacity:.9;white-space:pre-line;overflow-wrap:anywhere'}, text) : null, field,
     h('div', {style: 'display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap'}, no, yes));
+  // Tab and Shift+Tab go round the dialog's own controls (a modal dialog alone lets them leave for the browser's)
+  d.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const f = [field, no, yes].filter(Boolean), i = f.indexOf(document.activeElement);
+    e.preventDefault();
+    f[(i < 0 ? 0 : i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+  });
   d.addEventListener('close', () => {
     const ok = d.returnValue === 'yes', v = field?.value.trim() || '';
     if (draft) confirmDrafts[draft] = ok ? '' : v;
