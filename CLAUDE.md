@@ -28,7 +28,8 @@ the drawings). The deployed relay's URL never goes in tracked files or the wiki.
   (https://github.com/5wHN28Dg/kks-explorer/wiki; clone https://github.com/5wHN28Dg/kks-explorer.wiki.git).
 - The repository keeps only what code and tests point at: the specs (`docs/PROTOCOL-v2.md`, `PATHSTORE.md`,
   `COURSES.md`, `GLYPHLIB.md`), `docs/decisions/`, `docs/m6/` (requirements, capability matrix, measurements) and each
-  component's build README.
+  component's build README; also the UI and UX policy, profiles and audits (`docs/UI-UX-POLICY.md`, `docs/ui-policy/`,
+  `docs/ux-profile/`, `docs/ui-audit/`), which reviewers read.
 - The wiki is public too.
 
 ## Engineering decisions in this project
@@ -50,13 +51,6 @@ What the evidence-first-engineering skill needs to know here:
   merging any change to `android/`, `core/` or the JNI.
 - **Merging main into a PR branch** only when it conflicts or main changed code the PR builds on: every push restarts
   CI, and branch protection doesn't require an up-to-date branch.
-
-**UI and UX audit (the user, 2026-11-15):** every change that touches either app's UI (Walkdown's web, GNOME, Windows
-and Android clients, or Walkdown Plant's UI; the paths are listed in `docs/UI-UX-POLICY.md` §3.1) passes the UI/UX
-audit before it merges: two passes by fresh subagents (a blind one, then an adversarial one) against
-`docs/UI-UX-POLICY.md`, on synthetic data only, with each pass's table as a comment on the PR. "UI" includes any text a user sees, such
-as the core's error messages. A failing audit blocks the merge (§4 there
-says which fails block). This comes on top of the two code reviews.
 
 **CI** (`.github/workflows/`):
 - `policy.yml`: the secrets scan (gitleaks), dependency vulnerabilities and licenses (osv-scanner,
@@ -82,6 +76,27 @@ says which fails block). This comes on top of the two code reviews.
 - A change that touches only prose (`*.md` other than `relay/README.md`, `relay-plant/README.md` and
   `vendor/fonts/README.md`, which tests read, and `docs/`) runs `policy.yml` alone: the three build and test workflows skip it.
   `docs/plant3d/FIRST-TRAIN.md` is read by tests too (`tests/test_plant3d.py`), so a change to it runs `tests.yml`.
+
+## UI and UX
+
+For any change a user can see, hear or touch, follow `docs/ui-policy/UI-UX-POLICY.md` (its section 0.2 says how it fits
+the steps above): its evidence is part of step 2, its blockers (section 9) are part of step 5's "merge when CI is
+green", and in step 6, don't deploy a tier-2 or tier-3 UI change that is still waiting for my check (its section 8.5),
+unless it is merged switched off; report it as waiting instead. A parent agent that delegates UI work to a subagent runs
+this policy's evidence and passes on the result itself.
+
+- **Where this comes from:** the lines above are the policy's Appendix G, with the path pointing at this repository's
+  pinned copy of the user's `global/UI-UX-POLICY.md` (version 4.13). The user approved adopting it, replacing the
+  earlier UI audit rule, in `~/kks-work/INBOX.md` on 2026-11-19 at 06:21: "I have a new UI/UX policy, adopt it instead
+  of the current one, it is tailor made of my projects". The PR that added these lines quotes it too.
+- **What is project-specific:** `docs/UI-UX-POLICY.md` (the project's `WD-` rules on top, the user's carried-over
+  decisions, which files count as UI, the map from the old rule IDs and audit issues), the profiles
+  `docs/ux-profile/walkdown.md` and `docs/ux-profile/plant.md`, and the review brief
+  `docs/ux-profile/review-brief.md` (pasted word for word into each reviewer's prompt until a prompt script exists;
+  the PR records its version). "UI" includes any text a user reads, such as the core's error messages and the
+  server's command output.
+- The UI review passes are the two review passes of the global workflow, with the policy, the profile, the brief and
+  the evidence added; reviewers use synthetic data only (rule Z1) and post their tables on the PR.
 
 ## The system
 
