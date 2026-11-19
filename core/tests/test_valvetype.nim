@@ -16,8 +16,8 @@ proc plant(): Model =
   result = Model()
   result.sheets = parseSheets(j("""[{"id":"a","name":"Sheet A","w":2000,"h":1000,"scale":2.0,"levels":3,"rot":0}]"""))
   result.baseTags = parseTags(j("""[
-    {"id":"a:1","sheet":"a","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,
-     "bbox":[200,100,240,120],"read":["11LAB70","AA501"],
+    {"id":"a:1","sheet":"a","kks":"11LAB70AA500","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,
+     "bbox":[200,100,240,120],"read":["11LAB70","AA500"],
      "symbol":{"type":"gate valve","actuator":"motor","nc":false,"conf":0.93,"bbox":[200,60,240,96]}},
     {"id":"a:2","sheet":"a","kks":"11LAB70AA502","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,
      "bbox":[300,100,340,120],"read":["11LAB70","AA502"]},
@@ -111,7 +111,7 @@ suite "valve type: the proposal's edge cases":
     check tagView(m, "a:3")["valve_type"]["text"].s == "globe valve, normally closed"
   test "an empty Valve type entry is replaced, not doubled; a full custom list offers no confirm":
     let m = plant()
-    m.state = j("""{"equipment":{"11LAB70AA501":{"custom":[{"k":"Size","v":"DN50"},{"k":"Valve type","v":""}]}}}""")
+    m.state = j("""{"equipment":{"11LAB70AA500":{"custom":[{"k":"Size","v":"DN50"},{"k":"Valve type","v":""}]}}}""")
     m.merge()
     let v = tagView(m, "a:1")["valve_type"]
     check v["status"].s == "drawing"
@@ -119,7 +119,7 @@ suite "valve type: the proposal's edge cases":
     check c.len == 2 and c[0]["k"].s == "Size" and c[1]["k"].s == ValveTypeKey and c[1]["v"].s == "gate valve, motor-operated"
     var full = newArr()
     for i in 0 ..< 100: full.elems.add newObj(@[("k", newStr("f" & $i)), ("v", newStr("x"))])
-    m.state = newObj(@[("equipment", newObj(@[("11LAB70AA501", newObj(@[("custom", full)]))]))])
+    m.state = newObj(@[("equipment", newObj(@[("11LAB70AA500", newObj(@[("custom", full)]))]))])
     m.merge()
     let w = tagView(m, "a:1")["valve_type"]
     check w["status"].s == "drawing" and w["confirm"].isNull

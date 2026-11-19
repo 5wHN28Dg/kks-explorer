@@ -9,13 +9,13 @@ proc none(s: string): bool = parseAppLink(s).kind == ""
 
 suite "walkdown:// links":
   test "a code":
-    let l = parseAppLink("walkdown://kks/11LAB70AA501")
-    check l.kind == "kks" and l.code == "11LAB70AA501" and l.course == "" and l.page == ""
-    check parseAppLink("walkdown://kks/11HAD70CL503XB31").code == "11HAD70CL503XB31"
+    let l = parseAppLink("walkdown://kks/11LAB70AA500")
+    check l.kind == "kks" and l.code == "11LAB70AA500" and l.course == "" and l.page == ""
+    check parseAppLink("walkdown://kks/11HAD70CL500XB31").code == "11HAD70CL500XB31"
     check parseAppLink("walkdown://kks/ABCD").code == "ABCD"                       # 4 characters, the shortest
     check parseAppLink("walkdown://kks/" & "1".repeat(24)).kind == "kks"            # 24, the longest
-    check parseAppLink("WALKDOWN://kks/11LAB70AA501").kind == "kks"                 # the scheme in any case (RFC 3986)
-    check parseAppLink("WalkDown://kks/11LAB70AA501").kind == "kks"
+    check parseAppLink("WALKDOWN://kks/11LAB70AA500").kind == "kks"                 # the scheme in any case (RFC 3986)
+    check parseAppLink("WalkDown://kks/11LAB70AA500").kind == "kks"
 
   test "a course, and a course page":
     let c = parseAppLink("walkdown://course/ppt")
@@ -26,13 +26,13 @@ suite "walkdown:// links":
     check parseAppLink("walkdown://course/" & "a".repeat(32) & "/" & "b".repeat(32)).kind == "course"
 
   test "malformed codes":
-    for s in ["walkdown://kks/", "walkdown://kks/ABC", "walkdown://kks/" & "1".repeat(25), "walkdown://kks/11lab70aa501",
-              "walkdown://kks/11LAB70 AA501", "walkdown://kks/11LAB70-AA501", "walkdown://kks/11LCC70/A403",
-              "walkdown://kks/11LAB70AA501/", "walkdown://kks//11LAB70AA501", "walkdown://kks/11LAB70AA501?x=1",
-              "walkdown://kks/11LAB70AA501#x", "walkdown://kks/11LAB70%41A501", "walkdown://kks/11LAB70AA50\0",
-              "walkdown://kks/11LAB70AA501\n", " walkdown://kks/11LAB70AA501", "walkdown://kks/11LAB70AA501 ",
-              "walkdown://kks/11LAB70ÄA501", "walkdown://KKS/11LAB70AA501", "walkdown://kks/../11LAB70AA501",
-              "walkdown://kks/11LAB70AA501/extra"]:
+    for s in ["walkdown://kks/", "walkdown://kks/ABC", "walkdown://kks/" & "1".repeat(25), "walkdown://kks/11lab70aa500",
+              "walkdown://kks/11LAB70 AA500", "walkdown://kks/11LAB70-AA500", "walkdown://kks/11LAB70/A500",
+              "walkdown://kks/11LAB70AA500/", "walkdown://kks//11LAB70AA500", "walkdown://kks/11LAB70AA500?x=1",
+              "walkdown://kks/11LAB70AA500#x", "walkdown://kks/11LAB70%41A500", "walkdown://kks/11LAB70AA50\0",
+              "walkdown://kks/11LAB70AA500\n", " walkdown://kks/11LAB70AA500", "walkdown://kks/11LAB70AA500 ",
+              "walkdown://kks/11LAB70ÄA500", "walkdown://KKS/11LAB70AA500", "walkdown://kks/../11LAB70AA500",
+              "walkdown://kks/11LAB70AA500/extra"]:
       check none(s)
 
   test "malformed courses":
@@ -44,24 +44,24 @@ suite "walkdown:// links":
       check none(s)
 
   test "other schemes, kinds and actions read as nothing":
-    for s in ["", "walkdown:", "walkdown://", "walkdown:///", "walkdown:kks/11LAB70AA501", "walkdown:/kks/11LAB70AA501",
-              "walkdown-plant://kks/11LAB70AA501", "walkdownx://kks/11LAB70AA501", "xwalkdown://kks/11LAB70AA501",
-              "https://kks/11LAB70AA501", "file:///etc/passwd", "walkdown://user@kks/11LAB70AA501",
-              "walkdown://kks:80/11LAB70AA501", "walkdown://procedure/cold_start", "walkdown://procedure/cold_start/2",
+    for s in ["", "walkdown:", "walkdown://", "walkdown:///", "walkdown:kks/11LAB70AA500", "walkdown:/kks/11LAB70AA500",
+              "walkdown-plant://kks/11LAB70AA500", "walkdownx://kks/11LAB70AA500", "xwalkdown://kks/11LAB70AA500",
+              "https://kks/11LAB70AA500", "file:///etc/passwd", "walkdown://user@kks/11LAB70AA500",
+              "walkdown://kks:80/11LAB70AA500", "walkdown://procedure/cold_start", "walkdown://procedure/cold_start/2",
               "walkdown://join/abc", "walkdown://sign-in/x", "walkdown://import/https://example.org/a.pdf",
-              "walkdown://delete/11LAB70AA501", "walkdown://url/https://example.org", "walkdown://kks",
+              "walkdown://delete/11LAB70AA500", "walkdown://url/https://example.org", "walkdown://kks",
               "walkdown://course?x", "javascript:alert(1)"]:
       check none(s)
 
   test "length: nothing over 128 characters is read":
     check parseAppLink("walkdown://course/" & "a".repeat(32) & "/" & "b".repeat(32)).kind == "course"   # 83
-    check none("walkdown://kks/11LAB70AA501" & "/".repeat(200))
+    check none("walkdown://kks/11LAB70AA500" & "/".repeat(200))
     check none("walkdown://kks/" & "A".repeat(100_000))
 
   test "every byte value in a code, or a page, makes it nothing unless it is one the grammar allows":
     for b in 0 .. 255:
       let c = char(b)
-      let k = parseAppLink("walkdown://kks/11LAB" & c & "0AA501").kind
+      let k = parseAppLink("walkdown://kks/11LAB" & c & "0AA500").kind
       check (k == "kks") == (c in {'0'..'9', 'A'..'Z'})
       let p = parseAppLink("walkdown://course/ppt/m" & c).kind
       check (p == "course") == (c in {'a'..'z', '0'..'9', '_'})
@@ -75,7 +75,7 @@ suite "the tag a code link opens":
      "bbox":[1,1,2,2],"read":["",""]},
     {"id":"a:2","sheet":"a","kks":"","suffix":"","isa":null,"kind":"equipment","status":"review","conf":0,
      "bbox":[3,3,4,4],"read":["",""]},
-    {"id":"b:1","sheet":"b","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,
+    {"id":"b:1","sheet":"b","kks":"11LAB70AA500","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,
      "bbox":[1,1,2,2],"read":["",""]},
     {"id":"b:2","sheet":"b","kks":"11HAD70CT101","suffix":"","isa":"TI","kind":"instrument","status":"auto","conf":1,
      "bbox":[3,3,4,4],"read":["",""]},
@@ -86,7 +86,7 @@ suite "the tag a code link opens":
 
   test "the full code first, in the drawings' order":
     check m.findCode("11HAD70CT101R") == (true, m.tagById("a:1")[1])
-    check m.findCode("11LAB70AA501")[1].id == "b:1"
+    check m.findCode("11LAB70AA500")[1].id == "b:1"
 
   test "a code without its suffix finds a tag whose full code it is, else the suffixed one":
     check m.findCode("11HAD70CT101")[1].id == "b:2"

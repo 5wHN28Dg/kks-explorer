@@ -32,7 +32,7 @@ suite "photo queue on disk":
   test "photos come back after a restart, in their order, with their job and pixels":
     var s = fresh()
     var q = newPhotoQueue(s)
-    let a = q.add(p, pic(4, 3, 1), 4, 3, "11LAB70AA501", "first", "a note", "2", 1000)
+    let a = q.add(p, pic(4, 3, 1), 4, 3, "11LAB70AA500", "first", "a note", "2", 1000)
     let b = q.add(p, pic(5, 2, 2), 5, 2, "11LAB70AA502", "second", "", "", 2000)
     discard q.add(p, pic(1, 1, 3), 1, 1, "11LAB70AA503", "third", "", "", 3000)
     check a.clientId.len == 32 and a.clientId != b.clientId
@@ -40,7 +40,7 @@ suite "photo queue on disk":
     q = newPhotoQueue(s)
     check q.resume().len == 0
     check q.count == 3
-    check q.items[0].kks == "11LAB70AA501" and q.items[0].caption == "first" and q.items[0].note == "a note"
+    check q.items[0].kks == "11LAB70AA500" and q.items[0].caption == "first" and q.items[0].note == "a note"
     check q.items[0].floor == "2" and q.items[0].clientId == a.clientId
     check q.items[1].kks == "11LAB70AA502" and q.items[2].kks == "11LAB70AA503"
     var reports: seq[string]
@@ -58,7 +58,7 @@ suite "photo queue on disk":
     let q = newPhotoQueue(s)
     var px = newSeq[byte](64 * 64 * 3)
     for i in 0 ..< px.len: px[i] = byte(i mod 7 + 65)     # "ABCDEFG…": easy to find in clear
-    discard q.add(p, px, 64, 64, "11LAB70AA501", "a caption that must not show", "", "", 1)
+    discard q.add(p, px, 64, 64, "11LAB70AA500", "a caption that must not show", "", "", 1)
     let path = s.path
     s.close()
     var all = readFile(path)
@@ -68,7 +68,7 @@ suite "photo queue on disk":
     check raw[0 ..< 300] notin all
     check encode(raw)[0 ..< 300] notin all
     check "a caption that must not show" notin all
-    check "11LAB70AA501" notin all
+    check "11LAB70AA500" notin all
 
   test "sent and refused photos are removed; a failure keeps the photo, moves it to the end and waits":
     var s = fresh()
@@ -188,7 +188,7 @@ suite "photo queue on disk":
     let a = q.add(p, pic(2, 2, 1), 2, 2, "", "Both drains", "", "", 1, @["11LAC10AP001", "11LAC10AP003"])
     check a.kks == "11LAC10AP001" and a.codes == @["11LAC10AP001", "11LAC10AP003"]
     check a.clientId.len <= 56          # submit-many's prefix limit
-    let b = q.add(p, pic(2, 2, 2), 2, 2, "11LAB70AA501", "", "", "", 2)
+    let b = q.add(p, pic(2, 2, 2), 2, 2, "11LAB70AA500", "", "", "", 2)
     s = s.reopen()
     q = newPhotoQueue(s)
     check q.resume().len == 0

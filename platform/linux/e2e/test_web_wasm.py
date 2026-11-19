@@ -78,7 +78,7 @@ class WebWasm(unittest.TestCase):
             self.assertEqual(cfg['type'], 'image/jxl')
             out = page.evaluate(PAGE_JS)
             # the photo through the API, as index.html sends it
-            r = page.evaluate("d => K.api('/api/submit', {kind: 'photo', payload: {kks: '11LAB70AA501', caption: 'from ' + d.n, dataUrl: d.u}})",
+            r = page.evaluate("d => K.api('/api/submit', {kind: 'photo', payload: {kks: '11LAB70AA500', caption: 'from ' + d.n, dataUrl: d.u}})",
                               {'n': name, 'u': out['dataUrl']})
             # the admin's invite QR is drawn through zxing-cpp; read it back from the SVG's squares
             page.goto(self.base + '/admin.html')
@@ -99,7 +99,7 @@ class WebWasm(unittest.TestCase):
                 page.evaluate("""([w, h]) => { const c = document.createElement('canvas'); c.width = w; c.height = h;
                     const g = c.getContext('2d'); g.fillStyle = '#3c5a96'; g.fillRect(0, 0, w, h); g.fillStyle = '#f0f0f0'; g.fillRect(w / 4, h / 4, w / 2, h / 2);
                     window.__pc = new Promise(ok => c.toBlob(b => ok(photoCanvas(new File([b], 'big.png', {type: 'image/png'}))), 'image/png'))
-                      .then(async a => K.api('/api/submit', {kind: 'photo', payload: {kks: '11LAB70AA501', caption: 'size ' + w,
+                      .then(async a => K.api('/api/submit', {kind: 'photo', payload: {kks: '11LAB70AA500', caption: 'size ' + w,
                                                                                       dataUrl: await K.jxlEncode(a.canvas, 1.9, 7)}}))
                       .then(r => window.__pr = r, e => window.__pr = {error: String(e)}) }""", [w, h])
                 page.wait_for_selector('[data-a="ok"]', timeout=60000)
@@ -108,7 +108,7 @@ class WebWasm(unittest.TestCase):
                 sized[w] = page.evaluate('() => { const r = window.__pr; window.__pr = null; return r }')
             page.goto(self.base + '/learning.html')
             page.wait_for_function("() => typeof K !== 'undefined' && K.me")
-            refused = page.evaluate("""() => K.api('/api/submit', {kind: 'photo', payload: {kks: '11LAB70AA501',
+            refused = page.evaluate("""() => K.api('/api/submit', {kind: 'photo', payload: {kks: '11LAB70AA500',
                 dataUrl: document.createElement('canvas').toDataURL('image/png')}}).then(() => 'stored', e => [e.detail, e.message, K.errorWords.invalid])""")
             browser.close()
         self.assertEqual(errors, [], name)

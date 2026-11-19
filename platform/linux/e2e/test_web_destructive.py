@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright, expect
 sys.path.insert(0, os.path.dirname(__file__))
 from test_web_v2 import REPO, SERVER, IMPORTER, start_server, Client, CSP_WATCH, PageErrors  # noqa: E402
 
-KKS = '11LAB70AA501'
+KKS = '11LAB70AA500'
 PROCS = [{'id': 'EP-1', 'title': 'Start the feed pump', 'path': ['Feedwater'], 'page': 3,
           'steps': [{'n': 1, 'text': 'Open the suction valve'}, {'n': 2, 'text': 'Start the pump'}]}]
 

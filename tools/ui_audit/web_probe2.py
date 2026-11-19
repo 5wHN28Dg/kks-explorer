@@ -60,7 +60,7 @@ try:
                 page.get_by_role('button', name='Edit Notes').click(); page.fill('#f_notes', 'typed but not saved')
                 n0 = []; page.on('dialog', lambda d: (n0.append(d.message), d.dismiss()))
                 page.get_by_role('button', name='Close the panel').click(); page.wait_for_timeout(300)
-                page.locator('#q').fill('LAB70AA501'); page.wait_for_selector('#results [role=option]'); page.keyboard.press('Enter'); page.wait_for_selector('#panel.open')
+                page.locator('#q').fill('LAB70AA500'); page.wait_for_selector('#results [role=option]'); page.keyboard.press('Enter'); page.wait_for_selector('#panel.open')
                 R['d3_after_close'] = {'asked': n0[:], 'notes': page.input_value('#f_notes')}
                 page.get_by_role('button', name='Edit Notes').click(); page.fill('#f_notes', 'typed again')
                 try:
@@ -69,7 +69,7 @@ try:
                 R['d3_after_navigate'] = {'asked': n0[:], 'url': page.url}
                 # --- G2: the open tag in the URL (a reload brings it back)
                 page.goto(BASE + '/'); wait_index(page)
-                page.locator('#q').fill('LAB70AA501'); page.wait_for_selector('#results [role=option]'); page.keyboard.press('Enter'); page.wait_for_selector('#panel.open')
+                page.locator('#q').fill('LAB70AA500'); page.wait_for_selector('#results [role=option]'); page.keyboard.press('Enter'); page.wait_for_selector('#panel.open')
                 R['g2_url'] = page.url; page.reload(); wait_index(page); page.wait_for_timeout(500)
                 R['g2_panel_after_reload'] = page.evaluate("document.getElementById('panel').classList.contains('open') && document.querySelector('#panel .kks').textContent")
                 ctx.close()
@@ -77,7 +77,7 @@ try:
                 ctx = browser.new_context(viewport={'width': 412, 'height': 915}, color_scheme='dark', has_touch=eng != 'firefox'); login(ctx); page = ctx.new_page()
                 page.goto(BASE + '/?kks=' + KKS); wait_index(page); page.wait_for_selector('#panel.open')
                 page.get_by_role('button', name='Close the panel').click(); page.wait_for_timeout(300)
-                box = page.evaluate("""(() => { const t = [...document.querySelectorAll('#layer .hs')].find(e => (e.getAttribute('aria-label') || e.title || '').includes('11LAB70AA501'));
+                box = page.evaluate("""(() => { const t = [...document.querySelectorAll('#layer .hs')].find(e => (e.getAttribute('aria-label') || e.title || '').includes('11LAB70AA500'));
                     if (!t) return null; const r = t.getBoundingClientRect(); return [r.left, r.top, r.width, r.height] })()""")
                 R['t4_tag_box'] = box
                 if box:

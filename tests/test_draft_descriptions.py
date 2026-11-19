@@ -11,13 +11,13 @@ class Drafts(unittest.TestCase):
         self.d = tempfile.mkdtemp(prefix='kks-desc-')
         json.dump([{'id': 'a', 'name': 'Sheet A'}], open(os.path.join(self.d, 'sheets.json'), 'w'))
         json.dump([
-            {'id': 'a:1', 'sheet': 'a', 'kks': '11LAB70AA501', 'suffix': '', 'isa': None, 'bbox': [100, 100, 140, 120]},
+            {'id': 'a:1', 'sheet': 'a', 'kks': '11LAB70AA500', 'suffix': '', 'isa': None, 'bbox': [100, 100, 140, 120]},
             {'id': 'a:2', 'sheet': 'a', 'kks': '11LAB70CP101', 'suffix': '', 'isa': 'PIA', 'bbox': [160, 100, 200, 120]},
             {'id': 'a:3', 'sheet': 'a', 'kks': '11HAD70CT101', 'suffix': 'R', 'isa': 'TIAC', 'bbox': [3000, 100, 3040, 120]},
             {'id': 'a:4', 'sheet': 'a', 'kks': '11LAB70', 'suffix': '', 'isa': None, 'bbox': [5000, 100, 5040, 120]},
             {'id': 'a:5', 'sheet': 'a', 'kks': None, 'suffix': '', 'isa': None, 'bbox': [6000, 100, 6040, 120]}],
             open(os.path.join(self.d, 'tags.json'), 'w'))
-        json.dump({'entries': [{'kks': 'LAB70AA501', 'desc': 'feed control valve'}]}, open(os.path.join(self.d, 'locations.json'), 'w'))
+        json.dump({'entries': [{'kks': 'LAB70AA500', 'desc': 'feed control valve'}]}, open(os.path.join(self.d, 'locations.json'), 'w'))
 
     def tearDown(self):
         shutil.rmtree(self.d)
@@ -28,8 +28,8 @@ class Drafts(unittest.TestCase):
 
     def test_drafts(self):
         d = self.run_tool()
-        self.assertEqual(sorted(d), ['11HAD70CT101R', '11LAB70AA501', '11LAB70CP101'])   # unread and partial codes: none
-        v = d['11LAB70AA501']
+        self.assertEqual(sorted(d), ['11HAD70CT101R', '11LAB70AA500', '11LAB70CP101'])   # unread and partial codes: none
+        v = d['11LAB70AA500']
         self.assertIn('is a valve', v['text']); self.assertIn('the Feed water piping system', v['text'])   # kks.json's name
         self.assertIn('"feed control valve"', v['text']); self.assertIn('next to 11LAB70CP101', v['text'])
         self.assertIn('location list', v['basis']); self.assertIn('drawing neighbours', v['basis'])
@@ -39,9 +39,9 @@ class Drafts(unittest.TestCase):
         self.assertIn('instrument letters', t['basis'])
 
     def test_keep_leaves_existing_drafts(self):
-        json.dump({'11LAB70AA501': {'text': 'hand edit', 'basis': 'a person'}}, open(os.path.join(self.d, 'descriptions.json'), 'w'))
+        json.dump({'11LAB70AA500': {'text': 'hand edit', 'basis': 'a person'}}, open(os.path.join(self.d, 'descriptions.json'), 'w'))
         d = self.run_tool('--keep')
-        self.assertEqual(d['11LAB70AA501']['text'], 'hand edit')
+        self.assertEqual(d['11LAB70AA500']['text'], 'hand edit')
         self.assertIn('11LAB70CP101', d)
 
     def test_state_added_tags_and_reviews(self):
@@ -52,7 +52,7 @@ class Drafts(unittest.TestCase):
                    'reviews': {'a:2': {'status': 'confirmed', 'kks': '11LAB71CP101', 'suffix': '', 'isa': 'PI'},
                                'a:3': {'status': 'rejected'}}}, open(st, 'w'))
         d = self.run_tool('--state', st)
-        self.assertEqual(sorted(d), ['11LAB70AA501', '11LAB70AA502', '11LAB71CP101'])
+        self.assertEqual(sorted(d), ['11LAB70AA500', '11LAB70AA502', '11LAB71CP101'])
         # an unchecked reading a person corrected is checked now: it gets its draft under the corrected code
         self.write_tags([{'id': 'r1', 'sheet': 'a', 'kks': '11LAB70AA50', 'status': 'review', 'bbox': [0, 0, 10, 10]},
                          {'id': [1], 'sheet': ['a'], 'kks': '11LAB70AA509'}])
@@ -63,8 +63,8 @@ class Drafts(unittest.TestCase):
 
     def test_location_list_as_a_plain_array(self):
         # the core reads either {"entries": [...]} or a bare array
-        json.dump([{'kks': 'LAB70AA501', 'desc': 'feed control valve'}], open(os.path.join(self.d, 'locations.json'), 'w'))
-        self.assertIn('"feed control valve"', self.run_tool()['11LAB70AA501']['text'])
+        json.dump([{'kks': 'LAB70AA500', 'desc': 'feed control valve'}], open(os.path.join(self.d, 'locations.json'), 'w'))
+        self.assertIn('"feed control valve"', self.run_tool()['11LAB70AA500']['text'])
 
     def write_tags(self, tags):
         json.dump(tags, open(os.path.join(self.d, 'tags.json'), 'w'))
@@ -89,23 +89,23 @@ class Drafts(unittest.TestCase):
             {'id': '1', 'sheet': 'a', 'kks': '11LAB70AA001', 'status': 'review', 'bbox': [0, 0, 10, 10]},   # unchecked
             {'id': '2', 'sheet': 'a', 'kks': '11LAB70AA002', 'suffix': 5},                                 # no box
             {'id': '3', 'kks': '11LAB70AA003', 'bbox': [0, 0, 10, 10]},                                      # no sheet
-            {'id': '4', 'sheet': 'a', 'kks': '11LAB70AA501', 'bbox': [0, 0, 10, 10]},
+            {'id': '4', 'sheet': 'a', 'kks': '11LAB70AA500', 'bbox': [0, 0, 10, 10]},
             {'id': '5', 'sheet': 'a', 'kks': '11LAB70CP506', 'suffix': '\udc00', 'isa': 'P\ud800I', 'bbox': [5, 5, 15, 15]}])
         json.dump([{'id': 'a', 'name': 'H\ud800P'}], open(os.path.join(self.d, 'sheets.json'), 'w'))
-        json.dump({'entries': [{'kks': 'LAB70AA501', 'desc': 'x' * 2500}]}, open(os.path.join(self.d, 'locations.json'), 'w'))
+        json.dump({'entries': [{'kks': 'LAB70AA500', 'desc': 'x' * 2500}]}, open(os.path.join(self.d, 'locations.json'), 'w'))
         d = self.run_tool()
-        self.assertEqual(sorted(d), ['11LAB70AA0025', '11LAB70AA501', '11LAB70CP506?'])
-        self.assertLessEqual(len(d['11LAB70AA501']['text']), dd.MAX_TEXT)
-        self.assertTrue(d['11LAB70AA501']['text'].endswith('.'))   # whole sentences only
+        self.assertEqual(sorted(d), ['11LAB70AA0025', '11LAB70AA500', '11LAB70CP506?'])
+        self.assertLessEqual(len(d['11LAB70AA500']['text']), dd.MAX_TEXT)
+        self.assertTrue(d['11LAB70AA500']['text'].endswith('.'))   # whole sentences only
         raw = open(os.path.join(self.d, 'descriptions.json'), encoding='utf-8').read()
         raw.encode('utf-8')   # no lone surrogate left
         self.assertFalse(os.path.exists(os.path.join(self.d, 'descriptions.json.tmp')))
 
     def test_keep_drops_codes_no_longer_drawn(self):
-        json.dump({'11LAB70AA501': {'text': 'hand edit', 'basis': 'a person'}, '11XYZ99AA999': {'text': 'old', 'basis': 'x'}},
+        json.dump({'11LAB70AA500': {'text': 'hand edit', 'basis': 'a person'}, '11XYZ99AA999': {'text': 'old', 'basis': 'x'}},
                   open(os.path.join(self.d, 'descriptions.json'), 'w'))
         d = self.run_tool('--keep')
-        self.assertEqual(d['11LAB70AA501']['text'], 'hand edit')
+        self.assertEqual(d['11LAB70AA500']['text'], 'hand edit')
         self.assertNotIn('11XYZ99AA999', d)
 
 

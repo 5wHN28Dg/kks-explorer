@@ -63,7 +63,7 @@ class WebSignIn(unittest.TestCase):
     def engine(self, name):
         # two people who joined with the app, each with a change their phone sent; neither has an account
         ali = AppPerson(self.admin, 'ali', NAME, 'Operator')
-        ali.note('11LAB70AA501', 'seen from the phone')
+        ali.note('11LAB70AA500', 'seen from the phone')
         kim = AppPerson(self.admin, 'Kim', 'Kim Field', 'Technician')
         kim.note('11LAB70AA502', 'kim was here')
         self.assertEqual([(u['no_account'], u['devices']) for u in (self.users()['ali'], self.users()['Kim'])], [(True, 1)] * 2)
@@ -123,7 +123,7 @@ class WebSignIn(unittest.TestCase):
             u.wait_for_function("() => typeof K !== 'undefined' && K.me && K.me.user.username === 'ali'")
             self.assertEqual(u.evaluate('K.me.user.person'), ali.person)
             uerr.leave()
-            card = self.mine(u, '11LAB70AA501')                                  # what the phone sent is theirs
+            card = self.mine(u, '11LAB70AA500')                                  # what the phone sent is theirs
             expect(card).to_contain_text('seen from the phone')
             expect(card.get_by_role('button', name='Withdraw')).to_have_count(1)
             self.assertEqual(u.locator('#main .card.mine').count(), 1)           # and only theirs

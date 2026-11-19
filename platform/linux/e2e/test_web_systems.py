@@ -35,11 +35,11 @@ def tag(i, sheet, kks, x, suffix='', isa=None, status='auto'):
 
 SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/sheets/a.png', 'notes': []},
           {'id': 'b', 'name': 'Sheet B', 'w': 1000, 'h': 600, 'file': 'data/sheets/b.png', 'notes': []}]
-TAGS = [tag('a:1', 'a', '11LAB70', 50), tag('a:2', 'a', '11LAB70AA501', 150),
+TAGS = [tag('a:1', 'a', '11LAB70', 50), tag('a:2', 'a', '11LAB70AA500', 150),
         tag('a:3', 'a', '11HAD70CT101', 250, 'R', 'TIAC'), tag('a:4', 'a', '11LAB70AA503', 350, status='verified'),
         tag('a:6', 'a', '12LBA10AA101', 450),
-        tag('b:1', 'b', '11LAB70AA501', 150), tag('b:2', 'b', '11LAB71AP001', 650)]
-LOCATIONS = {'source': 'test list', 'entries': [{'kks': 'LAB70AA501', 'level': '14.50m', 'cabinet': 'C1', 'desc': 'feed valve north', 'page': 1}]}
+        tag('b:1', 'b', '11LAB70AA500', 150), tag('b:2', 'b', '11LAB71AP001', 650)]
+LOCATIONS = {'source': 'test list', 'entries': [{'kks': 'LAB70AA500', 'level': '14.50m', 'cabinet': 'C1', 'desc': 'feed valve north', 'page': 1}]}
 
 
 class Client:
@@ -96,7 +96,7 @@ class WebSystems(unittest.TestCase):
             [n('blocks', '11') + ' (5)', [
                 [n('systems', 'HAD') + ' (1)', [['HAD70 (1)', [[n('components', 'CT') + ' (1)', ['11HAD70CT101R']]]]]],
                 [n('systems', 'LAB') + ' (4)', [
-                    ['LAB70 (3)', [[n('components', 'AA') + ' (3)', ['11LAB70AA501', '11LAB70AA503', '11LAB70AA504']]]],
+                    ['LAB70 (3)', [[n('components', 'AA') + ' (3)', ['11LAB70AA500', '11LAB70AA503', '11LAB70AA504']]]],
                     ['LAB71 (1)', [[n('components', 'AP') + ' (1)', ['11LAB71AP001']]]]]]]],
             [n('blocks', '12') + ' (1)', [
                 [n('systems', 'LBA') + ' (1)', [['LBA10 (1)', [[n('components', 'AA') + ' (1)', ['12LBA10AA101']]]]]]]],
@@ -132,7 +132,7 @@ class WebSystems(unittest.TestCase):
             self.assertEqual(page.evaluate(self.TREE), self.expected_tree())
             # blocks open, systems closed until a filter narrows the list
             self.assertEqual(page.evaluate("[...document.querySelectorAll('#sysBody details')].filter(d => d.open).length"), 2)
-            row = page.locator('.sysrow', has_text='11LAB70AA501')
+            row = page.locator('.sysrow', has_text='11LAB70AA500')
             self.assertEqual(row.count(), 1)
             label = re.sub(r'\s+', ' ', row.text_content())
             for part in ('feed valve', 'Sheet A', '×2', 'no photos'):
@@ -144,7 +144,7 @@ class WebSystems(unittest.TestCase):
             self.assertEqual(page.evaluate("[...document.querySelectorAll('#sysBody details')].every(d => d.open)"), True)
             page.fill('#sysQ', 'NORTH')   # only in the location list's description
             page.wait_for_function("() => document.getElementById('sysCount').textContent === '1 code match'")
-            self.assertTrue(page.is_visible('.sysrow:has-text("11LAB70AA501")'))
+            self.assertTrue(page.is_visible('.sysrow:has-text("11LAB70AA500")'))
             page.fill('#sysQ', 'lab')
             page.wait_for_function("() => document.getElementById('sysCount').textContent === '5 codes match'")
             page.fill('#sysQ', 'temperature 11had')

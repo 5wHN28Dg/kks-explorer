@@ -209,14 +209,14 @@ K.start().then(() => {
   // ---------------------------------------------------------------- the KKS decoder (0025: the app's decoder)
   let KKSDATA = null;
   function kksTool() {
-    const inp = h('input', {class: 'kksin', id: 'kksin', value: '11 LAB 70 AA 501', autocomplete: 'off', spellcheck: 'false'});
+    const inp = h('input', {class: 'kksin', id: 'kksin', value: '11 LAB 70 AA 500', autocomplete: 'off', spellcheck: 'false'});
     const out = h('div', {'aria-live': 'polite'});
     const decode = async () => {
       KKSDATA ??= await fetch('/data/kks.json', {credentials: 'same-origin'}).then(r => r.json()).catch(() => ({}));
       const raw = inp.value.toUpperCase().replace(/[\s_.\-]/g, '');
       const m = raw.match(/^(\d{2})([A-Z]{3})(\d{2})([A-Z]{2})(\d{3})([A-Z]?)$/);
       out.replaceChildren();
-      if (!m) { out.append(h('div', {class: 'fb wrong'}, h('b', null, "Can't read that code."), 'Expected something like 11 LAB 70 AA 501: unit digits, three system letters, two digits, two equipment letters, three digits.')); return; }
+      if (!m) { out.append(h('div', {class: 'fb wrong'}, h('b', null, "Can't read that code."), 'Expected something like 11 LAB 70 AA 500: unit digits, three system letters, two digits, two equipment letters, three digits.')); return; }
       const [, unit, sys, sn, eq, en, suf] = m, D = KKSDATA;
       const rows = [[unit, 'Unit', (D.blocks || {})[unit] || 'not in the plant tables'],
                     [sys, 'System', (D.systems || {})[sys] || 'not in the plant tables'],

@@ -87,7 +87,7 @@ suite "web sign-in for a person who joined with the app":
   let ali = s.join(mgr, "ali", "Ali User")
   # what ali did on the phone before having a web sign-in
   let sub = ali.a.handle(ali.a.owner[1], "POST", "/api/submit", NoQuery, parseStrict(
-    """{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"notes":"leaks"}},"client_id":"phone-0001"}"""), now())
+    """{"kind":"equipment","payload":{"kks":"11LAB70AA500","changes":{"notes":"leaks"}},"client_id":"phone-0001"}"""), now())
   doAssert sub.status == 200
   sync(ali.n, s.n)
 
@@ -116,7 +116,7 @@ suite "web sign-in for a person who joined with the app":
     let web = s.actorFor(s.userByName("ali"))
     check web.person == ali.person and web.role == "user"
     let mine = s.api.mineOf(web)
-    check mine.len == 1 and mine[0]["kind"].s == "equipment" and mine[0]["payload"]["kks"].s == "11LAB70AA501"
+    check mine.len == 1 and mine[0]["kind"].s == "equipment" and mine[0]["payload"]["kks"].s == "11LAB70AA500"
     let r = s.api.handle(web, "POST", "/api/submit", NoQuery, parseStrict(
       """{"kind":"equipment","payload":{"kks":"11LAB70AA502","changes":{"notes":"from the web"}},"client_id":"web-00001"}"""), now())
     check r.status == 200

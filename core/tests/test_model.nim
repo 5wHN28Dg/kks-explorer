@@ -8,20 +8,20 @@ proc sample(): Model =
   result = Model()
   result.sheets = parseSheets(j("""[{"id":"a","name":"Sheet A","w":2000,"h":1000,"scale":2.0,"levels":3,"rot":0,"notes":["markup"]}]"""))
   result.baseTags = parseTags(j("""[
-    {"id":"a:1","sheet":"a","kks":"11LAB70","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[100,100,140,120],"read":["11LAB70","AA501"]},
-    {"id":"a:2","sheet":"a","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[200,100,240,120],"read":["11LAB70","AA501"]},
+    {"id":"a:1","sheet":"a","kks":"11LAB70","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[100,100,140,120],"read":["11LAB70","AA500"]},
+    {"id":"a:2","sheet":"a","kks":"11LAB70AA500","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[200,100,240,120],"read":["11LAB70","AA500"]},
     {"id":"a:3","sheet":"a","kks":"11HAD70CT101","suffix":"R","isa":"TIAC","kind":"instrument","status":"auto","conf":1,"bbox":[300,100,330,160],"read":["TIAC","11HAD70CT101R"]},
     {"id":"a:4","sheet":"a","kks":null,"suffix":"","isa":null,"kind":"other","status":"review","conf":0.1,"bbox":[400,100,430,120],"read":["??","LAB7"]},
     {"id":"a:5","sheet":"a","kks":"11LAB70AA502","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[500,100,540,120],"read":["",""]}]"""))
   result.kksTables = j("""{"systems":{"LAB":"Feed water piping system","HAD":"HP drum"},"components":{"AA":"Valve","CT":"Temperature measurement"},
     "isa_first":{"T":"Temperature"},"isa_next":{"I":"Indicate","A":"Alarm","C":"Control"},"blocks":{"11":"Block 1"}}""")
-  result.locations = buildLocations(j("""{"entries":[{"kks":"LAB70AA501","level":"14.50m","cabinet":"C1","desc":"feed valve"},
-                                                    {"kks":"LAB70AA501","level":"14.5 m","cabinet":"C1"}]}"""))
+  result.locations = buildLocations(j("""{"entries":[{"kks":"LAB70AA500","level":"14.50m","cabinet":"C1","desc":"feed valve"},
+                                                    {"kks":"LAB70AA500","level":"14.5 m","cabinet":"C1"}]}"""))
   result.procs = j("""[{"id":"1.1","title":"Start","path":["1 Intro"],"page":3,"steps":[{"n":1,"text":"Open the feed valve"}]}]""")
-  result.state = j("""{"equipment":{"11LAB70AA501":{"floor":"3","notes":"leaks"}},
+  result.state = j("""{"equipment":{"11LAB70AA500":{"floor":"3","notes":"leaks"}},
     "reviews":{"a:4":{"status":"confirmed","kks":"11LAB70AA503","suffix":"","isa":null},"a:5":{"status":"rejected"}},
-    "photos":[{"id":"p1","kks":"11LAB70AA501","file":"x.jxl","caption":"c"}],
-    "links":[{"proc":"1.1","step":1,"kks":"11LAB70AA501"}],
+    "photos":[{"id":"p1","kks":"11LAB70AA500","file":"x.jxl","caption":"c"}],
+    "links":[{"proc":"1.1","step":1,"kks":"11LAB70AA500"}],
     "added_tags":[{"id":"00112233445566778899aabbccddeeff","sheet":"a","bbox":[600,100,640,120],"kks":"11LAB70AA504","suffix":"","isa":null,"kind":"equipment","note":""}]}""")
   result.merge()
 
@@ -38,12 +38,12 @@ suite "model":
     check not m.decode(m.tagById("a:1")[1])[0]
   test "photo coverage: equipment, tag plate, both, none (a caption starting Tag plate)":
     let c = sample()
-    c.state["photos"].elems.add j("""{"id":"p2","kks":"11LAB70AA501","file":"y.jxl","caption":"Tag plate · north"}""")
+    c.state["photos"].elems.add j("""{"id":"p2","kks":"11LAB70AA500","file":"y.jxl","caption":"Tag plate · north"}""")
     c.state["photos"].elems.add j("""{"id":"p3","kks":"11LAB70AA502","file":"z.jxl","caption":"Tag plate"}""")
     c.state["photos"].elems.add j("""{"id":"p4","kks":"11LAB70AA504","file":"w.jxl","caption":"the valve"}""")
-    check c.photoCover("11LAB70AA501") == "both"
+    check c.photoCover("11LAB70AA500") == "both"
     let all = c.photoCovers
-    for k in ["11LAB70AA501", "11LAB70AA502", "11LAB70AA504", "11LAB70AA503"]:
+    for k in ["11LAB70AA500", "11LAB70AA502", "11LAB70AA504", "11LAB70AA503"]:
       check all.getOrDefault(k, "none") == c.photoCover(k)
     check c.photoCover("11LAB70AA502") == "plate"
     check c.photoCover("11LAB70AA504") == "equipment"
@@ -51,23 +51,23 @@ suite "model":
     check c.photoCover("") == "none"
     var seen: Table[string, string]
     for t in tagsView(c, "a").elems: seen[t["code"].s] = t["photos"].s
-    check seen["11LAB70AA501"] == "both" and seen["11HAD70CT101R"] == "none"
+    check seen["11LAB70AA500"] == "both" and seen["11HAD70CT101R"] == "none"
     # the search's results carry the same word (each client draws its photo mark from it)
     var found: Table[string, string]
     for r in searchView(c, "11LAB70AA50").elems: found[r["code"].s] = r["photos"].s
-    check found.len >= 2 and found["11LAB70AA501"] == "both" and found["11LAB70AA504"] == "equipment"
+    check found.len >= 2 and found["11LAB70AA500"] == "both" and found["11LAB70AA504"] == "equipment"
     for k, v in found: check v == c.photoCover(k)
     for r in searchView(c, "11HAD70CT101").elems: check r["photos"].s == "none"
   test "the location list: one elevation when the rows agree":
-    check m.refLoc("LAB70AA501").elev == "14.5 m"
-    check m.refLoc("LAB70AA501").cabinet == "C1"
+    check m.refLoc("LAB70AA500").elev == "14.5 m"
+    check m.refLoc("LAB70AA500").cabinet == "C1"
   test "instrument points: beside the rows, never a conflict; other kinds left out":
     let c = sample()
-    c.locations = buildLocations(j("""{"entries":[{"kks":"LAB70AA501","level":"14.50m","cabinet":"C1","desc":"feed valve"},
-      {"kks":"LAB70AA501","kind":"point","elev_m":33,"grid":"K16 F08","desc":"tapping point at the drum","source":"Maker list","page":5},
-      {"kks":"LAB70AA501","kind":"point","elev_m":12.5,"source":"Other list"},
-      {"kks":"LAB70AA501","kind":"future","level":"99 m","cabinet":"X9"}]}"""))
-    let rl = c.refLoc("LAB70AA501")
+    c.locations = buildLocations(j("""{"entries":[{"kks":"LAB70AA500","level":"14.50m","cabinet":"C1","desc":"feed valve"},
+      {"kks":"LAB70AA500","kind":"point","elev_m":33,"grid":"K16 F08","desc":"tapping point at the drum","source":"Maker list","page":5},
+      {"kks":"LAB70AA500","kind":"point","elev_m":12.5,"source":"Other list"},
+      {"kks":"LAB70AA500","kind":"future","level":"99 m","cabinet":"X9"}]}"""))
+    let rl = c.refLoc("LAB70AA500")
     check rl.rows.len == 1 and rl.points.len == 2
     check rl.elev == "14.5 m" and rl.cabinet == "C1"          # the points' 33 m and the unknown kind's 99 m don't count
     check rl.points[0].pointText == "33 m · grid K16 F08" and rl.points[0].pointSource == "Maker list, page 5"
@@ -78,28 +78,28 @@ suite "model":
     check v["instrument_points"][0]["text"].s == "33 m · grid K16 F08"
     check v["instrument_points"][0]["desc"].s == "tapping point at the drum"
     check v["instrument_points"][0]["source"].s == "Maker list, page 5"
-    check c.search("drum")[0].full == "11LAB70AA501"          # a point's description is searchable
+    check c.search("drum")[0].full == "11LAB70AA500"          # a point's description is searchable
     check pointText(j("""{"elev_m":"high"}""")) == ""     # not a number: no elevation
   test "instrument points: malformed entries, numbers, pages, the bare list, grid search":
     let c = sample()
-    c.locations = buildLocations(j("""[5, null, ["x"], {"kks":"LAB70AA501","kind":1,"cabinet":"Y8"},
-      {"kks":"LAB70AA501","level":"14 m","cabinet":"C1"},
-      {"kks":"LAB70AA501","kind":"point","elev_m":33.0,"grid":"K16 F08","page":5.0,"source":"L"},
-      {"kks":"LAB70AA501","kind":"point","page":2.5},
-      {"kks":"LAB70AA501","kind":"point","elev_m":1e300,"page":1e300},
-      {"kks":"LAB70AA501","kind":"point","elev_m":1e-7},{"kks":"LAB70AA501","kind":"point","elev_m":-0.0004},
-      {"kks":"LAB70AA501","kind":"point","elev_m":12.3456}]"""))
-    let rl = c.refLoc("LAB70AA501")
+    c.locations = buildLocations(j("""[5, null, ["x"], {"kks":"LAB70AA500","kind":1,"cabinet":"Y8"},
+      {"kks":"LAB70AA500","level":"14 m","cabinet":"C1"},
+      {"kks":"LAB70AA500","kind":"point","elev_m":33.0,"grid":"K16 F08","page":5.0,"source":"L"},
+      {"kks":"LAB70AA500","kind":"point","page":2.5},
+      {"kks":"LAB70AA500","kind":"point","elev_m":1e300,"page":1e300},
+      {"kks":"LAB70AA500","kind":"point","elev_m":1e-7},{"kks":"LAB70AA500","kind":"point","elev_m":-0.0004},
+      {"kks":"LAB70AA500","kind":"point","elev_m":12.3456}]"""))
+    let rl = c.refLoc("LAB70AA500")
     check rl.rows.len == 1 and rl.cabinet == "C1"                 # the non-string kind is left out (Y8)
     check rl.points.len == 6
     check rl.points[3].pointText == "0 m" and rl.points[4].pointText == "0 m" and rl.points[5].pointText == "12.346 m"
     check rl.points[0].pointText == "33 m · grid K16 F08" and rl.points[0].pointSource == "L, page 5"
     check rl.points[1].pointText == "" and rl.points[1].pointSource == ""   # 2.5 is no page
     check rl.points[2].pointText == "" and rl.points[2].pointSource == ""   # out of range
-    check c.search("k16")[0].full == "11LAB70AA501"                         # found by its grid
+    check c.search("k16")[0].full == "11LAB70AA500"                         # found by its grid
   test "search: exact codes first, without the unit, partial, by description":
-    check m.search("11LAB70AA501")[0].id == "a:2"
-    check m.search("LAB70AA501")[0].id == "a:2"
+    check m.search("11LAB70AA500")[0].id == "a:2"
+    check m.search("LAB70AA500")[0].id == "a:2"
     check m.search("HAD70CT101R")[0].id == "a:3"
     check m.search("feed valve").len >= 1
 
@@ -122,49 +122,49 @@ suite "views":
   test "who set each field and took each photo pass through from the state":
     let c = sample()
     c.state["photos"][0]["by_name"] = newStr("Ali User")
-    c.state["equipment_by"] = j("""{"11LAB70AA501":{"floor":{"by":"ali","by_name":"Ali User","at":5,"submitted":4}}}""")
+    c.state["equipment_by"] = j("""{"11LAB70AA500":{"floor":{"by":"ali","by_name":"Ali User","at":5,"submitted":4}}}""")
     let v = tagView(c, "a:2")
     check v["photos"][0]["by_name"].s == "Ali User"
     check v["equipment_by"]["floor"]["by_name"].s == "Ali User"
     check tagView(c, "a:3")["equipment_by"].len == 0
   test "descriptions: a draft until a person confirms it as the custom field Description":
     let c = sample()
-    c.descriptions = parseDescriptions(j("""{"11LAB70AA501":{"text":" Isolates the feed water line ","basis":"P&ID 1"},
+    c.descriptions = parseDescriptions(j("""{"11LAB70AA500":{"text":" Isolates the feed water line ","basis":"P&ID 1"},
       "11HAD70CT101":"Drum temperature","11LAB70AA502":{"text":""},"bad":3}"""))
     check c.descriptions.len == 2
     let d = tagView(c, "a:2")["description"]
     check d["status"].s == "draft" and d["label"].s == "draft, unchecked"
     check d["text"].s == "Isolates the feed water line" and d["basis"].s == "P&ID 1"
     let pl = d["confirm"]["payload"]
-    check d["confirm"]["kind"].s == "equipment" and pl["kks"].s == "11LAB70AA501"
+    check d["confirm"]["kind"].s == "equipment" and pl["kks"].s == "11LAB70AA500"
     check pl["changes"]["custom"].len == 1 and pl["changes"]["custom"][0]["k"].s == "Description"
     check pl["base"]["custom"].len == 0
     # by the code without its suffix
     check tagView(c, "a:3")["description"]["text"].s == "Drum temperature"
     check tagView(c, "u:00112233445566778899aabbccddeeff")["description"].kind == jNull
     # confirmed: the custom field wins, with who confirmed it
-    c.state["equipment"]["11LAB70AA501"]["custom"] = j("""[{"k":"Maker","v":"X"},{"k":"Description","v":"Feed water stop valve"}]""")
-    c.state["equipment_by"] = j("""{"11LAB70AA501":{"custom:Description":{"by":"ali","by_name":"Ali User","at":9,"submitted":8}}}""")
+    c.state["equipment"]["11LAB70AA500"]["custom"] = j("""[{"k":"Maker","v":"X"},{"k":"Description","v":"Feed water stop valve"}]""")
+    c.state["equipment_by"] = j("""{"11LAB70AA500":{"custom:Description":{"by":"ali","by_name":"Ali User","at":9,"submitted":8}}}""")
     let e = tagView(c, "a:2")["description"]
     check e["status"].s == "confirmed" and e["text"].s == "Feed water stop valve" and e["by_name"].s == "Ali User"
     check e["draft_differs"].b and e.get("confirm") == nil
     # a draft confirmed on a code with other custom fields keeps them
-    c.state["equipment"]["11LAB70AA501"]["custom"] = j("""[{"k":"Maker","v":"X"}]""")
+    c.state["equipment"]["11LAB70AA500"]["custom"] = j("""[{"k":"Maker","v":"X"}]""")
     let f = tagView(c, "a:2")["description"]["confirm"]["payload"]
     check f["changes"]["custom"].len == 2 and f["base"]["custom"].len == 1
     check tagView(sample(), "a:2")["description"].kind == jNull
   test "descriptions: capped at what a custom field holds; a malformed file is skipped with a warning":
     let long = "x".repeat(2500)
-    let d = parseDescriptions(j("{\"11LAB70AA501\":{\"text\":\"" & long & "\"}}"))
-    check d["11LAB70AA501"]["text"].s.len == DescriptionMax
+    let d = parseDescriptions(j("{\"11LAB70AA500\":{\"text\":\"" & long & "\"}}"))
+    check d["11LAB70AA500"]["text"].s.len == DescriptionMax
     var warned: seq[string]
-    let bad = loadDescriptions("{\"11LAB70AA501\": {\"text\": \"a\",}", proc (m: string) = warned.add m)
+    let bad = loadDescriptions("{\"11LAB70AA500\": {\"text\": \"a\",}", proc (m: string) = warned.add m)
     check bad.len == 0 and warned.len == 1 and "descriptions.json" in warned[0]
     check loadDescriptions("", nil).len == 0
-    check loadDescriptions("""{"11LAB70AA501":"Stop valve"}""", nil)["11LAB70AA501"]["text"].s == "Stop valve"
+    check loadDescriptions("""{"11LAB70AA500":"Stop valve"}""", nil)["11LAB70AA500"]["text"].s == "Stop valve"
   test "systems: block, system, subsystem, kind; each code once; search; undecoded codes apart":
     let v = systemsView(m)
-    # a:2 11LAB70AA501, a:3 11HAD70CT101R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected
+    # a:2 11LAB70AA500, a:3 11HAD70CT101R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected
     check v["total"].i == 5
     check v["blocks"].elems.len == 1 and v["blocks"][0]["blk"].s == "11" and v["blocks"][0]["blk_name"].s == "Block 1"
     let systems = v["blocks"][0]["systems"]
@@ -176,7 +176,7 @@ suite "views":
     check valves["comp"].s == "AA" and valves["comp_name"].s == "Valve"
     var codes: seq[string]
     for it in valves["items"].elems: codes.add it["code"].s
-    check codes == @["11LAB70AA501", "11LAB70AA503", "11LAB70AA504"]
+    check codes == @["11LAB70AA500", "11LAB70AA503", "11LAB70AA504"]
     check valves["items"][0]["desc"].s == "feed valve" and valves["items"][0]["photos"].s == "equipment"
     check v["other"].elems.len == 1 and v["other"][0]["code"].s == "11LAB70"
     check systemsView(m, "temperature")["total"].i == 1
@@ -185,19 +185,19 @@ suite "views":
     check systemsView(m, "nothing like this")["total"].i == 0
   test "systems: a code on two sheets is listed once, with its count":
     let c = sample()
-    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"a","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[10,10,20,20],"read":["",""]}]"""))
+    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"a","kks":"11LAB70AA500","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[10,10,20,20],"read":["",""]}]"""))
     c.merge()
     let lab = systemsView(c)["blocks"][0]["systems"][1]
     check lab["subsystems"][0]["kinds"][0]["items"][0]["count"].i == 2
   test "coverage: per sheet, per system, totals":
     let v = coverageView(m)
-    # tags left: a:1 11LAB70 (auto), a:2 AA501 (auto), a:3 CT101R (auto), a:4 → AA503 (confirmed), added AA504 (verified)
+    # tags left: a:1 11LAB70 (auto), a:2 AA500 (auto), a:3 CT101R (auto), a:4 → AA503 (confirmed), added AA504 (verified)
     let t = v["total"]
     check t["tags"].i == 5 and t["verified"].i == 2 and t["review"].i == 0 and t["marked"].i == 1
     check t["codes"].i == 5
-    # photos: AA501 has an equipment photo (p1); the rest none
+    # photos: AA500 has an equipment photo (p1); the rest none
     check t["photos"]["equipment"].i == 1 and t["photos"]["none"].i == 4 and t["photos"]["both"].i == 0
-    # places: AA501 from the location list and its floor; nothing else
+    # places: AA500 from the location list and its floor; nothing else
     check t["located"].i == 1
     check v["sheets"].elems.len == 1 and v["sheets"][0]["name"].s == "Sheet A" and v["sheets"][0]["codes"].i == 5
     var names: seq[string]
@@ -207,22 +207,22 @@ suite "views":
     check lab["codes"].i == 3 and lab["verified"].i == 2 and lab["located"].i == 1 and lab.get("tags") == nil
   test "coverage: a code is checked when any of its tags is (auto on the first sheet, verified on a later one)":
     let c = sample()
-    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"a","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"verified","conf":1,"bbox":[10,10,20,20],"read":["",""]}]"""))
+    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"a","kks":"11LAB70AA500","suffix":"","isa":null,"kind":"equipment","status":"verified","conf":1,"bbox":[10,10,20,20],"read":["",""]}]"""))
     c.merge()
     var lab: JNode
     for s in coverageView(c)["systems"].elems:
       if s["sys"].s == "LAB": lab = s
-    check lab["codes"].i == 3 and lab["verified"].i == 3        # a:2 is auto, but b:1 checked 11LAB70AA501
+    check lab["codes"].i == 3 and lab["verified"].i == 3        # a:2 is auto, but b:1 checked 11LAB70AA500
   test "coverage: a place typed by a person counts":
     let c = sample()
     c.state["equipment"]["11LAB70AA504"] = j("""{"area":"pump house"}""")
     c.merge()
     check coverageView(c)["total"]["located"].i == 2
   test "coverage: a place is looked up per tag, not per code (a suffix typed into the code has another body)":
-    # 11LAB70AA501 + R and 11LAB70AA501R are one code, but only the first is in the location list (LAB70AA501)
+    # 11LAB70AA500 + R and 11LAB70AA500R are one code, but only the first is in the location list (LAB70AA500)
     let c = sample()
-    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"b","kks":"11LAB70AA501","suffix":"R","isa":null,"kind":"equipment","status":"auto","conf":1,"bbox":[10,10,20,20],"read":["",""]},
-      {"id":"c:1","sheet":"c","kks":"11LAB70AA501R","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,"bbox":[10,10,20,20],"read":["",""]}]"""))
+    c.baseTags.add parseTags(j("""[{"id":"b:1","sheet":"b","kks":"11LAB70AA500","suffix":"R","isa":null,"kind":"equipment","status":"auto","conf":1,"bbox":[10,10,20,20],"read":["",""]},
+      {"id":"c:1","sheet":"c","kks":"11LAB70AA500R","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,"bbox":[10,10,20,20],"read":["",""]}]"""))
     c.merge()
     let v = coverageView(c)
     var located: seq[(string, int64)]

@@ -419,14 +419,14 @@ class Cli(Base):
         # submissions from a file, as the manager (tools/procedure_import.py writes these); a second run adds nothing
         subs = os.path.join(self.dir, 'subs.json')
         with open(subs, 'w') as f:
-            json.dump([{'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 1, 'kks': '11LAB70AA501', 'on': True}, 'client_id': 'imp-test-link-1'},
-                       {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'custom': [{'k': 'Before start-up', 'v': 'open'}]},
+            json.dump([{'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 1, 'kks': '11LAB70AA500', 'on': True}, 'client_id': 'imp-test-link-1'},
+                       {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'custom': [{'k': 'Before start-up', 'v': 'open'}]},
                                                          'base': {'custom': []}}, 'client_id': 'imp-test-field-1'}], f)
         self.assertEqual(self.cli('submit-file', subs), (0, '2 submissions: 2 approved.'))
         self.assertEqual(self.cli('submit-file', subs), (0, '2 submissions: 2 already there.'))
         st = boss.req('GET', '/api/state')[1]
-        self.assertEqual([l['kks'] for l in st['links'] if l['proc'] == 'EP-1'], ['11LAB70AA501'])
-        self.assertEqual(st['equipment']['11LAB70AA501']['custom'], [{'k': 'Before start-up', 'v': 'open'}])
+        self.assertEqual([l['kks'] for l in st['links'] if l['proc'] == 'EP-1'], ['11LAB70AA500'])
+        self.assertEqual(st['equipment']['11LAB70AA500']['custom'], [{'k': 'Before start-up', 'v': 'open'}])
         # a password link and a new manager, from whoever runs the server (the manager account was lost)
         st, r, _ = boss.req('POST', '/api/users', {'username': 'sara', 'full_name': 'Sara Admin', 'position': 'Shift engineer', 'role': 'admin'})
         self.assertEqual(st, 200, r)
@@ -481,7 +481,7 @@ class Cli(Base):
             json.dump([{'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 2, 'kks': '11LAB70AA502', 'on': True}, 'client_id': 'imp-test-link-2'}], f)
         self.assertEqual(self.cli('submit-file', subs2), (0, '1 submissions: 1 approved.'))
         st = sara.req('GET', '/api/state')[1]
-        self.assertEqual(sorted(l['kks'] for l in st['links'] if l['proc'] == 'EP-1'), ['11LAB70AA501', '11LAB70AA502', '11LAB70AA505'])
+        self.assertEqual(sorted(l['kks'] for l in st['links'] if l['proc'] == 'EP-1'), ['11LAB70AA500', '11LAB70AA502', '11LAB70AA505'])
         self.assertEqual(self.cli('submit-file', subs2), (0, '1 submissions: 1 already there.'))
         # no request can send a file's id
         for bad in ('file.imp-test-link-1', 'floor.file.imp-test-link-1'):
@@ -493,9 +493,9 @@ class Cli(Base):
         # (here: an id used again for something else, and for another value of the same field)
         subs3 = os.path.join(self.dir, 'subs3.json')
         with open(subs3, 'w') as f:
-            json.dump([{'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 1, 'kks': '11LAB70AA501', 'on': True}, 'client_id': 'imp-test-link-1'},
+            json.dump([{'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 1, 'kks': '11LAB70AA500', 'on': True}, 'client_id': 'imp-test-link-1'},
                        {'kind': 'link', 'payload': {'proc': 'EP-1', 'step': 4, 'kks': '11LAB70AA504', 'on': True}, 'client_id': 'imp-test-field-1'},
-                       {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'custom': [{'k': 'Before start-up', 'v': 'closed'}]},
+                       {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'custom': [{'k': 'Before start-up', 'v': 'closed'}]},
                                                          'base': {'custom': []}}, 'client_id': 'imp-test-field-1'}], f)
         code, out = self.cli('submit-file', subs3)
         self.assertEqual(code, 0, out)
@@ -503,12 +503,12 @@ class Cli(Base):
         self.assertEqual(lines[0], '3 submissions: 1 already there, 2 not written.')
         self.assertEqual(len(lines), 3, out)
         self.assertRegex(lines[1], r'^  item 1 \(link, client_id imp-test-field-1\): not written, its id belongs to submission \d+, '
-                                   r'which is something else \(equipment 11LAB70AA501, approved\)\.$')
+                                   r'which is something else \(equipment 11LAB70AA500, approved\)\.$')
         self.assertRegex(lines[2], r'^  item 2 \(equipment, client_id imp-test-field-1\): not written, its id belongs to submission \d+, '
                                    r'a different change to the same thing \(approved\)\.$')
         st = sara.req('GET', '/api/state')[1]
         self.assertNotIn('11LAB70AA504', [l['kks'] for l in st['links']])
-        self.assertEqual(st['equipment']['11LAB70AA501']['custom'], [{'k': 'Before start-up', 'v': 'open'}])
+        self.assertEqual(st['equipment']['11LAB70AA500']['custom'], [{'k': 'Before start-up', 'v': 'open'}])
 
 
 class SecretFiles(Base):
@@ -629,16 +629,16 @@ class Server(Base):
         self.assertEqual(ali2.req('POST', '/api/login', {'username': 'ali', 'password': 'wrong one!!'})[0], 401)
         self.assertEqual(ali2.req('POST', '/api/login', {'username': 'ali', 'password': 'ali password 1'})[0], 200)
         # a proposal, the manager approves
-        st, r, _ = ali2.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+        st, r, _ = ali2.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500',
                                                     'changes': {'notes': 'leaks at the gland'}}, 'client_id': 'clientid01'})
         self.assertEqual((st, r['status']), (200, 'pending'), r)
         subs = boss.req('GET', '/api/submissions')[1]['submissions']
         self.assertEqual(subs[0]['by_name'], 'Ali User')
         self.assertEqual(boss.req('POST', f'/api/submissions/{subs[0]["id"]}/approve', {})[0], 200)
-        self.assertEqual(ali2.req('GET', '/api/state')[1]['equipment']['11LAB70AA501']['notes'], 'leaks at the gland')
+        self.assertEqual(ali2.req('GET', '/api/state')[1]['equipment']['11LAB70AA500']['notes'], 'leaks at the gland')
         # a photo: kept as a blob, served by hash; a floor may come with it (the clients ask for one first)
         png = b'\xff\x0a' + b'0' * 64     # a JPEG XL codestream's signature: the server stores JXL only
-        photo = {'kks': '11LAB70AA501', 'caption': 'gland', 'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(png).decode()}
+        photo = {'kks': '11LAB70AA500', 'caption': 'gland', 'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(png).decode()}
         st, r, _ = boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': dict(photo, floor='2')})
         self.assertEqual(r.get('floor', {}).get('status'), 'approved', r)
         self.assertEqual((st, r['status']), (200, 'approved'), r)
@@ -653,7 +653,7 @@ class Server(Base):
         # 2026-10-06 stored XSS: a member's "photo" that starts with the JPEG XL signature and goes on as HTML, asked
         # for as <sha>.html. Its type comes from its bytes, never the URL, and it is sandboxed.
         poly = b'\xff\x0a<html><script>parent.pwned=1</script></html>'
-        st, r, _ = ali2.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'x',
+        st, r, _ = ali2.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA500', 'caption': 'x',
                             'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(poly).decode()}})
         self.assertEqual(st, 200, r)
         sha = [p for p in ali2.req('GET', '/api/submissions')[1]['submissions'] if p['kind'] == 'photo'][0]['payload']['file'].split('.')[0]
@@ -841,7 +841,7 @@ class Signup(Base):
         st, r, nc = self.login('nadia', 'nadia password 1')
         self.assertEqual(st, 200, r)
         self.assertEqual(nc.req('GET', '/api/me')[1]['user']['username'], 'nadia')
-        self.assertEqual(nc.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'near': 'pump'}, 'base': {}}})[1]['status'], 'pending')
+        self.assertEqual(nc.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'near': 'pump'}, 'base': {}}})[1]['status'], 'pending')
         self.assertEqual(nc.req('GET', '/api/signups')[0], 403)
         self.assertEqual(boss.req('POST', f'/api/signups/{ids[4]}/approve', {})[0], 404)     # decided: gone
         # a name somebody has: refused as it is, approved under another one (their password stays theirs)
@@ -993,7 +993,7 @@ class WebSignIn(Base):
         mine = lambda c: [x for x in c.req('GET', '/api/submissions?mine=1&status=all')[1]['submissions'] if x['mine']]
         sara, omar = self.account(boss, 'sara', 'admin'), self.account(boss, 'omar')
         ali = AppPerson(admin, 'ali', 'Ali Hassan', 'Operator')
-        ali.note('11LAB70AA501', 'seen from the phone')
+        ali.note('11LAB70AA500', 'seen from the phone')
         row, = self.rows(boss, 'ali')
         self.assertEqual((row['no_account'], row['id'], row['devices'], row['active'], row['person']), (True, None, 1, True, ali.person))
         n_rows = len(boss.req('GET', '/api/users?show_hidden=1')[1]['users'])
@@ -1022,7 +1022,7 @@ class WebSignIn(Base):
         self.assertEqual((me(web)['person'], me(web)['username'], me(web)['role']), (ali.person, 'ali', 'user'))
         got = mine(web)
         self.assertEqual([(x['kind'], x['payload']['kks'], x['payload']['changes']) for x in got],
-                         [('equipment', '11LAB70AA501', {'notes': 'seen from the phone'})])
+                         [('equipment', '11LAB70AA500', {'notes': 'seen from the phone'})])
         st, r, _ = web.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA502', 'changes': {'notes': 'from the web'}},
                                                    'client_id': 'web-00001'})
         self.assertEqual(st, 200, r)
@@ -1382,7 +1382,7 @@ class SignOutEverywhere(Base):
         # ---- an admin, for a user: both of ali's sign-ins end at once; nobody else's
         self.assertEqual(out(sara, 'ali'), (200, {'ok': True, 'ended': 2}))
         self.assertEqual(self.alive(ali, ali2), [401, 401])
-        self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'x'}}})[0], 401)
+        self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'notes': 'x'}}})[0], 401)
         self.dead(ali, ali2)
         self.assertEqual(self.alive(boss, sara, sara2, omar, tom), [200] * 5)
         self.assertEqual(out(sara, 'ali'), (200, {'ok': True, 'ended': 0}))         # none left: said as none

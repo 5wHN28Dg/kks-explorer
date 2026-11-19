@@ -16,7 +16,7 @@ import kks.explorer.ui.orientedBitmap
  *  `--ei side N` makes the picture N × 3N/4 px, written as a PNG and read back through the camera's own path
  *  (`orientedBitmap`: at most 2560 px, Lanczos), its left half 1-px black and white stripes (bilinear scaling turns
  *  them into bands; Lanczos into an even grey: test_photo_size).
- *  `adb shell am broadcast -a kks.explorer.DEBUG_PHOTO -p io.github.walkdown --es kks 11LAB70AA501 --es floor 2` */
+ *  `adb shell am broadcast -a kks.explorer.DEBUG_PHOTO -p io.github.walkdown --es kks 11LAB70AA500 --es floor 2` */
 class DebugPhotoReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.hasExtra("hold")) { PhotoQueue.holdForTest = intent.getBooleanExtra("hold", false); return }

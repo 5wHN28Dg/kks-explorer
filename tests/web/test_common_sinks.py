@@ -69,12 +69,12 @@ class Sinks(unittest.TestCase):
 
     def test_user_text(self):
         """G15: text someone wrote takes its own direction, and a KKS code in Arabic text keeps its characters in order
-        (a plain element of the same text splits "11" from "LAB70AA501": the measure below sees that)"""
-        NOTE = 'مضخة التغذية 11LAB70AA501 تعمل'
+        (a plain element of the same text splits "11" from "LAB70AA500": the measure below sees that)"""
+        NOTE = 'مضخة التغذية 11LAB70AA500 تعمل'
         def run(pg):
             got = pg.evaluate("""(note) => {
               // the code's characters side by side, left to right, in the order they are written?
-              const inOrder = (el, code = '11LAB70AA501') => { const xs = [];
+              const inOrder = (el, code = '11LAB70AA500') => { const xs = [];
                 const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n, all = [];
                 while ((n = w.nextNode())) for (let i = 0; i < n.data.length; i++) all.push([n, i]);
                 const text = all.map(([n, i]) => n.data[i]).join(''), at = text.indexOf(code);
@@ -83,12 +83,12 @@ class Sinks(unittest.TestCase):
                 return xs.every(([l], j) => j === 0 || Math.abs(l - xs[j - 1][1]) <= 2) };   // (WebKit rounds each box out by a pixel)
               const box = K.h('div', {style: 'width:600px;font:16px sans-serif'}); document.body.append(box);
               const plain = K.h('div', null, note), block = K.userText(note, 'div', {class: 'n'}),
-                    inline = K.h('div', null, 'Note: ', K.userText(note)), mixed = K.h('div', null, K.userText('Pump مضخة 11LAB70AA501 ok')),
-                    spaced = K.userText('مضخة 11 LAB70 AA501 تعمل', 'div');
+                    inline = K.h('div', null, 'Note: ', K.userText(note)), mixed = K.h('div', null, K.userText('Pump مضخة 11LAB70AA500 ok')),
+                    spaced = K.userText('مضخة 11 LAB70 AA500 تعمل', 'div');
               box.append(plain, block, inline, mixed, spaced);
               const field = K.h('textarea'), line = K.h('input'), pw = K.h('input', {type: 'password'}), ltr = K.h('input', {dir: 'ltr'});
               field.value = note; line.value = note; box.append(field, line);
-              return {plain: inOrder(plain), block: inOrder(block), inline: inOrder(inline), mixed: inOrder(mixed), spaced: inOrder(spaced, '11 LAB70 AA501'),
+              return {plain: inOrder(plain), block: inOrder(block), inline: inOrder(inline), mixed: inOrder(mixed), spaced: inOrder(spaced, '11 LAB70 AA500'),
                       blockDir: block.getAttribute('dir'), blockClass: block.className, blockRtl: block.matches(':dir(rtl)'),
                       text: block.textContent, fields: [field.getAttribute('dir'), line.getAttribute('dir'), pw.getAttribute('dir'), ltr.getAttribute('dir')],
                       fieldRtl: [field.matches(':dir(rtl)'), line.matches(':dir(rtl)')]} }""", NOTE)
@@ -308,10 +308,10 @@ class Sinks(unittest.TestCase):
     def test_undo_bar(self):
         """#365 (D1): Undo shows for at least 4 s, as a status the screen reader reads, and runs its action once"""
         def run(pg):
-            pg.evaluate("() => { window.undone = 0; window.t0 = Date.now(); K.undo('Unlinked 11LAB70AA501 from step 2', () => undone++, 1000) }")
+            pg.evaluate("() => { window.undone = 0; window.t0 = Date.now(); K.undo('Unlinked 11LAB70AA500 from step 2', () => undone++, 1000) }")
             bar = pg.locator('#kundo')
             self.assertEqual(bar.get_attribute('role'), 'status')
-            self.assertIn('Unlinked 11LAB70AA501 from step 2', bar.text_content())
+            self.assertIn('Unlinked 11LAB70AA500 from step 2', bar.text_content())
             pg.wait_for_timeout(3000)
             self.assertTrue(bar.is_visible())                        # (asked for 1 s: 4 s at least)
             pg.get_by_role('button', name='Undo').click()

@@ -36,11 +36,11 @@ def tag(i, kks, x, suffix='', isa=None, status='auto'):
 
 SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/sheets/a.png', 'notes': []},
           {'id': 'b', 'name': 'Sheet B', 'w': 1000, 'h': 600, 'file': 'data/sheets/b.png', 'notes': []}]
-TAGS = [tag('a:1', '11LAB70AA501', 50), tag('a:2', '11HAD70CT101', 150, 'R', 'TIAC'), tag('a:3', None, 250, status='review'),
+TAGS = [tag('a:1', '11LAB70AA500', 50), tag('a:2', '11HAD70CT101', 150, 'R', 'TIAC'), tag('a:3', None, 250, status='review'),
         tag('a:4', '11LAB70AA503', 350), tag('a:5', '12LBA10AA101', 450), tag('a:6', '11LAB71AP001', 650),
         tag('a:7', '11LAB72AP002', 800),
         # another drawing: two codes of its own, and one that is on Sheet A too
-        tag('b:1', '12LBA20AA101', 50), tag('b:2', '12LBA20AA102', 150), tag('b:3', '11LAB70AA501', 250)]
+        tag('b:1', '12LBA20AA101', 50), tag('b:2', '12LBA20AA102', 150), tag('b:3', '11LAB70AA500', 250)]
 PW = 'a long password'
 
 
@@ -80,8 +80,8 @@ class WebMulti(unittest.TestCase):
             with open(os.path.join(d, 'sheets', n + '.png'), 'wb') as f: f.write(png(100, 60))
         r = subprocess.run([SERVER, 'publish-data', d, '--config', self.cfg], cwd=self.dir, capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, r.stdout + r.stderr
-        # what is there before: a note on AA501, a floor on AA503 (Place for all says it replaces it)
-        for k, ch in (('11LAB70AA501', {'notes': 'old note'}), ('11LAB70AA503', {'floor': '3'})):
+        # what is there before: a note on AA500, a floor on AA503 (Place for all says it replaces it)
+        for k, ch in (('11LAB70AA500', {'notes': 'old note'}), ('11LAB70AA503', {'floor': '3'})):
             assert self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': k, 'changes': ch, 'base': {f: '' for f in ch}}}).get('status') == 'approved'
         self.photo = os.path.join(self.dir, 'photo.png')
         with open(self.photo, 'wb') as f: f.write(png(160, 120, b'\x30\x80\xc0'))
@@ -202,7 +202,7 @@ class WebMulti(unittest.TestCase):
             self.assertEqual(btn.get_attribute('aria-pressed'), 'false')   # sending leaves the mode
             floors = {s['payload']['kks']: s['payload']['changes'].get('floor') for s in self.subs('equipment')
                       if 'floor' in s['payload'].get('changes', {}) and s['payload']['changes']['floor'] == '5'}
-            self.assertEqual(floors, {'11LAB70AA501': '5', '11HAD70CT101R': '5', '11LAB70AA503': '5'})
+            self.assertEqual(floors, {'11LAB70AA500': '5', '11HAD70CT101R': '5', '11LAB70AA503': '5'})
             st = self.boss.req('GET', '/api/state')['equipment']
             self.assertEqual(st['11LAB70AA503']['floor'], '5')
             self.assertNotIn('floor', st.get('12LBA10AA101', {}))
@@ -217,7 +217,7 @@ class WebMulti(unittest.TestCase):
             dlg.locator('[data-send]').click()
             toast('Sent for 2 codes')
             st = self.boss.req('GET', '/api/state')['equipment']
-            self.assertEqual(st['11LAB70AA501']['notes'], 'old note\nchecked on the walkdown')
+            self.assertEqual(st['11LAB70AA500']['notes'], 'old note\nchecked on the walkdown')
             self.assertEqual(st['12LBA10AA101']['notes'], 'checked on the walkdown')
             # Photo for all: the mark-up editor, JPEG XL in the browser, one file for both codes
             btn.click()
@@ -358,7 +358,7 @@ class WebMulti(unittest.TestCase):
             page.wait_for_function("() => cur.id === 'b' && document.querySelector('#layer .hs[data-id=\"b:1\"]')?.classList.contains('picked')")
             self.assertEqual(count(), '2 selected')
             self.assertEqual(btn.get_attribute('aria-pressed'), 'true')
-            hs('b:3').click()            # 11LAB70AA501, which is on Sheet A too
+            hs('b:3').click()            # 11LAB70AA500, which is on Sheet A too
             self.assertEqual(count(), '3 selected')
             page.select_option('#sheetSel', 'a')
             page.wait_for_function("() => cur.id === 'a' && document.querySelector('#layer .hs[data-id=\"a:1\"]')?.classList.contains('picked')")
@@ -366,7 +366,7 @@ class WebMulti(unittest.TestCase):
             # the List: codes typed or pasted; one that is on no drawing is named and not added
             page.click('#pickList')
             dlg = page.locator('dialog[open]')
-            self.assertIn('Sheet A, Sheet B', dlg.locator('li', has_text='11LAB70AA501').text_content())
+            self.assertIn('Sheet A, Sheet B', dlg.locator('li', has_text='11LAB70AA500').text_content())
             self.assertIn('Sheet B', dlg.locator('li', has_text='12LBA20AA101').text_content())
             self.assertNotIn('Sheet A', dlg.locator('li', has_text='12LBA20AA101').text_content())
             dlg.locator('#pickAddText').fill('12lba20aa102, 99XXX99XX999\n11LAB70AA503 11LAB71AP001')
@@ -391,7 +391,7 @@ class WebMulti(unittest.TestCase):
             page.click('#pickPhoto')
             dlg = page.locator('dialog[open]')
             self.assertEqual(dlg.locator('#dlgFloorLabel').text_content(),
-                             'Floor for 11LAB71AP001, 12LBA20AA101, 11LAB70AA501, 12LBA20AA102: these have none yet; the others keep theirs')
+                             'Floor for 11LAB71AP001, 12LBA20AA101, 11LAB70AA500, 12LBA20AA102: these have none yet; the others keep theirs')
             self.assertFalse(dlg.locator('#dlgChoose').is_visible())
             dlg.locator('#dlgFloor').fill('4')
             page.screenshot(path=os.path.join(SHOTS, 'multi-member-floor-' + name + '.png'))
@@ -400,7 +400,7 @@ class WebMulti(unittest.TestCase):
             dlg.locator('#dlgFile').set_input_files(self.photo)
             page.locator('button[data-a="ok"]').click(timeout=15000)
             toast('Sent for 5 codes · 5 await approval')
-            five = ['11LAB70AA501', '11LAB70AA503', '11LAB71AP001', '12LBA20AA101', '12LBA20AA102']
+            five = ['11LAB70AA500', '11LAB70AA503', '11LAB71AP001', '12LBA20AA101', '12LBA20AA102']
             photos = [x for x in self.subs('photo') if x['payload'].get('caption') == 'same corner']
             self.assertEqual(sorted(x['payload']['kks'] for x in photos), five)
             self.assertEqual({x['status'] for x in photos}, {'pending'})

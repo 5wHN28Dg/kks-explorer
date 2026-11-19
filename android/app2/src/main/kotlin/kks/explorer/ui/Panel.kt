@@ -342,7 +342,7 @@ private fun ReviewSection(t: JSONObject, snack: SnackbarHostState) {
         Button(onClick = {
             val c = code.uppercase().filterNot { it.isWhitespace() }
             val m = Regex("^(\\d{2}[A-Z]{3}\\d{2}[A-Z]{2}\\d{3})([A-Z0-9]*)$").matchEntire(c)
-            if (m == null) { scope.launch { snack.showSnackbar("That is not a valid KKS (e.g. 11LAB70AA501)") }; return@Button }
+            if (m == null) { scope.launch { snack.showSnackbar("That is not a valid KKS (e.g. 11LAB70AA500)") }; return@Button }
             val data = JSONObject().put("status", "confirmed").put("kks", m.groupValues[1]).put("suffix", m.groupValues[2])
                 .put("isa", isa.trim().uppercase().ifEmpty { JSONObject.NULL })
             val (_, msg) = submit("review", JSONObject().put("tag_id", t.getString("id")).put("data", data).put("base", JSONObject.NULL))

@@ -98,13 +98,13 @@ suite "a submission is written all at once":
     let before = userNode.entries.len
     let rev = userApi.rev
     userStore.subFail = 1
-    expect IOError: discard userApi.call(ali, "POST", "/api/submit", photo("11LAB70AA501", "photo-cid-1", "by the pump"))
+    expect IOError: discard userApi.call(ali, "POST", "/api/submit", photo("11LAB70AA500", "photo-cid-1", "by the pump"))
     check userNode.entries.len == before and userStore.entries.len == before   # neither memory nor the disk
     check userApi.rev == rev                                                  # pages are not told of a change
     check consistent(userNode, userStore)
-    let r = userApi.call(ali, "POST", "/api/submit", photo("11LAB70AA501", "photo-cid-1", "by the pump"))
+    let r = userApi.call(ali, "POST", "/api/submit", photo("11LAB70AA500", "photo-cid-1", "by the pump"))
     check r.status == 200 and r.json["status"].s == "pending" and r.json.get("duplicate") == nil
-    let again = userApi.call(ali, "POST", "/api/submit", photo("11LAB70AA501", "photo-cid-1", "by the pump"))
+    let again = userApi.call(ali, "POST", "/api/submit", photo("11LAB70AA500", "photo-cid-1", "by the pump"))
     check again.json["duplicate"].b
     check userNode.count("photo") == 1 and userNode.count("comment") == 1
     check consistent(userNode, userStore)

@@ -11,8 +11,8 @@ import tempfile, shutil  # noqa: E402
 
 SERVER = os.environ['KKS_SERVER']; IMPORTER = os.environ['KKS_IMPORTER']
 OUT = sys.argv[1]; ENGINES = sys.argv[2:] or ['chromium', 'webkit', 'firefox']
-PW = 'a long password'; KKS = '11LAB70AA501'
-ARABIC = 'مضخة التغذية 11LAB70AA501 تعمل'
+PW = 'a long password'; KKS = '11LAB70AA500'
+ARABIC = 'مضخة التغذية 11LAB70AA500 تعمل'
 MEASURE = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'measure.js')).read()
 os.makedirs(OUT, exist_ok=True)
 LOG = open(os.path.join(OUT, 'log.txt'), 'a')

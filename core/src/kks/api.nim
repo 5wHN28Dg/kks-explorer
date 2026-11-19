@@ -229,7 +229,7 @@ proc tagPayload*(a: Api, p: JNode, keepId = ""): JNode =
     let okCode = code.len >= 12 and code.len <= 16 and code[0..1].allCharsInSet(Digits) and
       code[2..4].allCharsInSet({'A'..'Z'}) and code[5..6].allCharsInSet(Digits) and code[7..8].allCharsInSet({'A'..'Z'}) and
       code[9..11].allCharsInSet(Digits) and code[12 .. ^1].allCharsInSet({'A'..'Z', '0'..'9'})
-    if not okCode: bad("That is not a valid KKS (e.g. 11LAB70AA501, suffix allowed)")
+    if not okCode: bad("That is not a valid KKS (e.g. 11LAB70AA500, suffix allowed)")
     kks = code[0 .. 11]
     suffix = code[12 .. ^1]
   let id = if keepId.len > 0: keepId elif p.get("id") != nil and p["id"].kind == jStr: p["id"].s else: a.newHexId

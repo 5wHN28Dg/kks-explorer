@@ -29,7 +29,7 @@ SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/shee
 TAGS = []
 for n, e in enumerate(ENGINES):
     x = 40 + n * 180
-    TAGS += [valve(f'a:{e}1', f'11LAB70AA5{n}1', x, 'gate valve', 'motor'),
+    TAGS += [valve(f'a:{e}1', f'11LAB70AA5{n}0', x, 'gate valve', 'motor'),
              valve(f'a:{e}2', f'11LAB70AA5{n}2', x + 62, 'globe valve', nc=True),
              tag(f'a:{e}3', 'a', f'11LAB70CP5{n}3', x + 124),
              valve(f'a:{e}4', f'11LAB70AA5{n}4', x, 'ball valve')]
@@ -77,7 +77,7 @@ class WebValve(unittest.TestCase):
 
     def run_engine(self, name):
         n = ENGINES.index(name)
-        gate, globe, cp = f'11LAB70AA5{n}1', f'11LAB70AA5{n}2', f'11LAB70CP5{n}3'
+        gate, globe, cp = f'11LAB70AA5{n}0', f'11LAB70AA5{n}2', f'11LAB70CP5{n}3'
         x = 40 + n * 180
         # an Arabic note and description on the instrument (G15: they read right to left, the code in them in order)
         note = f'مضخة التغذية {gate} تعمل'

@@ -26,7 +26,7 @@ from test_web_requests import png
 
 PW = 'a long password'
 # each engine has its own two codes (the server is shared): [the one with a photo, the one that gets a photo offline]
-CODES = {'chromium': ('11LAB70AA501', '11LAB70AA503'), 'firefox': ('11LAB71AA501', '11LAB71AA503'), 'webkit': ('11LAB72AA501', '11LAB72AA503')}
+CODES = {'chromium': ('11LAB70AA500', '11LAB70AA503'), 'firefox': ('11LAB71AA500', '11LAB71AA503'), 'webkit': ('11LAB72AA500', '11LAB72AA503')}
 JXL_1PX = 'data:image/jxl;base64,/woAEBAJCAABACgASxiLFcJJQU5/AA=='
 IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
 SHEET_SHOWN = "() => { const i = document.getElementById('sheetimg'); return i && i.complete && i.naturalWidth > 0 }"

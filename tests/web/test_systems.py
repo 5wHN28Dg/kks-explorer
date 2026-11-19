@@ -14,7 +14,7 @@ SAMPLE = {
     'sheets': [{'id': 'a', 'name': 'Sheet A'}],
     'tags': [
         {'id': 'a:1', 'sheet': 'a', 'kks': '11LAB70', 'suffix': '', 'isa': None, 'kind': 'equipment', 'status': 'auto'},
-        {'id': 'a:2', 'sheet': 'a', 'kks': '11LAB70AA501', 'suffix': '', 'isa': None, 'kind': 'equipment', 'status': 'auto'},
+        {'id': 'a:2', 'sheet': 'a', 'kks': '11LAB70AA500', 'suffix': '', 'isa': None, 'kind': 'equipment', 'status': 'auto'},
         {'id': 'a:3', 'sheet': 'a', 'kks': '11HAD70CT101', 'suffix': 'R', 'isa': 'TIAC', 'kind': 'instrument', 'status': 'auto'},
         {'id': 'a:4', 'sheet': 'a', 'kks': None, 'suffix': '', 'isa': None, 'kind': 'other', 'status': 'review'},
         {'id': 'a:5', 'sheet': 'a', 'kks': '11LAB70AA502', 'suffix': '', 'isa': None, 'kind': 'equipment', 'status': 'auto'}],
@@ -22,11 +22,11 @@ SAMPLE = {
             'components': {'AA': 'Valve', 'CT': 'Temperature measurement'},
             'isa_first': {'T': 'Temperature'}, 'isa_next': {'I': 'Indicate', 'A': 'Alarm', 'C': 'Control'},
             'blocks': {'11': 'Block 1'}},
-    'locations': [{'kks': 'LAB70AA501', 'level': '14.50m', 'cabinet': 'C1', 'desc': 'feed valve'},
-                  {'kks': 'LAB70AA501', 'level': '14.5 m', 'cabinet': 'C1'}],
+    'locations': [{'kks': 'LAB70AA500', 'level': '14.50m', 'cabinet': 'C1', 'desc': 'feed valve'},
+                  {'kks': 'LAB70AA500', 'level': '14.5 m', 'cabinet': 'C1'}],
     'state': {'reviews': {'a:4': {'status': 'confirmed', 'kks': '11LAB70AA503', 'suffix': '', 'isa': None},
                           'a:5': {'status': 'rejected'}},
-              'photos': [{'id': 'p1', 'kks': '11LAB70AA501', 'file': 'x.jxl', 'caption': 'c'}],
+              'photos': [{'id': 'p1', 'kks': '11LAB70AA500', 'file': 'x.jxl', 'caption': 'c'}],
               'added_tags': [{'id': '00112233445566778899aabbccddeeff', 'sheet': 'a', 'bbox': [600, 100, 640, 120],
                               'kks': '11LAB70AA504', 'suffix': '', 'isa': None, 'kind': 'equipment', 'note': ''}]},
 }
@@ -42,7 +42,7 @@ RUN = r"""(S) => {
     const loc = {}; for (const e of S.locations) (loc[e.kks] ??= []).push(e);
     return KSys.systemsView({tags: tags.concat(added).map(eff).filter(Boolean), sheets: S.sheets, kks: S.kks, loc,
                              photos: S.state.photos}, q) };
-  const two = S.tags.concat([{id: 'b:1', sheet: 'a', kks: '11LAB70AA501', suffix: '', isa: null, kind: 'equipment', status: 'auto'}]);
+  const two = S.tags.concat([{id: 'b:1', sheet: 'a', kks: '11LAB70AA500', suffix: '', isa: null, kind: 'equipment', status: 'auto'}]);
   return {all: run(S.tags), temperature: run(S.tags, 'temperature'), feed: run(S.tags, 'feed lab70 valve'),
           had: run(S.tags, 'had'), none: run(S.tags, 'nothing like this'), upper: run(S.tags, '  FEED\tValve '),
           two: run(two, '')};
@@ -64,7 +64,7 @@ class Systems(unittest.TestCase):
             got = pg.evaluate(RUN, SAMPLE)
             b.close()
         v = got['all']
-        # a:2 11LAB70AA501, a:3 11HAD70CT101R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected
+        # a:2 11LAB70AA500, a:3 11HAD70CT101R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected
         self.assertEqual(v['total'], 5)
         self.assertEqual(len(v['blocks']), 1)
         self.assertEqual((v['blocks'][0]['blk'], v['blocks'][0]['blk_name']), ('11', 'Block 1'))
@@ -77,7 +77,7 @@ class Systems(unittest.TestCase):
         self.assertEqual(lab['subsystems'][0]['count'], 3)
         valves = lab['subsystems'][0]['kinds'][0]
         self.assertEqual((valves['comp'], valves['comp_name'], valves['count']), ('AA', 'Valve', 3))
-        self.assertEqual([it['code'] for it in valves['items']], ['11LAB70AA501', '11LAB70AA503', '11LAB70AA504'])
+        self.assertEqual([it['code'] for it in valves['items']], ['11LAB70AA500', '11LAB70AA503', '11LAB70AA504'])
         first = valves['items'][0]
         self.assertEqual((first['desc'], first['photos'], first['tag'], first['sheet_name'], first['count']),
                          ('feed valve', 'equipment', 'a:2', 'Sheet A', 1))
@@ -126,7 +126,7 @@ class Systems(unittest.TestCase):
 
 # the valve tags of core/tests/test_valvetype.nim's plant() (a sheet at 2 px per point)
 VALVES = [
-    {'id': 'a:1', 'sheet': 'a', 'kks': '11LAB70AA501', 'suffix': '', 'symbol': {'type': 'gate valve', 'actuator': 'motor',
+    {'id': 'a:1', 'sheet': 'a', 'kks': '11LAB70AA500', 'suffix': '', 'symbol': {'type': 'gate valve', 'actuator': 'motor',
      'nc': False, 'conf': 0.93, 'bbox': [200, 60, 240, 96]}},
     {'id': 'a:2', 'sheet': 'a', 'kks': '11LAB70AA502', 'suffix': ''},
     {'id': 'a:3', 'sheet': 'a', 'kks': '11LAB70AA503', 'suffix': '', 'symbol': {'type': 'globe valve', 'actuator': 'none',
@@ -168,9 +168,9 @@ class ValveType(unittest.TestCase):
             # an infinite number (JSON.parse reads 1e999 as Infinity) never reaches the view
             inf = pg.evaluate("""() => KSys.valveType(JSON.parse('{"id":"a:9","kks":"11LAB70AA509","suffix":"","symbol":'
               + '{"type":"gate valve","actuator":"none","nc":false,"conf":1e999,"bbox":[1e999,0,10,10]}}'), {})""")
-            empty = run({'equipment': {'11LAB70AA501': {'custom': [{'k': 'Size', 'v': 'DN50'}, {'k': 'Valve type', 'v': ''}]}}})
-            full = run({'equipment': {'11LAB70AA501': {'custom': [{'k': 'f%d' % i, 'v': 'x'} for i in range(100)]}}})
-            confirmed = run({'equipment': {'11LAB70AA501': {'custom': [{'k': 'Valve type', 'v': 'gate valve, motor-operated'}]},
+            empty = run({'equipment': {'11LAB70AA500': {'custom': [{'k': 'Size', 'v': 'DN50'}, {'k': 'Valve type', 'v': ''}]}}})
+            full = run({'equipment': {'11LAB70AA500': {'custom': [{'k': 'f%d' % i, 'v': 'x'} for i in range(100)]}}})
+            confirmed = run({'equipment': {'11LAB70AA500': {'custom': [{'k': 'Valve type', 'v': 'gate valve, motor-operated'}]},
                                            '11LAB70AA503': {'custom': [{'k': 'Valve type', 'v': 'check valve'}]},
                                            '11LAB70AA502': {'custom': [{'k': 'Valve type', 'v': 'butterfly valve'}]}}})
             reviewed = run({'equipment': {}, 'reviews': {
@@ -181,7 +181,7 @@ class ValveType(unittest.TestCase):
         self.assertEqual((g['status'], g['text'], g['conf']), ('drawing', 'gate valve, motor-operated', 0.93))
         self.assertEqual(g['line'], 'Valve type: gate valve, motor-operated (from the drawing, unchecked)')
         self.assertEqual(g['box'], [200, 60, 240, 96], 'in the tag\'s own units (level-0 px)')
-        self.assertEqual(g['confirm'], {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+        self.assertEqual(g['confirm'], {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500',
                          'changes': {'custom': [{'k': 'Valve type', 'v': 'gate valve, motor-operated'}]}, 'base': {'custom': []}}})
         self.assertEqual(v['a:3']['text'], 'globe valve, normally closed')
         self.assertNotIn('box', v['a:3'])

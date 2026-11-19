@@ -199,7 +199,7 @@ recommended scale for its panel).
   First frame 56.6 s after the very first start (shaders compiled), 7.5 s on later starts. Memory: about 0.97 GB
   private, 1.03 GB peak working set. One of four starts ended by itself 3.6 s into the walk, with no log line or
   crash report the standard account could read (#432).
-- **Arabic:** the note `مضخة التغذية 11LAB70AA501 تعمل` shows with "11" apart from "LAB70AA501", as in the VMs (#379).
+- **Arabic:** the note `مضخة التغذية 11LAB70AA500 تعمل` shows with "11" apart from "LAB70AA500", as in the VMs (#379).
 
 ## Not done yet
 

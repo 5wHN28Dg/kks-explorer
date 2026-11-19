@@ -176,7 +176,7 @@ proc kksTool(cw: CW): W =
   let inner = vbox(8)
   margins(inner, 12)
   let entry = gtk_entry_new()
-  gtk_editable_set_text(entry, "11 LAB 70 AA 501")
+  gtk_editable_set_text(entry, "11 LAB 70 AA 500")
   setAccessibleLabel(entry, "KKS code")
   let res = vbox(6)
   proc decode() =
@@ -186,7 +186,7 @@ proc kksTool(cw: CW): W =
              raw[5 .. 6].allCharsInSet(Digits) and raw[7 .. 8].allCharsInSet(UppercaseLetters) and raw[9 .. 11].allCharsInSet(Digits) and
              (raw.len == 12 or raw[12] in UppercaseLetters)
     if not ok:
-      res.add label("Can't read that code. Expected something like 11 LAB 70 AA 501: unit digits, three system letters, " &
+      res.add label("Can't read that code. Expected something like 11 LAB 70 AA 500: unit digits, three system letters, " &
                     "two digits, two equipment letters, three digits.")
       return
     let T = cw.w.m.kksTables

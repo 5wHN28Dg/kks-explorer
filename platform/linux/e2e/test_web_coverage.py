@@ -44,15 +44,15 @@ class WebCoverage(tws.WebSystems):
         for code, cls, hidden, words, look in got:
             if cls: self.assertEqual(hidden, 'true', code)
             by.setdefault(code, (cls, words, look))
-        self.assertEqual(by['11LAB70AA501'][:2], ('pmark p-none', ' · no photos'), name)
+        self.assertEqual(by['11LAB70AA500'][:2], ('pmark p-none', ' · no photos'), name)
         self.assertEqual(by['11LAB70AA503'][:2], ('pmark p-equipment', ' · equipment photo only'), name)
         self.assertEqual(by['11LAB70AA504'][:2], ('pmark p-plate', ' · tag plate photo only'), name)
         self.assertEqual(by['11LAB71AP001'][:2], ('pmark p-both', ' · equipment and tag plate photos'), name)
         # four shapes, told apart without colour: (corner radius, half fill, filled), each with the outline
-        looks = {k: by[k][2] for k in ('11LAB70AA501', '11LAB70AA503', '11LAB70AA504', '11LAB71AP001')}
+        looks = {k: by[k][2] for k in ('11LAB70AA500', '11LAB70AA503', '11LAB70AA504', '11LAB71AP001')}
         self.assertEqual(len(set(looks.values())), 4, looks)
         self.assertTrue(all(v.endswith('true') for v in looks.values()), looks)
-        self.assertEqual(looks['11LAB70AA501'].split(',')[1:3], ['false', 'false'], looks)   # the ring: nothing inside
+        self.assertEqual(looks['11LAB70AA500'].split(',')[1:3], ['false', 'false'], looks)   # the ring: nothing inside
         self.assertEqual(looks['11LAB70AA503'].split(',')[1], 'true', looks)                 # half filled
         self.assertNotEqual(looks['11LAB70AA504'].split(',')[0], looks['11LAB71AP001'].split(',')[0], looks)  # square, disc
         # what the marks mean: the last line, which the keyboard can't land on or pick
@@ -138,7 +138,7 @@ class WebCoverage(tws.WebSystems):
         page.emulate_media(color_scheme='light')
 
     def run_engine(self, name):
-        # each engine starts from the fixture's places: AA501 in the location list; earlier engines' edits are undone
+        # each engine starts from the fixture's places: AA500 in the location list; earlier engines' edits are undone
         boss = Client(self.base)
         boss.req('POST', '/api/login', {'username': 'boss', 'password': 'a long password'})
         eq = boss.req('GET', '/api/state').get('equipment', {})
@@ -164,7 +164,7 @@ class WebCoverage(tws.WebSystems):
             self.assertEqual(btn.get_attribute('aria-expanded'), 'true')
             self.assertEqual(page.evaluate("document.activeElement.id"), 'covTitle')
             body = self.text(page, '#covBody')
-            # 8 tags (a hand-added one among them); 7 codes; a:4 verified + the added tag; AA501 in the location list
+            # 8 tags (a hand-added one among them); 7 codes; a:4 verified + the added tag; AA500 in the location list
             for part in ('7 codes on the drawings, in 8 tags', 'Checked by a person2 of 8 tags (25 %)',
                          'Known place1 of 7 codes (14 %)', 'both 0 · equipment only 0 · tag plate only 0 · none 7',
                          'Readings to review0', 'Missed tags marked1'):
@@ -225,7 +225,7 @@ class WebCoverage(tws.WebSystems):
             self.assertEqual(page.get_attribute('#sysBtn', 'aria-expanded'), 'true')
             self.assertEqual(page.text_content('#sysCount'), '4 codes in system LAB')
             codes = page.evaluate("[...document.querySelectorAll('#sysBody .sysrow .mono')].map(e => e.textContent)")
-            self.assertEqual(codes, ['11LAB70AA501', '11LAB70AA503', '11LAB70AA504', '11LAB71AP001'])
+            self.assertEqual(codes, ['11LAB70AA500', '11LAB70AA503', '11LAB70AA504', '11LAB71AP001'])
             self.assertTrue(page.evaluate("[...document.querySelectorAll('#sysBody details')].every(d => d.open)"))
             page.get_by_role('button', name='Show all systems').click()
             self.assertEqual(page.text_content('#sysCount'), '7 codes')

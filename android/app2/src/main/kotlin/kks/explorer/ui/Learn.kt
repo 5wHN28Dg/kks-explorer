@@ -684,14 +684,14 @@ fun Worked(w: JSONObject, nav: Nav, gloss: Map<String, String>) {
 
 @Composable
 fun KksTool(nav: Nav) {
-    var code by rememberSaveable { mutableStateOf("11 LAB 70 AA 501") }
+    var code by rememberSaveable { mutableStateOf("11 LAB 70 AA 500") }
     val tables = remember { call("GET", "/native/kks-tables").json }
     val raw = code.uppercase().replace(Regex("[\\s_.\\-]"), "")
     val m = Regex("^(\\d{2})([A-Z]{3})(\\d{2})([A-Z]{2})(\\d{3})([A-Z]?)$").matchEntire(raw)
     fun look(t: String, k: String) = tables.optJSONObject(t)?.optString(k)?.ifEmpty { null } ?: "not in the plant tables"
     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
         OutlinedTextField(code, { code = it }, label = { Text("KKS code") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        if (m == null) Text("Can't read that code. Expected something like 11 LAB 70 AA 501.")
+        if (m == null) Text("Can't read that code. Expected something like 11 LAB 70 AA 500.")
         else {
             val (u, s, sn, eq, en) = m.destructured
             Text("Unit $u: " + look("blocks", u)); Text("System $s: " + look("systems", s)); Text("System number $sn")

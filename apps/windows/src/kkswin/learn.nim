@@ -223,7 +223,7 @@ proc figure(cw: CW, id: string, n: int) =
     cw.flowOut(fl)
 
 proc kksTool(cw: CW) =
-  let e = cw.page.field("KKS code", "11 LAB 70 AA 501")
+  let e = cw.page.field("KKS code", "11 LAB 70 AA 500")
   let T = cw.w.m.kksTables
   proc look(table, k: string): string =
     if T != nil and T.get(table) != nil and T[table].get(k) != nil: T[table][k].s else: "not in the plant tables"
@@ -233,7 +233,7 @@ proc kksTool(cw: CW) =
     if raw.len < 12 or not (raw[0 .. 1].allCharsInSet(Digits) and raw[2 .. 4].allCharsInSet(UppercaseLetters) and
                             raw[5 .. 6].allCharsInSet(Digits) and raw[7 .. 8].allCharsInSet(UppercaseLetters) and
                             raw[9 .. 11].allCharsInSet(Digits)):
-      res.setText("Can't read that code. Expected something like 11 LAB 70 AA 501.")
+      res.setText("Can't read that code. Expected something like 11 LAB 70 AA 500.")
     else:
       res.setText("Unit " & raw[0 .. 1] & ": " & look("blocks", raw[0 .. 1]) & "\nSystem " & raw[2 .. 4] & ": " &
                   look("systems", raw[2 .. 4]) & "\nSystem number " & raw[5 .. 6] & "\nEquipment type " & raw[7 .. 8] &

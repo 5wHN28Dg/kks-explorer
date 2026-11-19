@@ -58,7 +58,7 @@ object PhotoQueue {
     val pendingByCode = mutableStateMapOf<String, Int>()
     /** the floor sent with a queued photo, per code: the next photo of that code doesn't ask again */
     val queuedFloor = mutableStateMapOf<String, String>()
-    /** what went wrong, newest last ("11LAB70AA501: Could not compress the photo"); kept until dismissed */
+    /** what went wrong, newest last ("11LAB70AA500: Could not compress the photo"); kept until dismissed */
     val failures = mutableStateListOf<String>()
 
     private fun dir(ctx: Context) = File(ctx.filesDir, "photo-queue").also { it.mkdirs() }
@@ -113,7 +113,7 @@ object PhotoQueue {
         if (job.optJSONArray("codes") == null) codesOf(job)
         else job.optJSONArray("floor_codes")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } } ?: emptyList()
 
-    /** how a job is named where it failed: "11LAB70AA501", or "11LAB70AA501 and 2 more" */
+    /** how a job is named where it failed: "11LAB70AA500", or "11LAB70AA500 and 2 more" */
     private fun nameOf(codes: List<String>) = codes.first() + if (codes.size > 1) " and ${codes.size - 1} more" else ""
 
     /** queue one photo: returns at once; the pixels are written and the job enqueued on the queue's own thread.

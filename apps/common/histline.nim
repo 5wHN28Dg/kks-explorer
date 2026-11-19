@@ -8,7 +8,7 @@ proc str(n: JNode, k: string): string =
   if n == nil or n.kind != jObj or n.get(k) == nil or not n[k].isStr: "" else: n[k].s
 
 proc historyTitle*(r: JNode): string =
-  ## "#12 11LAB70AA501: notes leaks → fixed (a note)"
+  ## "#12 11LAB70AA500: notes leaks → fixed (a note)"
   let rev = if r.get("rev") != nil and r["rev"].isInt: "#" & $r["rev"].i & " " else: ""
   let note = r.str("note")
   let entity = r.str("entity")
