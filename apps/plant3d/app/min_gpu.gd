@@ -89,10 +89,10 @@ func _ready() -> void:
 	words.add_child(W.label(("Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn "
 			+ "a slower way. It will run slowly and jerkily: on a similar laptop it showed about %d pictures a second, "
 			+ "where smooth movement needs 30 or more.") % MEASURED_FPS, 20))
-	words.add_child(W.label(("Walkdown Plant needs graphics whose driver supports Vulkan or Direct3D 12: for example "
+	words.add_child(W.label(("Walkdown Plant needs graphics whose driver supports %s: for example "
 			+ "Intel HD Graphics 510 or newer (6th generation Core processors, from 2015), AMD Radeon HD 7700 or newer, "
 			+ "or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating the graphics "
-			+ "driver may fix this."), 20, W.DIM))
+			+ "driver may fix this.") % ("Vulkan or Direct3D 12" if OS.get_name() == "Windows" else "Vulkan"), 20, W.DIM))
 	dont_show = CheckBox.new()
 	dont_show.name = "dont_show"
 	dont_show.text = "Don't show this again"
@@ -117,8 +117,7 @@ func _ready() -> void:
 	continue_button.grab_focus.call_deferred()
 	_place()
 	_place.call_deferred()   # (again once the containers have laid the labels out at the panel's width)
-	get_viewport().size_changed.connect(_place)
-	get_viewport().size_changed.connect(_place.call_deferred)   # (again after the labels' new widths, as at the start)
+	get_viewport().size_changed.connect(_on_resized)   # (a method: the connection goes with the node)
 
 
 ## The check box's icon, `px` square: a light outline, and when ticked a light fill with a dark tick.
@@ -188,23 +187,33 @@ func _scroll_keys(e: InputEvent) -> void:
 		return
 	var line := 40.0 * W.scale
 	var page := scroll.size.y * 0.9
-	var to := -1.0
+	var top := maxf(0.0, scroll.get_v_scroll_bar().max_value - scroll.size.y)
+	var at := float(scroll.scroll_vertical)
+	var to := at
 	if e.is_action_pressed("ui_down", true):
-		to = scroll.scroll_vertical + line
+		to = at + line
 	elif e.is_action_pressed("ui_up", true):
-		to = scroll.scroll_vertical - line
+		to = at - line
 	elif e.is_action_pressed("ui_page_down", true):
-		to = scroll.scroll_vertical + page
+		to = at + page
 	elif e.is_action_pressed("ui_page_up", true):
-		to = scroll.scroll_vertical - page
+		to = at - page
 	elif e.is_action_pressed("ui_end"):
-		to = scroll.get_v_scroll_bar().max_value
+		to = top
 	elif e.is_action_pressed("ui_home"):
 		to = 0.0
-	if to < 0.0:
+	to = clampf(to, 0.0, top)
+	# at the end the press is not taken: the focus moves on (to the box and the buttons below, the D-pad included)
+	if roundi(to) == scroll.scroll_vertical:
 		return
-	scroll.scroll_vertical = int(maxf(0.0, to))
+	scroll.scroll_vertical = roundi(to)
 	scroll.accept_event()
+
+
+## The window's size changed: placed now, and again once the labels have their new widths.
+func _on_resized() -> void:
+	_place()
+	_place.call_deferred()
 
 
 ## Escape and gamepad B: Continue anyway (they close the message).
@@ -223,5 +232,6 @@ func _answer(go: bool) -> void:
 	if dont_show.button_pressed:
 		cf.set_value(SECTION, KEY_OFF, true)
 		Quality.save(cf)
-	answered.emit(go)
+	# (after the press's own handling: the start goes on from the next idle time, not inside the GUI's input)
+	answered.emit.call_deferred(go)
 	queue_free()

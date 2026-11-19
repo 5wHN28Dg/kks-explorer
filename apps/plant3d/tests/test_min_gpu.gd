@@ -86,7 +86,7 @@ func _shown_then_continue(tree: SceneTree, p: Array) -> void:
 	await tree.process_frame
 	await tree.process_frame
 	var shown := UiApp.texts(notice)
-	for w in ["below what Walkdown Plant needs", "run slowly", "about 12 pictures a second", "Vulkan or Direct3D 12",
+	for w in ["below what Walkdown Plant needs", "run slowly", "about 12 pictures a second", "supports Vulkan",
 			"Intel HD Graphics 510", "Continue anyway", "Quit", "Don't show this again"]:
 		if not shown.contains(w):
 			p.append("the message does not say \"%s\"" % w)
@@ -101,6 +101,8 @@ func _shown_then_continue(tree: SceneTree, p: Array) -> void:
 			p.append("%s is off the window (%s in %s)" % [c.name, str(r), str(vs)])
 	notice.dont_show.button_pressed = true
 	notice.continue_button.pressed.emit()
+	if main.plant != null:
+		p.append("the plant loaded inside the button's handler (the answer is given from the next idle time)")
 	await tree.process_frame
 	if main.plant == null or main.ui == null:
 		p.append("the plant did not load after Continue anyway")
@@ -148,12 +150,12 @@ func _quit_and_escape(tree: SceneTree, p: Array) -> void:
 		n.answered.connect(func(go): got.append(go))
 		n.dont_show.button_pressed = tick
 		n.quit_button.pressed.emit()
+		await tree.process_frame
 		if got != [false]:
 			p.append("Quit did not answer quit (%s)" % str(got))
 		if bool(Quality.settings().get_value(MinGpu.SECTION, MinGpu.KEY_OFF, false)) != tick:
 			p.append("Quit with the box %s left the setting %s" % ["ticked" if tick else "clear",
 					"off" if tick else "on"])
-		await tree.process_frame
 		if is_instance_valid(n):
 			n.free()
 	_forget()
@@ -167,6 +169,7 @@ func _quit_and_escape(tree: SceneTree, p: Array) -> void:
 	esc.physical_keycode = KEY_ESCAPE
 	esc.pressed = true
 	tree.root.push_input(esc)
+	await tree.process_frame
 	if got2 != [true]:
 		p.append("Escape did not continue (%s)" % str(got2))
 	await tree.process_frame
@@ -181,6 +184,7 @@ func _quit_and_escape(tree: SceneTree, p: Array) -> void:
 	b.button_index = JOY_BUTTON_B
 	b.pressed = true
 	tree.root.push_input(b)
+	await tree.process_frame
 	if got3 != [true]:
 		p.append("gamepad B did not continue (%s)" % str(got3))
 	await tree.process_frame
@@ -220,9 +224,36 @@ func _scroll_by_keys(tree: SceneTree, p: Array) -> void:
 					await tree.process_frame
 				if n.scroll.scroll_vertical <= 0:
 					p.append("at 200 % the down arrow and Page Down did not scroll the words")
+				# at the bottom, the D-pad's down leaves the words for the box (no trap for a gamepad: A1)
+				for i in 6:
+					_joy(tree, JOY_BUTTON_DPAD_DOWN)
+					await tree.process_frame
+				var fo := tree.root.gui_get_focus_owner()
+				if fo == n.scroll or fo == null:
+					p.append("at 200 %% the D-pad's down at the words' end does not leave them (focus %s)" % [fo.name if fo else "none"])
+				# up again into the words, then Up and Page Up take them back to the very top
+				n.scroll.grab_focus()
+				n.scroll.scroll_vertical = 30
+				await tree.process_frame
+				var up := InputEventKey.new()
+				up.keycode = KEY_UP
+				up.physical_keycode = KEY_UP
+				up.pressed = true
+				tree.root.push_input(up)
+				await tree.process_frame
+				if n.scroll.scroll_vertical != 0 or tree.root.gui_get_focus_owner() != n.scroll:
+					p.append("Up a little under the top did not scroll the words to the top (at %d)" % n.scroll.scroll_vertical)
 				for c: Control in [n.continue_button, n.quit_button, n.dont_show]:
 					if not tree.root.get_visible_rect().encloses(c.get_global_rect()):
 						p.append("at 200 %% %s is off the window" % c.name)
 		n.free()
 	W.apply_ui_size(tree.root, 1.0)
 	tree.root.size = size0
+
+
+func _joy(tree: SceneTree, button: int) -> void:
+	for down in [true, false]:
+		var b := InputEventJoypadButton.new()
+		b.button_index = button
+		b.pressed = down
+		tree.root.push_input(b)

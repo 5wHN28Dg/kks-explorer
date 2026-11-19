@@ -16,14 +16,14 @@ target, with a lower tier of its own, or is it below a stated minimum?
 | Godot 4.7's minimum for Compatibility (desktop) | OpenGL 3.3, or Direct3D 11 on Windows; examples "Intel HD Graphics 2500 (Ivy Bridge)". The HD 4400 meets this, which is why Godot falls back instead of failing | [D] same page |
 | Godot 4.7 on Android | Forward+/Mobile need full Vulkan 1.0 (Android 9.0+); Compatibility OpenGL ES 3.0 | [D] same page |
 | NVIDIA | Vulkan 1.0 from the 2016 drivers on Kepler and Maxwell (GeForce 600/700 Kepler, 900), Vulkan 1.2 back to Kepler from driver 441.99. Some low-end GeForce 600 models (GT 610–630) are Fermi, not Kepler | [D] https://en.wikipedia.org/wiki/GeForce_600_series · https://wccftech.com/nvidia-geforce-vulkan-drivers-launch/ |
-| AMD | GCN (from January 2012, "used in several Radeon HD 7000 series graphics cards") supports Vulkan; Godot's own GCN 1.0 example is the HD 7750; GCN 1 and 2 have had no new Windows driver since 22.6.1 (mid-2022) | [D] https://en.wikipedia.org/wiki/Graphics_Core_Next |
+| AMD | GCN (from January 2012, "used in several Radeon HD 7000 series graphics cards") supports Vulkan (Godot's page names the HD 7750, GCN 1.0, among its Compatibility examples, not its Forward+ ones); GCN 1 and 2 have had no new Windows driver since 22.6.1 (mid-2022) | [D] https://en.wikipedia.org/wiki/Graphics_Core_Next |
 | What a lower tier would take | the draw (773 calls) is the cost, not the resolution or effects: merged meshes, a shorter view distance and no lightmap for Compatibility, a second set of tuned content and measurements to keep, for GPUs that the engine's own documentation puts below its 3D renderers' minimum | [V] #432 (720p without shadow and fog still 55 ms) |
 
 ## Choice
 
 - **Desktop Walkdown Plant needs a GPU whose driver supports Vulkan 1.0 or Direct3D 12 (feature level 12_0)**, the
   minimum of Godot's Forward+ renderer. Examples, from the sources above: Intel HD Graphics 510 or newer (6th
-  generation Core, Skylake, 2015); AMD GCN (Radeon HD 7700 or newer, as Godot's own example HD 7750; Radeon R5/R7 APUs from Kaveri; the low-end HD 7000 models are older TeraScale chips) with a current
+  generation Core, Skylake, 2015); AMD GCN (Radeon HD 7700 or newer; Radeon R5/R7 APUs from Kaveri; the low-end HD 7000 models are older TeraScale chips) with a current
   driver; NVIDIA Kepler or newer (GeForce GTX 600 and 700 series, except the Fermi-based low-end models). Below that
   Plant still starts, on the Compatibility renderer, but is not supported: no tier is tuned for it. The examples
   are for Windows drivers: on Linux, Mesa's Vulkan driver also covers Intel Broadwell and, incompletely, Haswell;
