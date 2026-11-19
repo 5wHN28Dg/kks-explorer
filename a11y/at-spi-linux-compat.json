@@ -2,12 +2,12 @@
 "apps": [
 [
 "xdg-desktop-portal-gtk",
-635637,
+918049,
 0
 ],
 [
 "Godot_v4.7.2-stable_linux.x86_64",
-635562,
+917970,
 1
 ]
 ],
@@ -39,12 +39,12 @@
 ],
 [
 "label",
-"Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn a slower way. It will run slowly and jerkily: on a similar laptop it showed about 12 pictures a second, where smooth movement needs 30 or more.",
+"Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn a slower way. It will probably run slowly and jerkily: on a similar laptop it showed about 12 pictures a second, where smooth movement needs 30 or more.",
 "enabled sensitive showing visible"
 ],
 [
 "label",
-"Walkdown Plant needs graphics whose driver supports Vulkan: for example Intel HD Graphics 510 or newer (6th generation Core processors, from 2015), AMD Radeon HD 7700 or newer, or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating the graphics driver may fix this.",
+"Walkdown Plant needs graphics that support Vulkan (a graphics card's or computer's specifications list it). For example: Intel HD Graphics 510 or newer (computers from 2015 on), AMD Radeon HD 7700 or newer, or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating its graphics driver (the software for its graphics) may fix this.",
 "enabled sensitive showing visible"
 ],
 [
@@ -97,12 +97,12 @@
 ],
 [
 "label",
-"Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn a slower way. It will run slowly and jerkily: on a similar laptop it showed about 12 pictures a second, where smooth movement needs 30 or more.",
+"Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn a slower way. It will probably run slowly and jerkily: on a similar laptop it showed about 12 pictures a second, where smooth movement needs 30 or more.",
 "enabled sensitive showing visible"
 ],
 [
 "label",
-"Walkdown Plant needs graphics whose driver supports Vulkan: for example Intel HD Graphics 510 or newer (6th generation Core processors, from 2015), AMD Radeon HD 7700 or newer, or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating the graphics driver may fix this.",
+"Walkdown Plant needs graphics that support Vulkan (a graphics card's or computer's specifications list it). For example: Intel HD Graphics 510 or newer (computers from 2015 on), AMD Radeon HD 7700 or newer, or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating its graphics driver (the software for its graphics) may fix this.",
 "enabled sensitive showing visible"
 ],
 [
