@@ -140,6 +140,24 @@ var _toast_t := 0.0
 var _toast_beside_card := false
 var _toast_side := false        # a side panel was open when the notice was laid out
 var _alarm_btn: Button
+var _proc_btn: Button
+var _room_btn: Button
+## The compact bar (a phone, or any canvas too narrow for the bar on one row: _wants_compact): one row left of the
+## HUD's buttons, the clock on two lines, as many buttons as fit by `_compact_order`, the rest and the HUD's Settings
+## in More's list (_fit_compact). The 3D view keeps the height the rows took (issue #382).
+var compact := false
+var _more: MenuButton
+var _overflow: Control          # the bar's buttons in More's list wait here, hidden
+var _bar_items: Array = []      # the bar's clock and buttons in their order (More not among them)
+var _more_acts: Array = []      # More's list: what each entry does
+var _compact_queued := false
+var _alarm_min_x := 0.0
+var _compact_room := 0.0        # the compact row's width (_layout)
+var views_over_row := false     # the screens over the whole compact row (_layout)
+var _mimic_chrome := -1.0       # the screens' tabs and banner's height last laid out with (_on_mimic_canvas)
+var bar: HFlowContainer         # the layer's buttons and the clock, under the HUD's (wraps on a narrow canvas)
+var _bar_h := 0.0
+var _relayout_queued := false
 var _time: Label
 var _ff_btn: Button
 var _play_btn: Button
@@ -248,18 +266,20 @@ func setup(m, scenario := "cold_iron", content := CONTENT, ready_model = null) -
 # ------------------------------------------------------------------ building the overlay
 
 func _build() -> void:
-	var bar := HBoxContainer.new()
+	# the bar wraps onto a second row from the right when the canvas is too narrow for it (a phone, a large UI size):
+	# nothing goes off screen, and the panels begin below it (panels_top)
+	bar = HFlowContainer.new()
 	bar.name = "ui_bar"
-	bar.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	bar.position = Vector2(-16, 88)
+	bar.alignment = FlowContainer.ALIGNMENT_END
+	bar.add_theme_constant_override("h_separation", int(8 * W.scale))
+	bar.add_theme_constant_override("v_separation", int(8 * W.scale))
 	root.add_child(bar)
 	_alarm_btn = _bar_button(bar, "Alarms", func(): toggle_alarms())
-	_bar_button(bar, "Procedures", func(): toggle_procedure())
+	_proc_btn = _bar_button(bar, "Procedures", func(): toggle_procedure())
 	_bar_button(bar, "Permits", func(): toggle_permits())
 	_bar_button(bar, "Crew", func(): toggle_crew())
 	_bar_button(bar, "Tools", func(): work.toggle_tools())
-	_bar_button(bar, "Control room", func(): control_room())
+	_room_btn = _bar_button(bar, "Control room", func(): control_room())
 	drawings = Drawings.new()
 	if drawings.error != "":
 		push_warning("drawings: " + drawings.error)       # no Drawings button, no Drawing on the cards
@@ -272,11 +292,36 @@ func _build() -> void:
 	_play_btn = _bar_button(bar, "1×", func(): clock.set_speed(SimClock.Speed.NORMAL))
 	_ff_btn = _bar_button(bar, "Fast", func(): fast_forward())
 	_time = W.label("", 20, Color.WHITE, false)
-	_time.custom_minimum_size.x = 150 * W.scale
+	_time.name = "clock"
+	# as wide as its longest text ("Day 999 Wed 23:59 paused"): it never grows or cuts as the time goes on
+	_time.custom_minimum_size = Vector2(_clock_w(), 52 * W.scale)
+	_time.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_time.add_theme_constant_override("outline_size", 6)
 	_time.add_theme_color_override("font_outline_color", Color.BLACK)
 	bar.add_child(_time)
 	bar.move_child(_time, 0)
+	_bar_items = bar.get_children()
+	_alarm_min_x = _alarm_btn.custom_minimum_size.x
+	# the compact row's "More" (a phone: _fit_compact) and the place its buttons wait in while they are in its list
+	_more = MenuButton.new()
+	_more.name = "more"
+	_more.text = "More"
+	_more.theme_type_variation = "Button"     # (drawn as the bar's buttons: the theme styles Button)
+	_more.focus_mode = Control.FOCUS_NONE
+	_more.custom_minimum_size = Vector2(52.0 * W.scale, 56.0 * W.scale)
+	_more.flat = false
+	_more.visible = false
+	_more.about_to_popup.connect(_fill_more)
+	_more.get_popup().id_pressed.connect(_on_more)
+	bar.add_child(_more)
+	_overflow = Control.new()
+	_overflow.name = "bar_overflow"
+	_overflow.visible = false
+	root.add_child(_overflow)
+	for it in _bar_items:
+		if it != _time:             # (the clock is as wide as its longest text: its changes move nothing)
+			(it as Control).visibility_changed.connect(_queue_compact)
+			(it as Control).minimum_size_changed.connect(_queue_compact)
 	arrows = Control.new()
 	arrows.set_anchors_preset(Control.PRESET_FULL_RECT)
 	arrows.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -286,6 +331,7 @@ func _build() -> void:
 	mimic.name = "screens"
 	root.add_child(mimic)
 	mimic.setup(self, screens, trends)
+	mimic.canvas.item_rect_changed.connect(_on_mimic_canvas)
 	if drawings.error == "":
 		drawing_view = DrawingView.new()
 		drawing_view.name = "drawings"
@@ -355,8 +401,73 @@ func _build() -> void:
 	root.add_child(_hint)
 	_build_toast()
 	root.get_viewport().size_changed.connect(_layout)
+	bar.resized.connect(_on_bar_resized)
+	bar.minimum_size_changed.connect(_on_bar_min)
+	# a panel made while its text had no width yet (a wrapping label is then a letter a line) was held taller than its
+	# place by that size; once its text has its width it goes to its place (the canvas is short at a large UI size);
+	# a panel whose tabs wrapped onto more rows gets them moved into its body (place_bar)
+	for pnl in [card, procedure, alarms, trainer, permits, work_orders, stores, debrief, crew, session_panel,
+			work.tools_panel]:
+		pnl.minimum_size_changed.connect(_panel_min_changed.bind(pnl))
+	if main.hud != null and main.hud.has_signal("top_changed"):
+		main.hud.top_changed.connect(_layout)
 	_layout()
 	_on_speed(clock.speed, "")
+
+
+## The clock's width: its longest text at its size (on two lines in the compact bar).
+func _clock_w(two_lines := compact) -> float:
+	var f: Font = _time.get_theme_font("font")
+	var fs: int = _time.get_theme_font_size("font_size")
+	var w := 0.0
+	for t in CLOCK_LONGEST:
+		for line in clock_label(t[0], t[1], two_lines).split("\n"):
+			w = maxf(w, f.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	return ceilf(w) + 12.0 * W.scale + 2.0 * 6.0      # (and its outline)
+
+const CLOCK_LONGEST := [["Day 999 Wed 23:59", "paused"], ["Day 999 Wed 23:59", "×60"], ["99:59:59", "paused"]]   # (fast-forward: 60× at most)
+
+## The clock's text: the time and the speed; on two lines in the compact bar (the day, then the time and the speed).
+static func clock_label(time: String, speed: String, two_lines: bool) -> String:
+	if not two_lines:
+		return "%s %s" % [time, speed]
+	var sp := time.rfind(" ")
+	return ("%s\n%s %s" % [time.substr(0, sp), time.substr(sp + 1), speed]) if sp > 0 else "%s\n%s" % [time, speed]
+
+
+## The screens' tabs and banner took another height (their first layout, a new width): the screens are placed again
+## (_layout: over the compact row or below it).
+func _on_mimic_canvas() -> void:
+	if mimic.visible and absf(mimic.canvas.position.y - _mimic_chrome) > 0.5:
+		_mimic_chrome = mimic.canvas.position.y
+		if not _relayout_queued:
+			_relayout_queued = true
+			_relayout.call_deferred()
+
+
+func _panel_min_changed(pnl: Control) -> void:
+	if not _relayout_queued and pnl.size.y > _max_h + 0.5:
+		_relayout_queued = true
+		_relayout.call_deferred()
+
+
+func _relayout() -> void:
+	_relayout_queued = false
+	_layout()
+
+
+## The bar needs fewer rows (a wider canvas): it shrinks to them (a control only ever grows to its minimum by
+## itself), and the panels move up (_on_bar_resized).
+func _on_bar_min() -> void:
+	if bar.size.y > bar.get_combined_minimum_size().y + 0.5:
+		bar.size.y = 0.0
+
+
+## The bar's height changed (it wrapped onto another row, or back): the panels move below it.
+func _on_bar_resized() -> void:
+	if absf(bar.size.y - _bar_h) > 0.5:
+		_bar_h = bar.size.y
+		_layout()
 
 
 func _build_toast() -> void:
@@ -384,29 +495,203 @@ func _build_toast() -> void:
 	_layout_toast()
 
 
-func _bar_button(bar: Control, text: String, f: Callable) -> Button:
+func _bar_button(to: Control, text: String, f: Callable) -> Button:
 	var b := W.button(text, f)
 	b.focus_mode = Control.FOCUS_NONE       # the bar is reached by its keys; focus stays in the panels
-	b.custom_minimum_size = Vector2(0, 56 * W.scale)
-	bar.add_child(b)
+	b.custom_minimum_size.y = 56 * W.scale
+	to.add_child(b)
 	return b
 
 
-## Where the panels may begin: below the HUD's buttons and the layer's bar (app/hud.gd's settings panel too).
+## Where the layer's bar begins: below the HUD's buttons and its status line (app/hud.gd top_bottom).
+func bar_top() -> float:
+	if compact:
+		return 12.0           # (beside the HUD's buttons)
+	return (main.hud.top_bottom() if main != null and main.hud != null and main.hud.has_method("top_bottom") else 76.0) \
+			+ 12.0
+
+
+## Where the panels may begin: below the HUD's buttons and the layer's bar, one row or more (app/hud.gd's settings
+## panel too).
 func panels_top() -> float:
-	return 88.0 + 56.0 * W.scale + 16.0
+	var h: float = bar.get_combined_minimum_size().y if bar != null else 56.0 * W.scale
+	if compact and main != null and main.hud != null:
+		h = maxf(h, main.hud.top_bottom() - bar_top())   # (the HUD's buttons in the same row)
+	return bar_top() + maxf(h, 56.0 * W.scale) + 16.0
+
+
+## The bar goes compact where its clock and buttons don't fit on one row across the canvas `w` (a phone at every UI
+## size; a desktop at a large one). (The alarms' button counted as wide as with a two-digit count.)
+func _wants_compact(w: float) -> bool:
+	var sep := float(bar.get_theme_constant("h_separation"))
+	var sum := -sep
+	for it in _bar_items:
+		var c := it as Control
+		if not c.visible:
+			continue
+		var cw := c.get_combined_minimum_size().x
+		if c == _time:
+			cw = _clock_w(false)      # (on one line whatever the bar is now: the answer must not flip it back)
+		elif c == _alarm_btn:
+			cw = maxf(cw, _alarm_w())
+		sum += cw + sep
+	return sum > w - 32.0 + 0.5
+
+
+func _alarm_w() -> float:
+	var f: Font = _alarm_btn.get_theme_font("font")
+	var fs: int = _alarm_btn.get_theme_font_size("font_size")
+	var sb: StyleBox = _alarm_btn.get_theme_stylebox("normal")
+	return ceilf(f.get_string_size("Alarms 99", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x) + sb.get_minimum_size().x
+
+
+func _set_compact(on: bool) -> void:
+	if on == compact:
+		return
+	compact = on
+	_time.custom_minimum_size.x = _clock_w()
+	# (in the compact row the alarms' button keeps the width of a two-digit count: the buttons beside it don't move)
+	_alarm_btn.custom_minimum_size.x = maxf(_alarm_w(), _alarm_min_x) if on else _alarm_min_x
+	_more.visible = on
+	_time_key = Vector3i(-1, -1, -1)          # (the clock's text again, on two lines or one)
+	_time_engine = null
+	if main != null and main.hud != null and main.hud.has_method("set_compact"):
+		main.hud.set_compact(on)
+
+
+## The bar's buttons in the compact row (`room` px wide): the clock and More always, then as many as fit in this order;
+## the rest wait in More's list. Off compact, every one is in the bar.
+func _fit_compact(room: float) -> void:
+	var keep := {}
+	if compact:
+		var sep := float(bar.get_theme_constant("h_separation"))
+		var used := _more.get_combined_minimum_size().x + sep + _time.get_combined_minimum_size().x
+		keep[_time] = true
+		for it in _compact_order():
+			var c := it as Control
+			if c == null or not c.visible:
+				continue
+			var cw := c.get_combined_minimum_size().x
+			if ceilf(used + sep + cw) <= floorf(room):   # (whole px: a fraction over and the row would wrap)
+				used += sep + cw
+				keep[c] = true
+			else:
+				break                   # (in order: a later, narrower one doesn't jump ahead)
+	var i := 0
+	for it in _bar_items:
+		var c := it as Control
+		# (a hidden one stays where it is: shown again, it doesn't sit in the row for a frame before going to More)
+		var inside: bool = not compact or keep.has(c) or (not c.visible and c.get_parent() == bar)
+		var want: Control = bar if inside else _overflow
+		if c.get_parent() != want:
+			c.get_parent().remove_child(c)
+			want.add_child(c)
+		if inside:
+			if c.get_index() != i:
+				bar.move_child(c, i)
+			i += 1
+	if _more.get_index() != bar.get_child_count() - 1:
+		bar.move_child(_more, -1)
+
+
+## Which of the bar's buttons the compact row keeps first: the alarms, the procedures, the clock's speed, the control
+## room, then the rest as on the bar.
+func _compact_order() -> Array:
+	var first := [_alarm_btn, _proc_btn, _pause_btn, _play_btn, _ff_btn, _room_btn]
+	var rest := _bar_items.filter(func(c): return c != _time and c not in first)
+	return first + rest
+
+
+func _queue_compact() -> void:
+	if compact and not _compact_queued:
+		_compact_queued = true
+		_refit_compact.call_deferred()
+
+
+func _refit_compact() -> void:
+	_compact_queued = false
+	if is_inside_tree() and compact:
+		if not _wants_compact(root.get_viewport_rect().size.x):
+			_layout()                 # (a button hidden: the full bar fits on one row again)
+		else:
+			_fit_compact(_compact_room)
+
+
+## More's list: the bar's buttons that wait in it (as they would show), then the settings.
+func _fill_more() -> void:
+	var pm := _more.get_popup()
+	pm.clear()
+	_more_acts.clear()
+	# Settings first: reached without scrolling where the list is longer than the canvas (a 360 dp tall phone)
+	if main != null and main.hud != null and main.hud.has_method("show_settings"):
+		pm.add_item("Settings", _more_acts.size())
+		_more_acts.append(func(): main.hud.show_settings(true))
+	var names := {"1×": "Normal speed (1×)", "Fast": "Fast-forward"}
+	for it in _compact_order():         # (the speed's near the top, as the row keeps them first)
+		var b := it as Button
+		if b == null or b.get_parent() != _overflow or not b.visible:
+			continue
+		var t: String = names.get(b.text, b.text)
+		if b in [_pause_btn, _play_btn, _ff_btn]:
+			pm.add_radio_check_item(t, _more_acts.size())
+			pm.set_item_checked(pm.item_count - 1, clock != null and clock.speed == [SimClock.Speed.PAUSED,
+				SimClock.Speed.NORMAL, SimClock.Speed.FAST][[_pause_btn, _play_btn, _ff_btn].find(b)])
+		else:
+			pm.add_item(t, _more_acts.size())
+		pm.set_item_disabled(pm.item_count - 1, b.disabled)
+		_more_acts.append(b)
+
+
+func _on_more(id: int) -> void:
+	if id < 0 or id >= _more_acts.size():
+		return
+	var a = _more_acts[id]
+	if a is Callable:
+		(a as Callable).call()
+	elif a is Button and is_instance_valid(a) and not (a as Button).disabled:
+		(a as Button).pressed.emit()
 
 
 func _layout() -> void:
+	if not is_inside_tree():
+		return                # (the window reset as the app leaves: app/main.gd _exit_tree)
 	var vs: Vector2 = root.get_viewport_rect().size
+	if bar != null:
+		_set_compact(_wants_compact(vs.x))
+		var room := vs.x - 32.0
+		if compact and main != null and main.hud != null:
+			room = vs.x - 16.0 - main.hud.compact_width() - 12.0     # (left of the HUD's buttons)
+		bar.position = Vector2(16.0, bar_top())
+		_compact_room = room
+		_fit_compact(room)
+		bar.size = Vector2(room, 0.0)
 	var top0 := panels_top()
-	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach
-	var top := maxf(top0, mimic.canvas_top() + 8.0) if screens_open() else top0
+	if main != null and main.hud != null and main.hud.panel != null and main.hud.panel.visible:
+		main.hud._queue_fit()               # (the settings stand below the bar too)
+	if work != null and work.tools_panel != null:
+		work._layout()                      # (its tools below the bar too)
+	# In the compact row (a phone) the screens go over the whole row where below it their tabs and banner would leave
+	# the screen itself under 30 % of the height (a 360 dp tall phone at its 180 %); the HUD's Map hides meanwhile
+	# (app/hud.gd refresh: it would lie over their tabs), and their own bar has Close.
+	var below := vs.y - top0
+	var chrome: float = mimic.canvas_top() - mimic.position.y
+	var over := (not compact and below < vs.y * 0.6) or (compact and screens_open() and below - chrome < vs.y * 0.3)
+	var vtop := top0 if not over else (0.0 if compact else bar_top())
+	if (over and compact) != views_over_row:
+		views_over_row = over and compact
+		if main != null and main.hud != null:
+			main.hud.refresh.call_deferred()
+	# with the screens open the side panels stand below their tabs and alarm banner, which stay in reach (from where
+	# the screens are going now, over the row or below it)
+	var top := maxf(top0, vtop + chrome + 8.0) if screens_open() else top0
 	if drawings_open():
 		top = maxf(top, drawing_view.canvas_top())      # below the drawings' bar (its sheet list, Fit and Close)
-	var w := minf(560.0 * W.scale, vs.x * 0.45)
+	# (a narrow canvas, a phone at a large UI size: half of it at least, a row of the panels' widest buttons)
+	var w := minf(560.0 * W.scale, maxf(vs.x * 0.45, minf(380.0 * W.scale, vs.x - 32.0)))
 	card.position = Vector2(vs.x - w - 16.0, top)
 	_max_h = vs.y - top - 16.0
+	alarms.place_bar(_max_h)
+	debrief.place_bar(_max_h)
 	card.size = Vector2(w, vs.y - top - 16.0)
 	procedure.position = Vector2(16.0, top)
 	procedure.size = Vector2(w, vs.y - top - 16.0)
@@ -426,11 +711,16 @@ func _layout() -> void:
 	debrief.size = card.size
 	session_panel.position = procedure.position
 	session_panel.size = procedure.size
-	mimic.position = Vector2(0.0, top0)
-	mimic.size = Vector2(vs.x, vs.y - top0)
+	# the screens and the drawings: below the bar; where it leaves them under 60 % of the height (a phone at a large UI
+	# size, the bar on two rows) over the bar instead, below the HUD's buttons: their own bars have Close, and the
+	# screen or sheet keeps room to be read
+	mimic.position = Vector2(0.0, vtop)
+	mimic.size = Vector2(vs.x, vs.y - vtop)
+	if main != null and main.hud != null and main.hud.has_method("place_updown"):
+		main.hud.place_updown(top0)
 	if drawing_view != null:
-		drawing_view.position = Vector2(0.0, top0)
-		drawing_view.size = Vector2(vs.x, vs.y - top0)
+		drawing_view.position = Vector2(0.0, vtop)
+		drawing_view.size = Vector2(vs.x, vs.y - vtop)
 	_hint.position = Vector2(vs.x * 0.5 - 400.0, vs.y * 0.5 + 24.0)
 	_hint.size = Vector2(800.0, 60.0)
 	_layout_toast()
@@ -458,6 +748,15 @@ func _layout_toast() -> void:
 	_toast.position.y = (vs.y - h - 16.0) if screens_open() else minf(vs.y - 200.0 * W.scale, vs.y - h - 16.0)
 
 
+## Something open that reaches the bottom of the canvas (a side panel, the screens, the drawings, the tools, the
+## crew or the procedures): the HUD's status line, when it is at the bottom, hides under it (app/hud.gd).
+func covers_bottom() -> bool:
+	if procedure == null:
+		return false          # (not built yet: the app still loading, or a start that stopped before its layer)
+	return _side_open() or procedure.visible or crew.visible or session_panel.visible or views_open() or manual_open() \
+			or (work != null and (work.tools_panel.visible or work.is_open)) or (monitoring != null and monitoring.is_open())
+
+
 ## A panel open at the card's place (the notice keeps clear of it).
 func _side_open() -> bool:
 	return card != null and (card.visible or alarms.visible or trainer.visible or procedure.visible or debrief.visible
@@ -476,6 +775,7 @@ func add_settings(box: VBoxContainer) -> void:
 		cb.text = row[1]
 		cb.focus_mode = Control.FOCUS_ALL
 		cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # wraps in the settings panel's width
+		cb.custom_minimum_size.y = 52 * W.scale            # as tall as the layer's buttons (48 dp on a phone, T1)
 		var on: bool = cf.get_value("ui", row[0], row[2])
 		cb.button_pressed = on
 		_setting(row[0], on)
@@ -2062,7 +2362,7 @@ func _each_frame(delta: float) -> void:
 		_time_engine = clock.engine
 		_time_t = _ui_t
 		var ff: float = session.rate if session != null and session.active() else clock.ff_rate()
-		_time.text = "%s %s" % [clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % ff}[clock.speed]]
+		_time.text = clock_label(clock_text(), {0: "paused", 1: "×1", 2: "×%.0f" % ff}[clock.speed], compact)
 	_place_t += delta
 	if _place_t >= 0.25:
 		_place_t = 0.0

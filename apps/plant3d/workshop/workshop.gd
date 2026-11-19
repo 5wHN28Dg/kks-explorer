@@ -386,8 +386,20 @@ func _build_space() -> void:
 func _apply_tier() -> void:
 	vp.msaa_3d = main.get_viewport().msaa_3d
 	vp.scaling_3d_mode = main.get_viewport().scaling_3d_mode
-	vp.scaling_3d_scale = main.get_viewport().scaling_3d_scale
+	fit_resolution()
 	sun.shadow_enabled = main.tier != "lean+vis"   # the phone cuts soft shadows first (§8)
+
+## The bench's 3D drawn with as many pixels at every UI size (ui/widgets.gd ui_size, issue #382): the view fills the
+## canvas, which a larger UI size makes smaller in its own units (the window's content scale), so its resolution is
+## scaled up by as much (the main view, drawn at the window's size, is not affected). FSR is for scaling up only:
+## above 1 the view is scaled down bilinearly (Godot does the same).
+func fit_resolution() -> void:
+	if vp == null or main == null:
+		return
+	var mv: Viewport = main.get_viewport()
+	var f: float = mv.get_window().content_scale_factor if mv.get_window() != null else 1.0
+	vp.scaling_3d_scale = clampf(mv.scaling_3d_scale * f, 0.25, 2.0)
+	vp.scaling_3d_mode = mv.scaling_3d_mode if vp.scaling_3d_scale < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
 
 ## The plant's materials by name (§5): each mesh's meta `mat`.
 func _resolve(n: Node) -> void:
@@ -2122,8 +2134,8 @@ func _input(e: InputEvent) -> void:
 			close()
 		return
 	if not ours:
-		if e.pressed and panels.slider.is_visible_in_tree():
-			panels.slider.grab_focus()
+		if e.pressed:   # (the tools folded away: Tools, which brings them back; never Back, which A would press next)
+			(panels.slider if panels.slider.is_visible_in_tree() else panels.tools_btn).grab_focus()
 			get_viewport().set_input_as_handled()
 		return
 	if e.button_index == JOY_BUTTON_A:

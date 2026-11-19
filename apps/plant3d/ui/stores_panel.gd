@@ -353,7 +353,7 @@ static func copy_row(u, numbers: Array, prefix := "copy_") -> HFlowContainer:
 		return null
 	var row := HFlowContainer.new()
 	for n in numbers:
-		var b := W.button("Copy " + String(n), copy_to.bind(u, String(n)))
+		var b := W.copy_button(String(n), copy_to.bind(u, String(n)))
 		b.name = prefix + String(n)
 		row.add_child(b)
 	return row
@@ -580,7 +580,7 @@ func _list(e) -> void:
 			var acts := HFlowContainer.new()
 			row.add_child(acts)
 			var num: String = p["number"]
-			var cb := W.button("Copy " + num, copy.bind(num))
+			var cb := W.copy_button(num, copy.bind(num))
 			cb.name = "copy_" + pid
 			acts.add_child(cb)
 			var wb := W.button("Write it on the request", func():
@@ -628,7 +628,7 @@ func _deliveries(e) -> void:
 	var copies := HFlowContainer.new()
 	body.add_child(copies)
 	for o in e.sr_orders:
-		var cb := W.button("Copy " + String(o[0]), copy.bind(String(o[0])))
+		var cb := W.copy_button(String(o[0]), copy.bind(String(o[0])))
 		cb.name = "copy_" + String(o[0])
 		copies.add_child(cb)
 	var j := jump_to(e, first)

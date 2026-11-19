@@ -18,6 +18,7 @@ var errors := ScriptErrors.new()
 ## starts with a run another one saved, and the user's own saved run is never touched.
 const Autosave = preload("res://ui/autosave.gd")
 const RunSave = preload("res://ui/run_save.gd")
+const W = preload("res://ui/widgets.gd")
 const TEST_SAVE := "user://tests-run.save"
 
 func _init() -> void:
@@ -66,6 +67,12 @@ func _run() -> void:
 		var errors0 := errors.count
 		var problems: Array = await t.run(self)
 		Engine.time_scale = 1.0          # a test stopped half way must not leave its time scale to the next
+		# nor its UI size (ui/widgets.gd ui_size, the window's content scale, the settings file's): each file starts at 100 %
+		W.apply_ui_size(root, 1.0)
+		var cf := ConfigFile.new()
+		if cf.load("user://settings.cfg") == OK and cf.has_section_key("ui", "ui_size"):
+			cf.erase_section_key("ui", "ui_size")
+			cf.save("user://settings.cfg")
 		# a script error stops the test function, which then returns an empty list: count it as a failure
 		if errors.count > errors0:
 			problems = problems + ["%d script error(s), above" % (errors.count - errors0)]

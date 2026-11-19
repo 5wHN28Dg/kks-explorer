@@ -4,6 +4,7 @@
 ## move stick zooms (forward, back) and pans (left, right), as the plant's look does. Nothing here knows a part kind.
 extends Camera3D
 
+const W = preload("res://ui/widgets.gd")   # (W.ui_size: drags come in the canvas's units, larger at a larger UI size)
 const PITCH_MIN := -1.45
 const PITCH_MAX := 1.45
 const ORBIT_RATE := 0.008       # radians a pixel of drag
@@ -89,7 +90,7 @@ func handle(e: InputEvent, view_h: float) -> bool:
 		var before: Vector2 = _touches.get(e.index, e.position - e.relative)
 		_touches[e.index] = e.position
 		if _touches.size() == 1:
-			orbit(e.relative)
+			orbit(e.relative * W.ui_size)   # (a turn as far as the finger or mouse moves on the screen)
 		elif _touches.size() >= 2:
 			var ks: Array = _touches.keys()
 			var other: Vector2 = _touches[ks[0] if ks[0] != e.index else ks[1]]
@@ -108,7 +109,7 @@ func handle(e: InputEvent, view_h: float) -> bool:
 			return true
 	if e is InputEventMouseMotion and e.device != InputEvent.DEVICE_ID_EMULATION:
 		if e.button_mask & MOUSE_BUTTON_MASK_LEFT:
-			orbit(e.relative)
+			orbit(e.relative * W.ui_size)   # (a turn as far as the finger or mouse moves on the screen)
 			return true
 		if e.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE):
 			pan(e.relative, view_h)

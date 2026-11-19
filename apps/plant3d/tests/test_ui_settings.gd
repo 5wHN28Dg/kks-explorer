@@ -54,9 +54,12 @@ func _settings(tree: SceneTree, ui_scale: String) -> Array:
 			p.append("the settings panel %s(%s) is not inside the %s canvas: %s" % [at, when, str(canvas.size), str(pr)])
 		if pr.size.x > hud.SETTINGS_W * W.scale + 0.5 or absf(pr.get_center().x - canvas.get_center().x) > 1.0:
 			p.append("the settings panel %s(%s) is not %d px wide at most and centred: %s" % [at, when, hud.SETTINGS_W * W.scale, str(pr)])
-		if pr.position.y < main.ui.panels_top() - 0.5:
+		# below the bars, unless they leave it less than half the canvas (a phone at 150 % with a gamepad's line under
+		# the status, issue #382): then it keeps that half, over the bar's lower rows
+		var top_ok: float = minf(main.ui.panels_top(), hud.settings_top_min(canvas.size.y))
+		if pr.position.y < top_ok - 0.5:
 			p.append("the settings panel %s(%s) reaches up over the bars (from %.0f, the bars end at %.0f)" % [at, when,
-				pr.position.y, main.ui.panels_top()])
+				pr.position.y, top_ok])
 		var close: Button = UiApp.find_button(hud.panel, "Close")
 		if close == null or not close.is_visible_in_tree() or not canvas.encloses(close.get_global_rect()) \
 				or not pr.encloses(close.get_global_rect()):

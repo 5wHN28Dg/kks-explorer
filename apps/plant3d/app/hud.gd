@@ -1,9 +1,9 @@
 ## What lies over the view: the touch controls (two sticks: move on the left, look on the right, Godot's own
 ## VirtualJoystick driving the same actions as a gamepad's sticks), the buttons (walk/fly, map, use, up and down in
 ## flight, settings), a line saying where the trainee is and how, and the settings panel (the quality tier, with
-## "Automatic" saying what it chose and why, the touch controls, the walking pace and whether the run key toggles, and
-## About: app/about.gd). With a gamepad in use (app/input_mode.gd) the touch controls hide and the bar names the
-## gamepad's buttons; touching the screen brings them back.
+## "Automatic" saying what it chose and why, the UI size, the touch controls, the walking pace and whether the run key
+## toggles, and About: app/about.gd). With a gamepad in use (app/input_mode.gd) the touch controls hide and the bar
+## names the gamepad's buttons; touching the screen brings them back.
 extends CanvasLayer
 
 const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goes (a measured walk)
@@ -42,6 +42,23 @@ var settings_scroll: ScrollContainer   # the settings' body, under the title row
 var controls_btn: Button       # "Controls": folds the keyboard and gamepad help (controls_help) open and shut
 var controls_help: Label
 var _fit_queued := false
+var hud_root: Control
+var bar: HBoxContainer           # Fly, Use, Map, Settings at the top right
+var top_box: VBoxContainer       # the status line and the gamepad's buttons at the top left
+var _status_h := 0.0             # top_box's height (the most it had since the last reset: _measure_status)
+var _status_len := Vector2i(-1, -1)   # the lengths of the status line's and the gamepad line's texts last measured
+signal top_changed               # top_bottom() may have changed: the interaction layer's bar moves (ui/plant_ui.gd)
+const BUTTON := Vector2(120, 64) # the HUD's buttons at UI scale 1
+const STATUS_W_MIN := 500.0      # the status line goes to the bottom when it has less beside the buttons (at scale 1)
+var _status_low := false         # the status line at the bottom (_layout_top)
+## The compact bar (ui/plant_ui.gd compact: a phone): the HUD's buttons as narrow as their words, Settings in the
+## layer's More, the status line at the bottom, and the layer's buttons in the same row left of them.
+var compact := false
+const COMPACT_MARGIN := 16.0     # right of the HUD's buttons in the compact row (the full bar keeps 50)
+## Up and Down (flying, touch): right of the middle, below the bars (place_updown)
+var updown_box: VBoxContainer
+var ui_size_opt: OptionButton    # the settings' UI size (100 % to 200 %, ui/widgets.gd ui_size)
+var ui_size_steps: Array = []    # its Smaller and Larger buttons
 var settings_layer: CanvasLayer
 var _theme_scale := 0.0        # the UI scale the settings' theme was made for
 const SETTINGS_W := 700.0      # the settings panel's width at UI scale 1 (less on a narrower canvas)
@@ -55,30 +72,41 @@ func setup(m) -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
+	hud_root = root
+	# the status line and the gamepad's buttons under it, left of the buttons; they wrap when the canvas is narrow
+	# (a phone at a large UI size), and the interaction layer's bar goes below them (top_bottom)
+	top_box = VBoxContainer.new()
+	top_box.name = "top_box"
+	top_box.position = Vector2(16, 12)
+	top_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_box.add_theme_constant_override("separation", 0)
+	root.add_child(top_box)
 	status = Label.new()
-	status.position = Vector2(16, 12)
-	status.add_theme_font_size_override("font_size", 20)
+	status.name = "status"
+	status.add_theme_font_size_override("font_size", int(20 * W.scale))
 	status.add_theme_constant_override("outline_size", 6)
 	status.add_theme_color_override("font_outline_color", Color.BLACK)
-	root.add_child(status)
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_box.add_child(status)
 	pad_hint = Label.new()
 	pad_hint.name = "pad_hint"
-	pad_hint.position = Vector2(16, 44)
-	pad_hint.add_theme_font_size_override("font_size", 18)
+	pad_hint.add_theme_font_size_override("font_size", int(18 * W.scale))
 	pad_hint.add_theme_constant_override("outline_size", 6)
 	pad_hint.add_theme_color_override("font_outline_color", Color.BLACK)
+	pad_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	pad_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(pad_hint)
+	var pb := StyleBoxFlat.new()          # (a backing: it may lie over the screens or the drawings, K5)
+	pb.bg_color = Color(0.05, 0.05, 0.06, 0.85)
+	pb.set_content_margin_all(4)
+	pad_hint.add_theme_stylebox_override("normal", pb)
+	top_box.add_child(pad_hint)
 	# the two sticks (shown on touch screens, or when chosen in the settings)
 	for side in [["move", Control.PRESET_BOTTOM_LEFT], ["look", Control.PRESET_BOTTOM_RIGHT]]:
 		var j := VirtualJoystick.new()
 		j.name = side[0] + "_stick"
 		j.set_anchors_preset(side[1])
-		j.custom_minimum_size = Vector2(420, 420)
-		j.size = j.custom_minimum_size
-		j.position = Vector2(20, -440) if side[0] == "move" else Vector2(-440, -440)
-		j.joystick_size = 220
-		j.tip_size = 90
+		# (sized and placed by _layout_sticks: a thumb's size whatever the UI size)
 		j.joystick_mode = 1   # dynamic: the stick appears where the thumb lands
 		if side[0] == "move":
 			j.action_left = "move_left"; j.action_right = "move_right"; j.action_up = "move_forward"; j.action_down = "move_back"
@@ -86,9 +114,9 @@ func setup(m) -> void:
 			j.action_left = "look_left"; j.action_right = "look_right"; j.action_up = "look_up"; j.action_down = "look_down"
 		root.add_child(j)
 		sticks.append(j)
-	var bar := HBoxContainer.new()
+	bar = HBoxContainer.new()
+	bar.name = "hud_bar"
 	bar.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	bar.position = Vector2(-560, 12)
 	bar.add_theme_constant_override("separation", 10)
 	# right-aligned in a fixed width, Fly and Use first: when the gamepad hides them (or a touch brings them back)
 	# Map and Settings stay where they are, so that the tap that switches lands on the button it began on
@@ -98,15 +126,26 @@ func setup(m) -> void:
 	use_btn = _button(bar, "Use", func(): main.player.press_door())
 	map_btn = _button(bar, "Map", func(): main.toggle_map())
 	settings_btn = _button(bar, "Settings", func(): show_settings(not panel.visible))
-	bar.size = Vector2(4 * 120 + 3 * 10, 64)
+	_layout_sticks()
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE   # (its empty part lies over nothing it should take)
+	_place_bar()
+	bar.offset_top = 12.0
+	bar.offset_bottom = 12.0 + button_h()
+	root.resized.connect(_layout_top)
+	pad_hint.visibility_changed.connect(_status_reset)
+	_layout_top()
 	var ud := VBoxContainer.new()
+	ud.name = "updown"
+	updown_box = ud
 	ud.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	ud.position = Vector2(-140, -120)
+	ud.offset_left = -140.0 * W.scale
+	ud.offset_top = -120.0 * W.scale
 	root.add_child(ud)
 	for a in ["up", "down"]:
 		var b := Button.new()
 		b.text = a.capitalize()
-		b.custom_minimum_size = Vector2(120, 100)
+		b.custom_minimum_size = Vector2(120, 100) * W.scale
+		b.add_theme_font_size_override("font_size", int(22 * W.scale))
 		b.focus_mode = Control.FOCUS_NONE
 		b.button_down.connect(func(): Input.action_press(a))
 		b.button_up.connect(func(): Input.action_release(a))
@@ -136,12 +175,154 @@ func _exit_tree() -> void:
 		# the HUD: it is the root's last child) and frees it itself; freeing it here corrupted the heap (tests/test_app_quit.gd)
 		input = null
 
+## The HUD's buttons' row at the top right: four 120 px buttons 50 px from the edge; in the compact bar Fly (or Walk),
+## Use and Map, each as wide as the widest of their words (a touch that brings Fly and Use back moves nothing), Settings
+## in the layer's More.
+func _place_bar() -> void:
+	var bw := 4.0 * BUTTON.x * W.scale + 3.0 * 10.0
+	var right := 50.0
+	var bw1 := BUTTON.x * W.scale
+	if compact:
+		bw1 = compact_button_w()
+		bw = 3.0 * bw1 + 2.0 * 10.0
+		right = COMPACT_MARGIN
+	for b in [fly_btn, use_btn, map_btn, settings_btn]:
+		b.custom_minimum_size.x = bw1
+	settings_btn.visible = not compact
+	# (offsets from the right edge: a position would be taken from the canvas's width at this moment)
+	bar.offset_left = -bw - right
+	bar.offset_right = -right
+
+## A HUD button's width in the compact bar: its widest word and the button's margins, square at the least.
+func compact_button_w() -> float:
+	var f: Font = fly_btn.get_theme_font("font")
+	var fs: int = fly_btn.get_theme_font_size("font_size")
+	var w := 0.0
+	for t in ["Walk", "Fly", "Use", "Map"]:
+		w = maxf(w, f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	return maxf(ceilf(w) + fly_btn.get_theme_stylebox("normal").get_minimum_size().x, button_h())
+
+## The width the HUD's buttons take at the right in the compact bar, their margin included.
+func compact_width() -> float:
+	return 3.0 * compact_button_w() + 2.0 * 10.0 + COMPACT_MARGIN
+
+## The compact bar on or off (ui/plant_ui.gd _set_compact).
+func set_compact(on: bool) -> void:
+	if on == compact:
+		return
+	compact = on
+	_place_bar()
+	_layout_top()
+
+## The HUD's buttons' height: 64 px on a desktop; on a phone the layer's buttons' (ui/widgets.gd: 52 at its scale),
+## which reaches 48 dp at the phone's UI size (issue #382).
+static func button_h() -> float:
+	return maxf(BUTTON.y, 52.0 * W.scale)
+
+## Where the HUD's top ends: below its buttons, and below the status line and the gamepad's buttons (which wrap on a
+## narrow canvas). The interaction layer's bar goes below it (ui/plant_ui.gd _layout).
+func top_bottom() -> float:
+	var b := 12.0 + button_h()
+	if top_box != null and not _status_low:
+		b = maxf(b, top_box.position.y + _status_h)
+	return b
+
+## Up and Down at the middle of the right edge, or lower when the bars reach below their top there (a large UI size:
+## the interaction layer's bar wraps), never over them (ui/plant_ui.gd _layout calls this with where its panels begin).
+func place_updown(below: float) -> void:
+	if updown_box == null or hud_root == null:
+		return
+	var top := maxf(-120.0 * W.scale, below - hud_root.size.y * 0.5)
+	# never past the bottom (above the margin): on screen first, over the bar's lowest row if it must
+	var h := updown_box.get_combined_minimum_size().y
+	top = minf(top, hud_root.size.y * 0.5 - 16.0 - h)
+	if not is_equal_approx(updown_box.offset_top, top):
+		updown_box.offset_top = top
+
+## The two sticks the same size on the screen at every UI size (a thumb does not grow with the text): 420 px square
+## at 100 %, in the bottom corners, less at a larger size (the canvas's units are larger).
+func _layout_sticks() -> void:
+	var k := 1.0 / W.ui_size
+	for j in sticks:
+		var left: bool = j.name == "move_stick"
+		j.custom_minimum_size = Vector2(420, 420) * k
+		j.offset_left = 20.0 * k if left else -440.0 * k
+		j.offset_right = j.offset_left + 420.0 * k
+		j.offset_top = -440.0 * k
+		j.offset_bottom = -20.0 * k
+		j.joystick_size = 220.0 * k
+		j.tip_size = 90.0 * k
+
+## The status line's room: as wide as the canvas leaves left of the buttons.
+func _layout_top() -> void:
+	if hud_root == null or bar == null:
+		return
+	_layout_sticks()
+	# beside the buttons where there is room for a line of it; else at the bottom between the sticks' corners (a
+	# narrow canvas, a large UI size: beside the buttons it wrapped onto many lines and pushed the bars and every
+	# panel down). Down there it hides while a panel or view is open (it would lie under it: _each_frame).
+	var w := hud_root.size.x - bar.size.x - 50.0 - 16.0 - 24.0
+	var low := compact or w < STATUS_W_MIN * W.scale
+	if low:
+		w = hud_root.size.x - 2.0 * _stick_side()
+	if absf(top_box.size.x - w) > 0.5 or low != _status_low:
+		_status_low = low
+		top_box.size = Vector2(w, 0)
+		_status_reset()
+	_place_status()
+
+## The status box's place: at the top left, or at the bottom when it is low (its height known: _measure_status).
+func _place_status() -> void:
+	var at := Vector2(16, 12) if not _status_low else Vector2(_stick_side(), hud_root.size.y - _status_h - 8.0)
+	if top_box.position != at:
+		top_box.position = at
+
+## The width of a stick's corner (its touch area and its margin: _layout_sticks).
+func _stick_side() -> float:
+	return 440.0 / W.ui_size
+
+## The status box measured again (a new width, the gamepad's line shown or hidden).
+func _status_reset() -> void:
+	_status_h = 0.0
+	_status_len = Vector2i(-1, -1)
+	_measure_status()
+
+## The status box's height, the most it has had since the last reset: the line's text changes as the trainee moves,
+## and the bar below it does not jump each time it wraps one line more or less. Measured from the text at the box's
+## width (a label's own size lags a frame behind a change, and is a word a line while it has no width yet); again when
+## a text's length changes.
+func _measure_status() -> void:
+	if top_box == null:
+		return
+	var n := Vector2i(status.text.length(), pad_hint.text.length() if pad_hint.visible else -1)
+	if n == _status_len:
+		return
+	_status_len = n
+	var w := top_box.size.x
+	var h := (_text_h(status, w) if status.visible else 0.0) + (_text_h(pad_hint, w) if pad_hint.visible else 0.0)
+	if h > _status_h + 0.5:
+		_status_h = h
+		if _status_low:
+			_place_status()
+		else:
+			top_changed.emit()
+
+static func _text_h(l: Label, w: float) -> float:
+	if l.text == "":
+		return 0.0
+	var f: Font = l.get_theme_font("font")
+	var fs: int = l.get_theme_font_size("font_size")
+	var line := f.get_height(fs)
+	var sz := f.get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, w, fs)
+	var lines := maxi(1, roundi(sz.y / line))
+	return lines * (line + l.get_theme_constant("line_spacing"))
+
 func _button(parent: Control, text: String, f: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(120, 64)
+	b.custom_minimum_size = Vector2(BUTTON.x * W.scale, button_h())
 	b.focus_mode = Control.FOCUS_NONE
-	b.add_theme_font_size_override("font_size", 22)
+	b.add_theme_font_size_override("font_size", int(22 * W.scale))
 	b.pressed.connect(f)
 	parent.add_child(b)
 	return b
@@ -214,6 +395,7 @@ func _settings(_hud_root: Control) -> void:
 	var l := Label.new(); l.text = "Quality  "; row.add_child(l)
 	tier_opt = OptionButton.new()
 	tier_opt.focus_mode = Control.FOCUS_ALL
+	tier_opt.accessibility_name = "Quality"
 	for s in ["Automatic", "Full (laptops)", "Lean (phones)"]:
 		tier_opt.add_item(s)
 	tier_opt.item_selected.connect(_on_tier)
@@ -221,11 +403,39 @@ func _settings(_hud_root: Control) -> void:
 	tier_note = Label.new()
 	tier_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(tier_note)
+	# the UI size (issue #382): applied at once, the panel and everything else laid out again at the new size
+	var row_s := HFlowContainer.new()
+	row_s.name = "ui_size_row"
+	body.add_child(row_s)
+	var ls := Label.new(); ls.text = "UI size  "; row_s.add_child(ls)
+	ui_size_opt = OptionButton.new()
+	ui_size_opt.name = "ui_size"
+	ui_size_opt.focus_mode = Control.FOCUS_ALL
+	ui_size_opt.accessibility_name = "UI size"   # (its label is beside it, not its name: A5)
+	for f in W.UI_SIZES:
+		ui_size_opt.add_item(ui_size_text(f))
+	ui_size_opt.item_selected.connect(_on_ui_size)
+	row_s.add_child(ui_size_opt)
+	# a step smaller or larger: on a phone the list is longer than the screen, and Android's finger doesn't scroll a
+	# Godot list (seen on the Note 9: a drag moves the highlight), so its last sizes were out of reach
+	for d in [["Smaller", -1], ["Larger", 1]]:
+		var b := W.button(d[0], _step_ui_size.bind(d[1]))
+		b.name = "ui_size_" + String(d[0]).to_lower()
+		b.focus_mode = Control.FOCUS_ALL
+		b.accessibility_name = "UI size " + String(d[0]).to_lower()
+		row_s.add_child(b)
+		ui_size_steps.append(b)
+	var ui_note := Label.new()
+	ui_note.name = "ui_size_note"
+	ui_note.text = "Text, buttons and panels: larger, or smaller to see more of the plant. The size marked \"default\" is where this device starts: on a phone, the size that makes its buttons big enough for a finger."
+	ui_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(ui_note)
 	var row2 := HBoxContainer.new()
 	body.add_child(row2)
 	var l2 := Label.new(); l2.text = "Touch controls  "; row2.add_child(l2)
 	touch_opt = OptionButton.new()
 	touch_opt.focus_mode = Control.FOCUS_ALL
+	touch_opt.accessibility_name = "Touch controls"
 	for s in ["Automatic", "Always", "Never"]:
 		touch_opt.add_item(s)
 	touch_opt.item_selected.connect(_on_touch)
@@ -240,6 +450,7 @@ func _settings(_hud_root: Control) -> void:
 	var lg := Label.new(); lg.text = "Walking pace  "; row_g.add_child(lg)
 	pace_opt = OptionButton.new()
 	pace_opt.focus_mode = Control.FOCUS_ALL
+	pace_opt.accessibility_name = "Walking pace"
 	for s in ["Slow", "Normal", "Brisk"]:
 		pace_opt.add_item(s)
 	pace_opt.item_selected.connect(_on_pace)
@@ -276,7 +487,11 @@ func _show_controls_help() -> void:
 	await get_tree().process_frame
 	if is_instance_valid(controls_help) and controls_help.is_visible_in_tree():
 		settings_scroll.ensure_control_visible(controls_help)
-		settings_scroll.ensure_control_visible(controls_btn)
+		# the button once the body has moved (its place is stale until then): when the help is taller than the view
+		# (a short canvas, a large UI size) it begins just under the button, at the top of the view
+		await get_tree().process_frame
+		if is_instance_valid(controls_btn) and controls_btn.is_visible_in_tree():
+			settings_scroll.ensure_control_visible(controls_btn)
 
 ## The panel's size again at the next frame (its content or the canvas changed).
 func _queue_fit() -> void:
@@ -296,6 +511,9 @@ func _fit_settings() -> void:
 		return
 	var top: float = main.ui.panels_top() if main != null and main.ui != null and main.ui.has_method("panels_top") \
 		else SETTINGS_TOP
+	# at least half the canvas's height: where the bars leave less (a phone at a large UI size with a gamepad's line
+	# under the status) the panel rises over the bar's lower rows, its body still a few rows tall
+	top = minf(top, settings_top_min(vs.y))
 	var room := maxf(vs.y - top - SETTINGS_MARGIN, 200.0)
 	var pad := panel.get_theme_stylebox("panel").get_minimum_size()
 	var w := minf(SETTINGS_W * W.scale, vs.x - 2.0 * SETTINGS_MARGIN)
@@ -312,6 +530,21 @@ func _fit_settings() -> void:
 	panel.offset_right = w * 0.5
 	panel.offset_top = y
 	panel.offset_bottom = y + h
+	# the control with the focus kept in view in the body made shorter (the bar above grew a row: a gamepad's line
+	# under the status, a larger UI size)
+	var fo := panel.get_viewport().gui_get_focus_owner() if panel.is_inside_tree() else null
+	if fo != null and settings_scroll.is_ancestor_of(fo):
+		_keep_in_view.call_deferred(fo)
+
+func _keep_in_view(c: Control) -> void:
+	if is_instance_valid(c) and c.is_visible_in_tree() and settings_scroll.is_ancestor_of(c):
+		await get_tree().process_frame             # (once the body has its new size)
+		if is_instance_valid(c) and c.is_visible_in_tree():
+			settings_scroll.ensure_control_visible(c)
+
+## The lowest the settings panel begins on a canvas `h` tall: it keeps half the height at least.
+static func settings_top_min(h: float) -> float:
+	return h * 0.5 - SETTINGS_MARGIN
 
 ## Gamepad B closes the settings (Godot's ui_cancel has no gamepad button). Gamepad A acts as ui_accept on the
 ## focused control of the settings panel (Godot's ui_accept has no gamepad button;
@@ -365,6 +598,9 @@ func show_settings(on: bool) -> void:
 		# the Controls button as the layer's buttons
 		controls_btn.custom_minimum_size = Vector2(0, 52 * W.scale)
 		controls_btn.add_theme_font_size_override("font_size", int(20 * W.scale))
+		# the lists and the check box as tall as the layer's buttons (48 dp on a phone: UI-UX-POLICY T1)
+		for c in [tier_opt, ui_size_opt, touch_opt, pace_opt, run_toggle_cb]:
+			c.custom_minimum_size.y = 52 * W.scale
 		if not was_on:                       # each opening as the first: the help folded, the body at its top
 			controls_btn.set_pressed_no_signal(false)
 			controls_help.visible = false
@@ -387,6 +623,10 @@ func show_settings(on: bool) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		var mode: String = main.cf.get_value("quality", "mode", "auto")
 		tier_opt.selected = ["auto", "full", "lean+vis"].find(mode)
+		for i in W.UI_SIZES.size():               # (the device's start marked: it is known once the app has started)
+			ui_size_opt.set_item_text(i, ui_size_text(W.UI_SIZES[i]))
+		ui_size_opt.selected = W.UI_SIZES.find(W.ui_size)
+		_ui_size_steps_state()
 		touch_opt.selected = TOUCH.find(touch_setting())
 		var pi: int = Player.PACES.keys().find(main.cf.get_value("controls", "pace", "normal"))
 		pace_opt.selected = pi if pi >= 0 else Player.PACES.keys().find("normal")     # as apply_gait: unknown is normal
@@ -398,6 +638,27 @@ func _on_tier(i: int) -> void:
 	Quality.save(main.cf)
 	main.choose_tier()
 	show_settings(true)
+
+## A UI size as the settings' list says it: "150 %", and "(default)" after the one this device starts at.
+static func ui_size_text(f: float) -> String:
+	return "%d %%" % roundi(f * 100.0) + (" (default)" if is_equal_approx(f, W.ui_size_default) else "")
+
+## Smaller (-1) or Larger (+1): the next of the settings' sizes, applied and saved as a choice in the list is.
+func _step_ui_size(d: int) -> void:
+	var i := clampi(W.UI_SIZES.find(W.ui_size) + d, 0, W.UI_SIZES.size() - 1)
+	if not is_equal_approx(W.UI_SIZES[i], W.ui_size):
+		main.set_ui_size(W.UI_SIZES[i])
+	ui_size_opt.selected = W.UI_SIZES.find(W.ui_size)
+	_ui_size_steps_state()
+
+func _ui_size_steps_state() -> void:
+	if ui_size_steps.size() == 2:
+		ui_size_steps[0].disabled = W.UI_SIZES.find(W.ui_size) <= 0
+		ui_size_steps[1].disabled = W.UI_SIZES.find(W.ui_size) >= W.UI_SIZES.size() - 1
+
+func _on_ui_size(i: int) -> void:
+	main.set_ui_size(W.UI_SIZES[i])
+	_ui_size_steps_state()
 
 func _on_touch(i: int) -> void:
 	main.cf.set_value("controls", "touch", TOUCH[i])
@@ -466,6 +727,8 @@ func refresh() -> void:
 		_show(s, touch and not main.map.active and not screens and not away, [s.action_left, s.action_right, s.action_up, s.action_down])
 	var flying: bool = main.player.mode == Player.Mode.FLY
 	fly_btn.text = "Walk" if flying else "Fly"
+	# (the screens over the whole compact row: ui/plant_ui.gd views_over_row; Map would lie over their tabs)
+	map_btn.visible = not (main.ui != null and main.ui.get("views_over_row") == true and main.ui.screens_open())
 	fly_btn.visible = not screens and not pad   # walking and flying do nothing on the screens; Y on a gamepad
 	use_btn.visible = not screens and not pad   # A on a gamepad
 	for i in updown.size():
@@ -527,3 +790,18 @@ func _each_frame(_d: float) -> void:
 	if main.player.mode == Player.Mode.WALK and Vector2(main.player.velocity.x, main.player.velocity.z).length() > Player.JOG_SPEED + 0.2:
 		mode = "running"
 	status.text = "%s · %s · x %.0f  y %.0f  +%.1f m · %s" % [main.area_at(p), mode, p.x, -p.z, p.y, main.tier]
+	_measure_status()
+	if not _status_low and not status.visible:
+		status.visible = true            # (it was hidden over a view in the compact layout, which has ended)
+		_status_reset()
+	if _status_low:
+		var covered: bool = panel.visible or (main.ui != null and main.ui.has_method("covers_bottom") and main.ui.covers_bottom())
+		# over the screens or the drawings the gamepad's line still shows (it says how they are worked), alone, on a
+		# backing: the status line hides
+		var pad_only: bool = covered and not panel.visible and pad_hint.visible and main.ui != null and main.ui.views_open()
+		var show: bool = not covered or pad_only
+		if status.visible == pad_only or top_box.visible != show:
+			status.visible = not pad_only
+			top_box.visible = show
+			top_box.size = Vector2(hud_root.size.x - 2.0 * _stick_side(), 0)   # (shown again at its width)
+			_status_reset()
