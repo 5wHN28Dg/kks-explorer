@@ -27,7 +27,7 @@ suite "walkdown:// links":
 
   test "malformed codes":
     for s in ["walkdown://kks/", "walkdown://kks/ABC", "walkdown://kks/" & "1".repeat(25), "walkdown://kks/11lab70aa500",
-              "walkdown://kks/11LAB70 AA500", "walkdown://kks/11LAB70-AA500", "walkdown://kks/11LCC70/A403",
+              "walkdown://kks/11LAB70 AA500", "walkdown://kks/11LAB70-AA500", "walkdown://kks/11LAB70/A500",
               "walkdown://kks/11LAB70AA500/", "walkdown://kks//11LAB70AA500", "walkdown://kks/11LAB70AA500?x=1",
               "walkdown://kks/11LAB70AA500#x", "walkdown://kks/11LAB70%41A501", "walkdown://kks/11LAB70AA50\0",
               "walkdown://kks/11LAB70AA500\n", " walkdown://kks/11LAB70AA500", "walkdown://kks/11LAB70AA500 ",
