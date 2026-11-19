@@ -95,6 +95,10 @@ func _ready() -> void:
 	dont_show.focus_mode = Control.FOCUS_ALL
 	dont_show.custom_minimum_size.y = 52 * W.scale
 	dont_show.add_theme_font_size_override("font_size", int(20 * W.scale))
+	# the box drawn light on the button's slate (Godot's own dark grey box hardly shows there: K3), ticked or empty
+	var px := int(22 * W.scale)
+	dont_show.add_theme_icon_override("unchecked", box_icon(px, false))
+	dont_show.add_theme_icon_override("checked", box_icon(px, true))
 	v.add_child(dont_show)
 	var row := HBoxContainer.new()
 	v.add_child(row)
@@ -110,6 +114,32 @@ func _ready() -> void:
 	_place()
 	_place.call_deferred()   # (again once the containers have laid the labels out at the panel's width)
 	get_viewport().size_changed.connect(_place)
+
+
+## The check box's icon, `px` square: a light outline, and when ticked a light fill with a dark tick.
+static func box_icon(px: int, ticked: bool) -> ImageTexture:
+	var light := Color(0.93, 0.93, 0.93)
+	var img := Image.create_empty(px, px, false, Image.FORMAT_RGBA8)
+	img.fill(light if ticked else Color(0, 0, 0, 0))
+	var t := maxi(2, px / 10)
+	for i in px:
+		for k in t:
+			for q in [Vector2i(i, k), Vector2i(i, px - 1 - k), Vector2i(k, i), Vector2i(px - 1 - k, i)]:
+				img.set_pixelv(q, light)
+	if ticked:
+		var dark := Color(0.08, 0.09, 0.11)
+		var a := Vector2(px * 0.22, px * 0.52)
+		var b := Vector2(px * 0.42, px * 0.72)
+		var c := Vector2(px * 0.78, px * 0.28)
+		for seg in [[a, b], [b, c]]:
+			for j in 64:
+				var pt: Vector2 = seg[0].lerp(seg[1], j / 63.0)
+				for dx in range(-t, t + 1):
+					for dy in range(-t, t + 1):
+						var q := Vector2i(roundi(pt.x) + dx, roundi(pt.y) + dy)
+						if q.x >= 0 and q.y >= 0 and q.x < px and q.y < px and Vector2(dx, dy).length() <= t:
+							img.set_pixelv(q, dark)
+	return ImageTexture.create_from_image(img)
 
 
 ## Centred, at most 760 px wide, and never taller than the window: the words get the height they need, or what is
@@ -130,12 +160,16 @@ func _place() -> void:
 
 ## The words' full height at the panel's width `w` (a ScrollContainer asks for no height of its own).
 func _words_height(w: float) -> float:
-	var inner := w - 2.0 * 14.0 * W.scale - 2.0           # the panel's margins and border (ui/widgets.gd make_theme)
+	# the panel's margins and border (ui/widgets.gd make_theme), and room for the scroll bar
+	var inner := w - 2.0 * 14.0 * W.scale - 2.0 - scroll.get_v_scroll_bar().get_combined_minimum_size().x
 	var h := 0.0
 	for l: Label in words.get_children():
 		var fs := l.get_theme_font_size("font_size")
-		h += l.get_theme_font("font").get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, inner, fs).y
-	return h + (words.get_child_count() - 1) * 8.0 * W.scale + 4.0
+		var f := l.get_theme_font("font")
+		var sz := f.get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, inner, fs)
+		var n := maxf(1.0, roundf(sz.y / f.get_height(fs)))
+		h += sz.y + n * l.get_theme_constant("line_spacing")
+	return h + (words.get_child_count() - 1) * 8.0 * W.scale + 8.0
 
 
 ## Escape and gamepad B: Continue anyway (they close the message).
