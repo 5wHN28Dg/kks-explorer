@@ -65,6 +65,7 @@ func _ready() -> void:
 	back.set_anchors_preset(Control.PRESET_FULL_RECT)
 	back.mouse_filter = Control.MOUSE_FILTER_STOP
 	back.theme = W.make_theme()
+	back.theme.set_stylebox("focus", "ScrollContainer", back.theme.get_stylebox("focus", "Button"))
 	add_child(back)
 	panel = PanelContainer.new()
 	panel.name = "panel"
@@ -78,6 +79,9 @@ func _ready() -> void:
 	scroll.name = "words"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.draw_focus_border = true
+	scroll.gui_input.connect(_scroll_keys)
+	scroll.accessibility_name = "The message's text"
 	v.add_child(scroll)
 	words = VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -114,6 +118,7 @@ func _ready() -> void:
 	_place()
 	_place.call_deferred()   # (again once the containers have laid the labels out at the panel's width)
 	get_viewport().size_changed.connect(_place)
+	get_viewport().size_changed.connect(_place.call_deferred)   # (again after the labels' new widths, as at the start)
 
 
 ## The check box's icon, `px` square: a light outline, and when ticked a light fill with a dark tick.
@@ -153,6 +158,10 @@ func _place() -> void:
 	panel.size = Vector2(w, 0)
 	var rest := panel.get_combined_minimum_size().y      # the title, the box, the buttons and the margins
 	scroll.custom_minimum_size.y = clampf(_words_height(w), 0.0, maxf(60.0 * W.scale, vs.y - 32.0 - rest))
+	# words that don't all fit can be scrolled from the keyboard and gamepad: the scroll takes the focus then (Tab,
+	# arrows or the D-pad up and down, Page Up and Down), with the focus ring (UI-UX-POLICY A1)
+	var scrolls := _words_height(w) > scroll.custom_minimum_size.y + 1.0
+	scroll.focus_mode = Control.FOCUS_ALL if scrolls else Control.FOCUS_NONE
 	var h := panel.get_combined_minimum_size().y
 	panel.size = Vector2(w, h)
 	panel.position = Vector2((vs.x - w) * 0.5, maxf(16.0, (vs.y - h) * 0.5))
@@ -170,6 +179,32 @@ func _words_height(w: float) -> float:
 		var n := maxf(1.0, roundf(sz.y / f.get_height(fs)))
 		h += sz.y + n * l.get_theme_constant("line_spacing")
 	return h + (words.get_child_count() - 1) * 8.0 * W.scale + 8.0
+
+
+## The words scrolled from the keyboard and gamepad while they have the focus: the arrows and the D-pad (ui_up,
+## ui_down) by a line, Page Up and Down by most of a page, Home and End.
+func _scroll_keys(e: InputEvent) -> void:
+	if not e.is_pressed():
+		return
+	var line := 40.0 * W.scale
+	var page := scroll.size.y * 0.9
+	var to := -1.0
+	if e.is_action_pressed("ui_down", true):
+		to = scroll.scroll_vertical + line
+	elif e.is_action_pressed("ui_up", true):
+		to = scroll.scroll_vertical - line
+	elif e.is_action_pressed("ui_page_down", true):
+		to = scroll.scroll_vertical + page
+	elif e.is_action_pressed("ui_page_up", true):
+		to = scroll.scroll_vertical - page
+	elif e.is_action_pressed("ui_end"):
+		to = scroll.get_v_scroll_bar().max_value
+	elif e.is_action_pressed("ui_home"):
+		to = 0.0
+	if to < 0.0:
+		return
+	scroll.scroll_vertical = int(maxf(0.0, to))
+	scroll.accept_event()
 
 
 ## Escape and gamepad B: Continue anyway (they close the message).

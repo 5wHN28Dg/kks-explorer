@@ -25,7 +25,9 @@ target, with a lower tier of its own, or is it below a stated minimum?
   minimum of Godot's Forward+ renderer. Examples, from the sources above: Intel HD Graphics 510 or newer (6th
   generation Core, Skylake, 2015); AMD GCN (Radeon HD 7700 or newer, as Godot's own example HD 7750; Radeon R5/R7 APUs from Kaveri; the low-end HD 7000 models are older TeraScale chips) with a current
   driver; NVIDIA Kepler or newer (GeForce GTX 600 and 700 series, except the Fermi-based low-end models). Below that
-  Plant still starts, on the Compatibility renderer, but is not supported: no tier is tuned for it.
+  Plant still starts, on the Compatibility renderer, but is not supported: no tier is tuned for it. The examples
+  are for Windows drivers: on Linux, Mesa's Vulkan driver also covers Intel Broadwell and, incompletely, Haswell;
+  AMD's later TeraScale rebrands (e.g. Radeon R5 230) have no Vulkan.
 - **Android stays as it is:** Android 10 or newer with Vulkan (the Mobile renderer; the Samsung Note 9, Mali-G72, is
   the minimum and its frame rule is decision 0041's).
 - **No lower graphics tier** (option B of #432): not built.

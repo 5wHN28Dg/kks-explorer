@@ -8,6 +8,7 @@ const MinGpu = preload("res://app/min_gpu.gd")
 const Quality = preload("res://app/quality.gd")
 const UiApp = preload("res://tests/ui_app.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const W = preload("res://ui/widgets.gd")
 
 
 func run(tree: SceneTree) -> Array:
@@ -24,6 +25,7 @@ func run(tree: SceneTree) -> Array:
 	await _not_shown(tree, p, "forward_plus", 0, "with Forward+")
 	await _not_shown(tree, p, "mobile", 0, "with the Mobile renderer")
 	await _quit_and_escape(tree, p)
+	await _scroll_by_keys(tree, p)
 	MinGpu.renderer_override = ""
 	MinGpu.phone_override = -1
 	_forget()
@@ -170,4 +172,57 @@ func _quit_and_escape(tree: SceneTree, p: Array) -> void:
 	await tree.process_frame
 	if is_instance_valid(n2):
 		n2.free()
+	var n3 = MinGpu.new(Quality.settings())
+	tree.root.add_child(n3)
+	await tree.process_frame
+	var got3 := []
+	n3.answered.connect(func(go): got3.append(go))
+	var b := InputEventJoypadButton.new()
+	b.button_index = JOY_BUTTON_B
+	b.pressed = true
+	tree.root.push_input(b)
+	if got3 != [true]:
+		p.append("gamepad B did not continue (%s)" % str(got3))
+	await tree.process_frame
+	if is_instance_valid(n3):
+		n3.free()
 	_forget()
+
+
+## At UI size 200 % the words don't all fit: the keyboard reaches them (the scroll takes the focus, and the down arrow
+## and Page Down scroll it); at 100 % they fit and the scroll takes no focus.
+func _scroll_by_keys(tree: SceneTree, p: Array) -> void:
+	var size0: Vector2i = tree.root.size
+	tree.root.size = Vector2i(1600, 900)     # (a headless window is square: the 16:9 window a desktop has)
+	for f in [1.0, 2.0]:
+		W.apply_ui_size(tree.root, f)
+		var n = MinGpu.new(ConfigFile.new())
+		tree.root.add_child(n)
+		for i in 4:
+			await tree.process_frame
+		var bar: VScrollBar = n.scroll.get_v_scroll_bar()
+		var overflows: bool = bar.max_value > n.scroll.size.y + 1.0
+		if f == 1.0:
+			if overflows or n.scroll.focus_mode != Control.FOCUS_NONE:
+				p.append("at 100 %% the words don't fit or the scroll takes the focus (%s, %d)" % [str(overflows), n.scroll.focus_mode])
+		else:
+			if not overflows or n.scroll.focus_mode != Control.FOCUS_ALL:
+				p.append("at 200 %% the words that don't fit can't take the focus (%s, %d)" % [str(overflows), n.scroll.focus_mode])
+			else:
+				n.scroll.grab_focus()
+				await tree.process_frame
+				for k in [KEY_DOWN, KEY_PAGEDOWN]:
+					var ev := InputEventKey.new()
+					ev.keycode = k
+					ev.physical_keycode = k
+					ev.pressed = true
+					tree.root.push_input(ev)
+					await tree.process_frame
+				if n.scroll.scroll_vertical <= 0:
+					p.append("at 200 % the down arrow and Page Down did not scroll the words")
+				for c: Control in [n.continue_button, n.quit_button, n.dont_show]:
+					if not tree.root.get_visible_rect().encloses(c.get_global_rect()):
+						p.append("at 200 %% %s is off the window" % c.name)
+		n.free()
+	W.apply_ui_size(tree.root, 1.0)
+	tree.root.size = size0

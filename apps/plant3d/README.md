@@ -400,7 +400,11 @@ instance when the app already runs.
 - **Windows and Linux:** a GPU whose driver supports Vulkan 1.0 or Direct3D 12 (feature level 12_0): Godot's minimum
   for its Forward+ renderer (https://docs.godotengine.org/en/stable/about/system_requirements.html). For example Intel
   HD Graphics 510 or newer (6th generation Core, Skylake), AMD GCN (Radeon HD 7700 or newer; the low-end HD 7000 models are older TeraScale chips) with a current driver,
-  NVIDIA Kepler or newer (GeForce GTX 600 and 700; the low-end GT 610–630 are mostly Fermi).
+  NVIDIA Kepler or newer (GeForce GTX 600 and 700; the low-end GT 610–630 are mostly Fermi). The examples are for
+  Windows drivers; on Linux, Mesa also gives Vulkan to some older Intel chips (Broadwell, and incompletely Haswell),
+  and AMD's later low-end rebrands of TeraScale chips (such as the Radeon R5 230) have no Vulkan at all.
+- **Not caught:** a Linux computer whose only Vulkan driver is Mesa's software one (lavapipe) stays on Forward+, drawn
+  on the CPU, and gets no message.
 - **Android:** Android 10 or newer with Vulkan (the Mobile renderer); the Note 9 is the minimum (0041).
 - **Below it:** Godot falls back to its Compatibility renderer (OpenGL 3.3, or ANGLE on Direct3D 11). Plant runs, but
   no tier is tuned for it: an Intel HD Graphics 4400 walked it at about 12 frames a second (#432). At such a start a
