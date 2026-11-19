@@ -75,7 +75,8 @@ problem) applies, as to every product with users besides the owner.
 | Linux (Flatpak) | a current GNOME LTS, Godot BaseApp 4.7 | the owner's laptop is the only Linux device (i7-12700H, about 37 GB, Iris Xe); a lower Linux minimum comes with #432's stated GPU minimum | the same laptop | keyboard and mouse, gamepad; touch on a touch screen |
 
 - **Sizes:** landscape only (the two-stick controls need it: AND4's orientation is essential); the canvas is
-  1600 × 900, stretched; desktop windows down to 360 × 640 logical px (the old policy's R1; Godot doesn't stop smaller ones, which are
+  1600 × 900, stretched; desktop windows down to 640 × 360 logical px, landscape (the old policy's R1 smallest size, turned to Plant's
+  landscape; Godot doesn't stop smaller ones, which are
   unsupported); phones from 360 dp tall.
 - **UI size (the user, 2026-11-15 and 2026-11-18):** 100 % to 200 % on every device; each phone starts at the least
   size that gives its buttons 48 dp and its text 14 sp on its own screen (`ui/widgets.gd` `phone_ui_size`: 150 % on
@@ -139,7 +140,7 @@ template is `W.panel(title, on_close)` in `ui/widgets.gd`: one row covers all pa
   (`docs/plant3d/MILESTONES.md`); fast-forward's frames are not judged (the user, 2026-10-27). **Inside the
   Workshop:** no frame over 100 ms that the app causes, and at least 95 % at 30 fps over the Workshop walk (the user,
   2026-11-15, #392; `docs/plant3d/WORKSHOP.md` §8).
-- **Desktop frames:** the same frame rules on the owner's laptop at the `full` tier (≥ 95 % at 30 fps, none over 100 ms:
+- **Desktop frames:** the project's frame rules (docs/PLANT3D.md §18.4) on the owner's laptop at the `full` tier (≥ 95 % at 30 fps, none over 100 ms:
   docs/PLANT3D.md §18.4). On the oldest Windows device (HD 4400) Plant is about 12 fps today (#432): the stated
   minimum GPU from #445 decides whether that device stays in this profile (dropping it is a narrowing).
 - **Input latency (GM6.2):** ≤ 3 frames at 30 fps *(default; not measured yet)*.
@@ -231,5 +232,5 @@ None.
 
 ## T0 and owner items
 
-T0's checklist is the owner's (#442); places: GitHub releases (APK, MSIX, Flatpak bundle) and Plant's relay. The owner
+T0's checklist is the owner's (#442); places: GitHub releases (APK, MSIX, Flatpak bundle) and Plant's relay; a change with an open T0 question doesn't merge until the owner answers. The owner
 items for both products are listed in #442.

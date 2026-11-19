@@ -223,8 +223,7 @@ notifications), and the kinds above.
   and `tests/web/` (Playwright, three engines), `apps/gnome/e2e/` under `headless.sh` only, `apps/windows/e2e/` (the
   VMs, one at a time under `vm.lock`, and the owner's Windows 10 laptop when `~/kks-work/bin/laptop-free` allows); the
   servers come from `tests/e2e_server.py`. The memory and lock rules in CLAUDE.md and `~/kks-work/build/agent-rules.md` apply to every run: one emulator or VM at a time under `vm.lock`; GNOME runs only under `headless.sh` and one at a time under `flock ~/kks-work/build/gnome-e2e.lock`.
-- **Synthetic data:** (the example code below is the repository's long-standing test code; whether it is safe to keep is
-  an owner item, kept privately) the sample sheet `importer/tests/vectors/kkp-sample.pdf`; Walkdown Plant's generated P&IDs of an
+- **Test data:** the sample sheet `importer/tests/vectors/kkp-sample.pdf`; Walkdown Plant's generated P&IDs of an
   invented plant (the README's screenshots); the tag 11LAB70AA501 with long text; the Arabic fixture
   `مضخة التغذية 11LAB70AA501 تعمل` and the mixed line of L2; made-up people ("The Manager", "Tom Tester",
   "تالا Member"); the hostile-content fixture (T7) *(phase 2)*. Generated from recorded statistics of the real data

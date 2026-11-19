@@ -1,7 +1,7 @@
 # UI and UX policy (Walkdown and Walkdown Plant)
 
 Status: since 2026-11-19 this project follows the user's own UI and UX policy, version 4.13, as its rulebook. The
-user asked for it in `~/kks-work/INBOX.md` on 2026-11-19 at 06:21: "I have a new UI/UX policy, adopt it instead of
+user asked for it in `~/kks-work/INBOX.md` on 2026-11-19 (marked read at 06:21): "I have a new UI/UX policy, adopt it instead of
 the current one, it is tailor made of my projects". It replaces the project policy adopted on 2026-11-15 (its last
 text: `git show 225145dc:docs/UI-UX-POLICY.md`; the 2026-11 audit in `docs/ui-audit/` uses its rule IDs).
 
@@ -168,22 +168,22 @@ reviewers (section 9.5); the floor column is the least the rulebook allows (sect
 | #369 | G5 highlights, focus rings, borders | A2, A23, VIEW1 | 2 on main tasks |
 | #370 | G6 colour-only states | A5 | 2 on main tasks |
 | #371 (closed) | G7 raw errors | W3 | — |
-| #372 | G8 offline state and waiting count | ST3, F4 | — |
-| #373 | G9 pressed state, progress, freezes, field errors | F1, P1, E3, I1 | — |
+| #372 | G8 offline state and waiting count | ST3, F4 | 3 (proposed; no floor) |
+| #373 | G9 pressed state, progress, freezes, field errors | F1, P1, E3, I1 | 3 (proposed; no floor) |
 | #374 | G10 screen-reader names and announcements | A8, GNOME4, WIN2, AND5, GM7.3 | 2 on main tasks |
 | #375 | G11 gesture and keyboard alternatives, tags without sight | A18, A20, A12, U1 | 2 on main tasks |
 | #376 | G12 text size, zoom, narrow, landscape | A3, A4, L3, N3, AND4, AND1, V8 | 2 on main tasks |
 | #377 | G13 Windows scaling, text size, dark, contrast themes, Alt keys | WIN1, A4, A7, A1, N3, L3 | 2 on main tasks |
-| #378 | G14 identifiers cut or not copyable | I5, WD-I5, W7 | — |
-| #379 | G15 Arabic notes split codes | L2, WIN3 | — |
+| #378 | G14 identifiers cut or not copyable | I5, WD-I5, W7 | 3 (proposed; no floor) |
+| #379 | G15 Arabic notes split codes | L2, WIN3 | 3 (proposed; no floor) |
 | #380 | G16 reduced motion | A11 | 2 on main tasks |
 | #381 | G17 Plant Settings off screen | N3, GM4.5, A18, L3 | 2 on main tasks |
 | #382 (closed) | G18 Plant phone targets and text | A19, A3, A4, GM4.2 | — |
-| #383 | G19 repeated decisions one at a time | S5 | — |
-| #384 | G20 names, code fields, counts, dates, empty screens | W1, C2, E2, W5, ST2, WD-E7, AND7 | — |
+| #383 | G19 repeated decisions one at a time | S5 | 3 (proposed; no floor) |
+| #384 | G20 names, code fields, counts, dates, empty screens | W1, C2, E2, W5, ST2, WD-E7, AND7 | 3 (proposed; no floor) |
 | #412 | Plant: destructive spacing, codes on the screens, panels over the look stick, HUD backing | A19, A3, GM1.5, A6 | 2 on main tasks |
 | #418 | Plant Workshop: no accessibility tree; Info not scrollable by keyboard or gamepad | A8, GM7.3, A18 | 2 on main tasks |
-| #421 | Plant Workshop: the bench's refusal note off screen on phones | F1, GM3.2, W3 | — |
+| #421 | Plant Workshop: the bench's refusal note off screen on phones | F1, GM3.2, W3 | 3 (proposed; no floor) |
 | #422 | Plant manual reader buttons at 3.7:1 | A1 | 2 on main tasks |
 | #423 | Plant alarm banner rows about 24 dp | A19, GM1.5 | 2 on main tasks |
 | #424 (merged PR for #371) | errors in plain words | W3 | — |
