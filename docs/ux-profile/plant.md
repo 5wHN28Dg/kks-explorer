@@ -70,12 +70,13 @@ problem) applies, as to every product with users besides the owner.
 
 | Platform | Versions | Oldest / smallest device | Typical device | First-class inputs |
 |---|---|---|---|---|
-| Android | 10 and later, arm64 only | Samsung Galaxy Note 9 (Android 10, Mali-G72, 2220 × 1080 at density 420): the frame rules are measured there | the Note 9 and the owner's Honor 600 (Plant only on the Honor) | touch (two sticks), gamepad |
-| Windows | 10 and 11 | the owner's Windows 10 laptop (Intel HD 4400, 4 GB): runs only the Compatibility renderer at about 12 fps (#432); Plant's stated minimum GPU comes with the PR for #432 and is added here then | the owner's laptop *(assumption)* | keyboard and mouse, gamepad |
-| Linux (Flatpak) | a current GNOME LTS, Godot BaseApp 4.7 | the owner's laptop is the only Linux device (i7-12700H, about 37 GB, Iris Xe); a lower Linux minimum comes with #432's stated GPU minimum | the same laptop | keyboard and mouse, gamepad |
+| Android | 10 and later, arm64 only | Samsung Galaxy Note 9 (Android 10, Mali-G72, 2220 × 1080 at density 420): the frame rules are measured there | the Note 9 and the owner's Honor 600 (Plant only on the Honor) | touch (two sticks), gamepad, keyboard and mouse (a phone with a keyboard, e.g. DeX) |
+| Windows | 10 and 11 | the owner's Windows 10 laptop (Intel HD 4400, 4 GB): runs only the Compatibility renderer at about 12 fps (#432); Plant's stated minimum GPU comes with the PR for #432 and is added here then | the owner's laptop *(assumption)* | keyboard and mouse, gamepad; touch on a touch screen |
+| Linux (Flatpak) | a current GNOME LTS, Godot BaseApp 4.7 | the owner's laptop is the only Linux device (i7-12700H, about 37 GB, Iris Xe); a lower Linux minimum comes with #432's stated GPU minimum | the same laptop | keyboard and mouse, gamepad; touch on a touch screen |
 
 - **Sizes:** landscape only (the two-stick controls need it: AND4's orientation is essential); the canvas is
-  1600 × 900, stretched; desktops from 1280 × 720 *(assumption)*; phones from 360 dp tall.
+  1600 × 900, stretched; desktop windows down to 360 × 640 logical px (the old policy's R1; Godot doesn't stop smaller ones, which are
+  unsupported); phones from 360 dp tall.
 - **UI size (the user, 2026-11-15 and 2026-11-18):** 100 % to 200 % on every device; each phone starts at the least
   size that gives its buttons 48 dp and its text 14 sp on its own screen (`ui/widgets.gd` `phone_ui_size`: 150 % on
   the Note 9); desktops start at 100 %. It is Plant's text-size setting (A4, GM4.2).
@@ -110,7 +111,7 @@ Targets set 2026-11-19 *(assumptions until a round with users)*.
 | 10 | "Carry on tomorrow" / "start again" (the saved run) | trainee | every session | the run continues, or a new one starts and the old one is kept | progress lost on a crash ≤ one scenario step or 5 minutes (GM5.2) |
 | 11 | "Make it fit me" (UI size, controls, pace, quality, motion) | anyone | once | the setting applied and kept | each setting ≤ 3 actions from the walk (Settings, the setting) |
 | 12 | "Report a problem" | anyone | rare | a prefilled public issue after seeing the redacted diagnostics, or a private report (FIELD1) | ≤ 4 actions. **Missing today** (#446) |
-| 13 | "Update to the new release" (a new APK, MSIX or Flatpak over the old; there is no updater in the app) | anyone | per release | the new version runs with the saved run and settings kept | the same steps as installing, with the warnings explained (#439) |
+| 13 | "Update to the new release" (a new APK, MSIX or Flatpak over the old; there is no updater in the app) | anyone | per release | the new version runs with the saved run and settings kept | the same steps as installing, with the warnings explained (#439). **Fails today:** an update discards the saved run (#447) |
 
 ## Screen table
 
@@ -138,7 +139,9 @@ template is `W.panel(title, on_close)` in `ui/widgets.gd`: one row covers all pa
   (`docs/plant3d/MILESTONES.md`); fast-forward's frames are not judged (the user, 2026-10-27). **Inside the
   Workshop:** no frame over 100 ms that the app causes, and at least 95 % at 30 fps over the Workshop walk (the user,
   2026-11-15, #392; `docs/plant3d/WORKSHOP.md` §8).
-- **Desktop frames:** the floor follows Plant's stated minimum GPU from #432 *(open)*.
+- **Desktop frames:** the same frame rules on the owner's laptop at the `full` tier (≥ 95 % at 30 fps, none over 100 ms:
+  docs/PLANT3D.md §18.4). On the oldest Windows device (HD 4400) Plant is about 12 fps today (#432): the stated
+  minimum GPU from #445 decides whether that device stays in this profile (dropping it is a narrowing).
 - **Input latency (GM6.2):** ≤ 3 frames at 30 fps *(default; not measured yet)*.
 - **Start (P3, GM6.3):** first walkable frame ≤ 15 s on the Note 9 from a cool start (every first start ≤ 13.5 s,
   decision 0060's margin); the load shows progress and something useful. P3's 5 s to an interactive screen or a
@@ -204,7 +207,7 @@ GM (7.5) including GM10; AND (7.3) where it applies to a Godot app (back, insets
 | T9 | all | not aimed at children; no tracking, no ads; sessions only with people who share a join code |
 | T13 | all | it republishes nothing |
 | L1's other languages, L6 | all | English UI only |
-| S8 | all | it changes no live system |
+| S8 | the app | the app changes no live system; S8 applies to the relay's deploy (`relay-plant/deploy.py`: #441) |
 
 ## Accepted Not-checked reasons (9.3)
 

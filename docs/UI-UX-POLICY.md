@@ -44,8 +44,8 @@ rule wins, so they stay. Each one adds to the rulebook rule named in brackets.
 - **WD-I5 (Block; adds to I5):** the copy confirmation **names what was copied** ("Copied 11LAB70AA501"), except
   where the platform shows its own preview (Android 13 and later). Identifiers drawn as part of a picture (tags on a
   drawing, codes on Plant's control room screens and P&IDs) can't be selected; there the item's card or panel, one
-  tap away, offers the copy. This exemption is how the old policy read I5's ancestor; a reviewer who reads I5 as
-  stricter applies I5 (section 0.2: when unclear, both apply).
+  tap away, offers the copy. This exemption is looser than I5 read strictly: under the rulebook's 0.2 it stays only until the next
+  full audit or 2027-05-18, whichever comes first, and then becomes a waiver (11.2) or goes.
 - **WD-S5 (Block; adds to S5):** 20 synthetic items in each list that asks the same decision of many are decided
   in at most 4 actions (the old B1's check).
 - **WD-S5a (Advice):** after a bulk action the list keeps its place and says what happened ("12 accepted").
@@ -159,7 +159,7 @@ Every open item stays tracked; they count as pre-existing fails from the adoptio
 reviewers (section 9.5); the floor column is the least the rulebook allows (section 9.1). Open ones are labelled
 `ux`.
 
-| Issue | Was | Now | Floor |
+| Issue | Was | Now | Severity (floor, until a reviewer rates it) |
 |---|---|---|---|
 | #365 (closed; follow-ups #414–#417) | G1 destructive actions | S1, S2, S5 | 2 |
 | #366 (follow-ups #429–#431, #436) | G2 Back, Escape, typed input, interruptions | N2, S3, E5, D5, AND2, AND3 | 2 |
@@ -192,16 +192,25 @@ reviewers (section 9.5); the floor column is the least the rulebook allows (sect
 
 Filed at the adoption (2026-11-19): #437 Plant's "Restart in it" (S1, S2), #438 Plant evidence runs and the real
 Godot user folder (Z1), #439 install warnings and steps (U1, T6), #440 the accessibility statement (T11), #441 server
-updates' PASS/FAIL (S8), #443 lightning in fast-forward (A10, GM8.3), #446 Plant has no "Report a problem" (FIELD1); and the owner's decisions, #442.
+updates' PASS/FAIL (S8), #447 Plant updates discard the saved run (S1, S4, GM5.2; severity 1), #448 removing a
+device without a deliberate act (S2), #449 no forgot-password path (S9, U1), #443 lightning in fast-forward (A10, GM8.3), #446 Plant has no "Report a problem" (FIELD1); and the owner's decisions, #442.
 
-The later audit issues (#394–#397, #399–#404, #408, #428) keep their rules the same way: the old ID in their text
+The later audit issues (#391, #394–#397, #399–#404, #408, #428) keep their rules the same way: the old ID in their text
 maps by the table in 5.1.
+
+### 5.3 Old IDs in code and tools
+
+About 50 comments in tests, tools and code cite the old policy's IDs ("UI-UX-POLICY T1, S1", "rule A5", "§3.3"; the
+script `tools/ui_audit/plant_a5.py`). Several of those IDs now name different rules (S1, S2, A1, A5, T1). Read them
+through the map in 5.1; they are renamed when the file is next touched, and `tools/ui_audit/` in phase 2.
 
 ## 6. Adoption
 
 - **Phase 1** (2026-11-19, this page's PR): the hook-up in CLAUDE.md (the rulebook's Appendix G), the profiles, the
   review brief, the check of both products against the never-waivable set and U1, A1 and A5
   ([docs/ui-audit/2026-11-adoption.md](ui-audit/2026-11-adoption.md)), and the maps above.
+- **Due dates:** Walkdown and Plant release by tags (they don't deploy on every merge), so the adoption issues follow
+  the rulebook's 9.7 dates (severity 1 before the next release, severity 2 within two), not a burn-down plan.
 - **Phase 2, by 2026-12-19:** the automated evidence (section 8.3) for each platform, built from `tools/ui_audit/`;
   every UI change tiered (section 8.2).
 - **Phase 3, by 2027-02-19:** the first full audit under this rulebook (section 8.9) and the first round with real

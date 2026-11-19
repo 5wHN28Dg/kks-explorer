@@ -79,7 +79,7 @@ drawings and the draft descriptions.
 | Platform | Versions | Oldest / smallest device | Typical device | Sizes | First-class inputs | Secondary |
 |---|---|---|---|---|---|---|
 | Android | 10 and later (the user, 2026-09-26) | Samsung Galaxy Note 9, Android 10, 6.4", 2220 × 1080 px at density 420 (about 846 × 411 dp), Mali-G72, 6 GB | the owner's Honor 600, Android 16 *(colleagues' phones: assumption, mostly Android)* | portrait and landscape; phones and tablets by window size class | touch | keyboard |
-| Web (from the plant's server) | Chromium, Firefox, WebKit; Safari 17+ on iPhones (from the home screen; supported, but no iPhone is reachable here, so the profile commits to no iPhone as its oldest or typical device) | Chromium on the Note 9 at 412 CSS px; any browser at 320 CSS px width (A4's reflow) | Chromium on Android or a laptop *(assumption)* | 320 CSS px to 1920 px; 200 % zoom | touch at phone width; keyboard and pointer at desktop width | — |
+| Web (from the plant's server) | Chromium, Firefox, WebKit; Safari 17+ on iPhones (from the home screen). **Open, owner item (#442):** no iPhone is reachable here; the rulebook (1.2, 1.6) asks for an oldest iPhone, owned, borrowed or rented, or else dropping iPhones, a narrowing only the owner may choose | Chromium on the Note 9 at 412 CSS px; any browser at 320 CSS px width (A4's reflow) | Chromium on Android or a laptop *(assumption)* | 320 CSS px to 1920 px; 200 % zoom | touch at phone width; keyboard and pointer at desktop width | — |
 | Windows | 10 and 11, x86-64 and ARM64 | the owner's Windows 10 laptop: i7 4th gen U (2 cores), 4 GB, Intel HD 4400, 1920 × 1080 at 125 % | the same laptop *(assumption)* | windows from 360 × 640 logical px up | keyboard and pointer | touch |
 | GNOME (Flatpak) | a current GNOME LTS distribution, GNOME 50 runtime | the owner's laptop is the only GNOME device (i7-12700H, about 37 GB, Iris Xe), at its smallest window, 360 × 294 logical px (GNOME2); an older Linux machine is not committed to | the same laptop | 360 × 294 to full screen | keyboard and pointer | touch (pinch on the drawing) |
 | The server's command line | Linux (Debian 13 on the server) | 80 × 24 terminal | an SSH session | 80 × 24 and up | keyboard | — |
@@ -160,7 +160,8 @@ The numbers and how they are measured are in `docs/m6/MEASUREMENTS.md` (rules wr
 the default tolerance is 5 % or the measurement's noise (1.5), and MEASUREMENTS.md's own regression rules apply where
 they are stricter or were set by the user.
 
-- **Android (Note 9, release build):** cold start to the first sheet ≤ 3 s (stricter than P3's 5 s); warm start ≤ 2 s;
+- **Android (Note 9, release build):** cold start to the first sheet ≤ 3 s (MEASUREMENTS.md; stricter than P3's 5 s);
+  warm start ≤ 2 s (P3's default, not yet in MEASUREMENTS.md);
   steady memory ≤ 300 MB PSS; installed size growth over 25 % needs a reason; background battery ≤ 1 % an hour.
 - **Windows:** private bytes ≤ 400 MB 15 s after start; start-up ≤ 2 s warm and 5 s cold on the Windows 10 laptop
   (P3 defaults).
@@ -222,7 +223,8 @@ notifications), and the kinds above.
   and `tests/web/` (Playwright, three engines), `apps/gnome/e2e/` under `headless.sh` only, `apps/windows/e2e/` (the
   VMs, one at a time under `vm.lock`, and the owner's Windows 10 laptop when `~/kks-work/bin/laptop-free` allows); the
   servers come from `tests/e2e_server.py`. The memory and lock rules in CLAUDE.md and `~/kks-work/build/agent-rules.md` apply to every run: one emulator or VM at a time under `vm.lock`; GNOME runs only under `headless.sh` and one at a time under `flock ~/kks-work/build/gnome-e2e.lock`.
-- **Synthetic data:** the sample sheet `importer/tests/vectors/kkp-sample.pdf`; Walkdown Plant's generated P&IDs of an
+- **Synthetic data:** (the example code below is the repository's long-standing test code; whether it is safe to keep is
+  an owner item, kept privately) the sample sheet `importer/tests/vectors/kkp-sample.pdf`; Walkdown Plant's generated P&IDs of an
   invented plant (the README's screenshots); the tag 11LAB70AA501 with long text; the Arabic fixture
   `مضخة التغذية 11LAB70AA501 تعمل` and the mixed line of L2; made-up people ("The Manager", "Tom Tester",
   "تالا Member"); the hostile-content fixture (T7) *(phase 2)*. Generated from recorded statistics of the real data
@@ -274,7 +276,7 @@ None (the old Workshop exception is a Plant budget now).
 
 The checklist of duties per place is the owner's (T0). Places offered: GitHub releases (Android APK, Windows MSIX,
 Flatpak bundle) and the plant's own server; no app store. Until the owner writes the checklist, every T0 question is
-an owner-check item (#442).
+an owner-check item, and the change it belongs to doesn't merge until the owner answers (#442).
 
 ## Owner items (only the owner settles these)
 
