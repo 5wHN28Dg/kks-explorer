@@ -608,15 +608,15 @@ private fun Account(rev: Int, say: (String) -> Unit) {
     var fn by rememberSaveable(PanelDrafts.reset) { mutableStateOf(fn0) }
     var pos by rememberSaveable(PanelDrafts.reset) { mutableStateOf(pos0) }
     LaunchedEffect(me) {
-        val f = me.str("full_name"); if (fn == fn0) fn = f; fn0 = f
-        val p = me.str("position"); if (pos == pos0) pos = p; pos0 = p
+        val f = me.str("full_name"); if (fn.trim() == fn0.trim()) fn = f; fn0 = f
+        val p = me.str("position"); if (pos.trim() == pos0.trim()) pos = p; pos0 = p
     }
     var addr by rememberSaveable(PanelDrafts.reset) { mutableStateOf("") }
     var metered by remember { mutableStateOf(SyncWorker.metered(ctx)) }
     val relay0 = remember(rev) { Sync.config().optString("relay_url") }
     var relayFrom by rememberSaveable(PanelDrafts.reset) { mutableStateOf(relay0) }
     var relay by rememberSaveable(PanelDrafts.reset) { mutableStateOf(relayFrom) }
-    LaunchedEffect(relay0) { if (relay == relayFrom) relay = relay0; relayFrom = relay0 }
+    LaunchedEffect(relay0) { if (relay.trim().trimEnd('/') == relayFrom.trim().trimEnd('/')) relay = relay0; relayFrom = relay0 }
     // (as saved: the name and position trimmed, the relay without a trailing "/", so a saved value is not "typed")
     val accountTyped = fn.trim() != fn0.trim() || pos.trim() != pos0.trim() || addr.isNotBlank() ||
         relay.trim().trimEnd('/') != relayFrom.trim().trimEnd('/')

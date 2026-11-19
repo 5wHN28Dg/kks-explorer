@@ -112,7 +112,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
     val last = remember(lastSeen) { if (lastSeen.isEmpty()) JSONObject() else JSONObject(lastSeen) }
     val keptGone = removed && last.has("sheet")
     val t = if (keptGone) last else tNow
-    SideEffect { if (!removed) tNow.toString().let { if (it != lastSeen) lastSeen = it } }
+    LaunchedEffect(tNow) { if (!removed) tNow.toString().let { if (it != lastSeen) lastSeen = it } }
     val typedAny = PanelDrafts.any()
     LaunchedEffect(removed, typedAny) { if (removed && !PanelDrafts.any()) onClose() }
     val screen = LocalConfiguration.current.screenHeightDp.toFloat()
