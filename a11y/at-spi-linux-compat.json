@@ -1,0 +1,129 @@
+{
+"apps": [
+[
+"xdg-desktop-portal-gtk",
+635637,
+0
+],
+[
+"Godot_v4.7.2-stable_linux.x86_64",
+635562,
+1
+]
+],
+"nodes": [
+[
+"application",
+"xdg-desktop-portal-gtk",
+""
+],
+[
+"application",
+"Godot_v4.7.2-stable_linux.x86_64",
+""
+],
+[
+"frame",
+"Walkdown Plant (DEBUG)",
+"enabled focusable sensitive showing visible"
+],
+[
+"label",
+"This computer's graphics are below what Walkdown Plant needs",
+"enabled sensitive showing visible"
+],
+[
+"panel",
+"The message's text",
+"enabled sensitive showing visible"
+],
+[
+"label",
+"Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn a slower way. It will run slowly and jerkily: on a similar laptop it showed about 12 pictures a second, where smooth movement needs 30 or more.",
+"enabled sensitive showing visible"
+],
+[
+"label",
+"Walkdown Plant needs graphics whose driver supports Vulkan: for example Intel HD Graphics 510 or newer (6th generation Core processors, from 2015), AMD Radeon HD 7700 or newer, or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating the graphics driver may fix this.",
+"enabled sensitive showing visible"
+],
+[
+"check box",
+"Don't show this again",
+"checkable checked enabled focusable sensitive showing visible"
+],
+[
+"button",
+"Continue anyway",
+"enabled focusable sensitive showing visible"
+],
+[
+"button",
+"Quit",
+"enabled focusable sensitive showing visible"
+],
+[
+"label",
+"",
+"enabled sensitive showing visible"
+]
+],
+"ticked": true,
+"before": [
+[
+"application",
+"xdg-desktop-portal-gtk",
+""
+],
+[
+"application",
+"Godot_v4.7.2-stable_linux.x86_64",
+""
+],
+[
+"frame",
+"Walkdown Plant (DEBUG)",
+"enabled focusable sensitive showing visible"
+],
+[
+"label",
+"This computer's graphics are below what Walkdown Plant needs",
+"enabled sensitive showing visible"
+],
+[
+"panel",
+"The message's text",
+"enabled sensitive showing visible"
+],
+[
+"label",
+"Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn a slower way. It will run slowly and jerkily: on a similar laptop it showed about 12 pictures a second, where smooth movement needs 30 or more.",
+"enabled sensitive showing visible"
+],
+[
+"label",
+"Walkdown Plant needs graphics whose driver supports Vulkan: for example Intel HD Graphics 510 or newer (6th generation Core processors, from 2015), AMD Radeon HD 7700 or newer, or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating the graphics driver may fix this.",
+"enabled sensitive showing visible"
+],
+[
+"check box",
+"Don't show this again",
+"checkable enabled focusable sensitive showing visible"
+],
+[
+"button",
+"Continue anyway",
+"enabled focusable sensitive showing visible"
+],
+[
+"button",
+"Quit",
+"enabled focusable sensitive showing visible"
+],
+[
+"label",
+"",
+"enabled sensitive showing visible"
+]
+]
+}
