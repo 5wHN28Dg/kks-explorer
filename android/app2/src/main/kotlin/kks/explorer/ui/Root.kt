@@ -13,6 +13,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -104,6 +105,9 @@ fun HoldLinks() = DisposableEffect(Unit) {
     onDispose { AppLinks.holds-- }
 }
 
+/** this device in this plant ("" before it joined): saved state is restored only for the same one */
+private fun whoAmI(): String = runCatching { call("GET", "/native/config").json.let { it.optString("peer") + "@" + it.optString("root") } }.getOrDefault("")
+
 /** what the screens share: the open sheet and tag, the active procedure, link mode (R7) */
 class Ui {
     var tab by mutableStateOf("drawings")
@@ -124,9 +128,40 @@ class Ui {
     var arrived by mutableStateOf<Triple<String, Float, Float>?>(null)   // the connector followed to: sheet, x0, y0
     var courseLink by mutableStateOf<Pair<String, String>?>(null)    // a link's course and page, for Learning to open
     var courseSeq by mutableIntStateOf(0)
+    // where the drawing was (SheetView.place): read when the screen's state is saved, kept while Drawings is not shown
+    var placeNow: (() -> Pair<String, FloatArray>?)? = null
+    var placeSheet = ""
+    var place: FloatArray? = null
+
+    companion object {
+        /** #366 (G2 in docs/UI-UX-POLICY.md): what the screens share comes back after the phone is turned and after
+         *  Android stopped the app in the background: the tab, the sheet and where on it, the open tag, the procedure,
+         *  link mode, the floor, full view, colouring by photos */
+        val Saver = androidx.compose.runtime.saveable.listSaver<Ui, Any>(save = { u ->
+            val (ps, p) = u.placeNow?.invoke() ?: (u.placeSheet to u.place)
+            listOf(u.tab, u.sheet, u.selected, u.activeProc, u.linkProc, u.linkStep, u.floor, u.fullView, u.coverage,
+                   ps, p?.let { floatArrayOf(*it) } ?: FloatArray(0), whoAmI())
+        }, restore = { l ->
+            // (only for the same device in the same plant: a phone removed and joined again, maybe by someone else,
+            // starts afresh, and the panel's forms with it)
+            if (l.getOrNull(11) != whoAmI()) { PanelDrafts.drop(); Ui() } else Ui().apply {
+                tab = l[0] as String; sheet = l[1] as String; selected = l[2] as String; activeProc = l[3] as String
+                linkProc = l[4] as String; linkStep = l[5] as Int; floor = l[6] as String; fullView = l[7] as Boolean
+                coverage = l[8] as Boolean; placeSheet = l[9] as String; place = (l[10] as FloatArray).takeIf { it.size == 3 }
+            }
+        })
+    }
 
     /** open where a connector's line continues: its sheet, centred on the connector (no panel in the way) */
-    fun goLink(t: LinkTarget) {
+    /** something that takes the open tag's panel away (another tag or sheet, a mode, another tab) while it holds typed
+     *  text: asked first (#366, D3); MainScreen shows the question. `seq` counts the questions kept (the drawing puts
+     *  its highlight back on the open tag). */
+    var leaving by mutableStateOf<(() -> Unit)?>(null)
+    var keptSeq by mutableIntStateOf(0)
+    fun guard(then: () -> Unit) { if (PanelDrafts.any()) leaving = then else then() }
+
+    fun goLink(t: LinkTarget) = guard { goLinkNow(t) }
+    private fun goLinkNow(t: LinkTarget) {
         tab = "drawings"
         selected = ""
         sheet = t.sheet
@@ -137,7 +172,8 @@ class Ui {
     }
 
     /** show a tag on its drawing (from search, a procedure, the review queue, "appears on") */
-    fun show(tagId: String) {
+    fun show(tagId: String) = guard { showNow(tagId) }
+    private fun showNow(tagId: String) {
         val t = call("GET", "/native/tag", query = mapOf("id" to tagId)).json
         if (!t.has("sheet")) return
         tab = "drawings"
@@ -154,12 +190,18 @@ class Ui {
 fun MainScreen() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val ui = remember { Ui().also { it.darkMode = storedDarkMode(ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE)) } }
+    val ui = rememberSaveable(saver = Ui.Saver) { Ui() }
+    remember(ui) { ui.darkMode = storedDarkMode(ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE)) }
     val snack = remember { SnackbarHostState() }
     val rev = Changes.rev
     val admin = remember(rev) { Sync.config().optBoolean("admin") }
     val queue = remember(rev) { if (admin) call("GET", "/api/state").json.optInt("queue") else 0 }
     BackHandler(enabled = ui.tab != "drawings") { ui.tab = "drawings" }
+    ui.leaving?.let { then ->
+        Confirm("Discard your edits?", if (PanelDrafts.dirty.filterValues { it }.keys.all { it in PANEL_DRAFTS }) "What you typed in the panel has not been saved." else "What you typed has not been saved.",
+            "Discard", { PanelDrafts.drop(); ui.leaving = null; then() },
+            { ui.leaving = null; ui.keptSeq++ }, no = "Keep editing")
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         bottomBar = {
@@ -169,7 +211,7 @@ fun MainScreen() {
                 var labelScale by remember { mutableFloatStateOf(1f) }
                 for ((id, label) in listOf("drawings" to "Drawings", "procedures" to "Procedures", "review" to "Review", "learning" to "Learning", "manage" to "Manage")) {
                     val glyph = when (id) { "drawings" -> Glyphs.DRAWINGS; "procedures" -> Glyphs.PROCEDURES; "review" -> Glyphs.REVIEW; "learning" -> Glyphs.LEARNING; else -> Glyphs.MANAGE }
-                    NavigationBarItem(selected = ui.tab == id, onClick = { ui.tab = id },
+                    NavigationBarItem(selected = ui.tab == id, onClick = { if (id != ui.tab) ui.guard { ui.tab = id } },
                         label = { val st = MaterialTheme.typography.labelMedium
                             Text(label, maxLines = 1, softWrap = false, style = st.copy(fontSize = st.fontSize * labelScale),
                                 onTextLayout = { if (it.didOverflowWidth && labelScale > 0.7f) labelScale -= 0.05f }) },
@@ -240,9 +282,13 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
     val rev = Changes.rev
     val list = remember(rev) { sheets() }
-    LaunchedEffect(list) { if (ui.sheet.isEmpty() || list.none { it.id == ui.sheet }) list.firstOrNull()?.let { ui.sheet = it.id } }
-    var query by remember { mutableStateOf("") }
-    var drawer by remember { mutableStateOf(false) }
+    LaunchedEffect(list) {
+        if (ui.sheet.isEmpty() || list.none { it.id == ui.sheet }) list.firstOrNull()?.let { ui.sheet = it.id }
+        // (a kept tag that is no longer there: TagPanel closes itself unless something is typed in it)
+    }
+    // (saved: turning the phone or the app stopped in the background keeps them, #366)
+    var query by rememberSaveable { mutableStateOf("") }
+    var drawer by rememberSaveable { mutableStateOf(false) }
     var floorMenu by remember { mutableStateOf(false) }
     var notesOpen by remember { mutableStateOf(false) }
     var systemsOpen by remember { mutableStateOf(false) }
@@ -254,17 +300,17 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     var darkAsk by remember { mutableStateOf(false) }
     val current = list.firstOrNull { it.id == ui.sheet }
     val boxes = remember(ui.sheet, rev) { if (current != null) tagBoxes(current.id, current.scale) else emptyList() }
-    var marking by remember { mutableStateOf(false) }
-    var marked by remember { mutableStateOf<List<Float>?>(null) }
+    var marking by rememberSaveable { mutableStateOf(false) }
+    var marked by rememberSaveable { mutableStateOf<List<Float>?>(null) }
     LaunchedEffect(marking, view) { view?.marking = marking }
     // selecting tags: one photo, place or note for several codes (Select.kt)
-    var selecting by remember { mutableStateOf(false) }
+    var selecting by rememberSaveable { mutableStateOf(false) }
     // the selection is codes, in the order picked: it lasts across drawings (tags in the same place can be on
     // different ones; the user, 2026-10-10), filled by taps and boxes here, by search and by typed codes (the List)
-    var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var multi by remember { mutableStateOf("") }                              // the open dialog: list, floor, photo, place, note
-    var noFloor by remember { mutableStateOf<List<String>>(emptyList()) }     // Photo for all: the codes its floor is asked for
-    var multiFloor by remember { mutableStateOf("") }                         // … and the floor chosen, sent with the photo
+    var selection by rememberSaveable { mutableStateOf<Set<String>>(emptySet()) }
+    var multi by rememberSaveable { mutableStateOf("") }                              // the open dialog: list, floor, photo, place, note
+    var noFloor by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }     // Photo for all: the codes its floor is asked for
+    var multiFloor by rememberSaveable { mutableStateOf("") }                         // … and the floor chosen, sent with the photo
     // every code on a drawing with its sheets (null until read): typed codes are checked against it, the List shows it
     val places by produceState<Map<String, List<Drawn>>?>(null, rev, selecting) {
         value = if (selecting) withContext(Dispatchers.IO) { codeIndex() } else null
@@ -276,12 +322,33 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
     val linkedCodes = remember(ui.activeProc, rev) {
         if (ui.activeProc.isEmpty()) emptySet() else call("GET", "/native/proc", query = mapOf("id" to ui.activeProc)).json.optJSONArray("links").objects().map { it.getString("kks") }.toSet()
     }
-    BackHandler(enabled = ui.selected.isNotEmpty() || drawer || ui.linkProc.isNotEmpty() || selecting) {
-        when { drawer -> drawer = false; ui.selected.isNotEmpty() -> ui.selected = ""; selecting -> { selecting = false; selection = emptySet() }; else -> ui.linkProc = "" }
+    // Back closes the top layer first (R2): the sheet list, the panel, marking, selecting, full view, link mode
+    BackHandler(enabled = ui.selected.isNotEmpty() || drawer || ui.linkProc.isNotEmpty() || selecting || marking || ui.fullView) {
+        when {
+            drawer -> drawer = false
+            ui.selected.isNotEmpty() -> ui.selected = ""
+            marking -> marking = false
+            selecting -> { selecting = false; selection = emptySet() }
+            ui.fullView -> ui.fullView = false
+            else -> ui.linkProc = ""
+        }
     }
-    LaunchedEffect(ui.sheet, view) {
+    // where on the drawing: read from the view when the state is saved, and kept here while another tab is shown
+    DisposableEffect(view) {
+        val v = view
+        ui.placeNow = { v?.place() }
+        onDispose {
+            v?.place()?.let { (s, p) -> ui.placeSheet = s; ui.place = p }
+            ui.placeNow = null
+        }
+    }
+    LaunchedEffect(ui.sheet, view, current?.id) {
         val v = view ?: return@LaunchedEffect
-        if (current != null) v.setSheet(current.id, current.scale, current.levels)
+        if (current != null) {
+            v.restore = if (ui.placeSheet == current.id) ui.place else null
+            ui.place = null; ui.placeSheet = ""
+            v.setSheet(current.id, current.scale, current.levels)
+        }
     }
     LaunchedEffect(boxes, view) { view?.tags = boxes }
     // the connectors (Links.kt): circles on the drawing, "Connectors on this sheet", a choice when there are several
@@ -298,6 +365,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             linkBoxes.indexOfFirst { Math.abs(it.x0 - a.second) < 0.01f && Math.abs(it.y0 - a.third) < 0.01f } } ?: -1
     }
     val say: (String) -> Unit = { m -> scope.launch { snack.currentSnackbarData?.dismiss(); snack.showSnackbar(m) } }
+    // another tag or sheet while the panel holds typed text: asked first (#366, D3)
+    val leavePanel = { then: () -> Unit -> ui.guard(then) }
     val capped = "At most $MAX_PICK tags at once: send these first"
     val toggleCode: (String) -> Unit = { code ->
         if (code in selection) selection = selection - code
@@ -321,7 +390,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             ?.optJSONObject("valve_type")?.optJSONArray("box")?.takeIf { it.length() == 4 }?.let { a -> (0 until 4).map { a.getDouble(it).toFloat() } }
     }
     LaunchedEffect(symbolBox, view) { view?.symbolBox = symbolBox }
-    LaunchedEffect(ui.selected, view) { view?.selected = ui.selected }
+    LaunchedEffect(ui.selected, view, ui.keptSeq) { view?.selected = ui.selected }   // (also when a tap's question was kept)
     LaunchedEffect(ui.coverage, view) { view?.coverage = ui.coverage }
     LaunchedEffect(darkDrawings, view) { view?.dark = darkDrawings }
     if (darkAsk) DarkDrawingsDialog(ui.darkMode, onPick = {
@@ -364,9 +433,9 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                         } },
                         onClick = { darkAsk = true; floorMenu = false })
                     if (current != null) DropdownMenuItem(text = { Text(if (marking) "Stop marking" else "Mark a missing tag") },
-                        onClick = { marking = !marking; selecting = false; selection = emptySet(); ui.selected = ""; floorMenu = false })
+                        onClick = { floorMenu = false; leavePanel { marking = !marking; selecting = false; selection = emptySet(); ui.selected = "" } })
                     if (current != null) DropdownMenuItem(text = { Text(if (selecting) "Stop selecting" else "Select tags") },
-                        onClick = { selecting = !selecting; selection = emptySet(); marking = false; ui.selected = ""; floorMenu = false })
+                        onClick = { floorMenu = false; leavePanel { selecting = !selecting; selection = emptySet(); marking = false; ui.selected = "" } })
                     if (current != null) DropdownMenuItem(text = { Text("Connectors on this sheet (${links.size})") },
                         onClick = { connectorsOpen = true; floorMenu = false })
                     if (current != null && current.notes.isNotEmpty()) DropdownMenuItem(text = { Text("Notes on this sheet (${current.notes.size})") },
@@ -385,7 +454,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
             onSheet = { id ->
                 // false: the sheet is gone (a hand-marked tag can outlive it); the dashboard says so in its own window
                 if (list.none { it.id == id }) false
-                else { coverageOpen = false; ui.tab = "drawings"; ui.selected = ""; ui.sheet = id; ui.coverage = true; true }
+                else { coverageOpen = false; ui.guard { ui.tab = "drawings"; ui.selected = ""; ui.sheet = id; ui.coverage = true }; true }
             },
             onSystem = { sys -> coverageOpen = false; systemsOnly = sys; systemsOpen = true },
             onClose = { coverageOpen = false })
@@ -428,7 +497,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                             val (_, m) = submit("link", JSONObject().put("proc", ui.linkProc).put("step", ui.linkStep).put("kks", code).put("on", true))
                             scope.launch { snack.showSnackbar("$code → step ${ui.linkStep}: $m") }
                         }
-                    } else ui.selected = id
+                    } else if (id != ui.selected) leavePanel { ui.selected = id }
                 }
             })
             if (list.isEmpty()) Card(Modifier.align(Alignment.Center).padding(24.dp)) {
@@ -513,7 +582,7 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                     item { Text("Sheets", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp)) }
                     items(list) { s ->
                         ListItem(headlineContent = { Text(s.name) }, supportingContent = { Text("${s.tags} tags" + if (s.review > 0) ", ${s.review} to review" else "") },
-                            modifier = Modifier.clickable { ui.sheet = s.id; ui.selected = ""; drawer = false })
+                            modifier = Modifier.clickable { drawer = false; leavePanel { ui.sheet = s.id; ui.selected = "" } })
                     }
                 }
             }
@@ -549,11 +618,12 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 "note" -> NoteForAll(selectedCodes, sent) { multi = "" }
             }
             marked?.let { b ->
-                MarkDialog(current!!, b, view, snack, onDone = { ok -> marked = null; if (ok) marking = false })
+                // (current is null for a moment after the app was stopped with this open: the sheets are read again)
+                current?.let { c -> MarkDialog(c, b, view, snack, onDone = { ok -> marked = null; if (ok) marking = false }) }
             }
             if (ui.selected.isNotEmpty()) TagPanel(ui.selected, rev, onClose = { ui.selected = "" },
                 onGo = { id, _, _ -> ui.show(id) }, snack = snack, modifier = Modifier.align(Alignment.BottomCenter),
-                link = if (ui.linkProc.isNotEmpty()) ui.linkProc to ui.linkStep else null)
+                link = if (ui.linkProc.isNotEmpty()) ui.linkProc to ui.linkStep else null, overlayOpen = drawer)
         }
     }
 }
@@ -586,13 +656,22 @@ fun linkSubmit(proc: String, step: Int, kks: String, on: Boolean) =
 private fun MarkDialog(sheet: SheetInfo, b: List<Float>, view: SheetView?, snack: SnackbarHostState, onDone: (Boolean) -> Unit) {
     HoldLinks()           // (a link waits: it would close this with what is typed or picked)
     val scope = rememberCoroutineScope()
-    var code by remember { mutableStateOf("") }
-    var isa by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
-    val crop = remember(b) { view?.crop(b[0], b[1], b[2], b[3], 500)?.asImageBitmap() }
-    AlertDialog(onDismissRequest = { onDone(false) }, title = { Text("Mark a missing tag") }, text = {
+    var code by rememberSaveable { mutableStateOf("") }
+    var isa by rememberSaveable { mutableStateOf("") }
+    var note by rememberSaveable { mutableStateOf("") }
+    // (after the app was stopped with this open, the sheet loads first: tried again until it has)
+    val crop by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, b, view) {
+        repeat(40) { view?.crop(b[0], b[1], b[2], b[3], 500)?.let { value = it.asImageBitmap(); return@produceState }; kotlinx.coroutines.delay(250) }
+    }
+    // what was typed is not dropped by Back or Cancel without asking (#366, D3); a tap outside does nothing
+    var discarding by remember { mutableStateOf(false) }
+    val leave = { if (code.isBlank() && isa.isBlank() && note.isBlank()) onDone(false) else discarding = true }
+    if (discarding) Confirm("Discard the typed code?", "What you typed for this mark is not sent.", "Discard", { onDone(false) },
+        { discarding = false }, no = "Keep editing")
+    AlertDialog(onDismissRequest = leave, properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
+        title = { Text("Mark a missing tag") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (crop != null) androidx.compose.foundation.Image(crop, "The marked part of the drawing", Modifier.fillMaxWidth())
+            crop?.let { androidx.compose.foundation.Image(it, "The marked part of the drawing", Modifier.fillMaxWidth()) }
             Dim("Type the code if you can read it. If not, leave it empty: the mark goes to the review queue.")
             OutlinedTextField(code, { code = it }, label = { Text("KKS (with suffix, optional)") }, singleLine = true)
             OutlinedTextField(isa, { isa = it }, label = { Text("Function letters (instruments, optional)") }, singleLine = true)
@@ -605,7 +684,7 @@ private fun MarkDialog(sheet: SheetInfo, b: List<Float>, view: SheetView?, snack
         val (ok, m) = submit("tag_add", JSONObject().put("sheet", sheet.id).put("bbox", bb).put("kks", k).put("isa", isa.trim().uppercase()).put("note", note.trim()))
         scope.launch { snack.showSnackbar(m) }
         onDone(ok)
-    }) { Text("Propose") } }, dismissButton = { TextButton(onClick = { onDone(false) }) { Text("Cancel") } })
+    }) { Text("Propose") } }, dismissButton = { TextButton(onClick = leave) { Text("Cancel") } })
 }
 
 /** decision 0044: a newer Walkdown is out; one tap downloads, checks and hands it to Android's installer */

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,7 +84,7 @@ internal fun shownCount(v: JSONObject, only: String?): Int {
 fun SystemsScreen(ui: Ui, sys: String? = null, onClose: () -> Unit) {
     val rev = Changes.rev
     var only by remember { mutableStateOf(sys) }
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     var view by remember { mutableStateOf<JSONObject?>(null) }
     val toggled = remember { mutableStateMapOf<String, Boolean>() }
     val q = query.trim()

@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
@@ -47,8 +48,12 @@ import org.json.JSONObject
 /** R10–R14 (admin.html, the GNOME app's Manage): approvals, proposals, history, people, devices, account */
 @Composable
 fun Manage(snack: SnackbarHostState, ui: Ui? = null) {
-    var page by remember { mutableStateOf("") }
-    BackHandler(enabled = page.isNotEmpty()) { page = "" }
+    var page by rememberSaveable { mutableStateOf("") }
+    // Back to Manage's list: asked first when the page holds typed text (#366, D3)
+    var leaving by remember { mutableStateOf(false) }
+    BackHandler(enabled = page.isNotEmpty()) { if (PanelDrafts.any()) leaving = true else page = "" }
+    if (leaving) Confirm("Discard your edits?", "What you typed has not been saved.", "Discard", { PanelDrafts.drop(); page = "" },
+        { leaving = false }, no = "Keep editing")
     // About's part or licence page, when one is open (a new one each time About opens): it has its own back button
     val aboutPage = remember(page) { mutableStateOf<Pair<String, String>?>(null) }
     val rev = Changes.rev
@@ -57,7 +62,7 @@ fun Manage(snack: SnackbarHostState, ui: Ui? = null) {
     val say: (String) -> Unit = { m -> Changes.rev++; kotlinx.coroutines.MainScope().launch { snack.showSnackbar(m) } }
     Column(Modifier.fillMaxSize()) {
         if (page.isNotEmpty() && aboutPage.value == null) Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { page = "" }) { Text("‹ Manage") }
+            TextButton(onClick = { if (PanelDrafts.any()) leaving = true else page = "" }) { Text("‹ Manage") }   // (asks, as system Back does)
         }
         Box(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             when (page) {
@@ -403,10 +408,11 @@ private fun People(rev: Int, say: (String) -> Unit) {
     var showHidden by remember { mutableStateOf(false) }
     val r = remember(rev, showHidden) { call("GET", "/api/users", query = if (showHidden) mapOf("show_hidden" to "1") else emptyMap()) }
     val nHidden = remember(rev) { call("GET", "/api/users", query = mapOf("show_hidden" to "1")).json.optJSONArray("users").objects().count { it.optBoolean("hidden") } }
-    var un by remember { mutableStateOf("") }
-    var fn by remember { mutableStateOf("") }
-    var pos by remember { mutableStateOf("") }
+    var un by rememberSaveable(PanelDrafts.reset) { mutableStateOf("") }
+    var fn by rememberSaveable(PanelDrafts.reset) { mutableStateOf("") }
+    var pos by rememberSaveable(PanelDrafts.reset) { mutableStateOf("") }
     if (un.isNotBlank() || fn.isNotBlank() || pos.isNotBlank()) HoldLinks()       // (a person being added)
+    DraftFlag("people", un.isNotBlank() || fn.isNotBlank() || pos.isNotBlank())
     Column(Modifier.verticalScroll(rememberScrollState())) {
         if (!r.ok) Dim(r.error!!)
         Section("People", "Everyone who has an identity in this plant. Devices are added under Devices.") {
@@ -558,10 +564,11 @@ private fun InviteDialog(say: (String) -> Unit, onClose: () -> Unit) {
         val res = call("POST", "/api/invites/$token", JSONObject().put("action", action).put("existing_ok", true))
         decided = res.error ?: if (action == "accept") "Accepted: the device syncs now." else "Refused."
     }
+    // (a tap beside it does nothing: it ended the invite, maybe while the new phone was scanning it; Back and Close still do)
     AlertDialog(onDismissRequest = {
         if (state?.str("state") !in setOf("accepted", "refused")) call("POST", "/api/invites/$token", JSONObject().put("action", "cancel"))
         onClose()
-    }, title = { Text("Add a device") }, text = {
+    }, properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false), title = { Text("Add a device") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (qr != null) Image(qr.asImageBitmap(), "QR code of the invite", Modifier.fillMaxWidth().aspectRatio(1f), filterQuality = FilterQuality.None)
             Dim("Scan this with the new phone, or copy the text to the new computer (Join with a code). Valid for 15 minutes, for one device.")
@@ -594,13 +601,27 @@ private fun Account(rev: Int, say: (String) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val me = remember(rev) { call("GET", "/api/me").json.optJSONObject("user") ?: JSONObject() }
-    var fn by remember(me.str("full_name")) { mutableStateOf(me.str("full_name")) }
-    var pos by remember(me.str("position")) { mutableStateOf(me.str("position")) }
-    var addr by remember { mutableStateOf("") }
+    // (saved, and not put back by a sync while something is typed: #366)
+    // (fn0, pos0: the values the fields started from; a change that arrives follows into a field not typed in)
+    var fn0 by rememberSaveable(PanelDrafts.reset) { mutableStateOf(me.str("full_name")) }
+    var pos0 by rememberSaveable(PanelDrafts.reset) { mutableStateOf(me.str("position")) }
+    var fn by rememberSaveable(PanelDrafts.reset) { mutableStateOf(fn0) }
+    var pos by rememberSaveable(PanelDrafts.reset) { mutableStateOf(pos0) }
+    LaunchedEffect(me) {
+        val f = me.str("full_name"); if (fn.trim() == fn0.trim()) fn = f; fn0 = f
+        val p = me.str("position"); if (pos.trim() == pos0.trim()) pos = p; pos0 = p
+    }
+    var addr by rememberSaveable(PanelDrafts.reset) { mutableStateOf("") }
     var metered by remember { mutableStateOf(SyncWorker.metered(ctx)) }
     val relay0 = remember(rev) { Sync.config().optString("relay_url") }
-    var relay by remember(rev) { mutableStateOf(relay0) }
-    if (fn != me.str("full_name") || pos != me.str("position") || addr.isNotBlank() || relay != relay0) HoldLinks()   // (typed, not saved)
+    var relayFrom by rememberSaveable(PanelDrafts.reset) { mutableStateOf(relay0) }
+    var relay by rememberSaveable(PanelDrafts.reset) { mutableStateOf(relayFrom) }
+    LaunchedEffect(relay0) { if (relay.trim().trimEnd('/') == relayFrom.trim().trimEnd('/')) relay = relay0; relayFrom = relay0 }
+    // (as saved: the name and position trimmed, the relay without a trailing "/", so a saved value is not "typed")
+    val accountTyped = fn.trim() != fn0.trim() || pos.trim() != pos0.trim() || addr.isNotBlank() ||
+        relay.trim().trimEnd('/') != relayFrom.trim().trimEnd('/')
+    if (accountTyped) HoldLinks()   // (typed, not saved)
+    DraftFlag("account", accountTyped)
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(5000); tick++ } }
     Column(Modifier.verticalScroll(rememberScrollState())) {

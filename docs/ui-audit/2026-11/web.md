@@ -11,8 +11,8 @@ for Safari) and Firefox, against docs/UI-UX-POLICY.md. Auditor: helper "web". Co
 - **Browsers:** Playwright 1.63.0 (Chromium build 1243, WebKit 2359, Firefox 1543), headless, under memjob (4 GiB),
   one run at a time.
 - **Data (synthetic only):** a fresh server with `importer/tests/vectors/kkp-sample.pdf` imported as "Sample sheet";
-  `11LAB70AA500` marked, with area/floor/landmark, 8 custom fields, the Arabic fixture note
-  `مضخة التغذية 11LAB70AA500 تعمل`, a procedure link and one synthetic JPEG XL photo; 20 marked tags without a code
+  `11LAB70AA501` marked, with area/floor/landmark, 8 custom fields, the Arabic fixture note
+  `مضخة التغذية 11LAB70AA501 تعمل`, a procedure link and one synthetic JPEG XL photo; 20 marked tags without a code
   (the Review drawer); a user "Tom Tester" with 20 marked tags waiting for approval; sign-up switched on and 20 sign-up
   requests sent (the server's rate limit let 10 through: 10 waiting). No device list was padded (devices need real
   enrolments).
@@ -124,7 +124,7 @@ Notes:
 - n4: the panel's Save/Cancel appear right after the last field (index.js:610–611); admin forms are inline.
 - n5: the tag panel's code, names and sheet names are plain selectable text (no `user-select:none` except the sheet
   image, index.html:43); a Copy button in the tag panel is in progress: branch tag-copy-sticky-batch.
-- n6: Chromium: selecting the panel's heading and Ctrl+C put exactly `11LAB70AA500` on the clipboard. WebKit/Firefox:
+- n6: Chromium: selecting the panel's heading and Ctrl+C put exactly `11LAB70AA501` on the clipboard. WebKit/Firefox:
   Playwright can't read their clipboard; same DOM.
 - n7: the "… for all" dialogs say "For N codes" before sending (index.js:943–944); adding a note or place removes
   nothing.
@@ -140,7 +140,7 @@ Notes:
   what tests/web/test_dark.py specifies).
 - n13: the messages seen were plain ("Wrong username or password.", "Cannot reach the server.", the offline notices),
   but the fallback can show raw HTTP text (WEB-21); not triggered in this run.
-- n14: Chromium and Firefox offline: "● Offline · 2 days left · 1 queued", toast "Offline, queued: 11LAB70AA500", admin
+- n14: Chromium and Firefox offline: "● Offline · 2 days left · 1 queued", toast "Offline, queued: 11LAB70AA501", admin
   pages "You are offline. Approvals, users and history need the server. Changes you make on the drawings are queued…".
   WebKit: not here (see section 1).
 - n15: "Nothing waiting for approval.", "Nobody is waiting.", "You haven't submitted anything yet.", search "No match. It
@@ -159,7 +159,7 @@ Notes:
   Firefox have no long-task API.
 - n23: only the fixture and generated data above; Playwright screenshots have no browser chrome; committed shots
   checked at the edges.
-- n24: search accepts `11lab70aa500`, `11 LAB70 AA500` and `11 lab70 aa500` (all found `11LAB70AA500`); the fields'
+- n24: search accepts `11lab70aa501`, `11 LAB70 AA501` and `11 lab70 aa501` (all found `11LAB70AA501`); the fields'
   attributes fail.
 - n25: 915×412 landscape shows the drawing and the panel side by side (`run2/shots/*-landscape-panel.png`).
 
@@ -195,7 +195,7 @@ Size: LARGE (keyboard pan/zoom on the viewer, and a tap-tap way to place the mar
 10 % and +/− zoom when the viewer has focus (make `#viewer` focusable); for marking, "tap two corners" or "tap the tag,
 then adjust the proposed box".
 
-**WEB-5** T4 (Advice). All engines, 412×915. A tap 12 px to the right of `11LAB70AA500`'s box opened nothing
+**WEB-5** T4 (Advice). All engines, 412×915. A tap 12 px to the right of `11LAB70AA501`'s box opened nothing
 (`t4_beside_opens: false`); tags are hit only inside their own box (`button.hs`, index.js:431). Size: SMALL–LARGE
 (nearest-tag search within 24 px on a click that hits no tag).
 
@@ -315,7 +315,7 @@ stops syncing…" (which photo/device). Evidence: `web-WEB-22-delete-ask.png`, `
 `dialogs` in `*-probes.json`. Size: LARGE (one shared dialog helper, about 15 call sites). Fix: a `<dialog>`-based
 `K.confirm(title, text, actionLabel, {danger:true})` with focus on Cancel, Escape = Cancel, `.danger` action button.
 
-**WEB-23** F4 (Block). All engines. The toast that reports most outcomes ("Offline, queued: 11LAB70AA500", "Device
+**WEB-23** F4 (Block). All engines. The toast that reports most outcomes ("Offline, queued: 11LAB70AA501", "Device
 removed", "Request rejected", "Copied", "Saved") is a plain `<div id="toast">` with no `role="status"`/`aria-live`
 (index.html:209; admin.html:67; set in index.js:11, admin.js:37), so screen readers never hear them. (Course feedback
 has `role="status"`, the sign-in error `role="alert"`: pass.) Size: SMALL. Fix: `role="status" aria-live="polite"`
@@ -349,8 +349,8 @@ Size: SMALL (each change is local). Fix: make chips/rows `<button>`s, add `aria-
 overlay.
 
 **WEB-27** L1 (Block). All engines, tag panel. User text has no automatic direction: no `dir="auto"` or `<bdi>`
-anywhere (fields built in index.js:665–668). The fixture note `مضخة التغذية 11LAB70AA500 تعمل` is laid out
-left-to-right and the code is split: it shows as "11 تعمل LAB70AA500مضخة التغذية" (computed `direction: ltr`).
+anywhere (fields built in index.js:665–668). The fixture note `مضخة التغذية 11LAB70AA501 تعمل` is laid out
+left-to-right and the code is split: it shows as "11 تعمل LAB70AA501مضخة التغذية" (computed `direction: ltr`).
 Evidence: `web-WEB-27-arabic-note.png`. Size: SMALL. Fix: `dir="auto"` on user-text inputs, textareas and their
 read-only display, notes in admin, names in lists; keep codes in `<bdi>` or `unicode-bidi:isolate`.
 
@@ -359,7 +359,7 @@ read-only display, notes in admin, names in lists; keep codes in `<bdi>` or `uni
 `#rvI`, index.js:568), Approvals' "Code as it should be saved" (admin.js:114) and the Systems filter have none of
 the three. (Search itself accepts any case and spaces: pass.) Size: SMALL.
 
-**WEB-29** G2 (Block). All engines. The open tag isn't in the URL: after opening `11LAB70AA500` from search the URL
+**WEB-29** G2 (Block). All engines. The open tag isn't in the URL: after opening `11LAB70AA501` from search the URL
 stayed `/`, and a reload came back with no tag open (`g2_panel_after_reload: false`). A home-screen web app that iOS
 reloads in the background therefore loses the sheet's tag and scroll position. (`/?kks=` links do open a tag.) Size:
 SMALL. Fix: `history.replaceState` with `?kks=` (and the sheet) when a tag opens; restore the panel's scroll.
