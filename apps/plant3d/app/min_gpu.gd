@@ -20,6 +20,7 @@ const Quality = preload("res://app/quality.gd")
 const SECTION := "graphics"
 const KEY_OFF := "min_gpu_notice_off"
 const MEASURED_FPS := 12    # #432: the frame walk on an Intel HD Graphics 4400, 80–86 ms a frame median
+const PAD := 8              # the words' margin inside their scroll (px)
 
 ## Tests only: the rendering method and the device kind as if Godot had reported them ("" and -1: the real ones).
 static var renderer_override := ""
@@ -95,9 +96,15 @@ func _ready() -> void:
 	scroll.gui_input.connect(_scroll_keys)
 	scroll.accessibility_name = "The message's text"
 	v.add_child(scroll)
+	# a margin inside the scroll: the focus ring (3 px, drawn over the scroll's edge) never covers the words
+	var pad := MarginContainer.new()
+	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for side in ["left", "right", "top", "bottom"]:
+		pad.add_theme_constant_override("margin_" + side, PAD)
+	scroll.add_child(pad)
 	words = VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(words)
+	pad.add_child(words)
 	words.add_child(W.label(("Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn "
 			+ "a slower way. It will run slowly and jerkily: on a similar laptop it showed about %d pictures a second, "
 			+ "where smooth movement needs 30 or more.") % MEASURED_FPS, 20))
@@ -181,7 +188,7 @@ func _place() -> void:
 ## The words' full height at the panel's width `w` (a ScrollContainer asks for no height of its own).
 func _words_height(w: float) -> float:
 	# the panel's margins and border (ui/widgets.gd make_theme), and room for the scroll bar
-	var inner := w - 2.0 * 14.0 * W.scale - 2.0 - scroll.get_v_scroll_bar().get_combined_minimum_size().x
+	var inner := w - 2.0 * 14.0 * W.scale - 2.0 - scroll.get_v_scroll_bar().get_combined_minimum_size().x - 2.0 * PAD
 	var h := 0.0
 	for l: Label in words.get_children():
 		var fs := l.get_theme_font_size("font_size")
@@ -189,7 +196,7 @@ func _words_height(w: float) -> float:
 		var sz := f.get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, inner, fs)
 		var n := maxf(1.0, roundf(sz.y / f.get_height(fs)))
 		h += sz.y + n * l.get_theme_constant("line_spacing")
-	return h + (words.get_child_count() - 1) * 8.0 * W.scale + 8.0
+	return h + (words.get_child_count() - 1) * 8.0 * W.scale + 8.0 + 2.0 * PAD
 
 
 ## The words scrolled from the keyboard and gamepad while they have the focus: the arrows and the D-pad (ui_up,

@@ -119,8 +119,11 @@ func _shown_then_continue(tree: SceneTree, p: Array) -> void:
 			p.append("%s is smaller than 24 x 24 px (%s)" % [c.name, str(r.size)])
 		if not Rect2(Vector2.ZERO, vs).encloses(r):
 			p.append("%s is off the window (%s in %s)" % [c.name, str(r), str(vs)])
-	notice.dont_show.button_pressed = true
-	notice.continue_button.pressed.emit()
+	# by the mouse, as a user does: a click on the box, then on Continue anyway
+	await _click(tree, notice.dont_show)
+	if not notice.dont_show.button_pressed:
+		p.append("a click on \"Don't show this again\" did not tick it")
+	await _click(tree, notice.continue_button, false)
 	if main.plant != null:
 		p.append("the plant loaded inside the button's handler (the answer is given from the next idle time)")
 	await tree.process_frame
@@ -277,3 +280,17 @@ func _joy(tree: SceneTree, button: int) -> void:
 		b.button_index = button
 		b.pressed = down
 		tree.root.push_input(b)
+
+
+## A left click at the middle of `c` (press, then release; `wait` false: no frame after the release).
+func _click(tree: SceneTree, c: Control, wait := true) -> void:
+	var at: Vector2 = c.get_global_rect().get_center()
+	for down in [true, false]:
+		var b := InputEventMouseButton.new()
+		b.button_index = MOUSE_BUTTON_LEFT
+		b.position = at
+		b.global_position = at
+		b.pressed = down
+		tree.root.push_input(b, true)          # (in the canvas's coordinates)
+	if wait:
+		await tree.process_frame
