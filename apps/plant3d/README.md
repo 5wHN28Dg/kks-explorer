@@ -496,6 +496,12 @@ On the Note 9 (2026-10-19, debug build, `WALK_EXTRA="walk=screens\n" phone/frame
 16.7 ms, 99.95 % at 30 fps or more; the screens' pieces drew in 0.38 ms a frame on average, 71 of 5,969 frames over
 2 ms, 13 ms at most (a screen's first drawing when it is shown). That counts the pieces only: the tabs, the alarm
 banner and the flow lines are drawn besides, so the frame times above are the measure.
+The lightning's flash analysis (UI-UX-POLICY A10, issue #443): `tests/flash_capture.gd` records the rendered frames of
+a night thunderstorm (`offscreen.sh godot --path apps/plant3d --script res://tests/flash_capture.gd -- --out=FILE
+[--speed=60] [--seconds=60] [--soft]`) and `tools/plant3d/flash_analysis.py FILE` counts WCAG 2.3.1's general and red
+flashes in them per second of real time. Measured 2026-11-19 on this laptop (60 s each, 29 to 44 fps): before the
+real-time limit, at 60x up to 4 flashes in a second (86 in all, a fail); after it, at 60x at most 1 (25 in all) and
+at 1x 1; with Reduced motion none (the mean luminance moves by 5 % at most); never a red flash.
 `tests/workshop_shots.gd` (same arguments, `--phone` for the Note 9's screen and scale, `--ui-size=X`, `--kinds=a,b`)
 saves each Workshop kind with its panels, and with its guided steps started.
 - `test_workshop_layout`: the Workshop's panels on a desktop and on the Note 9, each at the UI size's 100 % and 150 %
