@@ -180,8 +180,10 @@ K.emit = async () => {
   K.renderStatus(); K.listeners.forEach(f => f()) };
 
 // ---------- overlay screens (login, setup, password link, offline lock) ----------
-K.css = `#kov{position:fixed;inset:0;z-index:200;background:var(--chrome,#1c2730);color:var(--ink,#e9eef2);display:flex;align-items:center;justify-content:center;font:14px/1.45 system-ui,sans-serif;padding:16px}
-#kov form,#kov .box{background:var(--chrome2,#243440);border:1px solid var(--line,#3a5061);border-radius:10px;padding:20px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}
+// (The form is centred by its margin, not by the flex box: a form taller than the window, at 200 % zoom on a phone,
+// then scrolls from its top instead of losing its title and first fields above the window, #449.)
+K.css = `#kov{position:fixed;inset:0;z-index:200;background:var(--chrome,#1c2730);color:var(--ink,#e9eef2);display:flex;overflow-y:auto;font:14px/1.45 system-ui,sans-serif;padding:16px}
+#kov form,#kov .box{margin:auto;background:var(--chrome2,#243440);border:1px solid var(--line,#3a5061);border-radius:10px;padding:20px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}
 #kov h1{font-size:18px;margin:0}#kov p{margin:0;color:var(--muted,#94a6b4)}#kov input{padding:9px 10px;border-radius:6px;border:1px solid var(--line,#3a5061);background:var(--chrome,#1c2730);color:inherit;font:inherit}
 #kov button{background:var(--accent,#ff7a1a);color:#1c2730;border:0;border-radius:6px;padding:9px;font-weight:650;cursor:pointer;font:inherit}#kov button.back{background:none;border:1px solid var(--line,#3a5061);color:inherit;font-weight:400}#kov .err{color:var(--bad,#ff5a5a);min-height:1em}`;
 // The overlay screen, holding these nodes (K.h).

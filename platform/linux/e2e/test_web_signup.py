@@ -68,6 +68,16 @@ class WebSignup(unittest.TestCase):
             # the way back in after a forgotten password (#449), on the sign-in screen itself
             expect(u.locator('#kov form #forgotPw')).to_be_visible()
             expect(u.locator('#kov form #forgotPw')).to_contain_text("Forgot your password? Ask your plant's manager or an admin for a password link")
+            # at 200 % zoom on a small phone (320 x 400 CSS px) the taller form scrolls: its title and the line can both be
+            # brought into the window (a flex-centred overlay cut its top off, out of reach)
+            sctx = browser.new_context(viewport={'width': 320, 'height': 400}, device_scale_factor=2)
+            s = sctx.new_page()
+            s.goto(self.base + '/')
+            for sel in ('#kov form h1', '#kov form #forgotPw', '#kov form #signinAbout'):
+                s.locator(sel).scroll_into_view_if_needed()
+                box = s.locator(sel).bounding_box()
+                self.assertTrue(box['y'] >= -1 and box['y'] + box['height'] <= 401, (sel, box))   # (sub-pixel layout)
+            sctx.close()
             m.goto(self.base + '/admin.html#users')
             expect(m.locator('#signupState')).to_contain_text('Sign-up is off')
             expect(m.locator('#signups')).to_contain_text('Nobody is waiting, and sign-up is off.')
