@@ -1,5 +1,7 @@
 # UI/UX audit 2026-11, pass 1 (blind): Walkdown GNOME app
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 Auditor: desk. Policy: `docs/UI-UX-POLICY.md` (adopted 2026-11-15). Code: main at 9eb5b09b.
 
 ## 1. What was run

@@ -1,5 +1,7 @@
 # UI audit 2026-11, pass 2 (adversarial): Walkdown Android and Windows
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 Pass 1's results: android.md and windows.md in this folder. This pass ran nothing on the emulator or a VM: it reads
 the code at 9eb5b09b (the checkout pass 1 built) and pass 1's raw outputs in `~/kks-work/build/ui-audit/vm/`
 (uiautomator dumps and their `.txt` reports, UIA dumps and `.issues.txt`, screenshots). Contrast ratios are computed

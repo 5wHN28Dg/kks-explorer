@@ -1,5 +1,7 @@
 # UI/UX audit 2026-11, pass 1 (blind): Walkdown web client
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 Scope: index.html, admin.html, learning.html, course.html and the scripts they load, in Chromium, WebKit (standing in
 for Safari) and Firefox, against docs/UI-UX-POLICY.md. Auditor: helper "web". Code cited as `file:line` on commit
 9eb5b09b (main, branch ui-audit-2026-11).

@@ -1,5 +1,7 @@
 # UI audit 2026-11, pass 1: Walkdown Windows (helper "vm")
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 ## 1. What was run
 
 - Build: main at 9eb5b09b, cross-built with `apps/windows/build.sh` (llvm-mingw, x86_64) → Walkdown.exe (16.5 MB) and

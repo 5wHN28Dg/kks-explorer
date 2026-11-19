@@ -1,5 +1,7 @@
 # UI audit 2026-11, pass 1: Walkdown Android (helper "vm")
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 ## 1. What was run
 
 - Build: main at 9eb5b09b (branch ui-audit-2026-11). Debug APK `./gradlew --no-daemon --max-workers=2 -PkksNativeJobs=3
@@ -8,7 +10,7 @@
 - Emulator: AVD Pixel_9_Pro_XL (Android 16, x86_64 only, 1344 × 2992, density 480 = 3.0), started as CLAUDE.md says
   (own scope MemoryMax=8G, `-gpu guest`), under `vm.lock`, `ANDROID_SERIAL=emulator-5554` for every call. Demo-mode status bar (12:00) for the screenshots.
 - Data (synthetic only): a fresh server with the sample sheet `importer/tests/vectors/kkp-sample.pdf`, 21 marked tags
-  11LAB70AA500…521, 11LAB70AA500 with long "How to find it" text and the fixture note `مضخة التغذية 11LAB70AA500 تعمل`
+  (the audit server's list), 11LAB70AA500 with long "How to find it" text and the fixture note `مضخة التغذية 11LAB70AA500 تعمل`
   (Near and Notes), a member `تالا Member` with 20 open proposals. The phone joined as the manager.
 - Driven with `android/app2/e2e/adbui.py` (uiautomator dump, input). Checked: setup, join form (wrong password, server
   down), main/drawing, search, tag panel (top, scrolled to the end, edit form), Procedures, Review, Learning, Manage and

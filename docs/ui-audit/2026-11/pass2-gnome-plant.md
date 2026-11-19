@@ -1,5 +1,7 @@
 # UI/UX audit 2026-11, pass 2 (adversarial): Walkdown GNOME and Walkdown Plant
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 Auditor: pass 2, fresh. Policy: `docs/UI-UX-POLICY.md`. Code: main at 9eb5b09b (the audit checkout). Read-only: no
 GNOME session, no Godot run, no emulator. Evidence is pass 1's raw outputs (`~/kks-work/build/ui-audit/desk/`), its
 screenshots, and the code (file:line below is in the audit checkout). Small read-only scripts sampled the existing
