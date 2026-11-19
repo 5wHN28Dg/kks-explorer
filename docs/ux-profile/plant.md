@@ -71,8 +71,8 @@ problem) applies, as to every product with users besides the owner.
 | Platform | Versions | Oldest / smallest device | Typical device | First-class inputs |
 |---|---|---|---|---|
 | Android | 10 and later, arm64 only | Samsung Galaxy Note 9 (Android 10, Mali-G72, 2220 × 1080 at density 420): the frame rules are measured there | the Note 9 and the owner's Honor 600 (Plant only on the Honor) | touch (two sticks), gamepad, keyboard and mouse (a phone with a keyboard, e.g. DeX) |
-| Windows | 10 and 11 | the owner's Windows 10 laptop (Intel HD 4400, 4 GB): runs only the Compatibility renderer at about 12 fps (#432); Plant's stated minimum GPU comes with the PR for #432 and is added here then | the owner's laptop *(assumption)* | keyboard and mouse, gamepad; touch on a touch screen |
-| Linux (Flatpak) | a current GNOME LTS, Godot BaseApp 4.7 | the owner's laptop is the only Linux device (i7-12700H, about 37 GB, Iris Xe); a lower Linux minimum comes with #432's stated GPU minimum | the same laptop | keyboard and mouse, gamepad; touch on a touch screen |
+| Windows | 10 and 11 | a GPU whose driver has Direct3D 12 (feature level 12_0) or Vulkan 1.0: the stated minimum (decision 0076, the user's choice on #432, 2026-11-19), e.g. Intel HD Graphics 510 (Skylake); none such is owned yet, so the oldest one tested is the owner's Iris Xe laptop (Linux). The owner's Windows 10 laptop (Intel HD 4400, 4 GB) is below it: Compatibility renderer at about 12 fps (#432); it gets the below-minimum message and is not supported | the owner's laptop *(assumption)* | keyboard and mouse, gamepad; touch on a touch screen |
+| Linux (Flatpak) | a current GNOME LTS, Godot BaseApp 4.7 | the stated minimum: a GPU with a Vulkan 1.0 driver (decision 0076; Mesa also covers some older Intel chips); the owner's laptop is the only Linux device (i7-12700H, about 37 GB, Iris Xe) | the same laptop | keyboard and mouse, gamepad; touch on a touch screen |
 
 - **Sizes:** landscape only (the two-stick controls need it: AND4's orientation is essential); the canvas is
   1600 × 900, stretched; desktop windows down to 640 × 360 logical px, landscape (the old policy's R1 smallest size, turned to Plant's
@@ -132,6 +132,7 @@ template is `W.panel(title, on_close)` in `ui/widgets.gd`: one row covers all pa
 | The hoist pendant, trends (on the screens) | 3, 4 | the pendant's buttons or the trend, Close | the pendant's move buttons (hold-to-move needs a toggle: A22) | tap, click, gamepad, keys | 1. the control; 2. its state |
 | A link from Walkdown or a chat opening Plant (`walkdown-plant://`, `ui/links_in.gd`) | 2, 7 | what the link will do, the confirm and Cancel (N5) | the confirmation | tap, click, keys | 1. what will happen; 2. confirm |
 | Start-up offer ("Continue the saved run?") | 10 | the question, Continue, New run | Continue | as panels | 1. the question; 2. Continue |
+| Below-minimum GPU message (desktops on the Compatibility renderer, before the plant loads; `app/min_gpu.gd`, decision 0076; off until the owner's check) | 1 | the title, Continue anyway, Quit, "Don't show this again"; the words scroll at large UI sizes | Continue anyway | click; keyboard Tab and Enter, Escape = Continue anyway; gamepad D-pad and A, B = Continue anyway; the words scroll by arrows, D-pad, Page Up and Down | 1. what the computer lacks and that it will be slow; 2. Continue anyway |
 
 ## Budgets (with tolerance) and the benchmark walk
 
@@ -141,8 +142,9 @@ template is `W.panel(title, on_close)` in `ui/widgets.gd`: one row covers all pa
   Workshop:** no frame over 100 ms that the app causes, and at least 95 % at 30 fps over the Workshop walk (the user,
   2026-11-15, #392; `docs/plant3d/WORKSHOP.md` §8).
 - **Desktop frames:** the project's frame rules (docs/PLANT3D.md §18.4) on the owner's laptop at the `full` tier (≥ 95 % at 30 fps, none over 100 ms:
-  docs/PLANT3D.md §18.4). On the oldest Windows device (HD 4400) Plant is about 12 fps today (#432): the stated
-  minimum GPU from #445 decides whether that device stays in this profile (dropping it is a narrowing).
+  docs/PLANT3D.md §18.4). A GPU below the stated minimum (decision 0076, PR #445) is outside these rules: the HD 4400
+  laptop, about 12 fps (#432), left the profile with it (a narrowing, the user's decision of 2026-11-19); it gets the
+  below-minimum message instead.
 - **Input latency (GM6.2):** ≤ 3 frames at 30 fps *(default; not measured yet)*.
 - **Start (P3, GM6.3):** first walkable frame ≤ 15 s on the Note 9 from a cool start (every first start ≤ 13.5 s,
   decision 0060's margin); the load shows progress and something useful. P3's 5 s to an interactive screen or a

@@ -34,7 +34,10 @@ target, with a lower tier of its own, or is it below a stated minimum?
 - **The app says so:** when a desktop start finds itself on the Compatibility renderer, a message before the plant
   loads says what the computer lacks, that it will run slowly (about 12 frames a second on the laptop above), and
   offers Continue anyway or Quit, with "Don't show this again" kept in the settings (`app/min_gpu.gd`). Never on a
-  phone, never for a measurement started from the command line.
+  phone, never for a measurement started from the command line. Under the UI and UX policy (adopted the same day) it
+  is a tier-2 change: merged switched off (`walkdown/min_gpu_message`), on after the owner's check.
+- The UX profile (docs/ux-profile/plant.md) states the minimum; the HD 4400 laptop leaves it (a narrowing by this
+  decision).
 - No new dependency.
 
 ## When to revisit

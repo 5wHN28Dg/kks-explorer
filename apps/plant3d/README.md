@@ -410,7 +410,9 @@ instance when the app already runs.
   no tier is tuned for it: an Intel HD Graphics 4400 walked it at about 12 frames a second (#432). At such a start a
   message comes before the plant loads (`app/min_gpu.gd`): what the computer lacks, that it will be slow, Continue
   anyway or Quit, and "Don't show this again" (`[graphics] min_gpu_notice_off` in `user://settings.cfg`). Escape and
-  gamepad B mean Continue anyway. Not on phones, and not for a measurement started with `walk=` or `shot=`.
+  gamepad B mean Continue anyway. Not on phones, and not for a measurement started with `walk=` or `shot=`. **Off
+  until the owner's check** (the UI and UX policy's tier 2, 8.5): the project setting `walkdown/min_gpu_message`;
+  an `override.cfg` beside the exe with `[walkdown]` and `min_gpu_message=true` turns it on for the check.
 
 ## Quality tiers (R9)
 
