@@ -330,5 +330,38 @@ class Sinks(unittest.TestCase):
             src = re.sub(r'//[^\n]*', '', src)                     # (comments may name it)
             self.assertIsNone(re.search(r'(?<![.\w])confirm\(', src), f)
 
+    def test_error_words(self):
+        """#371 (F2): an error is said in plain words: the server's own text when it is a sentence, else this client's
+        sentence for its kind (code, or the status); the raw text stays as the detail; no status code or terse text"""
+        def run(pg):
+            got = pg.evaluate("""() => [
+                K.apiError(404, {error: 'not found', code: 'not_found'}),
+                K.apiError(403, {error: 'admin only', code: 'not_allowed'}),
+                K.apiError(401, {error: 'Wrong username or password.', code: 'sign_in'}),
+                K.apiError(500, null),
+                K.apiError(400, {error: 'bad json'}),
+                K.apiError(409, {error: 'conflict', code: 'conflict'})].map(e => [e.message, e.detail, e.status])""")
+            self.assertEqual(got[0], [pg.evaluate("K.errorWords.not_found"), 'not found', 404])
+            self.assertEqual(got[1][0], 'Only an admin can do that.')
+            self.assertEqual(got[2][0], 'Wrong username or password.')
+            self.assertEqual(got[3][0], pg.evaluate("K.errorWords.server"))
+            self.assertEqual(got[4][0], pg.evaluate("K.errorWords.invalid"))
+            self.assertEqual(got[5][0], pg.evaluate("K.errorWords.conflict"))
+            more = pg.evaluate("""() => [K.apiError(400, {error: 'note: up to 500 characters', code: 'invalid'}).message,
+                K.apiError(403, {error: 'manager only', code: 'not_allowed'}).message,
+                K.apiError(404, {error: 'no such user', code: 'not_found'}).message,
+                K.apiError(400, {error: 'bad submission kind or payload', code: 'invalid'}).message,
+                K.apiError(400, {error: 'Floor: a whole number from 0 to 10 (the height goes in Elevation)', code: 'invalid'}).message]""")
+            self.assertEqual(more, ['Note: up to 500 characters.', "Only the plant's manager can do that.", pg.evaluate("K.errorWords.not_found"), pg.evaluate("K.errorWords.invalid"),
+                                    'Floor: a whole number from 0 to 10 (the height goes in Elevation).'])
+            for m, _, _ in got:
+                self.assertRegex(m, r'^[A-Z].*[.]$')
+                self.assertNotRegex(m, r'\b(error|[45]\d\d)\b')
+            # the server can't be reached: plain words, and still a network error for the callers that queue
+            pg.route(ORIGIN + '/api/**', lambda r: r.abort())
+            net = pg.evaluate("() => K.api('/api/x').then(() => null, e => [e.message, K.isNetErr(e)])")
+            self.assertEqual(net, [pg.evaluate("K.errorWords.unreachable"), True])
+        self.each(run)
+
 if __name__ == '__main__':
     unittest.main()

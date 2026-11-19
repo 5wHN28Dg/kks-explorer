@@ -11,6 +11,7 @@ import appstate
 import kks/node
 import kksl/dbstore
 import w32, ui, win, annotate, photoqueue
+import errwords
 from kks/api import ApiError
 
 {.compile("kks_img.cpp", "-std=c++17").}
@@ -183,6 +184,7 @@ type
     rgb: seq[byte]
     w, h: int
     fail: bool                 ## tests: KKS_TEST_ENCODE_FAIL makes the first n encodes fail
+    holdMs: int                ## tests: KKS_TEST_ENCODE_MS, a wait before each encode
   EncDone = object
     key, clientId: string
     data: string
@@ -199,6 +201,9 @@ var
   wipedAll = false             ## the device was removed: nothing more is written or sent
   polling = false
   failLeft = (try: max(0, parseInt(getEnv("KKS_TEST_ENCODE_FAIL", "0"))) except ValueError: 0)
+  encodeMs = (try: max(0, parseInt(getEnv("KKS_TEST_ENCODE_MS", "0"))) except ValueError: 0)
+    ## tests: a wait before each encode, so that "Compressing" can be read before it ends (a real
+    ## laptop compressed and sent a photo before the end-to-end test's next look at the status line)
   retryWait = (try: max(0, parseInt(getEnv("KKS_TEST_RETRY_MS", $RetryMs))) except ValueError: RetryMs)
     ## tests: a failed photo's wait before it is tried again
   failWin: HWND
@@ -208,6 +213,7 @@ proc encWorker() {.thread.} =
   while true:
     let j = encJobs.recv()
     var d = EncDone(key: j.key, clientId: j.clientId)
+    if j.holdMs > 0: sleep(j.holdMs)
     try:
       if j.fail: d.err = "the encoder failed (a test)"
       else:
@@ -364,9 +370,10 @@ proc received(w: Win, d: EncDone) =
       if getEnv("KKS_TEST_PHOTO_DIE_AFTER_SEND").len > 0: discard TerminateProcess(GetCurrentProcess(), 9)
     except ApiError as e:
       if e.status >= 400: (outcome, why) = (Refused, e.msg)
-      else: (outcome, why) = (Failed, "not sent: " & e.msg)
+      else: (outcome, why) = (Failed, "Not sent yet: " & e.msg.asSentence)
     except CatchableError as e:
-      (outcome, why) = (Failed, "not sent: " & e.msg)
+      stderr.writeLine "photo: " & e.msg               # (#371: the system's text to the log)
+      (outcome, why) = (Failed, "Not sent yet; it is tried again.")
   let now = nowMs()
   var r: string
   try: r = pq.finish(d.key, outcome, why, now)
@@ -403,7 +410,7 @@ proc startNext(w: Win) =
   if ok:
     let fail = failLeft > 0
     if fail: dec failLeft
-    encJobs.send(EncJob(key: it.key, clientId: it.clientId, rgb: px, w: it.w, h: it.h, fail: fail))
+    encJobs.send(EncJob(key: it.key, clientId: it.clientId, rgb: px, w: it.w, h: it.h, fail: fail, holdMs: encodeMs))
 
 proc pollQueue(w: Win) =
   var changed = false

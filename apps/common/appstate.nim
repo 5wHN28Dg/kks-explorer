@@ -7,6 +7,7 @@ import std/[asyncdispatch, httpclient, os, strutils, tables, times, uri, sets, s
 import kks/[json, util, crypto, proto, node, api, plant, sync, extras, bundle, plantdata, invites, diagnostics, model,
             progress]
 import kksl/[dbstore, net, internet]
+import errwords
 when defined(windows):
   import kks/provider_cng
   import kksw/[tls, mdns, keystore]
@@ -270,8 +271,11 @@ proc call*(a: App, meth, path: string, body: JNode = nil, q = initTable[string, 
   if not ok: raise newException(ApiError, "this device has not joined a plant")
   let r = a.api.handle(me, meth, path, q, if body == nil: newObj() else: body, nowMs())
   if r.status >= 400:
-    let e = newException(ApiError, if r.json != nil and r.json.get("error") != nil: r.json["error"].s else: "error " & $r.status)
+    # in plain words (#371); the core's own text to the log when it isn't the one shown
+    let e = newException(ApiError, errorText(r.status, r.json))
     e.status = r.status
+    if r.json != nil and r.json.get("error") != nil and r.json["error"].isStr and r.json["error"].s != e.msg:
+      stderr.writeLine "api " & meth & " " & path & ": " & $r.status & " " & r.json["error"].s
     raise e
   r.json
 
@@ -454,13 +458,16 @@ proc joinServer*(a: App, address, username, password: string): Future[string] {.
     ack = await ask(a.n, a.id, host, port, "", newObj(@[("t", newStr("enroll")), ("username", newStr(username)),
                                                      ("password", newStr(password)), ("request", req)]))
   except CatchableError as e:
-    return "cannot reach " & host & ":" & $port & ": " & e.msg
+    stderr.writeLine "join " & host & ":" & $port & ": " & e.msg       # (the system's text, for the log: #371)
+    return unreachable(host, port)
   if ack.get("state") == nil or ack["state"].s != "accepted":
-    return (if ack.get("why") != nil and ack["why"].isStr and ack["why"].s.len > 0: ack["why"].s else: "the server refused")
+    return (if ack.get("why") != nil and ack["why"].isStr and ack["why"].s.strip.len > 0: ack["why"].s.asSentence
+            else: "The server did not accept this device. Check your username and password, or ask an admin.")
   try:
     discard await a.syncOne(host, port, ack["server"].s, adoptRoot = if a.n.root.len > 0: "" else: ack["root"].s)
   except CatchableError as e:
-    return "the server certified this device, but syncing failed: " & e.msg & ". Try Sync now later."
+    stderr.writeLine "join, first sync: " & e.msg
+    return "This device was accepted, but the first sync did not finish. Press Sync now in a moment."
   if not a.joined: return "synced, but this device is not certified in what came back"
   a.store.setMeta("sync_peers", toText(newArr(@[newStr(host & ":" & $port & "@" & ack["server"].s)])))
   a.changed("joined")

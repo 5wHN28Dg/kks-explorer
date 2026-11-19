@@ -130,6 +130,8 @@ It covers:
   Confirm valve type and Confirm description, a corrected reading through Edit and Cancel;
 - About Walkdown from the setup screen, F1 and Manage (the version and commit, the licence and its full text, the
   source link, libjxl's and a font's notices and licences, a photo credit's links, Copy details, Esc);
+- the tabs and the sidebar's pages beside the drawing at 1366 × 768 and 1920 × 1080, never under it (rectangles apart,
+  each control what the hit test finds at its middle; `tests/test_tabs.nim` the tabs at 100, 125 and 150 % scaling);
 - removal and the self-wipe.
 
 ## A real (borrowed) Windows laptop
@@ -137,7 +139,7 @@ It covers:
 `e2e/host/kks-test-host.ps1` prepares a laptop that isn't ours for the same tests and measurements, and undoes it
 all afterwards. Run in PowerShell opened with "Run as administrator":
 
-    powershell -ExecutionPolicy Bypass -File kks-test-host.ps1 -Setup -PublicKey "<contents of ~/.ssh/kks_vm.pub>"
+    powershell -ExecutionPolicy Bypass -File kks-test-host.ps1 -Setup -PublicKey "<a key of its own, e.g. ~/.ssh/kks_winlaptop.pub>"
     powershell -ExecutionPolicy Bypass -File kks-test-host.ps1 -Status
     powershell -ExecutionPolicy Bypass -File kks-test-host.ps1 -Revert     # before giving it back; restart; again if asked
 
@@ -153,6 +155,52 @@ all afterwards. Run in PowerShell opened with "Run as administrator":
   on another profile and could not log in by password; auto-login to the test account worked after a restart and was
   restored afterwards. Not tried: installing and removing OpenSSH (the VMs need it to be reachable at all).
 
+### Running the tests on it
+
+    KKS_LAPTOP=1 KKS_VM_KEY=~/.ssh/kks_winlaptop python3 apps/windows/e2e/test_windows.py LAPTOP_IP APP UIADRIVE SERVER IMPORTER
+    KKS_TESTS=test_flow,test_draw_timing ...      # only these tests
+
+- `KKS_LAPTOP=1`: this machine's ports stay closed to the LAN; the server's sync port reaches the laptop through an
+  SSH reverse tunnel (the app joins `127.0.0.1`), and screenshots (`KKS_SHOTS`) come from `shot.exe` (`e2e/shot.cpp`,
+  built by `build.sh` next to `uiadrive.exe`) in its desktop session, which opens no window.
+- The standard account is refused WMI over SSH ("Cannot connect to CIM server. Access denied"), so `runapp.ps1`
+  registers its task through the Task Scheduler's COM interface, and the tests read nothing through CIM. It may not
+  restart the laptop from its SSH logon either (`shutdown`: "Access is denied"): run `shutdown.exe` through
+  `runapp.ps1`, in the desktop session.
+- Notifications stay on (no administrator): answer any on its screen before a run.
+- `uiadrive.exe` is per-monitor DPI aware: every rectangle in physical pixels at any scaling.
+
+### Results on a real laptop (2026-11-18)
+
+The user's laptop: Intel Core i7 4th generation U (2 cores, 4 threads), 4 GB DDR3L, Intel HD Graphics 4400 (driver
+10.18.15.4248; its AMD GPU disabled on purpose), SATA SSD, Windows 10 Pro, 1920 × 1080 at 125 % (Windows'
+recommended scale for its panel).
+
+- **The e2e suite** at 125 %: 28 of 28 passed (32 minutes, with #427). Before, `test_photo_queue` failed twice:
+  the photo was compressed and sent before the test's next look at "Compressing 1 photo"; the test now holds each
+  compression 8 s (`KKS_TEST_ENCODE_MS`).
+- **Direct2D on a GPU** (`test_draw_timing`, `KKS_DRAW_TIMING`: zoomed in eight steps and panned): the window's render
+  target says it is hardware (not checked yet what the VMs, which have no GPU, report there). Two runs: a paint of the drawing took 1.25 and 1.35 ms median, 46 and
+  33 ms at most (about 20 paints each); a tile's render 14.2 and 8.1 ms median, 64 and 58 ms at most (21 tiles,
+  drawn on the CPU on worker threads). Lines sharp zoomed in (screenshots at 125 %).
+- **Scaling:** 100, 125 and 150 % set while the app runs (as Settings does) and at its start: the window follows
+  (`WM_DPICHANGED`), the tabs stay in one row beside the drawing (#427's `test_tabs_beside_drawing` passes at each,
+  main before #427 failed at each). Left from #377: the status line keeps the old scale's font after a live change.
+- **Text size 150 %:** `TextScaleFactor` written and a restart did not change Windows' own fonts; the system fonts
+  scaled to 150 % live (`SPI_SETNONCLIENTMETRICS`, as "Make text bigger" does for desktop apps) grew the title bar but
+  not the app's text, whose fonts are fixed in px from the DPI (#377). Every setting was put back afterwards.
+- **Dark app mode:** the drawings follow it; the rest of the window stays light (#377).
+- **High Contrast Black:** the window's controls follow the theme's colours; the drawing stays light, as drawn.
+- **Walkdown Plant** (its Windows export, a test build, defaults unchanged): neither Direct3D 12 nor Vulkan on this
+  GPU and driver ("Cannot find a compatible Vulkan installable client driver", then "switching to OpenGL 3" and, for
+  this driver, ANGLE on Direct3D 11): the Compatibility renderer, tier lean+vis. The 300 s frame walk: median 85.5 ms
+  (p95 131, p99 152, max 514) on the first start, 79.8 ms (p95 121, p99 141) on a later one; 0 % of frames at 30 fps
+  or better. At 1280 × 720 without shadow and fog: 54.7 ms median. The draw takes ~70 of the 80 ms (773 draw calls).
+  First frame 56.6 s after the very first start (shaders compiled), 7.5 s on later starts. Memory: about 0.97 GB
+  private, 1.03 GB peak working set. One of four starts ended by itself 3.6 s into the walk, with no log line or
+  crash report the standard account could read (#432).
+- **Arabic:** the note `مضخة التغذية 11LAB70AA501 تعمل` shows with "11" apart from "LAB70AA501", as in the VMs (#379).
+
 ## Not done yet
 
 - **Camera:** taking photos with the camera (photos come from a file). Scanning an invite QR with the webcam is built
@@ -161,7 +209,8 @@ all afterwards. Run in PowerShell opened with "Run as administrator":
   real webcam.
 - **Packaging:** the firewall rule, and the real signing certificate (made with the new name; its subject is the
   package's publisher).
-- **A real laptop:** GPU timings (the VMs render with WARP), company policy (Defender rules, AppLocker), Narrator by ear.
+- **A real laptop:** company policy (Defender rules, AppLocker), Narrator by ear (GPU timings, scaling and themes:
+  above).
 - **CI:** a GitHub Actions run needs the user's OK to push.
 
 ## MSIX (decision 0043)

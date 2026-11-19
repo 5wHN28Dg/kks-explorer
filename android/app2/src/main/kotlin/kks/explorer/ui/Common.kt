@@ -24,7 +24,7 @@ class Result(val json: JSONObject, val error: String?) {
 
 fun call(meth: String, path: String, body: JSONObject? = null, query: Map<String, String> = emptyMap()): Result {
     val r = Core.api(meth, path, body, query)
-    return if (r.status >= 400) Result(r.json, r.json.optString("error").ifEmpty { "error ${r.status}" }) else Result(r.json, null)
+    return if (r.status >= 400) Result(r.json, Errors.text(r.status, r.json)) else Result(r.json, null)
 }
 
 fun JSONArray?.objects(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).map { getJSONObject(it) }

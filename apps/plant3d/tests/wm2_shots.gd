@@ -1,6 +1,6 @@
 ## Pictures of WM2's screens (docs/plant3d/REALISM.md §2.23–§2.24), for the UI/UX audit's evidence
 ## (docs/UI-UX-POLICY.md §3.3; not a test: it needs a display):
-##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/wm2_shots.gd -- --out=DIR [--phone]
+##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script res://tests/wm2_shots.gd -- --out=DIR [--phone] [--ui-size=1.5]
 ## --phone draws them at the phone's UI scale (run it at the phone's resolution, `--resolution 2960x1440`).
 ## In the aged plant in free mode: the stores' catalogue, the look-alikes side by side, the counter's issue form with a
 ## refusal, a part's order form, the deliveries with the jump to the next one. As the I&C technician at condenser
@@ -23,6 +23,7 @@ const DP := 0.457           # dp per canvas px on the Note 9 (docs/UI-UX-POLICY.
 
 var out := ""
 var phone := false
+var ui_size := ""    # --ui-size=1.5: at that UI size (the settings' 100 % to 200 %; a phone starts at the size its screen needs, 150 % on the Note 9)
 var main: Node
 var ui
 
@@ -31,6 +32,8 @@ func _init() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
+		elif a.begins_with("--ui-size="):
+			ui_size = a.substr(10)
 		elif a == "--phone":
 			phone = true
 	_run.call_deferred()
@@ -41,7 +44,7 @@ func shot(name: String, panel: Node, frames := 30) -> void:
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := root.get_viewport().get_texture().get_image()
-	var base := out.path_join(("phone_" if phone else "") + name)
+	var base := out.path_join(("phone_" if phone else "") + (("ui%s_" % ui_size) if ui_size != "" else "") + name)
 	print("wm2_shots: %s %d" % [name, img.save_png(base + ".png")])
 	var lines := PackedStringArray()
 	lines.append("# %s (%s): controls that take input, then labels; canvas px, dp = px × %.3f" % [name,
@@ -93,6 +96,8 @@ func _run() -> void:
 	main.opts["quality"] = "lean+vis" if phone else "full"
 	if phone:
 		main.opts["ui_scale"] = "1.35"
+	if ui_size != "":
+		main.opts["ui_size"] = ui_size
 	root.add_child(main)
 	while main.first_frame_ms < 0 and main.start_error == "":     # (with a display the UI comes after the sky)
 		await process_frame

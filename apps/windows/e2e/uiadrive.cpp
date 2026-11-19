@@ -33,6 +33,11 @@
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
 //                           what a person's keyboard does there (an edit or list of that name before any other
 //                           element of it; `keys` posts to the first element, which may be the window or a label)
+//   resize <name> <w> <h>   the top-level window holding the element restored and resized to w x h physical px (the
+//                           driver is per-monitor DPI aware); at most what the screen allows, logged
+//   apart <drawing>         no control of the drawing's window meets the drawing's rectangle, and every button, field,
+//                           list and check box wholly in view is what UI Automation's hit test finds at its middle
+//   clear <drawing> <name>  the same for the controls of that name only (at least one must be there)
 //   clipboard <text>        wait (10 s) until the clipboard holds exactly this text (CF_UNICODETEXT; ASCII)
 //   sleep <ms>
 //   dump                    log every element (type, name)
@@ -291,9 +296,104 @@ static bool focus_on(DWORD &pid, IUIAutomationElement *&e, const std::string &sp
     return false;
 }
 
+static bool within(IUIAutomationElement *e, IUIAutomationElement *anc, IUIAutomationTreeWalker *tw) {
+    IUIAutomationElement *x = e; x->AddRef();
+    while (x) {
+        BOOL same = FALSE; ua->CompareElements(x, anc, &same);
+        if (same) { x->Release(); return true; }
+        IUIAutomationElement *p = nullptr; tw->GetParentElement(x, &p); x->Release(); x = p;
+    }
+    return false;
+}
+
+// `apart` / `clear`: the controls of the drawing's window (every one, or only those named `only`) beside the drawing,
+// never over or under it: no control's rectangle meets the drawing's, and each button, field, list and check box that
+// is wholly in view is the element found at its middle (UI Automation's hit test, what a click there reaches; no hover
+// first). -> how many failed (each logged); a named control that isn't there counts as one
+static int apart(DWORD &pid, IUIAutomationElement *drawing, const std::string &only) {
+    RECT dr; drawing->get_CurrentBoundingRectangle(&dr);
+    UIA_HWND dh = 0; drawing->get_CurrentNativeWindowHandle(&dh);
+    HWND root = dh ? GetAncestor((HWND)dh, GA_ROOT) : nullptr;
+    if (!root) { say("ERROR: the drawing has no window"); return 1; }
+    // the window in front first, as a person sees it (the script's console window starts in front of it); then the
+    // hit test is about the window's own children
+    if (GetForegroundWindow() != root) { SetForegroundWindow(root); Sleep(500); }
+    if (GetForegroundWindow() != root) say("  (the window could not come to the front: a hit test may find what covers it)");
+    RECT cr; GetClientRect(root, &cr);
+    POINT c0{cr.left, cr.top}, c1{cr.right, cr.bottom}; ClientToScreen(root, &c0); ClientToScreen(root, &c1);
+    MONITORINFO mi = {sizeof mi}; GetMonitorInfoW(MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST), &mi);
+    RECT work = mi.rcWork;
+    IUIAutomationTreeWalker *tw = nullptr; ua->get_RawViewWalker(&tw);
+    IUIAutomationElement *top = nullptr; ua->ElementFromHandle((UIA_HWND)root, &top);
+    IUIAutomationCondition *all = nullptr; ua->CreateTrueCondition(&all);
+    IUIAutomationElementArray *arr = nullptr;
+    int bad = 0, seen = 0, hit = 0;
+    if (top && SUCCEEDED(top->FindAll(TreeScope_Descendants, all, &arr)) && arr) {
+        int n = 0; arr->get_Length(&n);
+        for (int i = 0; i < n; i++) {
+            IUIAutomationElement *el = nullptr; arr->GetElement(i, &el);
+            BSTR bn = nullptr; el->get_CurrentName(&bn);
+            std::string name = utf8(bn); if (bn) SysFreeString(bn);
+            CONTROLTYPEID t = 0; el->get_CurrentControlType(&t);
+            bool control = t == UIA_ButtonControlTypeId || t == UIA_EditControlTypeId || t == UIA_ListControlTypeId ||
+                           t == UIA_ListItemControlTypeId || t == UIA_CheckBoxControlTypeId || t == UIA_RadioButtonControlTypeId ||
+                           t == UIA_TextControlTypeId || t == UIA_ComboBoxControlTypeId || t == UIA_HyperlinkControlTypeId ||
+                           t == UIA_TreeControlTypeId || t == UIA_TreeItemControlTypeId;
+            RECT r; el->get_CurrentBoundingRectangle(&r);
+            if (!control || (!only.empty() && name != only) || r.right <= r.left || r.bottom <= r.top || within(el, drawing, tw)) {
+                el->Release(); continue;
+            }
+            seen++;
+            std::string what = type_name(t) + " '" + name + "' at " + std::to_string(r.left) + "," + std::to_string(r.top) + " " +
+                               std::to_string(r.right - r.left) + "x" + std::to_string(r.bottom - r.top);
+            if (r.left < dr.right && dr.left < r.right && r.top < dr.bottom && dr.top < r.bottom) {
+                bad++;
+                say("  over the drawing (" + std::to_string(dr.left) + "," + std::to_string(dr.top) + " " +
+                    std::to_string(dr.right - dr.left) + "x" + std::to_string(dr.bottom - dr.top) + "): " + what);
+            }
+            UIA_HWND hw = 0; el->get_CurrentNativeWindowHandle(&hw);
+            bool test = hw && IsWindowVisible((HWND)hw) && (t == UIA_ButtonControlTypeId || t == UIA_EditControlTypeId ||
+                        t == UIA_ListControlTypeId || t == UIA_CheckBoxControlTypeId || t == UIA_RadioButtonControlTypeId);
+            if (test) {      // wholly in view: inside its page, the main window's client area and the work area (the
+                             // taskbar, always on top, may cover the bottom of a window as tall as the screen)
+                RECT pr; GetWindowRect(GetParent((HWND)hw), &pr);
+                test = r.left >= std::max({pr.left, c0.x, work.left}) && r.top >= std::max({pr.top, c0.y, work.top}) &&
+                       r.right <= std::min({pr.right, c1.x, work.right}) && r.bottom <= std::min({pr.bottom, c1.y, work.bottom});
+            }
+            if (test) {
+                hit++;
+                POINT mid{(r.left + r.right) / 2, (r.top + r.bottom) / 2};
+                IUIAutomationElement *at = nullptr;
+                if (FAILED(ua->ElementFromPoint(mid, &at)) || !at || !within(at, el, tw)) {
+                    bad++;
+                    std::string got = "nothing";
+                    if (at) {
+                        BSTR an = nullptr; at->get_CurrentName(&an); CONTROLTYPEID at_t = 0; at->get_CurrentControlType(&at_t);
+                        got = type_name(at_t) + " '" + utf8(an) + "'"; if (an) SysFreeString(an);
+                    }
+                    say("  not reached at its middle: " + what + " (found " + got + ")");
+                }
+                if (at) at->Release();
+            }
+            el->Release();
+        }
+        arr->Release();
+    }
+    if (all) all->Release();
+    if (top) top->Release();
+    if (tw) tw->Release();
+    say("  " + std::to_string(seen) + " controls beside the drawing, " + std::to_string(hit) + " hit-tested");
+    if (!only.empty() && seen == 0) { say("  no control named " + only); bad++; }
+    return bad;
+}
+
 int wmain(int argc, wchar_t **argv) {
     if (argc < 4) { fprintf(stderr, "uiadrive <exe name> <script> <log>\n"); return 2; }
     logf = _wfopen(argv[3], L"a");
+    // every rectangle and point in physical pixels, UI Automation's and the window's alike: an unaware driver at 125 %
+    // got UIA's rectangles and its own window metrics scaled and rounded apart (the title bar's buttons 1 px into the
+    // drawing on a real laptop); at 100 %, as the VMs run, nothing changes
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void **)&ua))) {
         say("ERROR: no UI Automation"); return 1;
@@ -351,6 +451,26 @@ int wmain(int argc, wchar_t **argv) {
         CONTROLTYPEID only2 = (cmd == "enter" || cmd == "select") ? UIA_TreeItemControlTypeId : 0;
         IUIAutomationElement *e = wait_for(pid, arg, timeout, only, only2);
         if (!e) { say("ERROR: not found: " + arg + " (line " + std::to_string(lineNo) + ")"); find(pid, "", true); return 1; }
+        if (cmd == "resize") {
+            // resize\tNAME\tW\tH: the window NAME is in, restored and made W x H (at 96 dpi): a narrow window (#371)
+            UIA_HWND hw = 0; e->get_CurrentNativeWindowHandle(&hw); e->Release();
+            HWND root = hw ? GetAncestor((HWND)hw, GA_ROOT) : nullptr;
+            if (!root || f.size() < 4) { say("ERROR: can't resize " + arg); return 1; }
+            UINT dpi = GetDpiForWindow(root);
+            ShowWindow(root, SW_RESTORE); Sleep(300);
+            SetWindowPos(root, nullptr, 0, 0, std::stoi(f[2]) * (int)dpi / 96, std::stoi(f[3]) * (int)dpi / 96, SWP_NOMOVE | SWP_NOZORDER);
+            Sleep(500);
+            continue;
+        }
+        if (cmd == "height") {
+            // height\tNAME\tMIN: NAME is at least MIN px tall (at 96 dpi): a status line that needs two lines has them (#371)
+            UIA_HWND hw = 0; e->get_CurrentNativeWindowHandle(&hw);
+            RECT r; e->get_CurrentBoundingRectangle(&r); e->Release();
+            UINT dpi = hw ? GetDpiForWindow((HWND)hw) : 96;
+            int h = (int)(r.bottom - r.top) * 96 / (int)(dpi ? dpi : 96);
+            if (f.size() < 3 || h < std::stoi(f[2])) { say("ERROR: " + arg + " is " + std::to_string(h) + " px tall, not at least " + (f.size() > 2 ? f[2] : "?")); return 1; }
+            continue;
+        }
         if (cmd == "value") {
             std::wstring want = wide(f.size() > 2 ? f[2] : "");
             bool ok = false;
@@ -434,6 +554,26 @@ int wmain(int argc, wchar_t **argv) {
             say("  " + std::to_string(n) + " pixels of " + (f.size() > 2 ? f[2] : ""));
             e->Release();
             if (n < 0 || n > most) { say("ERROR: " + arg + " has " + std::to_string(n) + " pixels of " + f[2]); return 1; }
+            continue;
+        }
+        if (cmd == "resize") {
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            e->Release();
+            if (!hw || f.size() < 4) { say("ERROR: can't resize the window of " + arg); return 1; }
+            HWND root = GetAncestor((HWND)hw, GA_ROOT);
+            ShowWindow(root, SW_RESTORE);
+            SetWindowPos(root, nullptr, 0, 0, std::stoi(f[2]), std::stoi(f[3]), SWP_NOZORDER | SWP_NOACTIVATE);
+            Sleep(800);
+            RECT r; GetWindowRect(root, &r);
+            say("  window " + std::to_string(r.right - r.left) + " x " + std::to_string(r.bottom - r.top) +
+                (r.right - r.left != std::stoi(f[2]) || r.bottom - r.top != std::stoi(f[3]) ? " (as large as the screen allows)" : ""));
+            continue;
+        }
+        if (cmd == "apart" || cmd == "clear") {
+            int bad = apart(pid, e, cmd == "clear" ? (f.size() > 2 ? f[2] : "?") : "");
+            e->Release();
+            if (bad != 0) { say("ERROR: " + std::to_string(bad) + " element(s) under or over " + arg); return 1; }
             continue;
         }
         if (cmd == "toggle") {

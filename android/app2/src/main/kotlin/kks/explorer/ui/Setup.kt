@@ -125,7 +125,10 @@ private fun JoinProgress(join: Sync.Join, needCode: Boolean, onJoined: () -> Uni
         when (ack.optString("state")) {
             "accepted" -> if (needCode) { accepted = true; status = "Accepted. Does the admin's screen show ${withContext(Dispatchers.IO) { join.code }}?" } else finish()
             "cancelled" -> {}
-            else -> status = "Not accepted: " + ack.optString("state") + ack.optString("why").let { if (it.isNotEmpty()) " ($it)" else "" }
+            // in plain words (#371): the admin's own reason when it is a sentence; the state word goes to the log
+            else -> { android.util.Log.i("KKSErrors", "join: ${ack.optString("state")} ${ack.optString("why")}")
+                status = ack.optString("why").takeIf { it.isNotBlank() }?.let { Errors.asSentence(it) }
+                    ?: "Not joined: the admin refused, or the request ended. Ask the admin to try again." }   // (errwords.nim notJoined)
         }
     }
     Text(status, style = MaterialTheme.typography.bodyLarge)

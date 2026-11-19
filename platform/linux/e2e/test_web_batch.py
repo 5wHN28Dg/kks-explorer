@@ -294,7 +294,7 @@ class WebBatch(unittest.TestCase):
         page.route(f'**/api/submissions/{b2}/approve', lambda route: route.fulfill(status=401, content_type='application/json', body='{"error":"sign in"}'))
         ok.click()
         expect(page.locator('#toast')).to_contain_text('Approved 1 of 2.', timeout=15000)
-        expect(page.locator('#toast')).to_contain_text('Stopped there:')
+        expect(page.locator('#toast')).to_contain_text('Stopped there. Your sign-in has ended. Sign in again.')   # (the plain-words sentence, #371)
         page.unroute(f'**/api/submissions/{b2}/approve')
         expect(ok).to_have_text('Approve selected (1)')
         expect(ok).to_be_enabled()

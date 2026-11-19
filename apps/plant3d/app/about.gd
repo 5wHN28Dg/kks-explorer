@@ -8,6 +8,7 @@ extends VBoxContainer
 
 signal closed
 
+const W = preload("res://ui/widgets.gd")
 const SOURCE := "https://github.com/5wHN28Dg/kks-explorer"
 const SCROLL_SPEED := 1400.0    # px a second at full stick or a held key
 const STEP := 120               # px a D-pad press
@@ -25,7 +26,7 @@ func _init() -> void:
 	add_theme_constant_override("separation", 12)
 	var t := Label.new()
 	t.text = "About Walkdown Plant"
-	t.add_theme_font_size_override("font_size", 28)
+	t.add_theme_font_size_override("font_size", int(28 * W.scale))
 	add_child(t)
 	scroll = ScrollContainer.new()
 	scroll.name = "scroll"
@@ -39,8 +40,8 @@ func _init() -> void:
 	scroll.add_child(body)
 	back = Button.new()
 	back.text = "Back"
-	back.custom_minimum_size = Vector2(120, 64)
-	back.add_theme_font_size_override("font_size", 22)
+	back.custom_minimum_size = Vector2(120 * W.scale, maxf(64.0, 52.0 * W.scale))
+	back.add_theme_font_size_override("font_size", int(22 * W.scale))
 	back.pressed.connect(close)
 	add_child(back)
 
@@ -131,14 +132,14 @@ static func about_data() -> Dictionary:
 func _section(title: String, text: String) -> void:
 	var h := Label.new()
 	h.text = title
-	h.add_theme_font_size_override("font_size", 24)
+	h.add_theme_font_size_override("font_size", int(24 * W.scale))
 	h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(h)
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	l.add_theme_font_size_override("font_size", 18)
+	l.add_theme_font_size_override("font_size", int(18 * W.scale))
 	body.add_child(l)
 
 

@@ -54,6 +54,8 @@ jobs:
       - name: The Nim core's tests (no platform)
         working-directory: core
         run: nim test
+      - name: Errors in plain words, the desktop apps' choice of sentence (apps/common/errwords.nim, #371)
+        run: nim r --hints:off --path:core/src --path:apps/common tests/test_errwords.nim
       - name: The dark-drawings colour vectors still match apps/common/darkcolor.nim (dark.js and DarkColor.kt are checked against them)
         run: nim r --hints:off --path:apps/common tests/web/make_dark_vectors.nim | diff -u tests/web/dark-vectors.json -
       - name: The valve-type vectors still match core views.tagView (systems.js KSys.valveType is checked against them)
@@ -476,6 +478,7 @@ jobs:
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-courserich -o:out/plat/test_courserich.exe apps/windows/tests/test_courserich.nim
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-uistale -o:out/plat/test_ui_stale.exe apps/windows/tests/test_ui_stale.nim
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-panelhead -o:out/plat/test_panel_head.exe apps/windows/tests/test_panel_head.nim
+          nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-tabs -o:out/plat/test_tabs.exe apps/windows/tests/test_tabs.nim
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-about -o:out/plat/test_about.exe apps/windows/tests/test_about.nim
           ls -l out out/core out/plat
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

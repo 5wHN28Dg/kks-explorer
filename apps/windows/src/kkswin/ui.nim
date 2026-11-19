@@ -379,6 +379,15 @@ proc measure(p: Page, text: string, font: HFONT, width: int): int =
   ReleaseDC(p.hwnd, dc)
   int(r.bottom - r.top)
 
+proc textHeight*(h: HWND, text: string, width: int): int =
+  ## how tall `text` is in the normal font, wrapped at `width` px (the main window's status line, #371)
+  let dc = GetDC(h)
+  SelectObject(dc, fontNormal)
+  var r = RECT(left: 0, top: 0, right: int32(max(10, width)), bottom: 0)
+  discard DrawTextW(dc, newWideCString(if text.len == 0: " " else: text), -1, addr r, DT_CALCRECT or DT_WORDBREAK or DT_NOPREFIX)
+  ReleaseDC(h, dc)
+  int(r.bottom - r.top)
+
 proc textWidth(p: Page, text: string, font: HFONT): int =
   let dc = GetDC(p.hwnd)
   SelectObject(dc, font)
@@ -469,6 +478,48 @@ proc placeColumn*(head, body: Page, x, w, h: int, headOn: bool): int =
     head.layout()            # (at its own height: no scroll bar when all of it fits)
   ShowWindow(head.hwnd, if result > 0: SW_SHOW else: SW_HIDE)
   MoveWindow(body.hwnd, int32(x), int32(result), int32(max(w, 0)), int32(h - result), 1)
+
+proc tabRows*(widths: seq[int], avail, gap: int): seq[seq[int]] =
+  ## the tabs (their least widths) in rows of at most `avail` px with `gap` between them, in order; a tab wider than
+  ## `avail` has a row of its own. -> each row's tab indexes
+  var used = 0
+  for i, tw in widths:
+    if result.len == 0 or used + gap + tw > avail:
+      result.add @[i]
+      used = tw
+    else:
+      result[^1].add i
+      used += gap + tw
+
+proc placeTabs*(tabs: seq[HWND], x, y, w: int): int =
+  ## the tab buttons inside a strip `w` px wide at (x, y) (the sidebar's width): each at least as wide as its label
+  ## plus padding, one row when they all fit, wrapped into more rows when not (larger scaling, longer labels), each
+  ## row stretched to the strip's width. Never past the strip: the drawing beside it, a sibling window that paints
+  ## its whole area, hid what stood over it (the user, 2026-11-18: Manage under the drawing). -> the strip's height
+  let m = int(px(4))
+  let rowH = int(px(32))
+  var widths: seq[int]
+  for b in tabs:
+    SendMessageW(b, WM_SETFONT, cast[WPARAM](fontNormal), 0)   # (WM_DPICHANGED made new fonts: measure with the one shown)
+    let dc = GetDC(b)
+    SelectObject(dc, fontNormal)
+    var r = RECT()
+    discard DrawTextW(dc, newWideCString(b.text), -1, addr r, DT_CALCRECT or DT_SINGLELINE)  # ("&&" is one "&")
+    ReleaseDC(b, dc)
+    widths.add int(r.right - r.left) + int(px(12))   # (the least room around a label; a row's spare is shared out)
+  let avail = max(1, w - 2 * m)
+  let rows = tabRows(widths, avail, m)
+  for ri, row in rows:
+    var least = 0
+    for i in row: least += widths[i]
+    let spare = max(0, avail - least - m * (row.len - 1))
+    var bx = x + m
+    for k, i in row:
+      let extra = spare div row.len + (if k < spare mod row.len: 1 else: 0)
+      let bw = if row.len == 1: avail else: widths[i] + extra
+      MoveWindow(tabs[i], int32(bx), int32(y + int(px(6)) + ri * (rowH + m)), int32(bw), int32(rowH), 1)
+      bx += bw + m
+  int(px(6)) + rows.len * rowH + (rows.len - 1) * m + int(px(6))
 
 proc relayoutIfWanted(p: Page) =
   if relayoutWanted:
@@ -654,6 +705,17 @@ proc restoreText*(p: Page, kept: KeptText): KeptText =
         inc nth
     if not found: result.add k
 
+
+proc setLabel*(h: HWND, text: string) =
+  ## a page's label given new text: its height is measured again (a status line that becomes a sentence or two wraps
+  ## instead of being cut after its first line, #371)
+  h.setText(text)
+  let pg = GetParent(h)
+  if pg in pages:
+    let p = pages[pg]
+    for it in p.items.mitems:
+      if it.kind in {ikLabel, ikDim} and h in it.hwnds: it.text = text
+    p.layout()
 
 proc label*(p: Page, text: string): HWND {.discardable.} =
   result = control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX or SS_EDITCONTROL)[0]

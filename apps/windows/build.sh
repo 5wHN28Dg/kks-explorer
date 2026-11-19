@@ -22,3 +22,6 @@ ls -la "$OUT"
 # the e2e tests' UI Automation driver (e2e/uiadrive.cpp), next to the app
 "${KKS_DEV:-$HOME/.local/kksdev}/llvm-mingw/bin/$TRI-clang++" -O2 -static -municode -D_WIN32_WINNT=0x0A00 \
   -o "$(dirname "$OUT")/uiadrive.exe" "$HERE/e2e/uiadrive.cpp" -luiautomationcore -lole32 -loleaut32 -luuid -lgdi32
+# a screenshot without a window for the tests on a real machine (e2e/shot.cpp, KKS_LAPTOP)
+"${KKS_DEV:-$HOME/.local/kksdev}/llvm-mingw/bin/$TRI-clang++" -O2 -static -municode -mwindows -D_WIN32_WINNT=0x0A00 \
+  -o "$(dirname "$OUT")/shot.exe" "$HERE/e2e/shot.cpp" -lgdi32 -luser32

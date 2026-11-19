@@ -76,6 +76,19 @@ func setup(u, drawings) -> void:
 	picker.custom_minimum_size = Vector2(0, 52 * W.scale)
 	picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	picker.clip_text = true
+	picker.fit_to_longest_item = false     # (else as wide as the longest title: the bar ran off a narrow canvas)
+	# the sheet's number (its identifier, first) always shows whole; a title too long for the bar ends in "…", whole in
+	# the list it opens and on the sheet's title block (UI-UX-POLICY S3)
+	picker.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	picker.custom_minimum_size.x = 200 * W.scale    # (the bar with Close fits a 16:9 phone at 200 %: 800 px)
+	# its list: rows as tall as the buttons (48 dp on a phone, T1), never wider or taller than the canvas (its longest
+	# titles ran off a narrow one: the numbers, first, stay in view)
+	var pm := picker.get_popup()
+	pm.add_theme_font_size_override("font_size", int(20 * W.scale))
+	pm.add_theme_constant_override("v_separation", int(maxf(0.0, 52.0 * W.scale - 1.3 * 20.0 * W.scale)))
+	pm.about_to_popup.connect(func():
+		var vs := get_viewport_rect().size
+		pm.max_size = Vector2i(int(vs.x - 16.0), int(vs.y - 16.0)))
 	for s in set_.sheets:
 		picker.add_item("%s  %s" % [s["number"], s["title"]])
 	picker.item_selected.connect(func(i): open_sheet(String(set_.sheets[i]["id"])))

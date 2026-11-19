@@ -129,7 +129,7 @@ class WebAbout(unittest.TestCase):
             rp.keyboard.press('Escape')
             expect(rdlg).to_have_count(0)
             rp.get_by_role('button', name='About Walkdown').click()
-            expect(rdlg).to_contain_text('The About page could not be loaded: internal error')
+            expect(rdlg).to_contain_text('The About page could not be loaded. The server had a problem, so this was not done. Try again in a moment.')
             rp.unroute('**/api/about')
             self.assertEqual(rerrors, [])
             rctx.close()

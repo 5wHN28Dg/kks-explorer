@@ -8,7 +8,9 @@ const api=u=>K.api(u);
 const h=K.h;
 // el's children := these (arrays flattened; null, undefined and false left out)
 const put=(el,...kids)=>el.replaceChildren(...kids.flat(Infinity).filter(c=>c!=null&&c!==false));
-function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2200)}
+// (long enough to read: a plain-words error is a sentence or two)
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',Math.max(2200,1500+60*String(t).length))}
+const notSaved=m=>/not saved|not done|not sent/i.test(m)?m:'Not saved. '+m;
 
 // effective tag = extracted tag + your review decision
 function eff(t){
@@ -191,7 +193,7 @@ async function refreshState(){
 const canApprove=()=>['admin','manager'].includes(K.me?.user?.role);   // their edits apply at once: no note needed
 // (`quiet`: a saved or queued change is not said here: the caller says it, with an Undo)
 async function send(kind,payload,what,note,quiet){
-  let r; try{ r=await K.submit(kind,payload,note) }catch(e){ toast('Not saved: '+e.message); return null }
+  let r; try{ r=await K.submit(kind,payload,note) }catch(e){ toast(notSaved(e.message)); return null }
   if(!(quiet&&(r.status==='approved'||r.status==='queued'))) toast({approved:'Saved: ',pending:'Sent for approval: ',conflict:'Clashes with a newer change, an admin will decide: ',queued:K.reauth?'Queued until you sign in again: ':'Offline, queued: '}[r.status]+what);
   if(r.status!=='queued') await refreshState(); else updatePending();
   return r;
@@ -770,7 +772,7 @@ async function addPhoto(input,k,plate){
   const a=await photoCanvas(f,plate?'Add a tag plate photo':'Add an equipment photo'); if(!a) return;
   // queued at once (kept on this device), converted in the background, sent in order: closing the panel stops nothing
   try{ await K.queuePhoto(a.canvas,{kks:k,...(plate?{caption:'Tag plate'}:{}),...(fl?{floor:fl}:{})},a.note) }
-  catch(e){ toast('Not saved: '+e.message); return }
+  catch(e){ toast(notSaved(e.message)); return }
   toast(`${plate?'Tag plate photo':'Equipment photo'} for ${k}: converting, then sent`);
   if(selTag&&full(selTag)===k&&!$('#panel').querySelector('.editing')) reselect();
 }
@@ -934,7 +936,7 @@ async function sendMany(kind,payload,note,codes=[...multi.codes]){
     const fields=Object.keys(payload.changes||{});   // replaced fields only: an appended note can't lose anything
     payload={...payload,bases:Object.fromEntries(codes.map(k=>[k,Object.fromEntries(fields.map(f=>[f,(STATE.equipment?.[k]||{})[f]??'']))]))};
   }
-  let r; try{ r=await K.submitMany(kind,codes,payload,note) }catch(e){ toast('Not saved: '+e.message); return false }
+  let r; try{ r=await K.submitMany(kind,codes,payload,note) }catch(e){ toast(notSaved(e.message)); return false }
   pickMode(false);
   if(r.status==='queued'){ toast(`Offline, queued for ${nCodes(codes.length)}`); updatePending(); drawTags(); return true }
   const st=(r.results||[]).map(x=>x.status), held=st.filter(x=>x==='conflict').length, waiting=st.filter(x=>x!=='approved'&&x!=='conflict').length;

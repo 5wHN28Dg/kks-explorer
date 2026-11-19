@@ -109,7 +109,7 @@ class WebWasm(unittest.TestCase):
             page.goto(self.base + '/learning.html')
             page.wait_for_function("() => typeof K !== 'undefined' && K.me")
             refused = page.evaluate("""() => K.api('/api/submit', {kind: 'photo', payload: {kks: '11LAB70AA501',
-                dataUrl: document.createElement('canvas').toDataURL('image/png')}}).then(() => 'stored', e => e.message)""")
+                dataUrl: document.createElement('canvas').toDataURL('image/png')}}).then(() => 'stored', e => [e.detail, e.message, K.errorWords.invalid])""")
             browser.close()
         self.assertEqual(errors, [], name)
         self.assertEqual(out['variant'], 'simd', name + ': every current engine has WebAssembly SIMD')
@@ -117,7 +117,9 @@ class WebWasm(unittest.TestCase):
         self.assertEqual(out['decoded'][2], out['decoded'][0] * out['decoded'][1] * 4)
         self.assertEqual(out['qr'], '{"kks_invite":1,"token":"abc-ÄÖ"}', name)
         self.assertIn(r.get('status'), ('approved', 'pending'), r)
-        self.assertIn('JPEG XL', refused)
+        # refused for not being JPEG XL (the server's own text, kept for the console); the page says it in plain words (#371)
+        self.assertIn('JPEG XL', refused[0])
+        self.assertEqual(refused[1], refused[2])
         self.assertIn('kks_invite', invite or '', name + ': the invite QR did not read back')
         ph = [x for x in self.boss.req('GET', '/api/state')['photos'] if x.get('caption') == 'from ' + name][0]
         self.assertTrue(ph['file'].endswith('.jxl'), ph)
