@@ -1325,13 +1325,13 @@
  ],
  "accessibility": {
   "intro": [
-   "Walkdown is meant to work with a screen reader, with the keyboard alone, with large text and in a dark theme. It is made for TalkBack on Android, Narrator on Windows, Orca on Linux (GNOME), and Orca with Firefox for the web app. The tests check what these screen readers read (each platform's accessibility tree); TalkBack's speech is checked on a phone before each release.",
-   "The Android, GNOME and Windows apps follow the system's dark theme; the web app is always dark. The apps follow the system's text size. On a computer, the drawing pans with the arrow keys and zooms with + and −. Every tag can also be found by searching for its code or description, without seeing the drawing. Dark drawings help in dim rooms.",
+   "Walkdown is meant to work with a screen reader, with the keyboard alone, with large text and in a dark theme. It is made for TalkBack on Android, Narrator on Windows, Orca on Linux (GNOME), and Orca with Firefox for the web app. The tests check what these screen readers read (each platform's accessibility tree); TalkBack's speech is checked by hand on a phone when the owner checks a release.",
+   "The Android, GNOME and Windows apps follow the system's dark theme; the web app is always dark. The apps follow the system's text size. In the GNOME and Windows apps, the drawing pans with the arrow keys and zooms with + and −. Every tag can also be found by searching for its code, its kind, its system, its notes or where it is, without seeing the drawing. Dark drawings help in dim rooms.",
    "Apple devices (iPhone, iPad, Safari on a Mac) are not checked: there is none to test on. The web app is kept working on them as far as it can be without one, but VoiceOver is not checked. Windows on ARM64 is not checked either, for the same reason; it runs the same code as the x86-64 app."
   ],
   "gaps": [
    "Some buttons have no name for a screen reader, and some status messages are not announced (#374). On Windows, the main window's tabs don't say which one is selected (#433).",
-   "Some actions need a drag or a pinch and have no keyboard or tap alternative, such as marking up a photo (#375). In the web app, two file pickers can't be reached with the keyboard (#403).",
+   "Some actions need a drag or a pinch and have no keyboard or tap alternative, such as marking up a photo, and in the web app the drawing can't be panned or zoomed with the keyboard yet (#375). In the web app, two file pickers can't be reached with the keyboard (#403).",
    "Large text, zoom and narrow windows can cut off or hide controls in the web app, on GNOME and on Android (#376).",
    "Windows: the dark theme is not complete, and the system's text size and display scaling are not fully followed (#377).",
    "Arabic notes can split a KKS code across the line in the web app, on Windows and on Android (#379).",

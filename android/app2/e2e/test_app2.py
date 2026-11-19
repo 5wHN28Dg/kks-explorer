@@ -2354,7 +2354,9 @@ class Phone(unittest.TestCase):
         # the accessibility statement (#440): after the links, before the third-party parts; every gap, how to report one
         acc = about['accessibility']
         ui.scroll_to('Accessibility', exact=True, tries=12)
-        for t in acc['intro'] + ['• ' + g for g in acc['gaps']] + [acc['report']]:
+        ui.scroll_to('Known gaps:', exact=True, tries=8)
+        self.assertFalse(ui.present('•', exact=True), 'the gaps\' bullets are read out (they are drawn only)')
+        for t in acc['intro'] + acc['gaps'] + [acc['report']]:
             ui.scroll_to(t, exact=True, tries=6)
         ui.scroll_to('The accessibility statement in the README', exact=True, tries=4)
         ui.find(acc['url'], exact=True)

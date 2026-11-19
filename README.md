@@ -43,16 +43,16 @@ The screenshots use made-up data: the drawings are Walkdown Plant's generated P&
 
 ## Accessibility
 
-Walkdown is meant to work with a screen reader, with the keyboard alone, with large text and in a dark theme. It is made for TalkBack on Android, Narrator on Windows, Orca on Linux (GNOME), and Orca with Firefox for the web app. The tests check what these screen readers read (each platform's accessibility tree); TalkBack's speech is checked on a phone before each release.
+Walkdown is meant to work with a screen reader, with the keyboard alone, with large text and in a dark theme. It is made for TalkBack on Android, Narrator on Windows, Orca on Linux (GNOME), and Orca with Firefox for the web app. The tests check what these screen readers read (each platform's accessibility tree); TalkBack's speech is checked by hand on a phone when the owner checks a release.
 
-The Android, GNOME and Windows apps follow the system's dark theme; the web app is always dark. The apps follow the system's text size. On a computer, the drawing pans with the arrow keys and zooms with + and −. Every tag can also be found by searching for its code or description, without seeing the drawing. Dark drawings help in dim rooms.
+The Android, GNOME and Windows apps follow the system's dark theme; the web app is always dark. The apps follow the system's text size. In the GNOME and Windows apps, the drawing pans with the arrow keys and zooms with + and −. Every tag can also be found by searching for its code, its kind, its system, its notes or where it is, without seeing the drawing. Dark drawings help in dim rooms.
 
 Apple devices (iPhone, iPad, Safari on a Mac) are not checked: there is none to test on. The web app is kept working on them as far as it can be without one, but VoiceOver is not checked. Windows on ARM64 is not checked either, for the same reason; it runs the same code as the x86-64 app.
 
 Known gaps:
 
 - Some buttons have no name for a screen reader, and some status messages are not announced ([#374](https://github.com/5wHN28Dg/kks-explorer/issues/374)). On Windows, the main window's tabs don't say which one is selected ([#433](https://github.com/5wHN28Dg/kks-explorer/issues/433)).
-- Some actions need a drag or a pinch and have no keyboard or tap alternative, such as marking up a photo ([#375](https://github.com/5wHN28Dg/kks-explorer/issues/375)). In the web app, two file pickers can't be reached with the keyboard ([#403](https://github.com/5wHN28Dg/kks-explorer/issues/403)).
+- Some actions need a drag or a pinch and have no keyboard or tap alternative, such as marking up a photo, and in the web app the drawing can't be panned or zoomed with the keyboard yet ([#375](https://github.com/5wHN28Dg/kks-explorer/issues/375)). In the web app, two file pickers can't be reached with the keyboard ([#403](https://github.com/5wHN28Dg/kks-explorer/issues/403)).
 - Large text, zoom and narrow windows can cut off or hide controls in the web app, on GNOME and on Android ([#376](https://github.com/5wHN28Dg/kks-explorer/issues/376)).
 - Windows: the dark theme is not complete, and the system's text size and display scaling are not fully followed ([#377](https://github.com/5wHN28Dg/kks-explorer/issues/377)).
 - Arabic notes can split a KKS code across the line in the web app, on Windows and on Android ([#379](https://github.com/5wHN28Dg/kks-explorer/issues/379)).
@@ -62,6 +62,7 @@ Known gaps:
 - In the web app, Orca with Firefox itself is not run yet; the browser's accessibility tree is checked instead.
 
 To report a barrier, tell your plant's manager, or open an issue at <https://github.com/5wHN28Dg/kks-explorer/issues> (About links to it). Leave plant data out of an issue: no codes, drawings, photos or names. A reported barrier counts as a major problem until it has been looked at.
+
 ## Walkdown Plant
 
 A walkable 3D combined-cycle plant for training, made with Godot (`apps/plant3d/`), released separately (tags
@@ -100,11 +101,20 @@ are Godot's recommendation, an estimate). Graphics between the minimum and that 
 faster graphics. Graphics below the minimum get Godot's slower fallback renderer: Plant runs there, slowly (about 12 frames a second on an Intel HD Graphics 4400). Android: Android 10 or newer with Vulkan; the
 Samsung Galaxy Note 9 is the oldest phone it is tuned for. Decision `docs/decisions/0076-plant-minimum-gpu.md`.
 
-### Accessibility of Walkdown Plant
+Its guides and pictures are on the wiki: [Walkdown Plant](https://github.com/5wHN28Dg/kks-explorer/wiki/Walkdown-Plant).
+
+**No plant data is in this repository.** Drawings, tag lists, procedures and photos belong to a plant: its manager
+publishes them to the plant's own devices. The program ships only the KKS decode tables (`data/kks.json`), the
+Learning courses and Walkdown Plant's invented plant (`data/plant3d/`).
+
+The old KKS Explorer code (Python server, WebView Android app, desktop package, Python reader) was removed on
+2026-10-03; it is in git history, and its notes are on the wiki.
+
+## Accessibility of Walkdown Plant
 
 Walkdown Plant can be played with a keyboard and mouse, a gamepad, or touch. Its settings have a UI size from 100 % to 200 % (it sets the text size too), Reduced motion (no camera shake or head bob, and Go there without flying), and a run key that toggles instead of being held.
 
-On Windows and Linux, its menus and panels are named for screen readers (Narrator, Orca) through the Godot Engine's AccessKit; the tests read that accessibility tree on Linux.
+On Windows and Linux, its menus and panels are named for screen readers (Narrator, Orca); a UI audit tool reads what they read on Linux.
 
 Known gaps:
 
@@ -115,14 +125,6 @@ Known gaps:
 - On phones, the alarm rows on the screens are small to tap ([#423](https://github.com/5wHN28Dg/kks-explorer/issues/423)), and a drag that starts on a button doesn't scroll ([#425](https://github.com/5wHN28Dg/kks-explorer/issues/425)).
 - The manual reader's buttons have too little contrast ([#422](https://github.com/5wHN28Dg/kks-explorer/issues/422)).
 - Some buttons that reset or remove sit close to others, the codes on the control room screens are small on phones, panels can cover the look stick, and the HUD's text has no backing ([#412](https://github.com/5wHN28Dg/kks-explorer/issues/412)).
-- Graphics below the minimum (What it needs, in the README) get a slower renderer: about 12 frames a second on Intel HD Graphics 4400. Smooth play on Windows with the graphics it asks for is not checked: there is no such computer to test on ([#457](https://github.com/5wHN28Dg/kks-explorer/issues/457)).
+- Graphics below the minimum Walkdown Plant needs get a slower renderer: about 12 frames a second on Intel HD Graphics 4400. Smooth play on Windows with the graphics it asks for is not checked: there is no such computer to test on ([#457](https://github.com/5wHN28Dg/kks-explorer/issues/457)).
 
 To report a barrier, open an issue at <https://github.com/5wHN28Dg/kks-explorer/issues> (Walkdown Plant has no Report a problem in the app yet: [#446](https://github.com/5wHN28Dg/kks-explorer/issues/446)). A reported barrier counts as a major problem until it has been looked at.
-Its guides and pictures are on the wiki: [Walkdown Plant](https://github.com/5wHN28Dg/kks-explorer/wiki/Walkdown-Plant).
-
-**No plant data is in this repository.** Drawings, tag lists, procedures and photos belong to a plant: its manager
-publishes them to the plant's own devices. The program ships only the KKS decode tables (`data/kks.json`), the
-Learning courses and Walkdown Plant's invented plant (`data/plant3d/`).
-
-The old KKS Explorer code (Python server, WebView Android app, desktop package, Python reader) was removed on
-2026-10-03; it is in git history, and its notes are on the wiki.

@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -247,8 +248,14 @@ private fun AboutMain(d: JSONObject, listState: androidx.compose.foundation.lazy
 private fun LazyListScope.accessibility(a: JSONObject) {
     item { Heading("Accessibility") }
     items(a.strings("intro")) { p -> Text(p, modifier = Modifier.padding(vertical = 4.dp)) }
-    item { Text("Known gaps:", modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) }
-    items(a.strings("gaps")) { g -> Text("• $g", modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 2.dp)) }
+    item { Text("Known gaps:", modifier = Modifier.padding(top = 8.dp, bottom = 4.dp).semantics { heading() }) }
+    // (the bullet is drawn, not read: TalkBack says each gap without "bullet")
+    items(a.strings("gaps")) { g ->
+        Row(Modifier.padding(start = 8.dp, top = 2.dp, bottom = 2.dp)) {
+            Text("•", modifier = Modifier.clearAndSetSemantics { })
+            Text(g, modifier = Modifier.padding(start = 6.dp))
+        }
+    }
     item {
         Text(a.str("report"), modifier = Modifier.padding(vertical = 8.dp))
         LinkRow("The accessibility statement in the README", a.str("url"))

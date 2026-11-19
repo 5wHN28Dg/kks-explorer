@@ -289,10 +289,6 @@ class PlantAbout(unittest.TestCase):
         for holder in ('Koen Vos', 'Cisco Systems', 'Google Inc.', 'Parrot', 'Vidyo', 'John Ridges'):
             self.assertIn(holder, opus)
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class AccessibilityStatement(unittest.TestCase):
     """the accessibility statement (the UI/UX policy's T11, #440): each product's About carries it (about.json's
     `accessibility`, from tools/about/accessibility.json), and the README's section says the same, sentence for
@@ -305,6 +301,8 @@ class AccessibilityStatement(unittest.TestCase):
         # (from the heading to the paragraph on reporting a barrier, which ends it)
         m = re.search(r'^#+ ' + re.escape(heading) + r'\n(.*?^To report a barrier[^\n]*\n)', text, re.M | re.S)
         self.assertIsNotNone(m, 'README.md has no section "%s"' % heading)
+        # the report ends the section: a heading or the end of the file follows (nothing else lands under it)
+        self.assertRegex(text[m.end():], r'^(\n#|\Z)', 'something follows "%s" before the next heading' % heading)
         return m.group(1)
 
     @staticmethod
@@ -347,3 +345,8 @@ class AccessibilityStatement(unittest.TestCase):
         for s in ('Android: no screen reader', '#443', '#418', '#457', 'Narrator, Orca'):
             self.assertIn(s, text)
         self.assertIn(about.REPOSITORY + '/issues', a['report'])
+
+
+if __name__ == '__main__':
+    unittest.main()
+

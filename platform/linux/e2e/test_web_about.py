@@ -77,6 +77,10 @@ class WebAbout(unittest.TestCase):
         expect(items).to_have_text(acc['gaps'])
         self.assertEqual(dlg.get_by_role('link', name='#377', exact=True).get_attribute('href'),
                          'https://github.com/5wHN28Dg/kks-explorer/issues/377')
+        # (in the text's own colour, underlined: the accent is under the phones' 7:1)
+        self.assertTrue(dlg.get_by_role('link', name='#377', exact=True).evaluate(
+            "a => getComputedStyle(a).color === getComputedStyle(a.parentElement).color"
+            " && getComputedStyle(a).textDecorationLine.includes('underline')"))
         self.assertEqual(dlg.get_by_role('link', name='The accessibility statement in the README', exact=True)
                          .get_attribute('href'), acc['url'])
 
