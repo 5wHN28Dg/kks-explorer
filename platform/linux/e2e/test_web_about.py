@@ -1,7 +1,7 @@
 """The About page of the web client (the user, 2026-10-15), in Chromium, Firefox and WebKit, against the Nim server:
   1. from the sign-in screen, before any account: Walkdown, its summary, the server's version and commit, a link to
-     the source of exactly that commit (the AGPL's offer of the Corresponding Source, §13), the licence, the links;
-     Escape closes it;
+     the source of exactly that commit (the AGPL's offer of the Corresponding Source, §13), the licence, the links,
+     the accessibility statement (#440); Escape closes it;
   2. signed in, from the main page's About button: the web app's and the server's third-party parts with their
      licences and notices, the course photos' credits, the licence texts; Close closes it;
   3. Manage → About shows the same as a page;
@@ -68,6 +68,21 @@ class WebAbout(unittest.TestCase):
         expect(dlg).to_contain_text('By Walkdown contributors. Licence: GNU Affero General Public License v3.0 or later.')
         for name, url in (('Home page', d['links']['homepage']), ('Report a problem', d['links']['issues']), ('Help', d['links']['help'])):
             self.assertEqual(dlg.get_by_role('link', name=name, exact=True).get_attribute('href'), url)
+        # the accessibility statement (#440): what works, the known gaps with their issues linked, how to report one
+        acc = d['accessibility']
+        expect(dlg.get_by_role('heading', name='Accessibility', exact=True)).to_be_visible()
+        for t in acc['intro'] + [acc['report']]:
+            expect(dlg.locator('p', has_text=t[:60]).first).to_have_text(t)
+        items = dlg.locator('h2:text-is("Accessibility") ~ ul').first.locator('li')
+        expect(items).to_have_text(acc['gaps'])
+        self.assertEqual(dlg.get_by_role('link', name='#377', exact=True).get_attribute('href'),
+                         'https://github.com/5wHN28Dg/kks-explorer/issues/377')
+        # (in the text's own colour, underlined: the accent is under the phones' 7:1)
+        self.assertTrue(dlg.get_by_role('link', name='#377', exact=True).evaluate(
+            "a => getComputedStyle(a).color === getComputedStyle(a.parentElement).color"
+            " && getComputedStyle(a).textDecorationLine.includes('underline')"))
+        self.assertEqual(dlg.get_by_role('link', name='The accessibility statement in the README', exact=True)
+                         .get_attribute('href'), acc['url'])
 
     def check_parts(self, view):
         d = self.about['about']
@@ -107,6 +122,9 @@ class WebAbout(unittest.TestCase):
             self.check_head(dlg)
             page.keyboard.press('Escape')
             expect(dlg).to_have_count(0)
+
+            if os.environ.get('KKS_SHOTS'):
+                self.shots(browser, name)
 
             # (in a context of its own without the service worker: routes don't see what a worker answers)
             rctx = browser.new_context(service_workers='block')
@@ -176,6 +194,23 @@ class WebAbout(unittest.TestCase):
 
             self.assertEqual(errors, [])
             browser.close()
+
+    def shots(self, browser, engine):
+        """evidence (KKS_SHOTS=folder): the sign-in screen's About scrolled to the accessibility statement, at phone
+        width (360 px) in light and dark, at desktop width, and at 200 % zoom (640 × 400 CSS px at scale 2)"""
+        os.makedirs(os.environ['KKS_SHOTS'], exist_ok=True)
+        for tag, size, scale, scheme in (('phone-light', (360, 740), 1, 'light'), ('phone-dark', (360, 740), 1, 'dark'),
+                                         ('desktop-light', (1280, 800), 1, 'light'), ('zoom200-dark', (640, 400), 2, 'dark')):
+            ctx = browser.new_context(viewport={'width': size[0], 'height': size[1]}, device_scale_factor=scale,
+                                      color_scheme=scheme)
+            page = ctx.new_page()
+            page.goto(self.base + '/')
+            page.get_by_role('button', name='About Walkdown').click()
+            head = page.locator('dialog#kabout').get_by_role('heading', name='Accessibility', exact=True)
+            head.scroll_into_view_if_needed()
+            head.evaluate('h => h.scrollIntoView({block: "start"})')
+            page.screenshot(path=os.path.join(os.environ['KKS_SHOTS'], f'web-about-accessibility-{engine}-{tag}.png'))
+            ctx.close()
 
     def test_chromium(self): self.engine('chromium')
     def test_firefox(self): self.engine('firefox')

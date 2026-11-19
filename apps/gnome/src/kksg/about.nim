@@ -26,6 +26,8 @@ type
     legal*: seq[Legal]                   ## the first one says what the parts are (platforms.gnome.note)
     photos*: seq[string]                 ## acknowledgement entries: "credit https://page"
     photoLicences*: seq[string]          ## acknowledgement entries: "CC BY-SA 4.0 https://creativecommons.org/…"
+    accessibility*: string               ## the accessibility statement, plain text ("" when about.json has none)
+    accessibilityUrl*: string            ## the README's full statement
 
 const
   PhotosTitle* = "Course photos"
@@ -73,6 +75,25 @@ proc legalOf(c, licences: JNode): Legal =
   result.license = "Licence: " & esc(c.str("license_name")) & (if links.len > 0: " (" & links.join(", ") & ")" else: "")
   if texts.len > 0: result.license.add "\n\n" & esc(texts.join("\n\n"))
 
+proc accessibilityText*(a: JNode): string =
+  ## about.json's accessibility statement (the UI/UX policy's T11, #440; the README's "Accessibility" says the same)
+  ## as plain text: what works, the known gaps one per line, how to report a barrier; "" when there is none. (The
+  ## Windows app's aboutinfo.nim makes the same text.)
+  if a == nil or a.kind != jObj: return ""
+  var paras: seq[string]
+  let intro = a.get("intro")
+  if intro != nil and intro.kind == jArr:
+    for p in intro.elems:
+      if p.isStr: paras.add p.s
+  var gaps: seq[string]
+  let g = a.get("gaps")
+  if g != nil and g.kind == jArr:
+    for x in g.elems:
+      if x.isStr: gaps.add "• " & x.s
+  if gaps.len > 0: paras.add "Known gaps:\n" & gaps.join("\n")
+  if a.str("report").len > 0: paras.add a.str("report")
+  paras.join("\n\n")
+
 proc aboutFrom*(text: string): About =
   ## the dialog's content from about.json's text
   let d = parseStrict(text)
@@ -89,6 +110,8 @@ proc aboutFrom*(text: string): About =
   result.sourceTitle = if Commit.len == 0: "Source code"
                        elif Modified: "Source of this version (without its local changes)"
                        else: "Source of this version"
+  result.accessibility = accessibilityText(d.get("accessibility"))
+  if result.accessibility.len > 0: result.accessibilityUrl = d["accessibility"].str("url")
   let gnome = d["platforms"].get("gnome")
   if gnome != nil:
     result.legal.add Legal(title: "Third-party parts", copyright: esc(gnome.str("note")))
@@ -107,6 +130,11 @@ proc aboutFrom*(text: string): About =
           result.photoLicences.add plainCredit(l.str("text")) & " " & u
       else: page = u
     result.photos.add plainCredit(p.str("text")) & (if page.len > 0: " " & page else: "")
+
+proc comments*(a: About): string =
+  ## (markup) what the dialog's Details page says: the summary, then the accessibility statement (#440); its link is
+  ## among the dialog's links
+  esc(a.summary) & (if a.accessibility.len == 0: "" else: "\n\n<b>Accessibility</b>\n\n" & esc(a.accessibility))
 
 var cached: About
 var parsed = false
@@ -170,13 +198,15 @@ proc aboutDialog*(parent: W, appId: string): W =
   adw_about_dialog_set_application_icon(d, appId.cstring)
   adw_about_dialog_set_version(d, a.version.cstring)
   adw_about_dialog_set_developer_name(d, a.developer.cstring)
-  adw_about_dialog_set_comments(d, esc(a.summary).cstring)     # (markup)
+  adw_about_dialog_set_comments(d, comments(a).cstring)
   adw_about_dialog_set_copyright(d, a.copyright.cstring)
   adw_about_dialog_set_license_type(d, GTK_LICENSE_AGPL_3_0)       # (or later)
   adw_about_dialog_set_website(d, a.website.cstring)
   adw_about_dialog_set_issue_url(d, a.issues.cstring)
   adw_about_dialog_set_support_url(d, a.help.cstring)
   adw_about_dialog_add_link(d, a.sourceTitle.cstring, a.sourceUrl.cstring)
+  if a.accessibilityUrl.len > 0:
+    adw_about_dialog_add_link(d, "Accessibility statement", a.accessibilityUrl.cstring)
   for i, l in a.legal:
     adw_about_dialog_add_legal_section(d, l.title.cstring, l.copyright.cstring,
       if l.license.len > 0: GTK_LICENSE_CUSTOM else: GTK_LICENSE_UNKNOWN,
