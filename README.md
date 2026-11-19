@@ -73,7 +73,8 @@ the realism work came after the newest release
 
 **What it needs.** Windows 10/11 or Linux: graphics whose driver supports Vulkan or Direct3D 12, such as Intel HD
 Graphics 510 or newer (6th generation Core), AMD Radeon HD 7700 (GCN) or newer with a current driver, or NVIDIA
-GeForce GTX 600 (Kepler) or newer. Older graphics get Godot's slower fallback renderer: Plant runs there, slowly (about 12 frames a second on an Intel HD Graphics 4400). Android: Android 10 or newer with Vulkan; the
+GeForce GTX 600 (Kepler) or newer. For smooth play: roughly Intel Iris Xe or a dedicated GPU (Iris Xe measured at 82
+fps; graphics between the two run, but slowly). Older graphics get Godot's slower fallback renderer: Plant runs there, slowly (about 12 frames a second on an Intel HD Graphics 4400). Android: Android 10 or newer with Vulkan; the
 Samsung Galaxy Note 9 is the oldest phone it is tuned for. Decision `docs/decisions/0076-plant-minimum-gpu.md`.
 
 Its guides and pictures are on the wiki: [Walkdown Plant](https://github.com/5wHN28Dg/kks-explorer/wiki/Walkdown-Plant).

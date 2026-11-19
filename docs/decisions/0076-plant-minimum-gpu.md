@@ -1,7 +1,8 @@
 # 0076 Walkdown Plant: a stated minimum GPU (Vulkan or Direct3D 12), no lower graphics tier
 
 Date 2026-11-19 · Scope: `apps/plant3d` on Windows and Linux · Status: decided (the user, 2026-11-19: "State a minimum
-GPU", given in the coordinating agent session that handed this work out; quoted on #432)
+GPU", given in the coordinating agent session that handed this work out; quoted on #432); the speed class added by
+the user's verdict on #455 (2026-11-19: "Add a speed class")
 
 **Question:** on the user's Windows 10 test laptop (Intel HD Graphics 4400, 2013) Godot finds neither Direct3D 12 nor
 Vulkan, falls back to its Compatibility renderer, and Plant walks at about 12 frames a second (#432). Is such a GPU a
@@ -28,6 +29,13 @@ target, with a lower tier of its own, or is it below a stated minimum?
   Plant still starts, on the Compatibility renderer, but is not supported: no tier is tuned for it. The examples
   are for Windows drivers: on Linux, Mesa's Vulkan driver also covers Intel Broadwell and, incompletely, Haswell;
   AMD's later TeraScale rebrands (e.g. Radeon R5 230) have no Vulkan.
+- **A speed class for smooth play** (the user, 2026-11-19, #455: "Add a speed class"): the feature minimum says which
+  computers get Godot's normal renderer, not which ones reach the frame rules. Smooth play (the project's desktop
+  frame rules at the `full` tier) needs roughly **Intel Iris Xe or a dedicated GPU**. Iris Xe is measured: the owner's Iris Xe laptop at 1600 × 900, Forward+, `full` tier, 10 minutes: p95 12.2 ms (82 fps), 0 % of frames over 33 ms and none over 100 ms (decision 0041's bench, on the plant of then; it has grown since).
+  A dedicated GPU of at least Godot's recommended class (GeForce GTX 1050, Radeon RX 460: its system requirements page,
+  above) is Godot's recommendation, **an estimate here** (not measured). Older GPUs that meet the feature minimum (the
+  HD Graphics 510's 12 execution units are fewer than the HD 4400's 20) run, but slowly: unmeasured, an estimate from
+  the HD 4400's about 12 fps on Compatibility (#432, the evidence for "below").
 - **Android stays as it is:** Android 10 or newer with Vulkan (the Mobile renderer; the Samsung Note 9, Mali-G72, is
   the minimum and its frame rule is decision 0041's).
 - **No lower graphics tier** (option B of #432): not built.
