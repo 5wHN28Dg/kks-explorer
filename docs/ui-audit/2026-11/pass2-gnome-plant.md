@@ -1,5 +1,7 @@
 # UI/UX audit 2026-11, pass 2 (adversarial): Walkdown GNOME and Walkdown Plant
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 Auditor: pass 2, fresh. Policy: `docs/UI-UX-POLICY.md`. Code: main at 9eb5b09b (the audit checkout). Read-only: no
 GNOME session, no Godot run, no emulator. Evidence is pass 1's raw outputs (`~/kks-work/build/ui-audit/desk/`), its
 screenshots, and the code (file:line below is in the audit checkout). Small read-only scripts sampled the existing
@@ -65,7 +67,7 @@ with the format in the group's description or an AdwActionRow subtitle that wrap
 
 **GNOME2-4 (A2; Block) Photos unnamed by tag and date.** Where: the panel's Photos. What: the photo button's name is
 "Open photo[: caption]" (`photos.nim:782`); the by-line with the date is a separate label. SMALL: "Photo of
-11LAB70AA501, 2026-11-15[, caption]".
+11LAB70AA500, 2026-11-15[, caption]".
 
 **GNOME2-5 (P3; Block) Bundles freeze the window.** Where: Manage → Devices → Save a bundle; setup → Join with a file.
 What: building or importing a bundle (all plant data and photos, base64 in gzip JSON) runs on the UI thread with no

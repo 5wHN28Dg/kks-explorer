@@ -36,7 +36,7 @@ def tag(i, kks, x, suffix='', isa=None, status='auto'):
 
 SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/sheets/a.png', 'notes': []},
           {'id': 'b', 'name': 'Sheet B', 'w': 1000, 'h': 600, 'file': 'data/sheets/b.png', 'notes': []}]
-TAGS = [tag('a:1', '11LAB70AA500', 50), tag('a:2', '11HAD70CT101', 150, 'R', 'TIAC'), tag('a:3', None, 250, status='review'),
+TAGS = [tag('a:1', '11LAB70AA500', 50), tag('a:2', '11HAD70CT109', 150, 'R', 'TIAC'), tag('a:3', None, 250, status='review'),
         tag('a:4', '11LAB70AA503', 350), tag('a:5', '12LBA10AA101', 450), tag('a:6', '11LAB71AP001', 650),
         tag('a:7', '11LAB72AP002', 800),
         # another drawing: two codes of its own, and one that is on Sheet A too
@@ -202,7 +202,7 @@ class WebMulti(unittest.TestCase):
             self.assertEqual(btn.get_attribute('aria-pressed'), 'false')   # sending leaves the mode
             floors = {s['payload']['kks']: s['payload']['changes'].get('floor') for s in self.subs('equipment')
                       if 'floor' in s['payload'].get('changes', {}) and s['payload']['changes']['floor'] == '5'}
-            self.assertEqual(floors, {'11LAB70AA500': '5', '11HAD70CT101R': '5', '11LAB70AA503': '5'})
+            self.assertEqual(floors, {'11LAB70AA500': '5', '11HAD70CT109R': '5', '11LAB70AA503': '5'})
             st = self.boss.req('GET', '/api/state')['equipment']
             self.assertEqual(st['11LAB70AA503']['floor'], '5')
             self.assertNotIn('floor', st.get('12LBA10AA101', {}))
@@ -454,7 +454,7 @@ class WebMulti(unittest.TestCase):
             # #144: a floor that only rides on a kept photo is not known to Photo for all. One photo of a code without a
             # floor, with the floor asked for it, is in the outbox as K.flush keeps a photo that was refused on the way
             # (a proxy's 413; test_web_requests shows that path): it waits there for Try again or Discard
-            kept, other = '12LBA10AA101', '11HAD70CT101R'
+            kept, other = '12LBA10AA101', '11HAD70CT109R'
             page.evaluate("""async k => { await K.idb.queue({client_id: K.uid(), kind: 'photo', payload: {kks: k, caption: 'kept', floor: '7',
                 dataUrl: 'data:image/jxl;base64,AA=='}, refused: 'Request Entity Too Large', user: K.me.user.id, ts: Date.now()}); await K.emit() }""", kept)
             self.assertEqual(page.evaluate("K.outbox.map(i => [i.payload.kks, i.payload.floor, !!i.refused])"), [[kept, '7', True]])
