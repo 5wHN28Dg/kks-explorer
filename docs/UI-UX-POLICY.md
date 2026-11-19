@@ -81,7 +81,7 @@ them). Who decided, when and where:
 | Decision | When, where | Now in |
 |---|---|---|
 | English UI only; user content may be Arabic or mixed | the user, 2026-09-30 (`docs/m6/REQUIREMENTS.md` N7) | both profiles, Languages |
-| Android 10 minimum (Note 9); Windows 10; a current GNOME LTS; Safari 17+ | the user, 2026-09-26 (REQUIREMENTS.md N8) | both profiles, Platforms |
+| Android 10 minimum (Note 9); Windows 10; a current GNOME LTS; Safari 17+ (iPhones: dropped from the Walkdown profile by the user, 2026-11-19, in the session; the web app is no longer checked on an iPhone) | the user, 2026-09-26 (REQUIREMENTS.md N8); the user, 2026-11-19 | both profiles, Platforms |
 | Plant's Workshop keeps its own frame rule: no frame over 100 ms the app causes, at least 95 % of frames at 30 fps over the Workshop walk; 99.9 % elsewhere in normal play | the user, 2026-11-15, #392 (PR #393) | Plant profile, Budgets (a profile number under GM6.1, not a waiver) |
 | Fast-forward's frames are not judged | the user, 2026-10-27 (`docs/plant3d/MILESTONES.md`) | Plant profile, Budgets |
 | Plant: a UI size setting from 100 % to 200 %; each phone starts at the size its screen needs (buttons 48 dp, text 14 sp); one compact top row on phones | the user, 2026-11-15 (#382) and 2026-11-18 ("Size by the screen, allow more", PR #410) | Plant profile (it is also Plant's text-size setting for A4 and GM4.2) |
