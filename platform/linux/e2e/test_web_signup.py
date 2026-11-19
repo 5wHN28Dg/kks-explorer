@@ -65,6 +65,9 @@ class WebSignup(unittest.TestCase):
             u.goto(self.base + '/')
             expect(u.locator('#kov form input[name=username]')).to_be_visible()
             self.assertEqual(u.locator('#signup').count(), 0)
+            # the way back in after a forgotten password (#449), on the sign-in screen itself
+            expect(u.locator('#kov form #forgotPw')).to_be_visible()
+            expect(u.locator('#kov form #forgotPw')).to_contain_text("Forgot your password? Ask your plant's manager or an admin for a password link")
             m.goto(self.base + '/admin.html#users')
             expect(m.locator('#signupState')).to_contain_text('Sign-up is off')
             expect(m.locator('#signups')).to_contain_text('Nobody is waiting, and sign-up is off.')

@@ -107,6 +107,8 @@ proc buildSetup*(w: Win, p: Page, done: proc ()) =
         let err = await w.a.joinServer(url.text.strip, user.text.strip, pw.text)
         if err.len > 0: status.setLabel(err) else: done()
       asyncCheck run()))
+    p.space(8)
+    p.dim(ForgotPassword)   # the way back in (#449)
   of "Join with a code":
     p.dim("An admin shows a QR code under Manage → Devices. Copy its text here.")
     let code = p.multiField("Invite text", "", 110)
