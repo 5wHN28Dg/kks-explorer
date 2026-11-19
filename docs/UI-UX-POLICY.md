@@ -1,501 +1,217 @@
-# UI and UX policy
-
-Status: adopted 2026-11-15 (the user asked for it). Reviewed in two passes (blind, then adversarial) before first use.
-
-This policy says what the user interface of both apps must do, and how a change is checked against it. It covers:
-
-- **Walkdown:** the web client (index.html, admin.html, learning.html, course.html and the scripts they load), the
-  GNOME app, the Windows app and the Android app;
-- **Walkdown Plant:** its panels, cards, menus, HUD, map, drawings, manuals, control room screens and touch controls,
-  on desktops and Android. The 3D world itself is covered only where a rule says so (performance, contrast of text over
-  it, privacy).
-
-Every rule below is a check with a pass or a fail. The audit (section 3) records the result of each rule on each
-platform, and section 4 says which fails block a merge.
-
-## 1. Who uses the apps, and where
-
-The rules are adapted to these facts; when a rule is stricter than the public guideline it cites, this is why.
-
-- **The main user is an I&C maintenance engineer on a walkdown:** standing in the plant, often wearing work gloves,
-  sometimes in direct sun or at night, in noise (sound is never the only signal), with one hand free, interrupted
-  often. Managers use the desktop apps and admin.html at a desk.
-- **Offline is normal:** inside buildings and on the plant floor there is often no network. The apps must work
-  offline and say clearly what is waiting to sync.
-- **Phones:** from the Samsung Note 9 (Android 10, the oldest supported, 6.4") to current phones (Android 16).
-  iPhones use the web client from the home screen (Safari 17+, docs/m6/REQUIREMENTS.md N8).
-- **Dark mode** is used on night shifts and follows the system setting.
-- **English UI only;** user content (notes, names, descriptions) may be Arabic or mixed Arabic and Latin
-  (REQUIREMENTS.md N7).
-- **Walkdown Plant** is a training simulator: keyboard and mouse, gamepad and touch (two sticks) are all first-class
-  (apps/plant3d/README.md "Controls"), and the Note 9 must keep its frame-rate rule (decision 0041).
-
-## 2. The rules
-
-Each rule has a level:
-
-- **Block:** a fail blocks the merge of the change that causes it (section 4).
-- **Advice:** a fail is recorded, and filed as an issue if it matters, but does not block.
-
-Units: **dp** is Android's density-independent pixel (1 dp = 1/160 inch); on the web 1 CSS px at a phone viewport
-counts as 1 dp; on a desktop, sizes are in the platform's logical pixels at 100 % scaling. For Plant, convert screen
-pixels to dp with Android's density, as Android itself does: dp = screen px × 160 / density, the density read with
-`adb shell wm density` (not Godot's `screen_get_dpi()`, which returns a rounded bucket). Plant draws on a 1600 × 900
-canvas stretched to the screen (`project.godot`, `canvas_items`, `expand`); on the Note 9 at its default 2220 × 1080
-and density 420, one canvas px is 1.2 screen px, so **dp = canvas px × 0.457** at 100 %, times Plant's UI size above
-it (its setting, 100 % to 200 %, the window's content scale). Each phone starts at the least UI size that gives its
-buttons 48 dp and its text 14 sp on its own screen, from its density and window (`ui/widgets.gd` phone_ui_size: 150 %
-on the Note 9, 180 % on a phone 360 dp tall); the user may go above or below it. Render the phone layout on a desktop
-at the phone's window size with the phone UI scale (`ui_scale` 1.35, as `tests/mimic_shots.gd --phone` sets it), which
-starts at that phone's size (`density=`; if not given, the window is as tall as the Note 9's 411 dp).
-
-"Phone" means Android, the web client at a viewport narrower than 600 CSS px, and Plant on Android.
-
-### 2.1 Touch and pointer targets
-
-Sources: Android "Make apps more accessible" (48 × 48 dp,
-https://developer.android.com/guide/topics/ui/accessibility/apps); WCAG 2.2 2.5.8 Target Size (Minimum)
-(https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html); Windows "Targeting" (7.5 mm, 40 × 40 epx,
-larger for frequent or risky targets, https://learn.microsoft.com/en-us/windows/apps/develop/input/guidelines-for-targeting);
-Apple HIG (44 × 44 pt, https://developer.apple.com/design/human-interface-guidelines/accessibility); GNOME HIG
-"Pointer and touch" (https://developer.gnome.org/hig/guidelines/pointer-touch.html; it gives no size, so the numbers
-come from the others).
-
-- **T1 (Block) Phone targets are at least 48 × 48 dp.** Every button, link outside running text, list row, checkbox,
-  switch, tab and field on a phone has a hit area of at least 48 × 48 dp (the visible shape may be smaller if the hit
-  area around it is not). Exceptions: links inside a paragraph of text; the drawing and the 3D view themselves
-  (section T4 covers what is tapped on them).
-  - Why: gloves. 48 dp is Android's own minimum; a gloved fingertip is wider than a bare one.
-  - Check: Android, the bounds of every clickable node in `uiautomator dump`, divided by the density; web, every
-    focusable or clickable element's `getBoundingClientRect()` at a 412 × 915 viewport; Plant, every `Control` that
-    takes input, in the phone layout (the phone UI scale), converted to dp with the factor above.
-- **T2 (Block) Targets don't overlap, and destructive ones keep their distance.** Two hit areas never overlap. A
-  button that deletes, discards, removes or signs out has at least 8 dp of empty space (phone) or 8 px (desktop)
-  between its hit area and any other target's.
-  - Why: a gloved tap that lands between two buttons must not do the destructive one.
-  - Check: the same bounds as T1.
-- **T3 (Block) Desktop targets are at least 24 × 24 px.** On GNOME, Windows, the web at desktop width and Plant on a
-  desktop, every target is at least 24 × 24 logical px, with WCAG 2.5.8's exceptions: a 24 px circle centred on it
-  does not intersect another target or another such circle; the same function is available through another target
-  that passes; a link inside a sentence; a control drawn by the browser or the toolkit and not restyled; a size that is
-  essential to the information (the drawing's own tags).
-  - Check: AT-SPI extents (GNOME), UIA BoundingRectangle (Windows), `getBoundingClientRect()` at 1280 × 800 (web),
-    `Control` rects (Plant).
-- **T4 (Advice) Things tapped on the drawing or in the 3D view.** A tap within 24 dp of a tag on the drawing, or of a
-  part in Plant, picks it when nothing else is nearer; when the two nearest are within 4 dp of the same distance, the
-  app asks or zooms instead of guessing.
-  - Check: tap beside a tag on the emulator at the default zoom (e2e harness `tap` at an offset).
-- **T5 (Block) Every gesture has a simple alternative.** Anything done by dragging, pinching, two-finger turning or
-  long-pressing can also be done with single taps or clicks (buttons, a menu) and, where the platform has one, with
-  the keyboard. Exempt where the path is essential, as WCAG allows: freehand drawing on a photo, and Plant's touch
-  sticks (the gamepad and keyboard are their alternative). Placing a box or an arrow is not freehand: taps can do it
-  (WCAG 2.5.1
-  Pointer Gestures, 2.5.7 Dragging Movements: https://www.w3.org/TR/WCAG22/#pointer-gestures,
-  https://www.w3.org/TR/WCAG22/#dragging-movements).
-  - Why: one gloved hand can't pinch reliably; a long press is undiscoverable.
-  - Check: list the gestures of each screen and find each one's alternative.
-
-### 2.2 Controls that stay reachable
-
-Sources: Material 3 top app bars (https://m3.material.io/components/app-bars/guidelines); GNOME HIG header bars
-(https://developer.gnome.org/hig/patterns/containers/header-bars.html); WCAG 2.4.11 Focus Not Obscured
-(https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html).
-
-- **R1 (Block) Close and back never scroll away.** Every panel, dialog, card, sheet and full-screen view that has a
-  Close, Back, Cancel or Done control keeps it visible, in the same place, however far its content is scrolled and at
-  every supported window size (phone portrait and landscape; desktop windows down to 360 × 640 logical px).
-  - Why: on a long tag card, the user must not scroll back up to leave it.
-  - Check: open the longest synthetic example of each panel, scroll to the end, and see that the control is visible
-    and where it was (screenshot before and after; the control's bounds in the accessibility tree are unchanged).
-- **R2 (Block) Back and Escape close the top layer.** Android's system Back (and its back gesture), Escape on
-  desktops and the web, and B on a gamepad (Plant) close the topmost panel or dialog first. They never leave the app,
-  or drop typed input, without asking (see D3). On the first screen, Back leaves the app as the system does (Android's
-  predictive back), asking only if typed input would be lost. The web client opened from an iPhone's home screen has no browser Back
-  button, so every web panel has its own Back or Close control.
-  - Check: press Back or Escape on each panel in the e2e harness; the panel under it, not the app, is shown next.
-- **R3 (Block) Nothing hides under bars, cut-outs, the keyboard or the touch sticks.** No control or text is covered by
-  the status bar, the navigation bar, a display cut-out, the on-screen keyboard (the field being typed in stays
-  visible) or, in Plant, the touch sticks. On the web this means honouring the safe areas
-  (`viewport-fit=cover` with `env(safe-area-inset-*)` padding, or not using `viewport-fit=cover`).
-  - Check: screenshots on the emulator in both orientations with the keyboard open on each form; Plant's phone layout
-    with touch controls shown.
-- **R4 (Advice) A form's Save or Send is in a bar that stays visible, or directly after the last field** (never after
-  an unbounded list).
-
-### 2.3 Identifiers can be copied
-
-- **C1 (Block) Every identifier on screen can be copied.** KKS codes, sheet names and numbers, device names and IDs,
-  fingerprints, invite and sign-up codes, version numbers and error references can be selected and copied by the
-  platform's normal means, or have a Copy button beside them:
-  - web: the text is selectable (no `user-select: none` on it) or a Copy button;
-  - GNOME: a selectable `GtkLabel` or a Copy button;
-  - Windows: a read-only edit control, a Copy item in the context menu, or a Copy button;
-  - Android: `SelectionContainer` or a Copy button;
-  - Plant: a Copy button (Godot labels are not selectable by touch).
-  - Exempt: identifiers drawn as part of a picture (tags on the drawing, codes on Plant's control room screens and
-    P&IDs). There the item's card or details panel, one tap away, offers the copy.
-  - Why: an engineer pastes codes into work orders, the CMMS and messages; retyping `11LAB70AA501` is where mistakes
-    come from.
-  - Check: on each platform, copy each kind of identifier and paste it into a text field of the same app (search),
-    then read that field through the accessibility tree; on the web `navigator.clipboard.readText()` with the
-    permission granted in Playwright. (Android 10 and later let only the foreground app read the clipboard, and the
-    headless GNOME session and an SSH session in the Windows VM may not share the desktop's clipboard: pasting
-    inside the app avoids both.)
-- **C2 (Block) What is copied is exactly the identifier.** No label ("KKS: "), no surrounding spaces, no zero-width
-  or direction marks, no thin spaces inside the code.
-  - Check: the clipboard's bytes, as in C1.
-- **C3 (Block) Copying says so.** A copy shows a short confirmation that names what was copied ("Copied
-  11LAB70AA501"), except where the platform already shows one (Android 13 and later show their own clipboard
-  preview: then the app adds none, to avoid two).
-
-### 2.4 Bulk actions for repeated decisions
-
-Source: Material 3 lists and selection (https://m3.material.io/components/lists/guidelines); GNOME HIG selection
-mode (https://developer.gnome.org/hig/patterns/containers/selection-mode.html).
-
-- **B1 (Block) A decision made item by item can also be made for many.** Wherever a list asks the user for the same
-  decision on each item (accept or deny tags in a review queue, approve or refuse sign-ups, accept marked tags,
-  remove photos, revoke devices), and the list can hold more than 5 items, the user can select several (or all that
-  match a filter) and decide once. The button says the count ("Accept 12 tags").
-  - Why: a sheet's review queue held 79 items; approving them one by one wastes a shift and invites mistakes.
-  - Check: put 20 synthetic items in each such list and decide all of them in at most 4 actions.
-- **B2 (Block) A bulk action can be checked before it runs.** A bulk action that changes or removes data shows how
-  many items it will change, and D1 applies to it as a whole (one undo, or one confirmation, for the whole batch).
-- **B3 (Advice) After a bulk action the list keeps its place** and says what happened ("12 accepted").
-
-### 2.5 Contrast and colour
-
-Sources: WCAG 2.2 1.4.1 Use of Color, 1.4.3 Contrast (Minimum), 1.4.6 Contrast (Enhanced), 1.4.11 Non-text Contrast
-(https://www.w3.org/TR/WCAG22/#distinguishable); GNOME HIG "UI styling" (https://developer.gnome.org/hig/guidelines/ui-styling.html);
-Windows contrast themes (https://learn.microsoft.com/en-us/windows/apps/design/accessibility/high-contrast-themes).
-
-- **K1 (Block) Text contrast at least 4.5:1** (3:1 for text at least 18.66 px bold or 24 px regular) against what is
-  behind it, in the light theme, the dark theme and, where the platform has one, its high-contrast mode (GNOME High
-  Contrast, Windows contrast themes; on the web `forced-colors`). As in WCAG 1.4.3, disabled controls, decoration,
-  logos and text inside a photo or picture are exempt.
-  - Check: compute the WCAG ratio from the colours the code sets (web: computed styles; GNOME, Windows, Android and
-    Plant: the colour pairs in the theme or drawing code); sample screenshots only where the colour comes from
-    elsewhere (a photo, the 3D view), taking the darkest pixel of the glyphs, not anti-aliased edges.
-- **K2 (Block) On phones, codes, values and body text reach 7:1.** In both the light and the dark theme, KKS codes,
-  measured values and the main text of cards and lists on a phone have at least 7:1 (WCAG 1.4.6, the AAA level).
-  Secondary text (hints, timestamps) keeps 4.5:1.
-  - Why: direct sun on a phone screen washes out anything weaker; 7:1 is what survives glare.
-- **K3 (Block) Controls, focus rings and highlights reach 3:1.** Borders of fields and buttons that have no fill,
-  icons that are the only label of a control, the keyboard focus indicator, a selected tag's highlight on the drawing
-  and chart lines have at least 3:1 against what is next to them (WCAG 1.4.11).
-- **K4 (Block) Colour is never the only signal.** A state shown by colour (an alarm's priority, normally closed, a
-  selected item, an error field, sync failed, a correct or wrong answer in a course) also has a word, an icon, a
-  shape or a pattern. The drawing's highlights differ in outline or fill pattern too, not only in hue.
-  - Why: about 1 in 12 men has a red-green colour vision deficiency, and glare flattens hues.
-  - Check: a greyscale screenshot of each screen; every state is still told apart.
-- **K5 (Block) Text over pictures, drawings or the 3D view has its own backing.** Labels on photos, on the drawing
-  and over Plant's 3D view sit on a panel that gives K1 against the brightest and darkest scene behind them (Plant:
-  check over the sky at noon and at night).
-- **K6 (Block) Dark mode is complete in Walkdown.** Every Walkdown screen follows the system's dark setting (web:
-  `prefers-color-scheme`) and meets K1 to K5 there. Drawings and
-  course figures in dark follow the existing dark rules (tests/web/test_dark.py and its vectors).
-  Plant's panels are dark by design; they meet K1 to K5 as they are.
-- **K7 (Advice) No white flash** when a screen or dialog opens in dark mode (check: a screen recording, or screenshots
-  taken right after opening).
-
-### 2.6 Text size and scaling
-
-Sources: WCAG 2.2 1.4.4 Resize Text, 1.4.10 Reflow (https://www.w3.org/TR/WCAG22/#distinguishable);
-Material 3 type scale (https://m3.material.io/styles/typography/type-scale-tokens); Windows text scaling
-(https://learn.microsoft.com/en-us/windows/apps/develop/input/text-scaling).
-
-- **S1 (Block) Minimum text sizes.** On phones, body text, list rows and codes are at least 14 sp, and no text is
-  under 12 sp. On desktops, body text uses the platform's default UI font size (GNOME's interface font, Windows'
-  message font, the browser's default 16 px on the web) and nothing is under 11 px (web and GNOME, at 100 % scaling)
-  or 8 pt Segoe UI (Windows). In Plant, the phone limits apply in dp (the factor in §2's units); on desktops
-  nothing is under 13 px at 1600 × 900.
-  - Check: the font sizes the code sets (CSS computed `font-size`; the Pango, DirectWrite, Compose `sp` and Godot
-    `font_size` values), converted as in §2's units. Text fields on the web are at least 16 px, or iOS Safari zooms the page when one is focused.
-- **S2 (Block) The system's text size is followed.**
-  - Android: at font scale 1.3 (the largest stock Android 10 offers; `adb shell settings put system font_scale 1.3`)
-    every screen still shows all its text and controls, with no clipped words and no overlap; at 2.0 (Android 14 and
-    later, the emulator's image) text may need scrolling, but nothing is clipped or overlapping.
-  - Web: at 200 % browser zoom and at 320 CSS px width, nothing is lost and nothing needs scrolling in two directions
-    except the drawing and wide tables (WCAG 1.4.4, 1.4.10).
-  - GNOME: with Large Text on (text scaling 1.25), and Windows with "Text size" at 150 %, the same holds.
-  - Plant: Godot does not follow the system's text size; Plant offers its own text size setting covering at least
-    100 % to 150 %, and the same holds at 150 %. (Plant is landscape only and its 3D view needs room: at 150 % its
-    panels may scroll.)
-- **S3 (Block) Codes are never cut short.** A KKS code or other identifier is never ellipsised or clipped: it wraps,
-  scrolls or makes its row taller. (Descriptions may be ellipsised if the full text is one tap away.)
-
-### 2.7 Feedback, loading and errors in plain words
-
-Sources: WCAG 2.2 3.3.1 Error Identification, 3.3.3 Error Suggestion, 4.1.3 Status Messages
-(https://www.w3.org/TR/WCAG22/#input-assistance, https://www.w3.org/TR/WCAG22/#status-messages); GNOME HIG
-"Writing style" (https://developer.gnome.org/hig/guidelines/writing-style.html).
-
-- **F1 (Block) Every action shows that it was taken.** A pressed control shows its pressed state, and anything
-  that takes over 1 s shows that it is working and on what ("Importing sheet 3 of 7"); over 10 s it shows progress
-  where it can be known, and the user can leave it or cancel it.
-- **F2 (Block) Errors in plain words.** An error says what went wrong, what it means for the user's work, and what to
-  do next, in everyday words ("Couldn't reach the server. Your note is saved on this phone and will be sent when you're
-  back online."). Never a raw exception, stack trace, HTTP status, errno or protocol name as the message; technical
-  detail may follow behind "Details" or in diagnostics.
-  - Check: trigger each error the harness can (server down, wrong password, bad invite, full storage where possible)
-    and read the message.
-- **F3 (Block) Offline is a state, not an error.** Without a network the app says it's offline, keeps everything that
-  works offline working, and shows how many changes wait to be sent. No blank screen and no spinner that never ends.
-  - Check: the e2e harnesses' offline tests (web test_web_offline; the apps with the server stopped).
-- **F4 (Block) Status messages reach screen readers without moving the focus** (WCAG 4.1.3): web `role="status"` or
-  `aria-live`; Android Compose `semantics { liveRegion = LiveRegionMode.Polite }` (`announceForAccessibility` is
-  deprecated from Android 16); GNOME `gtk_accessible_announce`; Windows a UIA notification or LiveRegionChanged event.
-  Plant on desktops: a live-region status line through Godot's accessibility API (A5); Plant on Android is exempt
-  while Godot has no screen-reader support there.
-- **F5 (Block) A field error is shown at the field and keeps what was typed.** The message names the field, the input
-  is not cleared, and the focus goes to the first field in error.
-- **F6 (Advice) Empty screens say why and what to do** ("No photos yet. Take one with the camera button.").
-
-### 2.8 Destructive actions and undo
-
-Sources: Material 3 dialogs and snackbars (https://m3.material.io/components/dialogs/guidelines,
-https://m3.material.io/components/snackbar/guidelines); GNOME HIG dialogs
-(https://developer.gnome.org/hig/patterns/feedback/dialogs.html); WCAG 3.3.4 Error Prevention.
-
-- **D1 (Block) Losing data is either undoable or confirmed.** Deleting or discarding anything the user made (a note, a
-  photo, a mark, a link, a draft) offers Undo for at least 4 s (Compose's `SnackbarDuration.Short` and the GNOME
-  app's 4 s toasts count), longer where the system's accessibility timeout asks for it (Android's "Time to take
-  action", which Compose's snackbar follows), or asks first in a dialog that names the thing and the consequence. Actions that can't be undone at all (removing a device, which wipes it; signing out with unsent
-  changes; resetting a password; anything with the root key) always ask first; Undo alone is not enough for them.
-- **D2 (Block) The safe choice is the default.** In such a dialog the confirming button names the action ("Remove
-  photo", never "OK" or "Yes"), is styled as destructive (GNOME `destructive-action`, Material's error colour, the
-  web's `.danger` style as in admin.html), is not the default button, and the focus starts on Cancel. The browser's
-  own `confirm()` can't name its buttons, so web confirmations use the page's own dialog. Enter or a double tap never
-  confirms a destructive action by accident. (Plant's permit lock warning already works this way: docs/PLANT3D.md
-  §15.6.)
-- **D3 (Block) Typed input is never lost silently.** Leaving a form, Back, closing the window or the app being
-  stopped by the system (Android process death) keeps the typed text as a draft or asks first.
-  - Check: type into each form, then Back, close and (Android) `am kill` the backgrounded app; the text is still there
-    or a question was asked.
-- **D4 (Block) Signing out says what would be lost.** If signing out or leaving the plant discards changes not yet
-  sent, the question says how many.
-
-### 2.9 Consistency across platforms
-
-- **X1 (Block) The same thing has the same name everywhere.** A feature, a screen, a button and a state use the same
-  words on the web, GNOME, Windows and Android (and in Plant, where Plant shows the same thing, such as a KKS code's
-  meaning). Platform conventions decide placement and look (header bar, menu bar, top app bar, Back), never the
-  words.
-  - Check: list the visible labels of the changed screen on each platform (from the accessibility trees) and compare.
-- **X2 (Block) A feature is on every Walkdown client or tracked.** A change that adds or changes a user-visible
-  feature on one Walkdown client does the same on the others, or the PR links an issue for each one left out and
-  docs/m6/CAPABILITIES.md says so.
-- **X3 (Block) Each platform's own conventions are followed,** checked as these points. GNOME: a header bar with the
-  window's actions, libadwaita dialogs and toasts, destructive and suggested button styles. Windows: standard Win32
-  controls, Alt-key accelerators on menus and buttons, the system's colours in contrast themes. Android: Material 3
-  components, system Back, edge-to-edge insets handled. Web: native HTML controls (`button`, `input`, `select`, `a`)
-  before custom ones. Plant: every action of a panel works by touch, gamepad and keyboard (README "Controls").
-
-### 2.10 Keyboard and screen-reader access
-
-Sources: WCAG 2.2 2.1.1 Keyboard, 2.1.2 No Keyboard Trap, 2.4.3 Focus Order, 2.4.7 Focus Visible, 4.1.2 Name, Role,
-Value (https://www.w3.org/TR/WCAG22/); GNOME HIG accessibility and keyboard
-(https://developer.gnome.org/hig/guidelines/accessibility.html, https://developer.gnome.org/hig/guidelines/keyboard.html);
-Windows keyboard and UIA (https://learn.microsoft.com/en-us/windows/apps/design/accessibility/keyboard-accessibility,
-https://learn.microsoft.com/en-us/windows/win32/winauto/entry-uiauto-win32); Android TalkBack testing
-(https://developer.android.com/guide/topics/ui/accessibility/testing).
-
-- **A1 (Block) Everything works from the keyboard** on the web, GNOME, Windows and Plant on a desktop (Plant: from a
-  gamepad too). The focus order follows the reading order, the focus is always visible (K3) and never hidden under
-  another layer, and nothing traps it. The drawing pans with the arrow keys and zooms with + and −.
-  - Check: drive each changed screen with Tab, arrows, Enter, Space and Escape only (Playwright `keyboard`, AT-SPI
-    and UIA actions in the existing harnesses, Plant's `test_inputs` and `test_gamepad_switch`).
-- **A2 (Block) Every control has a name, a role and its state** in the platform's accessibility tree: web semantic
-  HTML or ARIA; GNOME `GtkAccessible` (AT-SPI); Windows UIA (or MSAA through UIA); Android `contentDescription` or
-  semantics (TalkBack). Icon-only buttons are named by what they do; photos are named by their tag and date;
-  decoration is hidden from the tree.
-  - Check: the accessibility tree dump of each changed screen (Playwright `ariaSnapshot()`, `atspi.walk`, the UIA
-    driver's tree, `uiautomator dump` content descriptions) has no unnamed control.
-- **A3 (Block) The drawing is usable without seeing it.** Each sheet's tags are also reachable as a list (search or the
-  sheet's tag list) that opens the same card, so a screen-reader or keyboard user can reach every tag.
-- **A4 (Block) Motion follows the system.** With reduced motion on (web `prefers-reduced-motion`, GNOME
-  `gtk-enable-animations` off, Windows "Animation effects" off, Android "Remove animations"; Plant's own "Reduced
-  motion"), nothing slides, zooms or sways that isn't needed to understand the change. Nothing flashes more than 3
-  times a second (WCAG 2.3.1).
-- **A5 (Block) Plant's panels reach screen readers on desktops.** Godot (since 4.5) exposes `Control`s through
-  AccessKit on Windows and Linux; every Plant button, card and menu item has an accessible name (its text, or
-  `Control.accessibility_name` for an icon). The 3D world is exempt (it has no text a reader could use beyond what the
-  cards show). Plant on Android is exempt while Godot has no screen-reader support there.
-  - Check: the AT-SPI tree of Plant run in the GNOME headless session (`atspi.walk`).
-
-### 2.11 Layouts that survive other text
-
-The UI is English only, but user content may be Arabic or mixed (REQUIREMENTS.md N7).
-
-- **L1 (Block) Mixed right-to-left and left-to-right text shows in the right order.** User text is shown with
-  automatic direction, and a KKS code inside Arabic text keeps its characters in order. Web: `dir="auto"` or `<bdi>`.
-  GTK (Pango) finds the direction from the first strong character itself, and Compose's default text direction
-  (`ContentOrLtr`) does too. Win32 edit controls and DirectWrite do not: the Windows app sets the reading direction
-  from the text's first strong character (`WS_EX_RTLREADING`, `DWRITE_READING_DIRECTION_RIGHT_TO_LEFT`).
-  - Check: the synthetic fixture note `مضخة التغذية 11LAB70AA501 تعمل` (and a name in Arabic) on each platform's
-    screenshot.
-- **L2 (Block) Labels can grow.** No control or label has a width that only fits today's English: at the S2 text
-  sizes (1.3 on Android, 200 % on the web, Large Text on GNOME, 150 % on Windows and in Plant), which make every label
-  at least 25 % wider, labels wrap or their container grows; nothing is clipped or overlaps.
-- **L3 (Block) Every physical value has its unit** (bar, °C, m³/h, mm, %), and a value and its unit stay on one
-  line. Counts need none.
-- **L4 (Advice) Dates and times are unambiguous:** 2026-11-15 14:05 or "15 Nov 2026", 24-hour; never 11/12/26.
-- **L5 (Advice) Counts are grammatical:** "1 tag", "2 tags".
-
-### 2.12 Performance budgets
-
-- **P1 (Block) Plant keeps the Note 9's frame rule.** In normal play on the Note 9's tier, 99.9 % of frames are shown
-  at 30 fps or better by Android's present times (decision 0041); a change to a panel, the HUD or the control room
-  screens (anything drawn while the plant is shown) is measured with the walk that shows it (apps/plant3d/README.md, `phone/frames.sh`). Fast-forward may drop
-  frames on a phone (docs/PLANT3D.md §7.9).
-  - Exception, the Workshop (the user, 2026-11-15, #392): inside the Workshop, Plant keeps the Workshop's own rule
-    instead: no frame over 100 ms that the app causes, and at least 95 % of frames at 30 fps or better over the
-    Workshop walk ([docs/plant3d/WORKSHOP.md §8](plant3d/WORKSHOP.md#8-frame-memory-and-size-rules)). Why: the Workshop
-    shows one machine up close (orbiting, exploding, cutting), a different load from walking the plant, and its rule
-    was set and measured for that (WORKSHOP.md §6.8 to §6.11). The 99.9 % above applies everywhere else in Plant.
-- **P2 (Block) Walkdown keeps its measured budgets:** startup, memory and size within the regression rules of
-  docs/m6/MEASUREMENTS.md; the web client's download within `web-size.json` (CI's `web-size` job).
-- **P3 (Block) Nothing freezes the UI for over 1 s.** No interaction blocks the UI thread for more than 1 s; longer
-  work runs off the UI thread (Android: decode on IO; web: workers; GNOME and Windows: worker threads, as the viewer
-  does).
-  - Check: web `PerformanceObserver` long tasks during the changed interaction; Android `dumpsys gfxinfo` (frames over
-    1 s); desktop: the e2e harness's action timings.
-- **P3a (Advice) Feedback within 100 ms:** a press changes something on screen within 100 ms (web long tasks over
-  100 ms during the interaction; elsewhere by eye in a recording).
-- **P4 (Advice) Panning the drawing holds the display's frame rate** on the Note 9 (REQUIREMENTS.md N3).
-
-### 2.13 No plant data in screenshots
-
-- **Z1 (Block) Audits run on synthetic data only.** Screenshots, recordings, accessibility-tree dumps and notes that go
-  into the repository, the wiki, issues or PRs come only from the test fixtures (e2e plant data, the generic Plant
-  content). They never show the real plant's name, drawings, KKS codes taken from its drawings, photos, people's
-  names, device names, server or relay addresses, IP addresses, or invite and QR codes that carry real keys.
-- **Z2 (Block) Look at the edges before publishing a screenshot:** window titles, the address bar, the status bar
-  (Android: use demo mode, `adb shell settings put global sysui_demo_allowed 1` and `am broadcast -a
-  com.android.systemui.demo -e command enter`), notifications and file paths.
-- **Z3 (Block) A finding seen on real data is reproduced on synthetic data before it is filed.**
-
-### 2.14 Field use
-
-- **G1 (Block) Code fields don't fight the user.** Fields where a KKS code is typed turn off autocorrect and spelling
-  suggestions and start in capitals (web `autocapitalize="characters" autocorrect="off" spellcheck="false"`; Compose
-  `KeyboardOptions(capitalization = Characters, autoCorrectEnabled = false)`), and search accepts a code in any case
-  and with or without spaces (`11 lab70 aa501` finds `11LAB70AA501`).
-- **G2 (Block) An interruption loses nothing.** Turning the phone, switching apps, or Android stopping the app in the
-  background brings the user back to the same sheet, tag and scroll position, with typed text kept (D3).
-- **G3 (Block) Walkdown works in both orientations** on phones (WCAG 1.3.4). Plant is landscape only, menus included
-  (`project.godot`: sensor landscape), which is essential to its two-stick controls.
-- **G4 (Advice) The main field actions are within a thumb's reach:** search, open the tag, photo and note sit in the
-  lower two thirds of a phone screen or in a bottom bar.
-
-## 3. The audit
-
-### 3.1 When
-
-An audit is due for every change that touches what either app shows or how it is used:
-
-- Walkdown web: `*.html`, `common.js`, `tiles.js`, `course.js`, `course-bridge.js`, any stylesheet, `sw.js` when it
-  changes what is shown offline;
-- GNOME: `apps/gnome/`; Windows: `apps/windows/`; shared desktop code in `apps/common/` that makes or words UI;
-- Android: `android/app2/src/main/kotlin/kks/explorer/ui/`, `MainActivity.kt`, `LinkActivity.kt`, `res/` and the
-  manifest; other Kotlin (sync, updates) only where it changes what a user sees, such as a notification's text;
-- Plant: `apps/plant3d/ui/`, `apps/plant3d/app/` (hud, map, about, settings, controls), `apps/plant3d/workshop/`
-  views, any `.tscn` with `Control` nodes, and the content texts the UI shows (`tools/plant3d/manual_texts/`);
-- course content only when it changes a figure or layout, not its prose.
-
-Changes to tests, docs, the core, the server's API, the importer or the relay need no audit unless they change
-text or behaviour that a user sees (an error message from the core is UI).
-
-A **full audit** (every rule, every platform, both apps) is done once after this policy is adopted (its results go
-in `docs/ui-audit/2026-11.md`), and again
-before each release that changed UI on more than one platform.
-
-### 3.2 Who
-
-Two fresh subagents, one after the other, neither told what the author thinks:
-
-1. **Pass 1, blind audit:** given this policy, the change (task text and diff) and the evidence pack (3.3). It records
-   a result for every rule on every platform the change touches.
-2. **Pass 2, adversarial audit:** given the same, plus pass 1's table, it tries to make the change fail: other screen
-   sizes, the largest text size, dark mode, keyboard only, the longest synthetic content, Arabic text, offline. It may
-   ask for evidence the pack lacks; until it is given, that rule is "Not checked".
-3. **After fixes:** when the author changes the code to fix a fail, a fresh subagent checks the failing rules again,
-   and the rules the fix's screens touch, on new evidence. A fail found by either pass stands until such a check
-   says it is gone.
-
-Auditors stay read-only in the repository. They may ask the author for more evidence; when the machine's memory rules
-allow it they may run the evidence scripts themselves (one at a time, through the memory-capped job runner).
-
-### 3.3 The evidence pack
-
-Made by the author from synthetic data only (Z1), before and after the change, for the screens the change touches on
-each platform whose code it changes (a change to `apps/common/` touches GNOME and Windows). A change that only rewords
-text needs screenshots of the changed screens on every platform where the text shows, at the S2 text sizes (for X1,
-F2, S3 and L2); no trees or sizes.
-
-What to collect on each platform:
-
-| Platform | How | Screenshots | Accessibility tree | Sizes and colours |
-|---|---|---|---|---|
-| Web (Chromium, WebKit, Firefox) | Playwright with `KKS_SERVER` (the web e2e's setup) | 412 × 915 and 1280 × 800, light and dark, 200 % zoom, 320 px width | `locator.ariaSnapshot()` | `getBoundingClientRect()` of every target; computed colours |
-| GNOME | `apps/gnome/e2e/headless.sh` (never the user's desktop), one run at a time machine-wide (`flock ~/kks-work/build/gnome-e2e.lock`) | `KKS_SHOT_ON_SIGNAL`, light, dark, Large Text | `atspi.walk` dump | AT-SPI extents |
-| Windows | `apps/windows/e2e/test_windows.py` in kks-win10 or kks-win11, one VM at a time under `vm.lock` | `virsh screenshot`, light, dark, a contrast theme, 150 % text | the UIA driver's tree | UIA BoundingRectangle |
-| Android | the emulator under `vm.lock` (never with a VM); the e2e harness's `adbui` | `screencap`, demo-mode status bar, light, dark, largest font scale, landscape | `uiautomator dump` | node bounds ÷ density |
-| Plant desktop | `tools/plant3d/bench/offscreen.sh` with `tests/ui_shots.gd`, `tests/mimic_shots.gd` (`--phone` for the phone scale) | 1600 × 900 and the phone layout | AT-SPI dump of Plant run in the headless session with Godot's accessibility forced on (project setting `accessibility/general/accessibility_support`, A5) | `Control` rects |
-| Plant Android | the Note 9 (or the Honor, Plant only) when `~/kks-work/bin/phone-window` allows; the emulator under `vm.lock` if Plant's arm64 build runs there | `screencap` | — | P1's frame walk |
-
-What can't be checked on an emulator or headless (real TalkBack speech, sunlight, gloves) is checked on a real phone
-when the change is about it, and otherwise recorded as "not checked: needs a real phone". Never on the user's Honor
-except Walkdown Plant (`io.github.walkdown.plant`).
-
-### 3.4 How results are recorded
-
-For a change: a table in the PR (a comment from each pass), one row per rule that applies, one column per platform the
-change touches, each cell one of:
-
-- **Pass;**
-- **Fail** with where (screen, platform) and what, and the issue or fix;
-- **Pre-existing fail** (already on main; issue linked);
-- **N/A** with why;
-- **Not checked** with why.
-
-For a full audit: the same table for every rule and platform, in `docs/ui-audit/YYYY-MM.md`, with the screenshots
-beside it (synthetic data only) and an issue for each group of fails.
-
-## 4. What blocks a merge
-
-A change that touches UI (3.1) merges only when both audit passes are done and:
-
-- no **Block** rule fails because of the change, on any platform it touches;
-- a fail that was already on main does not block, if it has an open issue and the change does not make it worse
-  (worse: more screens or items fail, or the gap to the limit grows). Saying it was on main needs evidence from main
-  (a screenshot, tree or the line of code on main). An audit that finds such a fail with no issue yet files one;
-- a new screen or control built unchanged from the shared styles and widgets (Plant's `ui/widgets.gd`, index.html's
-  stylesheet, the GNOME and Windows helpers) carries their open, filed fails as pre-existing; fixing the shared code is
-  the issue's work, not every change's;
-- a **Block** rule marked "Not checked" on a touched platform blocks, unless the reason is in the list of limits below
-  or the user accepts it for that change;
-- **Advice** fails never block; they are recorded.
-
-Limits accepted for "Not checked" (until a tool for them is added):
-
-- TalkBack's spoken output, sunlight and gloves: need a real phone; the accessibility tree and sizes stand in.
-- Safari on an iPhone and VoiceOver: no iPhone here; Playwright's WebKit stands in for Safari and the ARIA snapshot
-  for VoiceOver.
-- The Note 9's frame walk (P1) outside the user's phone time window: the change waits for the window when it touches
-  what is drawn while the plant is shown, otherwise the desktop's frame probe stands in. If no window comes within 3
-  days, ask the user.
-- Plant on Android, if its arm64 build does not run on the x86-64 emulator: the phone layout on the desktop stands in
-  until a phone window.
-- Plant's screen-reader names (A5) and live regions (F4) on Android: Godot has no Android screen-reader support.
-- Windows on ARM64: not audited separately (the same code as x86-64).
-
-A full audit does not by itself block a release; its fails get issues. A Block fail found there that a change brought
-in without its audit is fixed before the release.
-
-## 5. Changing this policy
-
-A rule is added, changed or waived only by the user. Waivers are listed here with the date and the reason.
-
-- 2026-11-15, the user (#392): P1's 99.9 % does not apply inside Plant's Workshop, which keeps its own rule
-  (WORKSHOP.md §8: no frame over 100 ms, at least 95 % at 30 fps); see P1.
+# UI and UX policy (Walkdown and Walkdown Plant)
+
+Status: since 2026-11-19 this project follows the user's own UI and UX policy, version 4.13, as its rulebook. The
+user asked for it in `~/kks-work/INBOX.md` on 2026-11-19 (marked read at 06:21): "I have a new UI/UX policy, adopt it instead of
+the current one, it is tailor made of my projects". It replaces the project policy adopted on 2026-11-15 (its last
+text: `git show 225145dc:docs/UI-UX-POLICY.md`; the 2026-11 audit in `docs/ui-audit/` uses its rule IDs).
+
+This page holds only what is specific to this project:
+
+1. where the rulebook and the profiles are;
+2. the few project rules that stay on top of the rulebook, because the old policy was stricter there;
+3. the user's decisions carried over from the old policy and from the audit issues;
+4. which files count as UI;
+5. a map from the old rule IDs to the new ones, and from the old audit issues to the new rules;
+6. where adoption stands.
+
+## 1. The rulebook and the profiles
+
+- **The rulebook:** the user's `global/UI-UX-POLICY.md` in their Personal-LLM-prompts repository (on the owner's
+  machine `~/Documents/GitHub/Personal-LLM-prompts/global/UI-UX-POLICY.md`), **version 4.13 (2026-11-18), sha256
+  `6313744f37b408b72d99028684caa70c10e4aa6118e05e87a7bef51f6f29ffe5`**. Agents and reviewers read that file and
+  check its hash; if it differs, the version in force here is still 4.13 until a PR updates this line with the new
+  version line. Whether a copy of it is also kept in this public repository is the owner's choice (#442). Only the
+  user changes the rules (its section 11).
+- **The profiles** (its section 1):
+  - [docs/ux-profile/walkdown.md](ux-profile/walkdown.md): Walkdown (web, GNOME, Windows, Android, and the server's
+    command line);
+  - [docs/ux-profile/plant.md](ux-profile/plant.md): Walkdown Plant (desktops and Android).
+- **The review brief** (its sections 1.6 and 8.4): [docs/ux-profile/review-brief.md](ux-profile/review-brief.md),
+  versioned. Until the prompt script of section 8.4 exists, the brief is pasted word for word into each reviewer's
+  prompt, and the PR records its version.
+
+Rule IDs in this repository mean the rulebook's IDs (A1, S1, GM6.1 …). The project rules below carry a `WD-` prefix.
+
+## 2. Project rules on top of the rulebook
+
+The old policy asked for more than the rulebook in these points. Section 0.2 of the rulebook says a stricter project
+rule wins, so they stay. Each one adds to the rulebook rule named in brackets.
+
+- **WD-N3 (Block; adds to N3):** a Close, Back, Cancel or Done control that stays visible also stays **in the same
+  place** while the content scrolls (its bounds in the accessibility tree don't change).
+- **WD-E7 (Advice):** a form's Save or Send is in a bar that stays visible, or directly after the last field; never
+  after a list that can grow without limit.
+- **WD-I5 (Block; adds to I5):** the copy confirmation **names what was copied** ("Copied 11LAB70AA501"), except
+  where the platform shows its own preview (Android 13 and later). Identifiers drawn as part of a picture (tags on a
+  drawing, codes on Plant's control room screens and P&IDs) can't be selected; there the item's card or panel, one
+  tap away, offers the copy. This exemption is looser than I5 read strictly: under the rulebook's 0.2 it stays only until the next
+  full audit or 2027-05-18, whichever comes first, and then becomes a waiver (11.2) or goes.
+- **WD-S5 (Block; adds to S5):** 20 synthetic items in each list that asks the same decision of many are decided
+  in at most 4 actions (the old B1's check).
+- **WD-S5a (Advice):** after a bulk action the list keeps its place and says what happened ("12 accepted").
+- **WD-S2 (Block; adds to S2):** web confirmations use the page's own dialog, never the browser's `confirm()`, which
+  can't name its buttons.
+- **WD-C4 (Block; adds to C4):** a Walkdown feature that one client lacks is also recorded in
+  `docs/m6/CAPABILITIES.md`, beside the issue for each client left out.
+- **WD-A18 (Block; adds to A18):** the drawing pans with the arrow keys and zooms with + and − on every client with
+  a keyboard.
+- **WD-8.9 (process; adds to 8.9):** besides the rulebook's full audits, a full audit runs before each release
+  that changed UI on more than one platform (the old policy's 3.1).
+- **WD-A12 (Block; adds to A12):** each sheet's tags are also reachable as a list (search or the sheet's tag list)
+  that opens the same panel as tapping the tag, so a screen-reader or keyboard user reaches every tag.
+
+Everything else the old policy asked is covered by a rulebook rule at least as strict (the map in section 5), or by a
+number in a profile (gloves: 48 dp targets also on the web at phone width; sun: 7:1 for codes, values and body text on
+phones; the frame rules).
+
+One old point changes by the adoption itself: the old CLAUDE.md rule made the UI audit's two passes come "on top of
+the two code reviews"; the rulebook (0.2, 8.4) makes the two review passes of the global workflow also the UI passes,
+with the policy, profile, brief and evidence added. A reviewer may still post the code review and the UI table as
+separate comments.
+
+Two old points were looser than the rulebook and are dropped, as the user asked for a replacement: "Advice fails never
+block" (now section 9.1 decides), and "a new screen built from shared widgets carries their filed fails as
+pre-existing" (now section 9.2: a fail that reaches more screens is worse).
+
+## 3. The user's decisions carried over
+
+Each is in a profile too, as a number, a declaration or a design choice (the tie-breakers of section 1.3 point to
+them). Who decided, when and where:
+
+| Decision | When, where | Now in |
+|---|---|---|
+| English UI only; user content may be Arabic or mixed | the user, 2026-09-30 (`docs/m6/REQUIREMENTS.md` N7) | both profiles, Languages |
+| Android 10 minimum (Note 9); Windows 10; a current GNOME LTS; Safari 17+ | the user, 2026-09-26 (REQUIREMENTS.md N8) | both profiles, Platforms |
+| Plant's Workshop keeps its own frame rule: no frame over 100 ms the app causes, at least 95 % of frames at 30 fps over the Workshop walk; 99.9 % elsewhere in normal play | the user, 2026-11-15, #392 (PR #393) | Plant profile, Budgets (a profile number under GM6.1, not a waiver) |
+| Fast-forward's frames are not judged | the user, 2026-10-27 (`docs/plant3d/MILESTONES.md`) | Plant profile, Budgets |
+| Plant: a UI size setting from 100 % to 200 %; each phone starts at the size its screen needs (buttons 48 dp, text 14 sp); one compact top row on phones | the user, 2026-11-15 (#382) and 2026-11-18 ("Size by the screen, allow more", PR #410) | Plant profile (it is also Plant's text-size setting for A4 and GM4.2) |
+| Plant's HUD text over the 3D view gets a small translucent backing panel (the old K5 kept as written) | the user, 2026-11-15 (#381 comment) | A6; open in #412 |
+| Web phone header: the most used controls at 48 px, the rest in an overflow (⋮) menu | the user, 2026-11-15 (#367) | Walkdown profile, design choices |
+| Windows: full Win32 dark (our own dark colours for every control); text size by fonts plus a fluid layout, in stages | the user, 2026-11-15 (#377) | Walkdown profile, design choices (stricter than WIN1, where dark common controls are Advice) |
+| Photos stored at up to 2560 px | the user, 2026-11-17 (PR #405, decision 0074) | Walkdown profile, budgets |
+| Plant is landscape only (its two-stick controls need it) | `project.godot`; old policy G3 | Plant profile, applicability (AND4's orientation: essential, WCAG 1.3.4) |
+| Plant's APK at most 250 MB; MSIX and Flatpak at most 300 MB | the user, 2026-11-01 and 2026-10-23 (apps/plant3d/README.md) | Plant profile, Budgets |
+| Background sync on phones that limit it: a notice with a button to the system settings, no foreground service, no FCM | CLAUDE.md, Android lessons | Walkdown profile, design choices |
+| No Microsoft Store; a self-signed MSIX | the user, 2026-10-03 | both profiles, Platforms |
+| Defaults the user accepted on 2026-11-15 (comments on #365–#383): a shared in-page confirm dialog with named buttons plus Undo toasts where the server can reverse the action; `rememberSaveable` for sheet, tag, scroll and drafts; corner glyphs per tag state plus words for course readings; error codes from the core plus a sentence table per client; the offline state first, then the waiting-changes count; bundle work on a worker thread; one live line naming the selection; tap to place a default box, then resize, the drag staying; web text sizes fields first, then 16/14/12 px; GNOME AdwBreakpoints; selection plus a batch endpoint for repeated decisions | the user, 2026-11-15 | Walkdown profile, design choices |
+
+The old policy's only waiver (the Workshop's frame rule) is now a profile number, so the waiver list is empty.
+
+## 4. What counts as UI here
+
+A change is a UI change when it touches what a user sees, hears or does (the rulebook's "touched", section 0.3; when
+unsure, it is touched). In this repository that is at least:
+
+- **Walkdown web:** `*.html`, `index.js`, `admin.js`, `learning.js`, `course.js`, `common.js`, `tiles.js`,
+  `course-bridge.js`, any stylesheet, `sw.js` where it changes what is shown offline;
+- **GNOME:** `apps/gnome/`; **Windows:** `apps/windows/`; `apps/common/` where it makes or words UI;
+- **Android:** `android/app2/src/main/kotlin/kks/explorer/ui/`, `MainActivity.kt`, `LinkActivity.kt`, `res/`, the
+  manifest; other Kotlin where it changes what a user sees (a notification's text);
+- **text from the core or the server that a user reads** (error sentences; the server's command-line output and
+  `--help`, module 7.7);
+- **Walkdown Plant:** `apps/plant3d/ui/`, `apps/plant3d/app/` (HUD, map, about, settings, controls),
+  `apps/plant3d/workshop/` views, any `.tscn` with `Control` nodes, sounds and haptics, and the texts the UI shows
+  (`tools/plant3d/manual_texts/`, scenario and procedure content: tier 2 by section 8.2);
+- **courses** (`data/courses/`): content changes are tier 2 (section 8.2 and TRAIN1);
+- **the README and wiki pages that tell people how to install and use the apps**: prose, checked at each release
+  (section 0.1).
+
+## 5. Old rule IDs and old audit issues
+
+### 5.1 Old rule → new rule
+
+| Old | New | Old | New |
+|---|---|---|---|
+| T1 phone targets 48 dp | A19 (48 dp also on the web at phone width: profile number), AND5, GM1.5 | F1 action shown | F1 |
+| T2 no overlap, destructive 8 dp | A19 | F2 errors in plain words | W3 (CLI2 for the command line) |
+| T3 desktop 24 px | A19 | F3 offline is a state | ST3, F4 |
+| T4 tap near a tag (Advice) | VIEW3, GM3.4 (now Block) | F4 status to screen readers | A8 |
+| T5 gesture alternatives | A20, A22 | F5 field errors | E3 |
+| R1 Close never scrolls away | N3, GM4.5, WD-N3 | F6 empty screens | ST2 |
+| R2 Back and Escape | N2, AND2, GM4.5 | D1 undoable or confirmed | S1, F2, A21 |
+| R3 nothing under bars or sticks | AND1, WEB3, GM1.5, GM4.1 | D2 safe default | S2, WD-S2 |
+| R4 Save after the last field (Advice) | WD-E7 | D3 input never lost | S3, E5 |
+| C1 identifiers copyable | I5, WD-I5 | D4 sign-out counts | S3 |
+| C2 exactly the identifier | I5 | X1 same name | W1, C2 |
+| C3 copy says what | I5, WD-I5 | X2 feature parity | C4, WD-C4 |
+| B1 bulk decisions | S5, WD-S5 (no 5-item threshold now) | X3 platform conventions | C3, I2, GNOME1, WIN1, AND1, WEB3, A18 |
+| B2 bulk shows count, one undo | S5 | A1 keyboard | A18, A23, WD-A18 |
+| B3 list keeps its place (Advice) | WD-S5a, P4 | A2 names | A8, AND5, GNOME4, WIN2 |
+| K1 text contrast | A1 | A3 drawing without sight | A12, WD-A12 |
+| K2 7:1 on phones | A1 (profile raises to 7:1) | A4 motion | A11, A10 |
+| K3 non-text 3:1 | A2, A23 | A5 Plant screen readers | A8, GM7.3 |
+| K4 colour not alone | A5 | L1 mixed text | L2, WIN3, GNOME5 |
+| K5 text over pictures | A6, GM4.1 | L2 labels grow | L3, A4 |
+| K6 dark complete | A7 | L3 units | W5 |
+| K7 no white flash (Advice) | A7 (now Block) | L4 dates (Advice) | W5 (now Block) |
+| S1 minimum text sizes | A3 (Plant: the game numbers, measured as text height) | L5 counts (Advice) | W5 (now Block), L1 |
+| S2 system text size | A4 (now up to 200 % / 2.0 everywhere), GM4.2 | P1 Note 9 frame rule | GM6.1 (profile numbers) |
+| S3 codes never cut | W7 | P2 Walkdown budgets | P5, P3 |
+| Z1 synthetic data | Z1 | P3 no freeze over 1 s | P1 |
+| Z2 screenshot edges | Z1 | P3a feedback in 100 ms (Advice) | F1 (now Block) |
+| Z3 real findings reproduced | Z1 | P4 panning (Advice) | VIEW2 (now Block), P2 |
+| G1 code fields | E2, N6 | G3 both orientations | AND4 (Plant: essential, applicability list) |
+| G2 interruptions | D5, AND3, E5 | G4 thumb reach (Advice) | AND7 |
+
+### 5.2 Old audit issues → new rules
+
+Every open item stays tracked; they count as pre-existing fails from the adoption (section 9.2). Severity is set by
+reviewers (section 9.5); the floor column is the least the rulebook allows (section 9.1). Open ones are labelled
+`ux`.
+
+| Issue | Was | Now | Severity (floor, until a reviewer rates it) |
+|---|---|---|---|
+| #365 (closed; follow-ups #414–#417) | G1 destructive actions | S1, S2, S5 | 2 |
+| #366 (follow-ups #429–#431, #436) | G2 Back, Escape, typed input, interruptions | N2, S3, E5, D5, AND2, AND3 | 2 |
+| #367 | G3 touch targets | A19, VIEW3 | 2 on main tasks |
+| #368 | G4 text contrast | A1, A6 | 2 on main tasks |
+| #369 | G5 highlights, focus rings, borders | A2, A23, VIEW1 | 2 on main tasks |
+| #370 | G6 colour-only states | A5 | 2 on main tasks |
+| #371 (closed) | G7 raw errors | W3 | — |
+| #372 | G8 offline state and waiting count | ST3, F4 | 3 (proposed; no floor) |
+| #373 | G9 pressed state, progress, freezes, field errors | F1, P1, E3, I1 | 3 (proposed; no floor) |
+| #374 | G10 screen-reader names and announcements | A8, GNOME4, WIN2, AND5, GM7.3 | 2 on main tasks |
+| #375 | G11 gesture and keyboard alternatives, tags without sight | A18, A20, A12, U1 | 2 on main tasks |
+| #376 | G12 text size, zoom, narrow, landscape | A3, A4, L3, N3, AND4, AND1, V8 | 2 on main tasks |
+| #377 | G13 Windows scaling, text size, dark, contrast themes, Alt keys | WIN1, A4, A7, A1, N3, L3 | 2 on main tasks |
+| #378 | G14 identifiers cut or not copyable | I5, WD-I5, W7 | 3 (proposed; no floor) |
+| #379 | G15 Arabic notes split codes | L2, WIN3 | 3 (proposed; no floor) |
+| #380 | G16 reduced motion | A11 | 2 on main tasks |
+| #381 | G17 Plant Settings off screen | N3, GM4.5, A18, L3 | 2 on main tasks |
+| #382 (closed) | G18 Plant phone targets and text | A19, A3, A4, GM4.2 | — |
+| #383 | G19 repeated decisions one at a time | S5 | 3 (proposed; no floor) |
+| #384 | G20 names, code fields, counts, dates, empty screens | W1, C2, E2, W5, ST2, WD-E7, AND7 | 3 (proposed; no floor) |
+| #412 | Plant: destructive spacing, codes on the screens, panels over the look stick, HUD backing | A19, A3, GM1.5, A6 | 2 on main tasks |
+| #418 | Plant Workshop: no accessibility tree; Info not scrollable by keyboard or gamepad | A8, GM7.3, A18 | 2 on main tasks |
+| #421 | Plant Workshop: the bench's refusal note off screen on phones | F1, GM3.2, W3 | 3 (proposed; no floor) |
+| #422 | Plant manual reader buttons at 3.7:1 | A1 | 2 on main tasks |
+| #423 | Plant alarm banner rows about 24 dp | A19, GM1.5 | 2 on main tasks |
+| #424 (merged PR for #371) | errors in plain words | W3 | — |
+| #425 | Plant on Android: drag on a control doesn't scroll | A18, A20, U1 | 2 on main tasks |
+| #433 | Windows tabs: no selected state | A8, N1, WIN2, I1 | 2 on main tasks |
+
+Filed at the adoption (2026-11-19): #437 Plant's "Restart in it" (S1, S2), #438 Plant evidence runs and the real
+Godot user folder (Z1), #439 install warnings and steps (U1, T6), #440 the accessibility statement (T11), #441 server
+updates' PASS/FAIL (S8), #447 Plant updates discard the saved run (S1, S4, GM5.2; severity 1), #448 removing a
+device without a deliberate act (S2), #449 no forgot-password path (S9, U1), #443 lightning in fast-forward (A10, GM8.3), #446 Plant has no "Report a problem" (FIELD1); and the owner's decisions, #442.
+
+The later audit issues (#391, #394–#397, #399–#404, #408, #428) keep their rules the same way: the old ID in their text
+maps by the table in 5.1.
+
+### 5.3 Old IDs in code and tools
+
+About 50 comments in tests, tools and code cite the old policy's IDs ("UI-UX-POLICY T1, S1", "rule A5", "§3.3"; the
+script `tools/ui_audit/plant_a5.py`). Several of those IDs now name different rules (S1, S2, A1, A5, T1). Read them
+through the map in 5.1; they are renamed when the file is next touched, and `tools/ui_audit/` in phase 2.
+
+## 6. Adoption
+
+- **Phase 1** (2026-11-19, this page's PR): the hook-up in CLAUDE.md (the rulebook's Appendix G), the profiles, the
+  review brief, the check of both products against the never-waivable set and U1, A1 and A5
+  ([docs/ui-audit/2026-11-adoption.md](ui-audit/2026-11-adoption.md)), and the maps above.
+- **Due dates:** Walkdown and Plant release by tags (they don't deploy on every merge), so the adoption issues follow
+  the rulebook's 9.7 dates (severity 1 before the next release, severity 2 within two), not a burn-down plan.
+- **Phase 2, by 2026-12-19:** the automated evidence (section 8.3) for each platform, built from `tools/ui_audit/`;
+  every UI change tiered (section 8.2).
+- **Phase 3, by 2027-02-19:** the first full audit under this rulebook (section 8.9) and the first round with real
+  users (section 8.6). From then on the whole rulebook applies; until then Advice fails are backlog items only.
