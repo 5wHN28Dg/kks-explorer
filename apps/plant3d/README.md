@@ -405,9 +405,8 @@ instance when the app already runs.
   and AMD's later low-end rebrands of TeraScale chips (such as the Radeon R5 230) have no Vulkan at all.
 - **Not caught:** a Linux computer whose only Vulkan driver is Mesa's software one (lavapipe) stays on Forward+, drawn
   on the CPU, and gets no message; so does a Linux Haswell (HD 4400) on Mesa's incomplete Vulkan driver (hasvk), unmeasured.
-- **Smooth play (the speed class, the user's verdict on #455):** roughly Intel Iris Xe or a dedicated GPU. Iris Xe is
-  measured on the app (decision 0057, 2026-10-20): the owner's Iris Xe laptop, `full` tier in a 1600 × 900 window, 10 minutes: GPU time p95 8.5–8.8 ms, frame p95 11.0 ms (a second run 24.0 ms while other jobs shared the GPU). At the laptop's native 2880 × 1800 the `full` tier misses the rules (decision 0041's bench: p95 34.7 ms), so smooth means a window of about 1600 × 900 on such graphics; a dedicated GPU at least as fast as Godot's recommended GTX 1050 or RX 460
-  is an estimate. Older graphics that meet the minimum above run, but slowly: the tier probe gives them `lean+vis`, unmeasured
+- **Smooth play (the speed class, the user's verdict on #455):** roughly Intel Iris Xe or a GPU at least as fast. Iris Xe is
+  measured for #445 (2026-11-19) on the owner's Iris Xe laptop (Linux, Vulkan): the release build with its lightmap, `full` tier, a 1600 × 900 window at 60 Hz, the 10-minute frames walk: median 16.7 ms, p95 18.3 ms, p99 21.1 ms, longest 44.2 ms, none over 100 ms, 100.0 % of frames at 30 fps or better (85.5 % at 60), GPU time p95 10.9 ms (one other app used the GPU, about 1 %). At the laptop's native 2880 × 1800 the `full` tier misses the rules (decision 0041's bench: p95 34.7 ms), so smooth means a window of about 1600 × 900 on such graphics; a GPU at least as fast (for example a GeForce GTX 1050 or Radeon RX 460/560, Godot's recommended class) is an estimate, not measured here. Older graphics that meet the minimum above run, but slowly: the tier probe gives them `lean+vis`, unmeasured
   there.
 - **Android:** Android 10 or newer with Vulkan (the Mobile renderer); the Note 9 is the minimum (0041).
 - **Below it:** Godot falls back to its Compatibility renderer (OpenGL 3.3, or ANGLE on Direct3D 11). Plant runs, but
