@@ -78,7 +78,7 @@ def probes(browser, eng):
         walk.append(info)
     R['walk_index'] = walk
     # Enter on the search: the panel; then Escape
-    box = page.locator('#q'); box.focus(); page.keyboard.type('LAB70AA501'); page.wait_for_selector('#results [role=option]'); page.keyboard.press('Enter')
+    box = page.locator('#q'); box.focus(); page.keyboard.type('LAB70AA500'); page.wait_for_selector('#results [role=option]'); page.keyboard.press('Enter')
     page.wait_for_selector('#panel.open'); page.wait_for_timeout(300)
     R['panel_focus'] = page.evaluate("document.activeElement && document.activeElement.textContent.slice(0,40)")
     if eng == 'chromium':
@@ -97,7 +97,7 @@ def probes(browser, eng):
         except Exception as e: R['copied'] = 'ERR ' + str(e)
         R['copy_toast'] = page.evaluate("getComputedStyle(document.getElementById('toast')).display + ' ' + document.getElementById('toast').textContent")
     # the search's handling of case and spaces (G1)
-    for q in ('11lab70aa501', '11 LAB70 AA501', '11 lab70 aa501'):
+    for q in ('11lab70aa500', '11 LAB70 AA500', '11 lab70 aa500'):
         box.fill(''); box.fill(q); page.wait_for_timeout(400)
         R['search ' + q] = page.evaluate("[...document.querySelectorAll('#results [role=option]')].map(e => e.textContent.slice(0, 30)).slice(0, 3)")
     page.keyboard.press('Escape')

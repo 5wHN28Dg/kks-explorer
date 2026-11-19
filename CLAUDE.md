@@ -1,6 +1,6 @@
 # Walkdown (formerly KKS Explorer): project context for Claude Code
 
-Built by an I&C maintenance engineer at a combined-cycle power plant. Goal: given only a KKS code (e.g. `11LAB70AA501`),
+Built by an I&C maintenance engineer at a combined-cycle power plant. Goal: given only a KKS code (e.g. `11LAB70AA500`),
 find the equipment on the P&IDs and see everything known about it: decoded meaning, location, photos, notes, and the
 operation-manual procedures that use it. Also: pick a procedure and see its steps with the equipment highlighted.
 

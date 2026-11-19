@@ -107,7 +107,7 @@ them)*. Times are an expert's, on the Note 9 unless said.
 
 | # | Task (users' words) | Who | How often | Done means | Targets |
 |---|---|---|---|---|---|
-| 1 | "Find 11LAB70AA501" | engineer | many times a day | the tag is shown on its sheet and its panel is open | ≤ 3 actions plus the typed code; ≤ 10 s from the app's open screen |
+| 1 | "Find 11LAB70AA500" | engineer | many times a day | the tag is shown on its sheet and its panel is open | ≤ 3 actions plus the typed code; ≤ 10 s from the app's open screen |
 | 2 | "What is this on the drawing?" (open a sheet, find a tag by looking, open it) | engineer | daily | the panel of the tapped tag is open | ≤ 4 actions from the open screen |
 | 3 | "Add a photo or a note to this tag" | engineer | daily | it is sent, or waiting to send with the count shown | ≤ 4 actions after the panel is open, offline too |
 | 4 | "Show me the procedure's steps and the equipment" | engineer | weekly | the steps are listed and their equipment highlighted on the drawing | ≤ 3 actions to the first step |
@@ -205,7 +205,7 @@ notifications), and the kinds above.
   notice instead of a foreground service.
 - **Voice:** plain, short, calm; no exclamation marks; say what happened and what to do; never blame.
 - **Glossary (first version):**
-  - **KKS code:** the plant's identification code of a piece of equipment or a measurement (e.g. 11LAB70AA501).
+  - **KKS code:** the plant's identification code of a piece of equipment or a measurement (e.g. 11LAB70AA500).
   - **P&ID, drawing, sheet:** "sheet" in the UI; a piping and instrumentation diagram.
   - **Tag:** a KKS code drawn on a sheet. **Reading:** what the importer read off the drawing; "to review" when it
     wasn't sure.
@@ -224,8 +224,8 @@ notifications), and the kinds above.
   VMs, one at a time under `vm.lock`, and the owner's Windows 10 laptop when `~/kks-work/bin/laptop-free` allows); the
   servers come from `tests/e2e_server.py`. The memory and lock rules in CLAUDE.md and `~/kks-work/build/agent-rules.md` apply to every run: one emulator or VM at a time under `vm.lock`; GNOME runs only under `headless.sh` and one at a time under `flock ~/kks-work/build/gnome-e2e.lock`.
 - **Test data:** the sample sheet `importer/tests/vectors/kkp-sample.pdf`; Walkdown Plant's generated P&IDs of an
-  invented plant (the README's screenshots); the tag 11LAB70AA501 with long text; the Arabic fixture
-  `مضخة التغذية 11LAB70AA501 تعمل` and the mixed line of L2; made-up people ("The Manager", "Tom Tester",
+  invented plant (the README's screenshots); the tag 11LAB70AA500 with long text; the Arabic fixture
+  `مضخة التغذية 11LAB70AA500 تعمل` and the mixed line of L2; made-up people ("The Manager", "Tom Tester",
   "تالا Member"); the hostile-content fixture (T7) *(phase 2)*. Generated from recorded statistics of the real data
   (kept privately) and re-measured at each full audit *(phase 2)*.
 - **Evidence store:** each PR's comments (the results tables); full audits in `docs/ui-audit/YYYY-MM.md` with their

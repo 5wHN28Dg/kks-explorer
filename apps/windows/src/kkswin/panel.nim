@@ -61,7 +61,7 @@ proc reviewSection(w: Win, p: Page, t: Tag) =
   p.buttons(("Confirm", proc () =
     let code = normKks(k.text)
     if not validKks(code):
-      w.toast("That is not a valid KKS (e.g. 11LAB70AA501)")
+      w.toast("That is not a valid KKS (e.g. 11LAB70AA500)")
       return
     let isaV = isa.text.strip.toUpperAscii
     let data = newObj(@[("status", newStr("confirmed")), ("kks", newStr(code[0 ..< 12])), ("suffix", newStr(code[12 .. ^1])),

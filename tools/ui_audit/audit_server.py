@@ -1,4 +1,4 @@
-"""A test server for the UI audit (synthetic data only): the manager, the sample sheet, a marked tag 11LAB70AA501 with
+"""A test server for the UI audit (synthetic data only): the manager, the sample sheet, a marked tag 11LAB70AA500 with
 long and Arabic notes, a member with 20 open proposals (B1), a pending join-less user. Runs until killed; writes
 the ports to OUT/server.json. Usage: python3 audit_server.py SERVER IMPORTER DIR [address]"""
 import json, os, sys, time
@@ -42,15 +42,15 @@ try:
 except BaseException:
     proc.terminate()   # never leave the test server running after a failed setup
     raise
-codes = ['11LAB70AA501'] + [f'11LAB70AA5{i:02d}' for i in range(2, 22)]
+codes = ['11LAB70AA500'] + [f'11LAB70AA5{i:02d}' for i in range(2, 22)]
 for i, c in enumerate(codes):
     x, y = 100 + (i % 7) * 140, 300 + (i // 7) * 90
     r = boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [x, y, x + 120, y + 60], 'kks': c, 'isa': '', 'note': ''}})
     assert r.get('status') == 'approved', r
 long = ' '.join(['The valve sits behind the second pump skid, reached from the north stair; check the gland for leaks.'] * 6)
-r = boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {
-    'area': 'Feedwater pump house', 'floor': '2', 'elev': '+6.5 m', 'near': 'مضخة التغذية 11LAB70AA501 تعمل',
-    'loc': long, 'notes': 'مضخة التغذية 11LAB70AA501 تعمل'}}})
+r = boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {
+    'area': 'Feedwater pump house', 'floor': '2', 'elev': '+6.5 m', 'near': 'مضخة التغذية 11LAB70AA500 تعمل',
+    'loc': long, 'notes': 'مضخة التغذية 11LAB70AA500 تعمل'}}})
 print('equipment', r, flush=True)
 mem = t.Client(base)
 r = boss.req('POST', '/api/users', {'username': 'tala', 'full_name': 'تالا Member', 'position': 'Technician', 'role': 'user'})

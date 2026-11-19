@@ -80,7 +80,7 @@ shrink; hide the labels of items that aren't selected, or allow two lines). Size
 let them wrap (the app bar can drop to titleSmall, or use a larger top app bar).
 
 **AND2-10** A2 (Block). Photos are named "Open photo[: caption]" instead of by tag and date, and every photo's Delete
-has the same name (Photos.kt:77, 92, 162). Size SMALL: "Photo of 11LAB70AA501, 2026-11-15" and "Delete photo of …,
+has the same name (Photos.kt:77, 92, 162). Size SMALL: "Photo of 11LAB70AA500, 2026-11-15" and "Delete photo of …,
 2026-11-15".
 
 **AND2-11** G3 (Block). After a rotation the sheet isn't fitted to the new size, and in landscape the drawing gets

@@ -272,7 +272,7 @@ class SheetView(ctx: Context) : View(ctx) {
     // ---------------------------------------------------------------- accessibility
 
     /** The tags inside the view, each a virtual view, through the platform's AccessibilityNodeProvider (no library):
-     *  TalkBack reads "11LAB70AA501, verified"; double tap selects. Ids are indices into `tags`; the connectors follow
+     *  TalkBack reads "11LAB70AA500, verified"; double tap selects. Ids are indices into `tags`; the connectors follow
      *  as LINK0 + their index in `links` ("Connector C16, continues on Sheet B"; double tap follows it). */
     private val a11y = Tags()
 

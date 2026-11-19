@@ -21,7 +21,7 @@ NAME = '"><img src=x onerror=pwned=1><b id=injected>N</b>\''
 # for longer fields: the same, plus a <script>
 EVIL = '<img src=x onerror="window.pwned=1"><b id=injected>x</b>"><script>window.pwned=2</script>\'"'
 PW = 'a long password'
-KKS = '11LAB70AA501'   # the tag marked on the sample sheet below
+KKS = '11LAB70AA500'   # the tag marked on the sample sheet below
 ENGINES = ('chromium', 'firefox', 'webkit')
 
 

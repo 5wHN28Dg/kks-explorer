@@ -6,7 +6,7 @@
   uiadrive.exe. Server and importer from the same commit.
 - VM: kks-win11 only (Windows 11 26H2, 1280 × 800 screen, 96 dpi), under `vm.lock`, shut down afterwards. kks-win10 not
   run (time). Notifications off during the run (test_windows.toasts_off/back).
-- Data (synthetic only): the same server as Android (sample sheet, 21 marked tags, 11LAB70AA501 with the Arabic fixture
+- Data (synthetic only): the same server as Android (sample sheet, 21 marked tags, 11LAB70AA500 with the Arabic fixture
   note and long text, 20 open proposals by a member), joined as the manager.
 - Driven with `apps/windows/e2e/run.ps1`/`runapp.ps1` and the UIA driver. For rectangles, a scratch copy of uiadrive
   (`uiadrive-rects.cpp`: its `dump` also prints BoundingRectangle, IsKeyboardFocusable, IsOffscreen and AccessKey),
@@ -28,7 +28,7 @@
 | T3 | Pass [a] |
 | T4 | Not checked |
 | T5 | Not checked (mark a missing tag and photo mark-up not driven; arrow keys pan and +/− zoom the drawing, viewer.nim:646-652) |
-| R1 | Fail: in progress, branch tag-copy-sticky-batch (panel's Close at y = -393 after tabbing to the end of 11LAB70AA501's panel) |
+| R1 | Fail: in progress, branch tag-copy-sticky-batch (panel's Close at y = -393 after tabbing to the end of 11LAB70AA500's panel) |
 | R2 | Fail (WIN-7) |
 | R3 | Fail (WIN-8) |
 | R4 | Not checked |
@@ -63,7 +63,7 @@
 | X3 | Fail (WIN-14) |
 | A1 | Pass, partly checked [b] |
 | A2 | Fail (WIN-15) |
-| A3 | Pass (tags are UIA buttons "11LAB70AA501, verified" on the drawing pane; search list) |
+| A3 | Pass (tags are UIA buttons "11LAB70AA500, verified" on the drawing pane; search list) |
 | A4 | Not checked |
 | A5 | N/A (Plant) |
 | L1 | Fail (WIN-1) |
@@ -90,7 +90,7 @@ Notes:
 ## 3. Findings
 
 **WIN-1** L1 (Block). Tag panel, Near / landmark and Notes (read-only edits): the fixture note shows as
-`11 مضخة التغذيةLAB70AA501 تعمل`, left-to-right, with `11` split from `LAB70AA501`. No WS_EX_RTLREADING anywhere in the
+`11 مضخة التغذيةLAB70AA500 تعمل`, left-to-right, with `11` split from `LAB70AA500`. No WS_EX_RTLREADING anywhere in the
 app (grep). Evidence: shots/windows-WIN-1-arabic-note-splits-code.png. Size SMALL: set the reading direction from the
 first strong character and isolate KKS runs (as the policy says), shared with AND-1's helper.
 
@@ -124,7 +124,7 @@ handling for the panel (grep: only photos.nim:115 and the viewer). Size SMALL.
 line) are under the taskbar (WIN-4). Size SMALL.
 
 **WIN-9** C1/S3 (Block). Device IDs in Manage → Devices are cut to 16 characters with "…" in a static text
-(manage.nim:442): not copyable, not complete. The panel's code heading `11LAB70AA501` is a static Text (its parts are in
+(manage.nim:442): not copyable, not complete. The panel's code heading `11LAB70AA500` is a static Text (its parts are in
 read-only edits, which can be copied; in progress, branch tag-copy-sticky-batch). Account's "This device" is a read-only
 edit (pass). Size SMALL.
 

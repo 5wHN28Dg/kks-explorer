@@ -338,7 +338,7 @@ suite "what was typed into a page":
   # #168: a page made again by one of its own buttons (the tag panel's Edit, Confirm valve type …) kept nothing typed
   proc form(notes = "", custom = "x"): seq[HWND] =
     page.clear()
-    result.add page.field("KKS (with suffix)", "11LAB70AA501")
+    result.add page.field("KKS (with suffix)", "11LAB70AA500")
     result.add page.field("Custom field value", custom)
     result.add page.field("Custom field value", custom)
     result.add page.multiField("Notes", notes)
@@ -372,7 +372,7 @@ suite "what was typed into a page":
     let lost = page.restoreText(kept)
     check lost.len == 1 and lost[0].text == "my notes"    # not put over the new value: Save would send it as a change of it
     check f[3].text == "changed underneath"
-    check f[0].text == "11LAB70AA501"
+    check f[0].text == "11LAB70AA500"
     check not page.edited
     page.clear()
 

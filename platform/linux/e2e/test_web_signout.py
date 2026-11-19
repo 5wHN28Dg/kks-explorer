@@ -28,7 +28,7 @@ from test_web_v2 import start_server, Client, CSP_WATCH, PageErrors, answer_conf
 from app_person import crypto2, proto2      # (the Python reference, ref/)
 
 PW = 'a long password'
-KKS = '11LAB70AA501'
+KKS = '11LAB70AA500'
 # a full name that is markup: the confirmation and the page show it as text
 NAME = 'Ali <b id=injected>H</b><img src=x onerror=pwned=1>'
 SIGNED_IN = "() => typeof K !== 'undefined' && K.me && K.me.user.username === '%s'"

@@ -55,7 +55,7 @@ class Plant(unittest.TestCase):
         assert cls.boss.req('POST', '/api/setup', {'token': setup, 'username': 'boss', 'password': 'a long password',
                                                    'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         # a floor set on the server: the apps show who set it
-        assert cls.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '2'},
+        assert cls.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'floor': '2'},
                              'base': {}}}).get('status') == 'approved'
         # a drafted description (descriptions.json, published with the sheet below)
         os.makedirs(cfg['plant_dir'], exist_ok=True)
@@ -84,7 +84,7 @@ class Plant(unittest.TestCase):
         assert job['state'] == 'done', job['log']
         # a tag on the sheet (as if someone had marked it), approved directly by the manager
         r = cls.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [400, 300, 520, 360],
-                                                 'kks': '11LAB70AA501', 'isa': '', 'note': ''}})
+                                                 'kks': '11LAB70AA500', 'isa': '', 'note': ''}})
         assert r.get('status') == 'approved', r
         cls.apps = []
 
@@ -325,25 +325,25 @@ class Gnome(Plant):
         """walkdown:// links from other apps (decision 0058), as the .desktop file's `%u` hands them over: a code opens
         its tag on its drawing with the panel, a course link that course at that page; a link of any other kind or
         form, or on a device that hasn't joined, opens nothing"""
-        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA501', 'walkdown://kks/../../etc', 'walkdown://join/x'])
+        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA500', 'walkdown://kks/../../etc', 'walkdown://join/x'])
         atspi.find(a, 'button', name='Join through a server', timeout=15)      # not joined: the setup screen, nothing else
         self.join(a)
         time.sleep(3)
-        self.assertEqual(atspi.find_all(a, 'label', name='11LAB70AA501'), [], 'a link from before joining opened its tag')
+        self.assertEqual(atspi.find_all(a, 'label', name='11LAB70AA500'), [], 'a link from before joining opened its tag')
         self.apps[-1].terminate()
         self.apps[-1].wait(10)
         # hostile and malformed links: the app starts as it always does, and nothing is selected
-        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA501?x=1', 'walkdown://delete/11LAB70AA501',
-                                           'walkdown://kks/11lab70aa501', 'walkdown://course/../../etc'])
+        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA500?x=1', 'walkdown://delete/11LAB70AA500',
+                                           'walkdown://kks/11lab70aa500', 'walkdown://course/../../etc'])
         atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
         time.sleep(2)
-        self.assertEqual(atspi.find_all(a, 'label', name='11LAB70AA501'), [], 'a malformed link opened a tag')
+        self.assertEqual(atspi.find_all(a, 'label', name='11LAB70AA500'), [], 'a malformed link opened a tag')
         self.assertEqual(atspi.find_all(a, 'label', contains='is not on any sheet'), [])
         self.apps[-1].terminate()
         self.apps[-1].wait(10)
         # a code: its tag, on its drawing, with the panel
-        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA501'])
-        atspi.find(a, 'label', name='11LAB70AA501', timeout=20)
+        a = self.start_app('linked', args=['walkdown://kks/11LAB70AA500'])
+        atspi.find(a, 'label', name='11LAB70AA500', timeout=20)
         atspi.find(a, 'image', name='Drawing Sample sheet', timeout=10)
         self.apps[-1].terminate()
         self.apps[-1].wait(10)
@@ -358,13 +358,13 @@ class Gnome(Plant):
         # GApplication (D-Bus) and ends; the running window opens the tag
         a = self.start_app('linked', KKS_TEST_UNIQUE='1')
         atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
-        self.assertEqual(atspi.find_all(a, 'label', name='11LAB70AA501'), [])
+        self.assertEqual(atspi.find_all(a, 'label', name='11LAB70AA500'), [])
         d = os.path.join(self.dir, 'linked')
-        second = subprocess.run([APP, 'walkdown://kks/11LAB70AA501'], timeout=30, capture_output=True,
+        second = subprocess.run([APP, 'walkdown://kks/11LAB70AA500'], timeout=30, capture_output=True,
                                 env=dict(os.environ, KKS_DATA_DIR=d, KKS_STORAGE_KEY_FILE=os.path.join(d, 'key'),
                                          KKS_NO_MDNS='1', KKS_SYNC_PORT=str(free_port()), KKS_TEST_UNIQUE='1'))
         self.assertEqual(second.returncode, 0, second.stderr)
-        atspi.find(a, 'label', name='11LAB70AA501', timeout=20)
+        atspi.find(a, 'label', name='11LAB70AA500', timeout=20)
         self.apps[-1].terminate()
         self.apps[-1].wait(10)
 
@@ -384,17 +384,17 @@ class Gnome(Plant):
         atspi.set_text(atspi.find(a, 'password text', name='Password'), 'a long password')
         atspi.click(atspi.find(a, 'button', name='Join'))
         atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
-        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA501')
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA500')
         time.sleep(1)
         # the search result's photo mark, named by what the code has; under the results, what the marks mean
         words = ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos')
         def mark():
-            row = atspi.find(a, 'list item', name='11LAB70AA501', timeout=10)
+            row = atspi.find(a, 'list item', name='11LAB70AA500', timeout=10)
             return [n.get_name() for n in atspi.walk(row) if n.get_role_name() == 'image' and n.get_name() in words]
         self.assertEqual(len(mark()), 1)
         legend = atspi.find(a, 'list item', contains='Photos: ring no photos', timeout=10)
         self.assertEqual([n.get_name() for n in atspi.walk(legend) if n.get_role_name() == 'label'], ['Photos:'] + list(words))
-        atspi.click(atspi.find(a, 'button', name='11LAB70AA501'))
+        atspi.click(atspi.find(a, 'button', name='11LAB70AA500'))
         atspi.click(atspi.find(a, 'button', name='Equipment: from a file…', timeout=10))
         for b in ('Thick', 'Zoom in', 'Zoom out', 'Fit the photo'):
             atspi.click(atspi.find(a, None, name=b, timeout=10))
@@ -403,15 +403,15 @@ class Gnome(Plant):
         ask = atspi.find(a, 'alert', name='And its tag plate?', timeout=10)
         atspi.click(atspi.find(ask, 'button', name='Not now'))
         for _ in range(60):
-            if any(p['kks'] == '11LAB70AA501' for p in self.boss.req('GET', '/api/state')['photos']):
+            if any(p['kks'] == '11LAB70AA500' for p in self.boss.req('GET', '/api/state')['photos']):
                 break
             time.sleep(0.5)
-        self.assertTrue(any(p['kks'] == '11LAB70AA501' for p in self.boss.req('GET', '/api/state')['photos']))
-        ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501'][0]
+        self.assertTrue(any(p['kks'] == '11LAB70AA500' for p in self.boss.req('GET', '/api/state')['photos']))
+        ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA500'][0]
         for _ in range(60):   # the entry can arrive before its file
             if ph.get('file'): break
             time.sleep(0.5)
-            ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501'][0]
+            ph = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA500'][0]
         from jxl_header import jxl_size
         blob = self.boss.op.open(self.boss.base + '/photos/' + ph['file']).read()
         self.assertEqual(jxl_size(blob), (2560, 1920), 'the stored photo of a 3200 × 2400 picture')
@@ -435,13 +435,13 @@ class Gnome(Plant):
             self.fail(f'the focus did not move to the {what}: {open(focus).read() if os.path.exists(focus) else None!r}')
         focus_on('result', lambda f: 'Row' in f)
         data = open(os.path.join(REPO, 'data', 'courses', 'ppt-02.jxl'), 'rb').read()
-        r = self.boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'Tag plate',
+        r = self.boss.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA500', 'caption': 'Tag plate',
                           'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(data).decode()}})
         self.assertEqual(r.get('status'), 'approved', r)
         # (the server is shared: later tests expect this code without a tag plate photo, and are asked for one)
         def unplate():
             for p in self.boss.req('GET', '/api/state')['photos']:
-                if p['kks'] == '11LAB70AA501' and p.get('caption') == 'Tag plate':
+                if p['kks'] == '11LAB70AA500' and p.get('caption') == 'Tag plate':
                     self.boss.req('POST', '/api/submit', {'kind': 'photo_delete', 'payload': {'photo_id': p['id']}})
         self.addCleanup(unplate)
         time.sleep(8)        # rounds every 2 s
@@ -472,9 +472,9 @@ class Gnome(Plant):
         Image.new('RGB', (320, 240), (90, 140, 200)).save(pic)
         a = self.start_app('crasher', KKS_PHOTO_FILE=pic, KKS_TEST_PHOTO_HOLD='1')
         self.join(a)
-        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA501')
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA500')
         time.sleep(1)
-        atspi.click(atspi.find(a, 'button', name='11LAB70AA501'))
+        atspi.click(atspi.find(a, 'button', name='11LAB70AA500'))
         time.sleep(2)            # the panel is built for this code
         for cap in ('queued one', 'queued two'):
             for _ in range(5):   # the panel rebuilds after a sync and when a photo is queued: a lost click is retried
@@ -528,9 +528,9 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name='Join'))
         atspi.find(a, 'list item', contains='Sample sheet', timeout=30)
         # search finds the tag; its panel decodes it
-        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA501')
+        atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), 'LAB70AA500')
         time.sleep(1)
-        atspi.click(atspi.find(a, 'button', name='11LAB70AA501'))
+        atspi.click(atspi.find(a, 'button', name='11LAB70AA500'))
         atspi.find(a, 'label', contains='Feed water piping system', timeout=10)
         # edit a field; the change reaches the server by the automatic sync
         atspi.click(atspi.find(a, 'button', name='Edit'))
@@ -538,7 +538,7 @@ class Gnome(Plant):
         atspi.set_text(atspi.find(a, 'text', name='Notes'), 'Gland repacked; ملاحظة')
         atspi.click(atspi.find(a, 'button', name='Save'))
         for _ in range(40):
-            eq = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {})
+            eq = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {})
             if eq.get('notes'):
                 break
             time.sleep(0.5)
@@ -548,7 +548,7 @@ class Gnome(Plant):
         ali = Client(self.base)
         ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})
         ali.req('POST', '/api/login', {'username': 'ali', 'password': 'ali password 1'})
-        self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+        self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500',
                          'changes': {'floor': '2'}}})['status'], 'pending')
         atspi.click(atspi.find(a, 'button', name='Sync now'))
         time.sleep(3)
@@ -573,7 +573,7 @@ class Gnome(Plant):
         # sent and showed "#" alone)
         atspi.click(atspi.find(a, 'button', name='Back'))
         atspi.click(atspi.find(a, 'button', name='History'))
-        line = atspi.find(a, 'label', contains='11LAB70AA501: floor ', timeout=15)
+        line = atspi.find(a, 'label', contains='11LAB70AA500: floor ', timeout=15)
         self.assertTrue(line.get_state_set().contains(atspi.Atspi.StateType.FOCUSABLE),
                         "History's line (it holds the code) can be selected and copied (a selectable label is focusable)")
         width = line.get_component_iface().get_extents(atspi.Atspi.CoordType.WINDOW).width
@@ -819,14 +819,14 @@ class Gnome(Plant):
         self.join(a)
         atspi.click(atspi.find(a, 'button', name='Equipment by system'))
         # the sample sheet's one code, plus the tags other tests on this server marked by hand (test_multi)
-        n = len({'11LAB70AA501'} | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
+        n = len({'11LAB70AA500'} | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
                                     if t.get('kks')})
         on = lambda k: f'{k} code{"" if k == 1 else "s"} on the drawings'
         atspi.find(a, 'label', name=on(n), timeout=10)
         atspi.find(a, 'list item', name='LAB · Feed water piping system', timeout=10)
         # collapsed at the system level: the code's row is not there yet. (Opening a row by hand is Enter/Space or a
         # click; its header row has no AT-SPI action, and keys can't be typed into the headless session.)
-        self.assertFalse(atspi.find_all(a, contains='11LAB70AA501'))
+        self.assertFalse(atspi.find_all(a, contains='11LAB70AA500'))
         # the open page follows a sync without a search: a code added on the server shows up
         def add(code, bb):
             r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb,
@@ -858,7 +858,7 @@ class Gnome(Plant):
         for level in ('LAB · Feed water piping system', 'LAB70'):
             atspi.find(a, 'list item', name=level, timeout=10)
         atspi.find(a, 'list item', contains='AA · ', timeout=10)
-        item = atspi.find(a, 'list item', name='11LAB70AA501', timeout=10)
+        item = atspi.find(a, 'list item', name='11LAB70AA500', timeout=10)
         # what Orca reads: the code (labelled by) and its description · sheet (described by)
         described = [r.get_target(i).get_name() for r in item.get_relation_set()
                      if r.get_relation_type() == Atspi.RelationType.DESCRIBED_BY for i in range(r.get_n_targets())]
@@ -867,11 +867,11 @@ class Gnome(Plant):
         dots = [n.get_name() for n in atspi.walk(item) if n.get_role_name() == 'image']
         self.assertEqual(len(dots), 1)
         self.assertIn(dots[0], ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos'))
-        before = len(atspi.find_all(a, 'label', name='11LAB70AA501'))
-        atspi.click(atspi.find(a, 'button', name='11LAB70AA501', timeout=10))
+        before = len(atspi.find_all(a, 'label', name='11LAB70AA500'))
+        atspi.click(atspi.find(a, 'button', name='11LAB70AA500', timeout=10))
         atspi.find(a, 'button', name='Close the panel', timeout=10)
         for _ in range(20):
-            after = len(atspi.find_all(a, 'label', name='11LAB70AA501'))
+            after = len(atspi.find_all(a, 'label', name='11LAB70AA500'))
             if after > before:
                 break
             time.sleep(0.5)
@@ -1423,7 +1423,7 @@ class Gnome(Plant):
         omar.req('POST', '/api/login', {'username': 'omar', 'password': 'omar password 1'})
         for f, cap in (('fnd-05.jxl', 'pump side'), ('ppt-01.jxl', 'pump front'), ('ppt-02.jxl', 'Tag plate of the pump')):
             data = open(os.path.join(REPO, 'data', 'courses', f), 'rb').read()
-            r = omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': cap,
+            r = omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA500', 'caption': cap,
                          'dataUrl': 'data:image/jxl;base64,' + base64.b64encode(data).decode()}})
             self.assertEqual(r.get('status'), 'pending', r)
         pic = os.path.join(self.dir, 'noisy.png')
@@ -1436,9 +1436,9 @@ class Gnome(Plant):
         self.join(a)
         q = atspi.find(a, 'entry', contains='Search equipment')
         # who set a field: the floor the manager set on the server
-        atspi.set_text(q, 'LAB70AA501')
+        atspi.set_text(q, 'LAB70AA500')
         time.sleep(1)
-        atspi.click(atspi.find(a, 'button', name='11LAB70AA501'))
+        atspi.click(atspi.find(a, 'button', name='11LAB70AA500'))
         atspi.find(a, None, contains='\nby The Manager, ', timeout=10)
         # a drafted description: shown unchecked, confirmed in one click, then who confirmed it
         atspi.set_text(q, 'LCB20AA101')
@@ -1559,7 +1559,7 @@ class Gnome(Plant):
         self.assertEqual(sorted(x[1] for x in got), ['approved', 'pending', 'rejected'])
         self.assertEqual([x for x in got if x[1] == 'pending'][0][0], 'Tag plate of the pump', 'the plate photo must stay')
         # the code opens on the drawing
-        atspi.click(atspi.find(a, 'button', name='Open 11LAB70AA501 on the drawing', timeout=10))
+        atspi.click(atspi.find(a, 'button', name='Open 11LAB70AA500 on the drawing', timeout=10))
         atspi.find(a, 'button', name='Close the panel', timeout=10)
         # my proposals: filtered by kind and status, grouped by code
         atspi.click(atspi.find(a, 'button', name='Back'))
@@ -1854,7 +1854,7 @@ class Gnome(Plant):
         a = self.start_app('stale', KKS_TEST_STALE_CLICK=flag, KKS_SYNC_EVERY='2000')
         app = self.apps[-1]
         self.join(a)
-        code = '11LAB70AA501'
+        code = '11LAB70AA500'
         atspi.set_text(atspi.find(a, 'entry', contains='Search equipment'), code)
         time.sleep(1)
         atspi.click(atspi.find(a, 'button', name=code))
@@ -1974,7 +1974,7 @@ class Gnome(Plant):
                 time.sleep(0.2)
             self.fail(what)
 
-        code = '11LAB70AA501'
+        code = '11LAB70AA500'
         banner = 'Drag a box around the tag the app missed'
         escape = 'key 0xff1b'
         settles('the drawing is not up', marking='0', cursor='grab')
@@ -2099,7 +2099,7 @@ class Gnome(Plant):
             press('P-1  Start the test pump', ('label', 'Open the suction valve'))
         # #163: link mode ends with its banner, whoever takes the banner. The panel's "Link … to step" button is link
         # mode as the keyboard sees it (the headless session has no pointer to click a tag with).
-        code = '11LAB70AA501'
+        code = '11LAB70AA500'
         link = f'Link {code} to step 1 of P-1'
 
         def select_tag():            # from the sidebar's first page (the search is there)
@@ -2757,9 +2757,9 @@ class Coverage(Plant):
         pid = self.apps[-1].pid
         self.join(a)
         st = self.boss.req('GET', '/api/state')
-        eq = st['equipment'].get('11LAB70AA501', {})
+        eq = st['equipment'].get('11LAB70AA500', {})
         placed = 1 if any(str(eq.get(f, '')).strip() for f in ('area', 'floor', 'elev', 'near', 'loc')) else 0
-        caps = [p.get('caption') or '' for p in st['photos'] if p['kks'] == '11LAB70AA501']
+        caps = [p.get('caption') or '' for p in st['photos'] if p['kks'] == '11LAB70AA500']
         plate, equip = any(c.startswith('Tag plate') for c in caps), any(not c.startswith('Tag plate') for c in caps)
         ph = {'both': int(plate and equip), 'equipment': int(equip and not plate), 'plate': int(plate and not equip)}
         ph['none'] = 1 - sum(ph.values())
@@ -2783,7 +2783,7 @@ class Coverage(Plant):
         atspi.find(a, 'label', name='0 codes · – of tags checked · – placed')               # the second sheet has no tags
         # the open page follows a sync: a place given on the server is counted without reopening it
         if not placed:
-            r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+            r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500',
                                                       'changes': {'area': 'Test hall'}}})
             self.assertEqual(r.get('status'), 'approved', r)
             atspi.find(a, 'label', name='1 of 1 code (100 %)', timeout=20)
@@ -2803,7 +2803,7 @@ class Coverage(Plant):
         # a system row opens Equipment by system with that system only, opened down to the code
         atspi.click(atspi.find(a, 'button', name='LAB · Feed water piping system'))
         atspi.find(a, 'label', name='1 code in system LAB', timeout=10)
-        atspi.find(a, 'list item', name='11LAB70AA501', timeout=10)
+        atspi.find(a, 'list item', name='11LAB70AA500', timeout=10)
         atspi.click(atspi.find(a, 'button', name='Show all systems'))
         atspi.find(a, 'label', name='1 code on the drawings', timeout=10)
 

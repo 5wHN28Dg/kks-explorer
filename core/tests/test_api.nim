@@ -55,46 +55,46 @@ suite "plant API":
 
   test "a user's proposal waits; the admin approves; the state shows it":
     let (_, ali) = userApi.owner
-    let r = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"notes":"leaks"}},"client_id":"abcdefgh1","note":"seen today"}"""))
+    let r = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA500","changes":{"notes":"leaks"}},"client_id":"abcdefgh1","note":"seen today"}"""))
     check r.status == 200 and r.json["status"].s == "pending"
-    let again = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"notes":"leaks"}},"client_id":"abcdefgh1"}"""))
+    let again = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA500","changes":{"notes":"leaks"}},"client_id":"abcdefgh1"}"""))
     check again.json["duplicate"].b
     sync(userNode, mgrNode)
     let subs = mgrApi.call(mgr, "GET", "/api/submissions").json["submissions"]
     check subs.len == 1 and subs[0]["request_note"].s == "seen today" and subs[0]["by_name"].s == "Ali User"
     let a = mgrApi.call(mgr, "POST", "/api/submissions/" & $subs[0]["id"].i & "/approve")
     check a.status == 200
-    check mgrApi.call(mgr, "GET", "/api/state").json["equipment"]["11LAB70AA501"]["notes"].s == "leaks"
+    check mgrApi.call(mgr, "GET", "/api/state").json["equipment"]["11LAB70AA500"]["notes"].s == "leaks"
 
   test "conflict: a stale base needs force; a manager value stops an admin":
-    let r = mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"notes":"fixed"},"base":{"notes":"old"}}}"""))
+    let r = mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA500","changes":{"notes":"fixed"},"base":{"notes":"old"}}}"""))
     check r.json["status"].s == "conflict"
     let sid = r.json["id"].i
     let x = mgrApi.call(mgr, "POST", "/api/submissions/" & $sid & "/approve")
     check x.status == 409 and x.json["error"].s == "conflict" and x.json["code"].s == "conflict"   # (#371: its kind)
     let y = mgrApi.call(mgr, "POST", "/api/submissions/" & $sid & "/approve", j("""{"force":true}"""))
     check y.status == 200
-    check mgrApi.call(mgr, "GET", "/api/state").json["equipment"]["11LAB70AA501"]["notes"].s == "fixed"
+    check mgrApi.call(mgr, "GET", "/api/state").json["equipment"]["11LAB70AA500"]["notes"].s == "fixed"
 
   test "photos: the image is kept as a blob, votes, pick":
     let (_, ali) = userApi.owner
     let url = "data:image/jxl;base64," & encode("\xff\x0afake jxl codestream")
     let r1 = userApi.call(ali, "POST", "/api/submit", newObj(@[("kind", newStr("photo")),
-               ("payload", newObj(@[("kks", newStr("11LAB70AA501")), ("dataUrl", newStr(url)), ("caption", newStr("one")),
+               ("payload", newObj(@[("kks", newStr("11LAB70AA500")), ("dataUrl", newStr(url)), ("caption", newStr("one")),
                                     ("floor", newStr("3"))]))]))
     # the floor came with the first photo as its own proposal; the second photo counts on that open proposal
     check r1.json["floor"]["status"].s == "pending"
     let r2 = userApi.call(ali, "POST", "/api/submit", newObj(@[("kind", newStr("photo")),
-               ("payload", newObj(@[("kks", newStr("11LAB70AA501")), ("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0aother jxl"))), ("caption", newStr("two"))]))]))
+               ("payload", newObj(@[("kks", newStr("11LAB70AA500")), ("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0aother jxl"))), ("caption", newStr("two"))]))]))
     # without an encoder this device takes JPEG XL only (decision 0018)
     let png = userApi.call(ali, "POST", "/api/submit", newObj(@[("kind", newStr("photo")),
-               ("payload", newObj(@[("kks", newStr("11LAB70AA501")), ("dataUrl", newStr("data:image/png;base64," & encode("\x89PNG\r\n\x1a\nx")))]))]))
+               ("payload", newObj(@[("kks", newStr("11LAB70AA500")), ("dataUrl", newStr("data:image/png;base64," & encode("\x89PNG\r\n\x1a\nx")))]))]))
     check png.status == 400
     if r1.status != 200: echo "  ", r1.json
     check r1.json["status"].s == "pending" and r2.json["status"].s == "pending"
     # a tag plate photo is not a competing choice for an equipment photo
     let r3 = userApi.call(ali, "POST", "/api/submit", newObj(@[("kind", newStr("photo")),
-               ("payload", newObj(@[("kks", newStr("11LAB70AA501")), ("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0aplate jxl"))), ("caption", newStr("Tag plate · north"))]))]))
+               ("payload", newObj(@[("kks", newStr("11LAB70AA500")), ("dataUrl", newStr("data:image/jxl;base64," & encode("\xff\x0aplate jxl"))), ("caption", newStr("Tag plate · north"))]))]))
     check r3.json["status"].s == "pending"
     check userApi.call(ali, "POST", "/api/submissions/" & $r1.json["id"].i & "/vote").status == 200
     sync(userNode, mgrNode)
@@ -116,7 +116,7 @@ suite "plant API":
     let (_, ali) = userApi.owner
     let url = "data:image/jxl;base64," & encode("\xff\x0ashared jxl")
     let body = newObj(@[("kind", newStr("photo")), ("client_id", newStr("multi-photo-1")),
-                        ("kks", newArr(@[newStr("11LAB70AA501"), newStr("11LAB70AA502"), newStr("11LAB70AA503"), newStr("11LAB70AA501")])),
+                        ("kks", newArr(@[newStr("11LAB70AA500"), newStr("11LAB70AA502"), newStr("11LAB70AA503"), newStr("11LAB70AA500")])),
                         ("payload", newObj(@[("dataUrl", newStr(url)), ("caption", newStr("the three drains"))]))])
     let r = userApi.call(ali, "POST", "/api/submit-many", body)
     if r.status != 200: echo "  ", r.json
@@ -136,10 +136,10 @@ suite "plant API":
         photoIds.add s["payload"]["photo_id"].s
         blobs.add s["payload"]["file"].s
     codes.sort()
-    check codes == @["11LAB70AA501", "11LAB70AA502", "11LAB70AA503"]
+    check codes == @["11LAB70AA500", "11LAB70AA502", "11LAB70AA503"]
     check photoIds[0] != photoIds[1] and photoIds[1] != photoIds[2] and photoIds[0] != photoIds[2]
     check blobs[0] == blobs[1] and blobs[1] == blobs[2]       # one image, kept once
-    let place = userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA501","11LAB70AA502"],"payload":{"changes":{"area":"pump house","floor":"0"}},"note":"walked today"}"""))
+    let place = userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA500","11LAB70AA502"],"payload":{"changes":{"area":"pump house","floor":"0"}},"note":"walked today"}"""))
     check place.status == 200 and place.json["results"].elems.len == 2
     # a shared note goes under each code's own note; it doesn't replace it
     let (_, mgr) = mgrApi.owner
@@ -158,7 +158,7 @@ suite "plant API":
     sync(userNode, mgrNode)
     let over = mgrApi.call(mgr, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["11LAB70AA509","11LAB70AA510"],"payload":{"changes":{"floor":"3"}}}"""))
     for x in over.json["results"].elems: check x["status"].s == "approved"
-    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"tag_add","kks":["11LAB70AA501"],"payload":{}}""")).status == 400
+    check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"tag_add","kks":["11LAB70AA500"],"payload":{}}""")).status == 400
     check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":[],"payload":{"changes":{"area":"x"}}}""")).status == 400
     check userApi.call(ali, "POST", "/api/submit-many", j("""{"kind":"equipment","kks":["not a code!"],"payload":{"changes":{"area":"x"}}}""")).status == 400
   test "several codes at once: all checked before any is written; a value changed meanwhile is a clash":
@@ -260,13 +260,13 @@ suite "plant API":
 
   test "a marked tag, corrected while approving":
     let (_, ali) = userApi.owner
-    let r = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"tag_add","payload":{"sheet":"lp","bbox":[10,10,60.04,30],"kks":"11lab70aa501","isa":"","note":""}}"""))
+    let r = userApi.call(ali, "POST", "/api/submit", j("""{"kind":"tag_add","payload":{"sheet":"lp","bbox":[10,10,60.04,30],"kks":"11lab70aa500","isa":"","note":""}}"""))
     check r.json["status"].s == "pending"
     sync(userNode, mgrNode)
     var sid = 0'i64
     for s in mgrApi.call(mgr, "GET", "/api/submissions").json["submissions"].elems:
       if s["kind"].s == "tag_add": sid = s["id"].i
-    check mgrApi.call(mgr, "POST", "/api/submissions/" & $sid & "/approve", j("""{"edit":{"kks":"11LAB70AA501K","isa":"te"}}""")).status == 200
+    check mgrApi.call(mgr, "POST", "/api/submissions/" & $sid & "/approve", j("""{"edit":{"kks":"11LAB70AA500K","isa":"te"}}""")).status == 200
     let t = mgrApi.call(mgr, "GET", "/api/state").json["added_tags"][0]
     check t["suffix"].s == "K" and t["isa"].s == "TE" and t["bbox"][2].num == 60.0
 
@@ -277,12 +277,12 @@ suite "plant API":
     for row in h.elems:
       if row["entity"].s == "equipment" and row["after"].s.contains("fixed"): noteRow = row
     # every row carries the line the apps show (they read rev, ts, full_name and summary)
-    check noteRow["summary"].s.startsWith("11LAB70AA501: ") and noteRow["summary"].s.contains("notes \u2068leaks\u2069 → \u2068fixed\u2069")
+    check noteRow["summary"].s.startsWith("11LAB70AA500: ") and noteRow["summary"].s.contains("notes \u2068leaks\u2069 → \u2068fixed\u2069")
     for row in h.elems:
       check row["summary"].isStr and row["summary"].s.len > 0 and row["rev"].isInt and row["ts"].isInt
     let rv = mgrApi.call(mgr, "POST", "/api/revisions/" & noteRow["hid"].s & "/revert")
     check rv.status == 200 and rv.json["changed"].i == 1
-    check mgrApi.call(mgr, "GET", "/api/state").json["equipment"]["11LAB70AA501"]["notes"].s == "leaks"
+    check mgrApi.call(mgr, "GET", "/api/state").json["equipment"]["11LAB70AA500"]["notes"].s == "leaks"
     let rs = mgrApi.call(mgr, "POST", "/api/restore", j("""{"rev":0}"""))
     check rs.status == 200
     let st = mgrApi.call(mgr, "GET", "/api/state").json
@@ -349,12 +349,12 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
   discard mgrNode.append("genesis", P.genesisBody(rootKey, "Test plant", mgrNode.device, mgrId, "boss", "The Manager"), now())
   mgrNode.adopt(keyString(rootKey.pub))
   discard mgrNode.publish(@[("sheets.json", "[]"), ("tags.json",
-    """[{"id":"a:2","sheet":"a","kks":"11LAB70AA501","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[1,1,9,9]}]""")], now())
+    """[{"id":"a:2","sheet":"a","kks":"11LAB70AA500","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[1,1,9,9]}]""")], now())
   let mgrApi = newApi(mgrNode)
   let (_, mgr) = mgrApi.owner
   var userNode = newNode(P, newMemStore(), P.p256Generate())
   let userApi = newApi(userNode)
-  const K = "11LAB70AA501"
+  const K = "11LAB70AA500"
 
   test "a new member needs a position; an existing one adding a device doesn't":
     let none = P.joinRequest(userNode.key, "ali", "Ali User", newNull(), "phone", now() div 1000)
@@ -419,7 +419,7 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check mgrApi.call(mgr, "POST", "/api/submissions/" & $pickSid & "/pick").json["rejected"].i == 1
     check mgrApi.call(mgr, "POST", "/api/submissions/" & $plateSid & "/approve").status == 200
     # the manager's own direct change, and a confirmed description (a custom field)
-    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"notes":"by the door","custom":[{"k":"Description","v":"Feed water stop valve"}]}}}""")).json["status"].s == "approved"
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA500","changes":{"notes":"by the door","custom":[{"k":"Description","v":"Feed water stop valve"}]}}}""")).json["status"].s == "approved"
     let st = mgrApi.call(mgr, "GET", "/api/state").json
     check st["photos"].len == 2
     for p in st["photos"].elems:
@@ -447,7 +447,7 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
 
   test "leaderboard: per person, per kind, approved/rejected/pending, ratio; every member sees it":
     let (_, ali) = userApi.owner
-    check userApi.call(ali, "POST", "/api/submit", j("""{"kind":"link","payload":{"proc":"1.1","step":1,"kks":"11LAB70AA501"}}""")).json["status"].s == "pending"
+    check userApi.call(ali, "POST", "/api/submit", j("""{"kind":"link","payload":{"proc":"1.1","step":1,"kks":"11LAB70AA500"}}""")).json["status"].s == "pending"
     sync(userNode, mgrNode)
     let b = userApi.call(ali, "GET", "/api/leaderboard").json
     check b["people"].len == 2
@@ -520,7 +520,7 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check okS and sara.role == "admin"
     # Sara's stale change is held (her own submission row); the manager forces it through: it is written by the
     # manager's key, but it is Sara's contribution
-    let held = mgrApi.call(sara, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"near":"north side"},"base":{"near":"old"}}}"""))
+    let held = mgrApi.call(sara, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA500","changes":{"near":"north side"},"base":{"near":"old"}}}"""))
     check held.json["status"].s == "conflict"
     proc row(name: string): JNode =
       for p in mgrApi.call(mgr, "GET", "/api/leaderboard").json["people"].elems:
@@ -534,7 +534,7 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check row("The Manager")["total"].i == bossBefore["total"].i and row("The Manager")["direct"].i == bossBefore["direct"].i
     # the manager changes Ali's floor, then reverts it: the floor is Ali's again, and the revert counts for nobody
     check st["equipment_by"][K]["floor"]["by_name"].s == "Ali User"
-    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"floor":"3"},"base":{"floor":"2"}}}""")).json["status"].s == "approved"
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA500","changes":{"floor":"3"},"base":{"floor":"2"}}}""")).json["status"].s == "approved"
     let bossTotal = row("The Manager")["total"].i
     var hid = ""
     for row in mgrApi.call(mgr, "GET", "/api/revisions").json["revisions"].elems:
@@ -545,7 +545,7 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check st["equipment_by"][K]["floor"]["by_name"].s == "Ali User"
     check row("The Manager")["total"].i == bossTotal
     # a field cleared to "" is nobody's: no author shown
-    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA501","changes":{"custom":[{"k":"Description","v":""}]},"base":{"custom":[{"k":"Description","v":"Feed water stop valve"}]}}}""")).status == 200
+    check mgrApi.call(mgr, "POST", "/api/submit", j("""{"kind":"equipment","payload":{"kks":"11LAB70AA500","changes":{"custom":[{"k":"Description","v":""}]},"base":{"custom":[{"k":"Description","v":"Feed water stop valve"}]}}}""")).status == 200
     check mgrApi.call(mgr, "GET", "/api/state").json["equipment_by"][K].get("custom:Description") == nil
 
   test "a 2,000-entry log: the leaderboard and the who-and-when walk are computed once per change":
@@ -582,7 +582,7 @@ suite "screens' requests (who, leaderboard, approvals, position, hiding, floor)"
     check a.walks == walks and walks == 2       # nothing new in the log: no new walk
     check b1["people"][0]["direct"].i == 2000 and s1["equipment_by"].len > 0
     echo "  2,001 entries: leaderboard + state ", int(first * 1000), " ms first, ", int(again * 1000), " ms cached"
-    discard a.n.append("equipment", j("""{"kks":"11LAB70AA501","changes":{"notes":"new"},"base":{}}"""), now())
+    discard a.n.append("equipment", j("""{"kks":"11LAB70AA500","changes":{"notes":"new"},"base":{}}"""), now())
     discard a.call(me, "GET", "/api/leaderboard")
     check a.walks == walks + 1
 
@@ -914,33 +914,33 @@ suite "History lines (historySummary)":
   test "each kind of change in admin.html's words":
     check historySummary("user", newNull(), newNull(), newNull(), "boss joined") == "boss joined"
     check historySummary("sheet", newStr("lp"), newNull(), newNull(), "imported") == "lp \u2068imported\u2069"
-    check historySummary("link", newStr("[\"P1\",2,\"11LAB70AA501\"]"), newNull(), newBool(true), "") ==
-      "linked 11LAB70AA501 · proc P1 step 2"
-    check historySummary("link", newStr("[\"P1\",2,\"11LAB70AA501\"]"), newBool(true), newNull(), "") ==
-      "unlinked 11LAB70AA501 · proc P1 step 2"
+    check historySummary("link", newStr("[\"P1\",2,\"11LAB70AA500\"]"), newNull(), newBool(true), "") ==
+      "linked 11LAB70AA500 · proc P1 step 2"
+    check historySummary("link", newStr("[\"P1\",2,\"11LAB70AA500\"]"), newBool(true), newNull(), "") ==
+      "unlinked 11LAB70AA500 · proc P1 step 2"
     let tag = parseStrict("""{"kks":"11LAB70CT101","suffix":"R","isa":"TI","sheet":"lp"}""")
     check historySummary("added_tag", newStr("t1"), newNull(), tag, "") == "tag marked TI 11LAB70CT101R on lp"
     check historySummary("added_tag", newStr("t1"), tag, newNull(), "") == "marked tag removed TI 11LAB70CT101R on lp"
-    let ph = parseStrict("""{"kks":"11LAB70AA501","file":"a.jxl","caption":""}""")
-    check historySummary("photo", newStr("p1"), newNull(), ph, "") == "photo added 11LAB70AA501"
-    check historySummary("photo", newStr("p1"), ph, newNull(), "") == "photo removed 11LAB70AA501"
-    check historySummary("equipment", newStr("11LAB70AA501"), parseStrict("""{"notes":"leaks","floor":"3"}"""),
-      parseStrict("""{"notes":"fixed","floor":"3","location":""}"""), "") == "11LAB70AA501: notes \u2068leaks\u2069 → \u2068fixed\u2069"
+    let ph = parseStrict("""{"kks":"11LAB70AA500","file":"a.jxl","caption":""}""")
+    check historySummary("photo", newStr("p1"), newNull(), ph, "") == "photo added 11LAB70AA500"
+    check historySummary("photo", newStr("p1"), ph, newNull(), "") == "photo removed 11LAB70AA500"
+    check historySummary("equipment", newStr("11LAB70AA500"), parseStrict("""{"notes":"leaks","floor":"3"}"""),
+      parseStrict("""{"notes":"fixed","floor":"3","location":""}"""), "") == "11LAB70AA500: notes \u2068leaks\u2069 → \u2068fixed\u2069"
     check historySummary("review", newStr("lp:4"), newNull(), parseStrict("""{"state":"ok"}"""), "") ==
       "review lp:4: (empty) → \u2068{\"state\":\"ok\"}\u2069"
   test "long values are cut, and a row whose fields read the same says it was updated":
-    let long = "x".repeat(150) & " 11LAB70AA501 " & "y".repeat(100)
-    let line = historySummary("equipment", newStr("11LAB70AA501"), newNull(), newObj(@[("notes", newStr(long))]), "")
-    check line == "11LAB70AA501: notes (empty) → \u2068" & "x".repeat(150) & " …\u2069"     # cut before the code, not inside it
+    let long = "x".repeat(150) & " 11LAB70AA500 " & "y".repeat(100)
+    let line = historySummary("equipment", newStr("11LAB70AA500"), newNull(), newObj(@[("notes", newStr(long))]), "")
+    check line == "11LAB70AA500: notes (empty) → \u2068" & "x".repeat(150) & " …\u2069"     # cut before the code, not inside it
     let word = "z".repeat(300)    # one long word: kept whole
     check historySummary("equipment", newStr("A"), newNull(), newObj(@[("notes", newStr(word))]), "") ==
       "A: notes (empty) → \u2068" & word & "\u2069"
-    check historySummary("equipment", newStr("11LAB70AA501"), parseStrict("""{"custom":[]}"""),
-      parseStrict("""{"loc":""}"""), "") == "11LAB70AA501: updated"
+    check historySummary("equipment", newStr("11LAB70AA500"), parseStrict("""{"custom":[]}"""),
+      parseStrict("""{"loc":""}"""), "") == "11LAB70AA500: updated"
   test "Arabic values are isolated, line breaks flattened, and a change past the cut still shows":
-    let ar = "مضخة التغذية 11LAB70AA501 تعمل"
-    check historySummary("equipment", newStr("11LAB70AA501"), newNull(), newObj(@[("notes", newStr(ar & "\nsecond line"))]), "") ==
-      "11LAB70AA501: notes (empty) → \u2068" & ar & " second line\u2069"
+    let ar = "مضخة التغذية 11LAB70AA500 تعمل"
+    check historySummary("equipment", newStr("11LAB70AA500"), newNull(), newObj(@[("notes", newStr(ar & "\nsecond line"))]), "") ==
+      "11LAB70AA500: notes (empty) → \u2068" & ar & " second line\u2069"
     let base = "w ".repeat(100)
     check historySummary("equipment", newStr("A"), newObj(@[("notes", newStr(base & "one"))]),
       newObj(@[("notes", newStr(base & "two"))]), "").startsWith("A: notes \u2068")

@@ -43,7 +43,7 @@ for i in 0 ..< 500:
   # people's decisions: some confirmed (perhaps as another code), some rejected
   let d = r.rand(99)
   if d < 4: reviews[id] = newObj(@[("status", newStr("rejected"))])
-  elif d < 10: reviews[id] = newObj(@[("status", newStr("confirmed")), ("kks", newStr(if codes.len > 0: r.sample(codes) else: "11LAB70AA501")),
+  elif d < 10: reviews[id] = newObj(@[("status", newStr("confirmed")), ("kks", newStr(if codes.len > 0: r.sample(codes) else: "11LAB70AA500")),
                                       ("suffix", newStr("")), ("isa", newNull())])
 var added = newArr()
 for i in 0 ..< 25:

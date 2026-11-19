@@ -100,7 +100,7 @@ class WebV2(unittest.TestCase):
             time.sleep(0.2)
         assert job['state'] == 'done', job['log']
         assert boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [400, 300, 520, 360],
-                        'kks': '11LAB70AA501', 'isa': '', 'note': ''}}).get('status') == 'approved'
+                        'kks': '11LAB70AA500', 'isa': '', 'note': ''}}).get('status') == 'approved'
         os.makedirs(SHOTS, exist_ok=True)
 
     @classmethod
@@ -147,18 +147,18 @@ class WebV2(unittest.TestCase):
             page.wait_for_function("() => typeof TAGS !== 'undefined' && TAGS.length > 0", timeout=30000)
             box = page.get_by_role('combobox', name='Search equipment by KKS code or description')
             box.focus()
-            page.keyboard.type('LAB70AA501')
+            page.keyboard.type('LAB70AA500')
             page.wait_for_selector('#results [role=option]')
             self.assertEqual(box.get_attribute('aria-expanded'), 'true')
             self.assertEqual(box.get_attribute('aria-activedescendant'), 'res-0')
             page.keyboard.press('Enter')
             page.wait_for_function("() => document.activeElement && document.activeElement.getAttribute('role') === 'heading'", timeout=15000)
-            self.assertIn('11LAB70AA501', page.evaluate("document.activeElement.textContent"))
+            self.assertIn('11LAB70AA500', page.evaluate("document.activeElement.textContent"))
             self.assertEqual(page.get_by_role('button', name='Close the panel').count(), 1)
             # a course's KKS link: /?kks=CODE opens that equipment
             errors.leave()
-            page.goto(self.base + '/?kks=11LAB70AA501')
-            page.wait_for_function("() => typeof selTag !== 'undefined' && selTag && full(selTag) === '11LAB70AA501'", timeout=30000)
+            page.goto(self.base + '/?kks=11LAB70AA500')
+            page.wait_for_function("() => typeof selTag !== 'undefined' && selTag && full(selTag) === '11LAB70AA500'", timeout=30000)
             # the photo editor: a touch draw shows the loupe and hides it when lifted; a mouse draw never shows it; line
             # sizes; zoom; the result is the photo at its own size with the marks burned in
             page.evaluate("""() => { const c = document.createElement('canvas'); c.width = 800; c.height = 600;

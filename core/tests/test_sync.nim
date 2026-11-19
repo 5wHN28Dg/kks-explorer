@@ -79,7 +79,7 @@ suite "sync state machine":
     check aliPhone.mayRead(aliPhone.device)
     let photo = "\xff\x0afake jxl bytes"
     let sha = aliPhone.keepBlob(photo)
-    discard aliPhone.append("photo", newObj(@[("photo", newStr(P.newPersonId())), ("kks", newStr("11LAB70AA501")),
+    discard aliPhone.append("photo", newObj(@[("photo", newStr(P.newPersonId())), ("kks", newStr("11LAB70AA500")),
                                               ("blob", newStr(sha)), ("caption", newStr("pump"))]), tick())
     let (a, b) = sync(aliPhone, server)
     check b.blobsReceived == 1
@@ -101,7 +101,7 @@ suite "sync state machine":
     for i in 0 ..< 12:
       let sha = cam.keepBlob(char(0xff) & char(0x0a) & repeat(char(65 + i), 300_000))
       shas.add sha
-      discard cam.append("photo", newObj(@[("photo", newStr(P.newPersonId())), ("kks", newStr("11LAB70AA501")),
+      discard cam.append("photo", newObj(@[("photo", newStr(P.newPersonId())), ("kks", newStr("11LAB70AA500")),
                                            ("blob", newStr(sha)), ("caption", newStr("p" & $i))]), tick())
     let a = newSession(mgrPhone, true, cam.device)     # the phone asks; cam answers its want with the blobs
     let b = newSession(cam, false, mgrPhone.device)

@@ -1,6 +1,6 @@
 // The drawing's tags for screen readers on Windows (decision 0033; the counterpart of Android's AccessibilityNodeProvider
 // and GNOME's accessible children): a UI Automation provider on the drawing window. The window is a fragment root;
-// each tag on screen is a child fragment (a button named "11LAB70AA501, verified") that Narrator reads and can invoke.
+// each tag on screen is a child fragment (a button named "11LAB70AA500, verified") that Narrator reads and can invoke.
 // The viewer (Nim) answers through three callbacks: how many tags, one tag's name and rectangle, invoke one.
 // ProviderOptions_UseComThreading: UIA calls the provider on the window's (STA) thread, never on its own workers;
 // the callbacks allocate Nim memory, which must happen on the Nim thread (found on Windows 11: a crash at start).

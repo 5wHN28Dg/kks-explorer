@@ -189,7 +189,7 @@ class Windows(unittest.TestCase):
             time.sleep(0.2)
         assert job['state'] == 'done', job['log']
         r = cls.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [400, 300, 520, 360],
-                                                 'kks': '11LAB70AA501', 'isa': '', 'note': ''}})
+                                                 'kks': '11LAB70AA500', 'isa': '', 'note': ''}})
         assert r.get('status') == 'approved', r
         vm('New-Item -ItemType Directory -Force C:\\kks | Out-Null; Get-Process Walkdown,uiadrive -ErrorAction SilentlyContinue | Stop-Process -Force')
         time.sleep(1)
@@ -668,7 +668,7 @@ class Windows(unittest.TestCase):
         self.join('swjoin.uia')
         lines = []
         for _ in range(12):
-            for code in ('11LAB70AA501', '11LAB70AA601'):
+            for code in ('11LAB70AA500', '11LAB70AA601'):
                 lines += ['set\tSearch equipment by KKS code or description\t' + code[2:], 'select\t~' + code,
                           'click\tShow on the drawing', 'keys\tDrawing\t0x6B,0x6B']
         self.check('switch.uia', lines + ['sleep\t2000', 'value\tSystem\tFeed water piping system'])
@@ -678,8 +678,8 @@ class Windows(unittest.TestCase):
                                    'set\tSearch equipment by KKS code or description\tLAB70AA601', 'select\t~11LAB70AA601',
                                    'click\tSelect or unselect', 'wait\t1 selected\t10',
                                    'click\tEquipment by system…', 'wait\tEquipment by system\t20',
-                                   'set\tSearch codes, systems, descriptions\tLAB70AA501', 'wait\t~ found\t20',
-                                   'select\t~11LAB70AA501 · ', 'click\tShow the selected code on its drawing',
+                                   'set\tSearch codes, systems, descriptions\tLAB70AA500', 'wait\t~ found\t20',
+                                   'select\t~11LAB70AA500 · ', 'click\tShow the selected code on its drawing',
                                    'wait\tLeave Select tags?\t10', 'click\tCancel', 'gone\tLeave Select tags?',
                                    'sleep\t500', 'wait\tOther drawing — Walkdown\t5', 'gone\tSample sheet — Walkdown',
                                    'wait\t1 selected\t5',
@@ -688,7 +688,7 @@ class Windows(unittest.TestCase):
                                    'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
         # the same from an Approvals card (Open … on the drawing): the sheet stays until the person agreed
         self.check('switch3.uia', ['toggle\tSelect tags', 'wait\t0 selected\t10',
-                                   'set\tSearch equipment by KKS code or description\tLAB70AA501', 'select\t~11LAB70AA501',
+                                   'set\tSearch equipment by KKS code or description\tLAB70AA500', 'select\t~11LAB70AA500',
                                    'click\tSelect or unselect', 'wait\t1 selected\t10',
                                    'click\tManage', 'click\tApprovals', 'wait\tOpen 11LAB70AA601 on the drawing\t30',
                                    'click\tOpen 11LAB70AA601 on the drawing', 'wait\tLeave Select tags?\t10',
@@ -732,7 +732,7 @@ class Windows(unittest.TestCase):
         # the focus gone); now the list follows in place: the link made on the server shows in the found row
         def link():
             r = self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'T-2', 'step': 1,
-                                                      'kks': '11LAB70AA501', 'on': True}})
+                                                      'kks': '11LAB70AA500', 'on': True}})
             self.assertEqual(r.get('status'), 'approved', r)
         self.check('kproc.uia', ['click\tProcedures', 'set\tSearch procedures\tdrain', 'focus\tSearch procedures',
                                  'wait\t~T-2  Drain the economiser   (2 steps)\t10', 'gone\t~T-1  ', 'sleep\t502',
@@ -993,7 +993,7 @@ class Windows(unittest.TestCase):
         activation does), or handed to the running app by a second start, which then ends. Before joining a link
         does nothing; a code opens its tag with the panel; a course link that course at that page; a code on no
         drawing says so; a malformed link does nothing"""
-        code = 'walkdown://kks/11LAB70AA501'
+        code = 'walkdown://kks/11LAB70AA500'
         r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [700, 300, 820, 360],
                                                   'kks': '11LAB70AA602', 'isa': '', 'note': ''}})
         self.assertEqual(r.get('status'), 'approved', r)
@@ -1622,7 +1622,7 @@ class Windows(unittest.TestCase):
         # server marked by hand (test_multi, test_multi_clash, test_approvals, test_sheet_switch, …)
         published = {t['kks'] + (t.get('suffix') or '') for t in json.loads(self.boss.op.open(self.boss.base + '/data/tags.json').read())
                      if t.get('kks')}
-        n = len({'11LAB70AA501'} | published | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
+        n = len({'11LAB70AA500'} | published | {t['kks'] + (t.get('suffix') or '') for t in self.boss.req('GET', '/api/state').get('added_tags', [])
                                                  if t.get('kks')})
         on = lambda k: f'{k} code{"" if k == 1 else "s"} on the drawings'
         self.check('systems0.uia', ['click\tEquipment by system…', 'wait\tEquipment by system\t20',
@@ -1668,47 +1668,47 @@ class Windows(unittest.TestCase):
                                 'set\tUsername\tboss', 'set\tPassword\ta long password', 'click\tJoin',
                                 'wait\t~Sample sheet\t60'], keep=False)
         # the drawing's tags are buttons for UI Automation (kks_uia.cpp): invoking one opens its panel
-        self.check('tag.uia', ['wait\t~11LAB70AA501, \t30', 'click\t~11LAB70AA501, ', 'value\tSystem\tFeed water piping system',
-                               'click\tClose', 'click\tFit the sheet (0)', 'wait\t~11LAB70AA501, \t10'])   # the whole sheet again
+        self.check('tag.uia', ['wait\t~11LAB70AA500, \t30', 'click\t~11LAB70AA500, ', 'value\tSystem\tFeed water piping system',
+                               'click\tClose', 'click\tFit the sheet (0)', 'wait\t~11LAB70AA500, \t10'])   # the whole sheet again
         # Equipment by system (core systemsView): a window with a search field and a native tree; a search opens every
         # level; Enter on a code (what a keyboard or screen-reader user does) opens its tag; Esc closes the window
         self.check('systems.uia', ['click\tEquipment by system…', 'wait\tEquipment by system\t20',
                                    'wait\t~LAB · Feed water piping system (\t20',
-                                   'set\tSearch codes, systems, descriptions\tLAB70AA501', 'wait\t~ found\t20',
+                                   'set\tSearch codes, systems, descriptions\tLAB70AA500', 'wait\t~ found\t20',
                                    'wait\t~LAB70 (\t20', 'wait\t~AA · \t20',
-                                   'enter\t~11LAB70AA501 · Sample sheet\t20', 'value\tSystem\tFeed water piping system',
-                                   'select\t~11LAB70AA501 · ', 'click\tShow the selected code on its drawing',
+                                   'enter\t~11LAB70AA500 · Sample sheet\t20', 'value\tSystem\tFeed water piping system',
+                                   'select\t~11LAB70AA500 · ', 'click\tShow the selected code on its drawing',
                                    'value\tSystem\tFeed water piping system',
                                    'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system'])
         # search → the panel decodes the tag; an edit reaches the server by the automatic sync
         note = 'Gland repacked (Windows %s)' % time.strftime('%H:%M:%S')
-        self.check('panel.uia', ['set\tSearch equipment by KKS code or description\tLAB70AA501', 'select\t~11LAB70AA501',
+        self.check('panel.uia', ['set\tSearch equipment by KKS code or description\tLAB70AA500', 'select\t~11LAB70AA500',
                                  'click\tShow on the drawing', 'value\tSystem\tFeed water piping system', 'click\tEdit',
-                                 'set\tNotes\t' + note, 'click\tSave', 'wait\t~Saved: 11LAB70AA501\t20'])
-        got = self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('notes'),
+                                 'set\tNotes\t' + note, 'click\tSave', 'wait\t~Saved: 11LAB70AA500\t20'])
+        got = self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes'),
                                'the edit never reached the server')
         self.assertEqual(got, note)
         # a photo: the code has no floor, so the floor is asked first and sent with the photo (the user's rule); then
         # the annotation editor, a red box burned in, JPEG XL (the queue), synced; the app offers a tag plate photo
-        self.check('photo.uia', ['click\tEquipment: from a file…', 'wait\tWhich floor is 11LAB70AA501 on?\t20',
-                                 'set\tFloor of 11LAB70AA501 (0–10)\t11', 'click\tContinue',
+        self.check('photo.uia', ['click\tEquipment: from a file…', 'wait\tWhich floor is 11LAB70AA500 on?\t20',
+                                 'set\tFloor of 11LAB70AA500 (0–10)\t11', 'click\tContinue',
                                  'wait\tFloor: a whole number from 0 to 10 (the height goes in Elevation).\t10',
-                                 'set\tFloor of 11LAB70AA501 (0–10)\t4', 'click\tContinue',
+                                 'set\tFloor of 11LAB70AA500 (0–10)\t4', 'click\tContinue',
                                  'wait\tPhoto to mark up\t30', 'click\tBox',
                                  'drag\tPhoto to mark up\t0.2\t0.2\t0.8\t0.8',
                                  # a finger (injected touch: WM_POINTER), thick and yellow, zoomed in and back
                                  'click\tYellow', 'click\tThick lines', 'click\tZoom in', 'click\tFit',
                                  'touchdrag\tPhoto to mark up\t0.15\t0.92\t0.85\t0.92', 'set\tCaption (optional)\tValve from Windows',
                                  'click\tSend', 'wait\tAnd its tag plate?\t20', 'click\tNo',
-                                 'wait\t~Saved: photo of 11LAB70AA501\t90'])
-        self.assertEqual(self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('floor'),
+                                 'wait\t~Saved: photo of 11LAB70AA500\t90'])
+        self.assertEqual(self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('floor'),
                                           'the floor sent with the photo never reached the server'), '4')
         ph = self.wait_server(lambda: [p for p in self.boss.req('GET', '/api/state').get('photos', [])
-                                       if p.get('kks') == '11LAB70AA501' and p.get('caption') == 'Valve from Windows'],
+                                       if p.get('kks') == '11LAB70AA500' and p.get('caption') == 'Valve from Windows'],
                               'the photo never reached the server', tries=80)
         def fetch_blob():   # the photo's entry can arrive before its file; until then its `file` is "": read it again
             f = [p for p in self.boss.req('GET', '/api/state').get('photos', [])
-                 if p.get('kks') == '11LAB70AA501' and p.get('caption') == 'Valve from Windows'][0]['file']
+                 if p.get('kks') == '11LAB70AA500' and p.get('caption') == 'Valve from Windows'][0]['file']
             if not f: return None
             try: return self.boss.op.open(self.boss.base + '/photos/' + f).read()
             except urllib.error.HTTPError: return None
@@ -1734,7 +1734,7 @@ class Windows(unittest.TestCase):
         ali = Client(self.boss.base)
         ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})
         ali.req('POST', '/api/login', {'username': 'ali', 'password': 'ali password 1'})
-        self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+        self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500',
                          'changes': {'floor': '2'}, 'base': {'floor': '4'}}})['status'], 'pending')
         self.check('approve.uia', ['click\tManage', 'click\tAccount', 'click\tSync now', 'wait\t~Synced with 1 device\t30',
                                    'click\t‹ Manage', 'click\tApprovals', 'wait\tApprove\t30', 'click\tApprove',
@@ -1743,20 +1743,20 @@ class Windows(unittest.TestCase):
                          'the approval never reached the server')
         # who took the photo and who set each field (/api/state photos[].by_name, equipment_by): the floor is Ali's
         # now, the notes and the photo the manager's
-        self.check('who.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA501', 'select\t~11LAB70AA501',
+        self.check('who.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA500', 'select\t~11LAB70AA500',
                                'click\tShow on the drawing', 'value\tFloor\t2', 'wait\t~by Ali Member, 20\t30',
                                'wait\t~by The Manager, 20\t10', 'wait\t~Open photo: Valve from Windows\t10'])
         # My proposals, filtered by the core (status, kind, field)
         self.check('mine.uia', ['click\tClose', 'click\tManage', 'click\tMy proposals',
                                 'choose\tRejected', 'chosen\tRejected', 'wait\tNone of your proposals match.\t20',
                                 'choose\tAll', 'chosen\tAll', 'choose\tFloor', 'chosen\tFloor', 'value\tFloor\t4',
-                                'gone\t~New photo · 11LAB70AA501',
-                                'choose\tEquipment photos', 'chosen\tEquipment photos', 'wait\t~New photo · 11LAB70AA501\t20',
-                                'choose\tNotes', 'wait\t~Location and notes · 11LAB70AA501\t20', 'value\tNotes\tGland repacked',
+                                'gone\t~New photo · 11LAB70AA500',
+                                'choose\tEquipment photos', 'chosen\tEquipment photos', 'wait\t~New photo · 11LAB70AA500\t20',
+                                'choose\tNotes', 'wait\t~Location and notes · 11LAB70AA500\t20', 'value\tNotes\tGland repacked',
                                 'choose\tAll kinds', 'chosen\tAll kinds'])
         # deleting the photo sends its id (the Android bug: "bad photo id")
-        log = self.check('delete.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA501',
-                                        'select\t~11LAB70AA501', 'click\tShow on the drawing', 'click\tDelete',
+        log = self.check('delete.uia', ['click\tDrawings', 'set\tSearch equipment by KKS code or description\tLAB70AA500',
+                                        'select\t~11LAB70AA500', 'click\tShow on the drawing', 'click\tDelete',
                                         'wait\tDelete this photo?\t10', 'sleep\t2021', 'dump',     # (the UI audit's evidence, #365)
                                         'click\tDelete photo', 'wait\t~Saved: delete a photo\t20'],
                          during=[('sleep\t2021', lambda: self.screenshot('win-delete-photo'))])

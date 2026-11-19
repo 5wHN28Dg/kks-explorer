@@ -292,7 +292,7 @@ proc checks() =
     proc build() =
       # as the tag panel: a heading that can be selected, then a form in a group, its Save rebuilding it all
       empty()
-      area.add label("11LAB70AA501", "title-2", selectable = true)
+      area.add label("11LAB70AA500", "title-2", selectable = true)
       let g = group("Location and notes")
       let e = entryRow("Notes", "typed")
       adw_preferences_group_add(g, e)

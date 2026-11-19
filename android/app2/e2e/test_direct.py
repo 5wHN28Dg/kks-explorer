@@ -90,7 +90,7 @@ class Direct(unittest.TestCase):
         self.start_server(0)
         self.boss = Client(f'http://127.0.0.1:{self.port}')
         assert 'user' in self.boss.req('POST', '/api/login', {'username': 'boss', 'password': 'a long password'})
-        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500',
                                                   'changes': {'notes': 'over the internet'}, 'base': {'notes': ''}}})
         self.assertEqual(r.get('status'), 'approved', r)
         time.sleep(3)                                  # the server back in the relay room

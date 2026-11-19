@@ -80,7 +80,7 @@ proc drawingsTab(w: Win, p: Page) =
     else: resList.setRows(rows)
   var search: HWND
   search = p.field("Search equipment by KKS code or description", "", onChange = proc () = fill(search.text))
-  sendText(search, EM_SETCUEBANNER, 1, "e.g. LAB70AA501 or feed water")
+  sendText(search, EM_SETCUEBANNER, 1, "e.g. LAB70AA500 or feed water")
   # the select mode: a result toggles its tag (the keyboard's way to select several)
   resList = p.pictureList(@[], (proc (dc: HDC, r: RECT, item: int, selected: bool) =
     if item < 0 or item >= shownRows.len: return

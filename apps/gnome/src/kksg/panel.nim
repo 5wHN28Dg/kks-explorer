@@ -131,7 +131,7 @@ proc reviewSection(w: Win, t: Tag): W =
     if not (code.len >= 12 and code[0 .. 1].allCharsInSet(Digits) and code[2 .. 4].allCharsInSet(UppercaseLetters) and
             code[5 .. 6].allCharsInSet(Digits) and code[7 .. 8].allCharsInSet(UppercaseLetters) and
             code[9 .. 11].allCharsInSet(Digits) and code[12 .. ^1].allCharsInSet(UppercaseLetters + Digits)):
-      w.toast("That is not a valid KKS (e.g. 11LAB70AA501)")
+      w.toast("That is not a valid KKS (e.g. 11LAB70AA500)")
       return
     let isaV = text(isa).strip.toUpperAscii
     let data = newObj(@[("status", newStr("confirmed")), ("kks", newStr(code[0 ..< 12])), ("suffix", newStr(code[12 .. ^1])),

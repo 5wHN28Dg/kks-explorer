@@ -132,7 +132,7 @@ proc buildLocations*(j: JNode): Table[string, seq[JNode]] =
 const DescriptionMax* = 2000
 
 proc parseDescriptions*(j: JNode): Table[string, JNode] =
-  ## descriptions.json (optional plant data, published by the manager): {"11LAB70AA501": {"text": "…", "basis": "…"}}.
+  ## descriptions.json (optional plant data, published by the manager): {"11LAB70AA500": {"text": "…", "basis": "…"}}.
   ## Drafted suggestions of what the equipment does; shown as "draft, unchecked" until a person confirms one, which
   ## writes it as the equipment's custom field "Description" (DescriptionKey) through the normal proposal flow.
   ## A plain string value is the text with no basis; entries without text are skipped.

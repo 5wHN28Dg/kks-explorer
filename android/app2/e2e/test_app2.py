@@ -151,7 +151,7 @@ class Phone(unittest.TestCase):
                                                     'full_name': 'The Manager', 'position': 'Plant manager'}).get('ok')
         self.import_sheet('sample', 'Sample sheet')
         r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [400, 300, 520, 360],
-                                                  'kks': '11LAB70AA501', 'isa': '', 'note': ''}})
+                                                  'kks': '11LAB70AA500', 'isa': '', 'note': ''}})
         assert r.get('status') == 'approved', r
         if PHONE_HOST == '127.0.0.1':
             ui.adb('reverse', f'tcp:{self.sport}', f'tcp:{self.sport}')
@@ -233,7 +233,7 @@ class Phone(unittest.TestCase):
                 return
             time.sleep(0.5)
 
-    def open_tag(self, code='11LAB70AA501'):
+    def open_tag(self, code='11LAB70AA500'):
         ui.type_into('Search KKS or description', code[2:])
         ui.tap(code, exact=True)
         ui.find('Feed water piping system', timeout=10)
@@ -741,11 +741,11 @@ class Phone(unittest.TestCase):
                          ('11LAB70AA504', [1000, 800, 1120, 860])):
             r = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': bb, 'kks': code, 'isa': '', 'note': ''}})
             assert r.get('status') == 'approved', r
-        self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'floor': '2'},
-                                                                              'base': {'floor': self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('floor', '')}}})
+        self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'floor': '2'},
+                                                                              'base': {'floor': self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('floor', '')}}})
 
-        # a note 501 already has: Note for all must add to it, not replace it
-        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'Seat lapped'},
+        # a note 500 already has: Note for all must add to it, not replace it
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'notes': 'Seat lapped'},
                                                                                   'base': {'notes': ''}}})
         assert r.get('status') == 'approved', r
 
@@ -770,10 +770,10 @@ class Phone(unittest.TestCase):
         ui.tap('More', exact=True)
         ui.tap('Select tags', exact=True)
         ui.find('0 selected', exact=True)
-        tap_tag('11LAB70AA501')
+        tap_tag('11LAB70AA500')
         tap_tag('11LAB70AA502')
         ui.find('2 selected', exact=True)
-        self.assertTrue(ui.label(tag('11LAB70AA501')).endswith(', selected'), ui.label(tag('11LAB70AA501')))
+        self.assertTrue(ui.label(tag('11LAB70AA500')).endswith(', selected'), ui.label(tag('11LAB70AA500')))
         # a box around 503: hold on the paper above-left of it, then drag past its lower-right corner
         a, b, c, d = map(int, re.findall(r'\d+', tag('11LAB70AA503').get('bounds')))
         x0, y0, x1, y1 = a - 25, b - 25, c + 25, d + 25
@@ -794,7 +794,7 @@ class Phone(unittest.TestCase):
         self.assertFalse(ui.present('11LAB70AA502', exact=True), '502 is still in the list')
         ui.tap('Close', exact=True)
         ui.find('2 selected', exact=True)
-        # Place for all: a floor; 501 already has floor 2, so the dialog warns about one code
+        # Place for all: a floor; 500 already has floor 2, so the dialog warns about one code
         ui.tap('Place for all', exact=True)
         ui.find('Place for 2 codes', exact=True)
         ui.type_into('Floor', '3')
@@ -807,16 +807,16 @@ class Phone(unittest.TestCase):
             e = self.boss.req('GET', '/api/state')['equipment']
             floor3 = sorted(k for k, v in e.items() if v.get('floor') == '3')
             return floor3 if len(floor3) >= 2 else None
-        self.assertEqual(self.wait_server(placed, 'the place never reached the server', tries=80), ['11LAB70AA501', '11LAB70AA503'])
+        self.assertEqual(self.wait_server(placed, 'the place never reached the server', tries=80), ['11LAB70AA500', '11LAB70AA503'])
         time.sleep(3)
         st = self.boss.req('GET', '/api/state')['equipment']
-        self.assertEqual(sorted(k for k, v in st.items() if v.get('floor') == '3'), ['11LAB70AA501', '11LAB70AA503'])
+        self.assertEqual(sorted(k for k, v in st.items() if v.get('floor') == '3'), ['11LAB70AA500', '11LAB70AA503'])
         # Note for all: appended under each code's own notes
-        old = st['11LAB70AA501'].get('notes', '')
+        old = st['11LAB70AA500'].get('notes', '')
         self.assertEqual(old, 'Seat lapped')
         ui.tap('More', exact=True)
         ui.tap('Select tags', exact=True)
-        tap_tag('11LAB70AA501')
+        tap_tag('11LAB70AA500')
         tap_tag('11LAB70AA504')
         ui.find('2 selected', exact=True)
         ui.tap('Note for all', exact=True)
@@ -826,15 +826,15 @@ class Phone(unittest.TestCase):
 
         def noted():
             e = self.boss.req('GET', '/api/state')['equipment']
-            return e if e.get('11LAB70AA504', {}).get('notes') and 'Lagging' in e.get('11LAB70AA501', {}).get('notes', '') else None
+            return e if e.get('11LAB70AA504', {}).get('notes') and 'Lagging' in e.get('11LAB70AA500', {}).get('notes', '') else None
         e = self.wait_server(noted, 'the note never reached the server', tries=80)
-        self.assertEqual(e['11LAB70AA501']['notes'], (old + '\n' if old.strip() else '') + 'Lagging checked')
+        self.assertEqual(e['11LAB70AA500']['notes'], (old + '\n' if old.strip() else '') + 'Lagging checked')
         self.assertEqual(e['11LAB70AA504']['notes'], 'Lagging checked')
         # Photo for all: a photo needs each code's floor; 504 has none, so it is asked for first, for that code
         # (before 2026-10-10 the app refused here and sent the person to Place for all); Cancel opens nothing
         ui.tap('More', exact=True)
         ui.tap('Select tags', exact=True)
-        tap_tag('11LAB70AA501')
+        tap_tag('11LAB70AA500')
         tap_tag('11LAB70AA504')
         ui.find('2 selected', exact=True)
         ui.tap('Photo for all', exact=True)
@@ -1044,8 +1044,8 @@ class Phone(unittest.TestCase):
         ui.type_into('Password', 'a long password')
         ui.tap('Join', exact=True)
         ui.find('Sample sheet', timeout=40)
-        ui.type_into('Search KKS or description', 'LAB70AA501')
-        ui.tap('11LAB70AA501', exact=True)
+        ui.type_into('Search KKS or description', 'LAB70AA500')
+        ui.tap('11LAB70AA500', exact=True)
         ui.scroll_to('Equipment: take photo', exact=True)
         # every way to add a photo says which kind it adds (the user, 2026-11-16): the equipment or its tag plate,
         # from the camera or the gallery
@@ -1107,33 +1107,33 @@ class Phone(unittest.TestCase):
         ui.find('Add a tag plate photo', exact=True)
         ui.tap('Send', exact=True)
         def caps():
-            c = sorted(p['caption'] for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501')
+            c = sorted(p['caption'] for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA500')
             return c if len(c) == 2 else None
         self.assertEqual(self.wait_server(caps, 'the two photos never reached the server', tries=120), ['', 'Tag plate'])
-        self.assertEqual(self.boss.req('GET', '/api/state')['equipment']['11LAB70AA501'].get('floor'), '5', 'the floor sent with the photo')
+        self.assertEqual(self.boss.req('GET', '/api/state')['equipment']['11LAB70AA500'].get('floor'), '5', 'the floor sent with the photo')
         # the drawing coloured by photos: this tag has both now (the drawing's tags carry it in their names)
         ui.sh('input', 'keyevent', '4')
         ui.tap('More', exact=True)
         ui.tap('Colour tags by photos', exact=True)
-        ui.find('11LAB70AA501, equipment and tag plate photos', timeout=20)
+        ui.find('11LAB70AA500, equipment and tag plate photos', timeout=20)
         # the search result's mark says the same (the core's searchView, through the JNI)
-        ui.type_into('Search KKS or description', 'LAB70AA501')
-        ui.find('11LAB70AA501', exact=True)
+        ui.type_into('Search KKS or description', 'LAB70AA500')
+        ui.find('11LAB70AA500', exact=True)
         marks = [n.get('content-desc') for n in ui.nodes() if n.get('content-desc') in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos')]
         self.assertEqual(marks[:1], ['equipment and tag plate photos'])
-        ui.tap('11LAB70AA501', exact=True)                 # the result opens its panel and empties the search
+        ui.tap('11LAB70AA500', exact=True)                 # the result opens its panel and empties the search
         ui.find('Feed water piping system', timeout=10)
         ui.sh('input', 'keyevent', '4')                    # Back closes the panel
         time.sleep(1)
         # delete one: the confirm dialog sent an empty photo id ("bad photo id") before the fix
-        ui.tap('11LAB70AA501, equipment and tag plate photos')
+        ui.tap('11LAB70AA500, equipment and tag plate photos')
         ui.scroll_to('Delete', exact=True)
         ui.tap('Delete', exact=True)
         ui.find('Delete this photo?', exact=True)
         ui.tap('Delete photo', exact=True)
         self.assertFalse(ui.present('bad photo id'), 'the delete sent no photo id')
         def left():
-            c = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA501']
+            c = [p for p in self.boss.req('GET', '/api/state')['photos'] if p['kks'] == '11LAB70AA500']
             return c if len(c) == 1 else None
         self.wait_server(left, 'the deleted photo is still on the server', tries=60)
 
@@ -1293,14 +1293,14 @@ class Phone(unittest.TestCase):
         ui.tap('LAB · Feed water piping system, ')
         ui.find('LAB70, ', timeout=10)
         time.sleep(1)
-        self.assertFalse(ui.present('11LAB70AA501, '), 'the subsystem opened by itself')
-        ui.type_into('Filter equipment by system', 'LAB70AA501')
+        self.assertFalse(ui.present('11LAB70AA500, '), 'the subsystem opened by itself')
+        ui.type_into('Filter equipment by system', 'LAB70AA500')
         ui.find('AA · ', timeout=10)
-        row = ui.find('11LAB70AA501, ', timeout=10)
+        row = ui.find('11LAB70AA500, ', timeout=10)
         self.assertIn('Sample sheet', label := ui.label(row), label)
         with open('/tmp/kks-android-systems.png', 'wb') as f:
             f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
-        ui.tap('11LAB70AA501, ')
+        ui.tap('11LAB70AA500, ')
         # the screen closes; the tag's panel is open on its sheet
         ui.find('Feed water piping system', timeout=15)
         self.assertFalse(ui.present('Equipment by system', exact=True), 'the screen stayed open')
@@ -1479,7 +1479,7 @@ class Phone(unittest.TestCase):
         ui.find('Sample sheet', timeout=40)
         ui.tap('More', exact=True)
         ui.tap('Coverage', exact=True)
-        # the test plant: two codes marked by the manager (so checked), no place, no photos: 11LAB70AA501 on the
+        # the test plant: two codes marked by the manager (so checked), no place, no photos: 11LAB70AA500 on the
         # sample sheet, 11LAB70AA509 on a sheet that isn't there
         for t in ('Codes on the drawings: 2 (on 2 tags)', 'Checked by a person: 100 % (2 of 2 tags)',
                   'Known place: 0 % (0 of 2 codes)', 'To review: 0', 'Missed tags marked: 2'):
@@ -1520,15 +1520,15 @@ class Phone(unittest.TestCase):
         ui.tap('Join', exact=True)
         ui.find('Sample sheet', timeout=40)
         # search → the panel decodes the tag
-        ui.type_into('Search KKS or description', 'LAB70AA501')
+        ui.type_into('Search KKS or description', 'LAB70AA500')
         # each result's photo mark, in words for TalkBack, and under the results what the marks mean
-        ui.find('11LAB70AA501', exact=True)
+        ui.find('11LAB70AA500', exact=True)
         row = [n for n in ui.nodes() if n.get('content-desc') in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos')]
         self.assertGreaterEqual(len(row), 1, [(n.get('text'), n.get('content-desc')) for n in ui.nodes()])
         legend = [n.get('text') for n in ui.nodes()]          # (the legend's words are texts; a row's mark is a description)
         for words in ('no photos', 'equipment photo only', 'tag plate photo only', 'equipment and tag plate photos'):
             self.assertIn(words, legend)
-        ui.tap('11LAB70AA501', exact=True)
+        ui.tap('11LAB70AA500', exact=True)
         ui.find('Feed water piping system', timeout=10)
         # edit a field; the change reaches the server by the automatic sync
         ui.scroll_to('Edit', exact=True)
@@ -1537,7 +1537,7 @@ class Phone(unittest.TestCase):
         ui.type_into('Notes', 'Gland repacked')
         ui.scroll_to('Save', exact=True)
         ui.tap('Save', exact=True)
-        eq = self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('notes'),
+        eq = self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes'),
                               'the edit never reached the server')
         self.assertEqual(eq, 'Gland repacked')
         # a member proposes on the server; the manager approves on the phone
@@ -1545,7 +1545,7 @@ class Phone(unittest.TestCase):
         ali = Client(self.base)
         ali.req('POST', '/api/password-reset', {'token': r['link'].split('#reset=')[1], 'password': 'ali password 1'})
         ali.req('POST', '/api/login', {'username': 'ali', 'password': 'ali password 1'})
-        self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501',
+        self.assertEqual(ali.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500',
                          'changes': {'floor': '2'}}})['status'], 'pending')
         ui.sh('input', 'keyevent', '4')                    # close the panel
         ui.tap('Sync', exact=True)
@@ -1595,22 +1595,22 @@ class Phone(unittest.TestCase):
             d = ui.sh('dumpsys', 'activity', 'activities')
             ids = set(re.findall(r'Hist +#\d+: ActivityRecord\{(\w+) [^}]*' + re.escape(PKG) + r'/kks\.explorer\.MainActivity', d))
             return len(ids) if len(ids) == 1 else '%d: %s' % (len(ids), '\n'.join(l.strip() for l in d.splitlines() if 'MainActivity' in l or 'Task{' in l))
-        link('walkdown://kks/11LAB70AA501')
+        link('walkdown://kks/11LAB70AA500')
         ui.find('Join through a server', exact=True)
         self.join()
         time.sleep(3)
         self.assertFalse(ui.present('Feed water piping system'), 'a link from before joining opened its tag')
-        for bad in ('walkdown://kks/11LAB70AA501?x=1', 'walkdown://delete/11LAB70AA501', 'walkdown://kks/11lab70aa501',
+        for bad in ('walkdown://kks/11LAB70AA500?x=1', 'walkdown://delete/11LAB70AA500', 'walkdown://kks/11lab70aa500',
                     'walkdown://course/../../etc'):
             link(bad)
         self.assertFalse(ui.present('Feed water piping system'), 'a malformed link opened a tag')
         # while the app runs: the tag, in the same activity
-        link('walkdown://kks/11LAB70AA501')
+        link('walkdown://kks/11LAB70AA500')
         ui.find('Feed water piping system', timeout=15)
         n = main_activities(); self.assertTrue(n == 1, n)
         # a cold start
         ui.sh('am', 'force-stop', PKG)
-        link('walkdown://kks/11LAB70AA501')
+        link('walkdown://kks/11LAB70AA500')
         ui.find('Feed water piping system', timeout=20)
         n = main_activities(); self.assertTrue(n == 1, n)
         # in the background (Home): the task comes to the front and opens the link: a course, at a page
@@ -1622,7 +1622,7 @@ class Phone(unittest.TestCase):
         n = main_activities(); self.assertTrue(n == 1, n)
         # with the camera open over Walkdown for a photo: the camera stays, the photo is kept, and the link waits until
         # the photo's editor is closed; a code on no drawing then says so
-        link('walkdown://kks/11LAB70AA501')
+        link('walkdown://kks/11LAB70AA500')
         ui.find('Feed water piping system', timeout=15)
         ui.scroll_to('Equipment: take photo', exact=True)
         ui.tap('Equipment: take photo', exact=True)
@@ -1745,17 +1745,17 @@ class Phone(unittest.TestCase):
         "Draft description (unchecked)" until Confirm, then "Confirmed by …" """
         plant = os.path.join(self.dir, 'plant-data')
         with open(os.path.join(plant, 'descriptions.json'), 'w') as f:
-            json.dump({'11LAB70AA501': {'text': 'Feed water isolation valve', 'basis': 'e2e test'}}, f)
+            json.dump({'11LAB70AA500': {'text': 'Feed water isolation valve', 'basis': 'e2e test'}}, f)
         with open(os.path.join(plant, 'locations.json'), 'w') as f:   # a location row and an instrument point: no conflict
             json.dump({'source': 'e2e list', 'entries': [
-                {'kks': 'LAB70AA501', 'level': '14 m', 'desc': 'Feed platform'},
-                {'kks': 'LAB70AA501', 'kind': 'point', 'level': '33 m', 'elev_m': 33, 'grid': 'K16 F08', 'desc': 'Feed tapping point',
+                {'kks': 'LAB70AA500', 'level': '14 m', 'desc': 'Feed platform'},
+                {'kks': 'LAB70AA500', 'kind': 'point', 'level': '33 m', 'elev_m': 33, 'grid': 'K16 F08', 'desc': 'Feed tapping point',
                  'source': 'Maker list', 'page': 5}]}, f)
         r = subprocess.run([SERVER, 'publish-data', plant, '--config', os.path.join(self.dir, 'config.json')], cwd=self.dir,
                            capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         nura = self.member('nura', 'Nura Credit', 'nura password 1')
-        r = nura.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'near': 'by the e2e stair'}}})
+        r = nura.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'near': 'by the e2e stair'}}})
         self.assertEqual(r.get('status'), 'pending', r)
         sub = [x for x in self.boss.req('GET', '/api/submissions')['submissions'] if x['by'] == 'nura'][0]
         self.assertTrue(self.boss.req('POST', f'/api/submissions/{sub["id"]}/approve', {}).get('ok', True))
@@ -1768,7 +1768,7 @@ class Phone(unittest.TestCase):
         ui.tap('Confirm', exact=True)
 
         def confirmed():
-            c = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('custom') or []
+            c = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('custom') or []
             return [x for x in c if x['k'] == 'Description']
         self.assertEqual(self.wait_server(confirmed, 'the confirmed description never reached the server')[0]['v'],
                          'Feed water isolation valve')
@@ -1896,7 +1896,7 @@ class Phone(unittest.TestCase):
         if not ui.debuggable(PKG):
             self.skipTest('not a debuggable build (rehearsal/release): the queued photo is lost through run-as')
         w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
-        code = '11LAB70AA501'
+        code = '11LAB70AA500'
 
         def queue_files():
             return ui.adb('exec-out', 'run-as', PKG, 'ls', 'files/photo-queue').split()
@@ -1969,7 +1969,7 @@ class Phone(unittest.TestCase):
         name = 'عمر الفني' if os.environ.get('KKS_EVIDENCE_ARABIC') else 'Omar Fullname'   # (the UI audit's L1 evidence)
         omar = self.member('omar', name, 'omar password 1')
         for cap, tag in (('', 'eq1'), ('Tag plate', 'plate1')):
-            r = omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': cap, 'dataUrl': self.jxl(tag)}})
+            r = omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA500', 'caption': cap, 'dataUrl': self.jxl(tag)}})
             self.assertIn(r.get('status'), ('pending', 'conflict'), r)
         self.join()
         ui.tap('Manage', exact=True)
@@ -1981,7 +1981,7 @@ class Phone(unittest.TestCase):
             ui.find('Cancel', exact=True, timeout=10)
             evidence('reject')
             ui.tap('Cancel', exact=True)
-            omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'second', 'dataUrl': self.jxl('eq2')}})
+            omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA500', 'caption': 'second', 'dataUrl': self.jxl('eq2')}})
             ui.sh('input', 'keyevent', '4')
             ui.tap('Drawings', exact=True)
             ui.tap('Sync', exact=True)
@@ -1998,7 +1998,7 @@ class Phone(unittest.TestCase):
         self.assertTrue(ui.present('by ' + name), 'the full name of the sender')
         self.assertFalse(ui.present('by omar ·'), 'the username instead of the full name')
         self.assertFalse(ui.present('Use this one', exact=True), 'Pick offered with one photo per kind')
-        self.assertEqual(sum(1 for n in ui.nodes() if ui.label(n) == '11LAB70AA501'), 1, 'one card for the code')
+        self.assertEqual(sum(1 for n in ui.nodes() if ui.label(n) == '11LAB70AA500'), 1, 'one card for the code')
         # #365: Reject is final, so it asks first, naming whose proposal; Cancel leaves it waiting
         ui.tap('Reject', exact=True)
         ui.find(f'The proposal by \u2068{name}\u2069 is discarded; the submitter sees that it was rejected. This can\'t be undone.', exact=True, timeout=10)
@@ -2007,7 +2007,7 @@ class Phone(unittest.TestCase):
         time.sleep(1)
         self.assertEqual({x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}, {'pending'})
         # a second equipment photo: now those two compete
-        omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA501', 'caption': 'second', 'dataUrl': self.jxl('eq2')}})
+        omar.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': '11LAB70AA500', 'caption': 'second', 'dataUrl': self.jxl('eq2')}})
         ui.sh('input', 'keyevent', '4')
         ui.tap('Drawings', exact=True)
         ui.tap('Sync', exact=True)
@@ -2038,7 +2038,7 @@ class Phone(unittest.TestCase):
             ui.sh('input', 'keyevent', '4')
         ui.scroll_to('History', exact=True)
         ui.tap('History', exact=True)
-        ui.find('photo added 11LAB70AA501', timeout=20)
+        ui.find('photo added 11LAB70AA500', timeout=20)
         self.assertTrue(ui.present(' · 20'), 'who and when under each change')
         self.assertFalse(ui.present('#', exact=True), 'a row with no number and no words')
         os.makedirs(SHOTS, exist_ok=True)        # for the UI audit: the rows at the normal and the largest font scale
@@ -2047,11 +2047,11 @@ class Phone(unittest.TestCase):
         ui.sh('settings', 'put', 'system', 'font_scale', '1.3')
         try:
             time.sleep(2)
-            if not ui.present('photo added 11LAB70AA501'):    # the font change restarted the activity
+            if not ui.present('photo added 11LAB70AA500'):    # the font change restarted the activity
                 ui.tap('Manage', exact=True)
                 ui.scroll_to('History', exact=True)
                 ui.tap('History', exact=True)
-                ui.find('photo added 11LAB70AA501', timeout=20)
+                ui.find('photo added 11LAB70AA500', timeout=20)
             with open(os.path.join(SHOTS, 'history-font1.3.png'), 'wb') as f:
                 f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
         finally:
@@ -2062,17 +2062,17 @@ class Phone(unittest.TestCase):
         heading with Close stays in view while the panel scrolls (it scrolled away with the content before); in
         Approvals, Select all and Approve selected, and ticked ones rejected with one question"""
         # enough in the panel that it scrolls far
-        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'base': {}, 'changes': {
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'base': {}, 'changes': {
             'custom': [{'k': 'Field %02d' % i, 'v': 'value %d' % i} for i in range(30)]}}})
         self.assertEqual(r.get('status'), 'approved', r)
         omar = self.member('omar', 'Omar Fullname', 'omar password 1')
         for f in ('near', 'area', 'loc'):
-            r = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {f: 'by omar ' + f}, 'base': {}}})
+            r = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {f: 'by omar ' + f}, 'base': {}}})
             self.assertEqual(r.get('status'), 'pending', r)
         # a held one (its submitter saw notes "old", which the manager has changed since): the batch never approves it
-        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'old'}, 'base': {}}})['status'], 'approved')
-        held = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'theirs'}, 'base': {'notes': 'old'}}})['id']
-        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': 'newer'}, 'base': {'notes': 'old'}}})['status'], 'approved')
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'notes': 'old'}, 'base': {}}})['status'], 'approved')
+        held = omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'notes': 'theirs'}, 'base': {'notes': 'old'}}})['id']
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'notes': 'newer'}, 'base': {'notes': 'old'}}})['status'], 'approved')
         self.assertEqual({x['id']: x['status'] for x in omar.req('GET', '/api/submissions?status=all')['submissions']}[held], 'conflict')
         self.join()
         self.open_tag()
@@ -2080,11 +2080,11 @@ class Phone(unittest.TestCase):
         ui.find('Copied', exact=True, timeout=5)
         # (no snackbar of our own on Android 13 and later, which show their own preview of the clipboard)
         if int(ui.sh('getprop', 'ro.build.version.sdk').strip() or 0) < 33:
-            ui.find('Copied 11LAB70AA501', exact=True, timeout=5)
+            ui.find('Copied 11LAB70AA500', exact=True, timeout=5)
         # scrolled to the last field, the heading is still there: the code, Copy and Close
         ui.scroll_to('Field 29', exact=True, tries=20)
         self.assertFalse(ui.present('Plant unit', exact=True), 'the panel did not scroll')
-        for t in ('11LAB70AA501', 'Close'):
+        for t in ('11LAB70AA500', 'Close'):
             self.assertTrue(ui.present(t, exact=True), t + ' scrolled out of view')
         ui.tap('Close', exact=True)
         time.sleep(1)
@@ -2096,7 +2096,7 @@ class Phone(unittest.TestCase):
         ui.sh('input', 'keyevent', '279')                 # Paste
         time.sleep(0.5)
         field = [n for n in ui.nodes() if n.get('focused') == 'true' and n.get('class', '').endswith('EditText')]
-        self.assertEqual([n.get('text') for n in field], ['11LAB70AA501'])
+        self.assertEqual([n.get('text') for n in field], ['11LAB70AA500'])
         ui.hide_keyboard()
         # Approvals: all at once; the three plain ones are approved, the held one is not
         ui.tap('Manage', exact=True)
@@ -2118,7 +2118,7 @@ class Phone(unittest.TestCase):
         # two more: tick one, Reject selected asks once, the other stays
         ids = []
         for f in ('near', 'area'):
-            ids.append(omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {f: 'again ' + f}, 'base': {}}})['id'])
+            ids.append(omar.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {f: 'again ' + f}, 'base': {}}})['id'])
         ui.sh('input', 'keyevent', '4')
         ui.tap('Drawings', exact=True)
         ui.tap('Sync', exact=True)
@@ -2181,10 +2181,10 @@ class Phone(unittest.TestCase):
                 ui.sh('settings', 'put', 'system', 'user_rotation', turn)
                 time.sleep(3)
                 # (open_tag's check reads a line far down the panel: on its side it may be below the panel's edge)
-                ui.type_into('Search KKS or description', 'LAB70AA501')
-                ui.tap('11LAB70AA501', exact=True)
-                ui.find('Copy 11LAB70AA501', exact=True, timeout=10)
-                head = {t: box(ui.find(t, exact=True)) for t in ('11LAB70AA501', 'Close')}
+                ui.type_into('Search KKS or description', 'LAB70AA500')
+                ui.tap('11LAB70AA500', exact=True)
+                ui.find('Copy 11LAB70AA500', exact=True, timeout=10)
+                head = {t: box(ui.find(t, exact=True)) for t in ('11LAB70AA500', 'Close')}
                 title = box(ui.find('Sample sheet', exact=True))      # the app's bar: the window must not be panned
                 # typing in the drawing's search leaves the panel where it is (it would cover the results). Upright only:
                 # on its side the panel covers the search field (#376)
@@ -2223,7 +2223,7 @@ class Phone(unittest.TestCase):
                 ns = ui.nodes()
                 self.assertEqual([box(x) for x in ns if ui.label(x) == 'Sample sheet'], [title],
                                  'the window was panned: the app\'s bar went up under the status bar')
-                for t in ('11LAB70AA501', 'Close'):
+                for t in ('11LAB70AA500', 'Close'):
                     n = [x for x in ns if ui.label(x) == t]
                     self.assertTrue(n, f'{t} is not on screen with the keyboard up')
                     b = box(n[0])
@@ -2238,7 +2238,7 @@ class Phone(unittest.TestCase):
                 f = box(field[0])
                 # the field starts under the heading, and its line being typed in is above the keyboard: on its side (448 dp
                 # high, the keyboard 238 of them) the panel has about 100 dp, so a tall field may end under the keyboard
-                code = box([x for x in ns if ui.label(x) == '11LAB70AA501'][0])
+                code = box([x for x in ns if ui.label(x) == '11LAB70AA500'][0])
                 self.assertGreaterEqual(f[1], code[3], f'the field is under the heading: {f}, the code ends at {code[3]}')
                 self.assertGreaterEqual(min(f[3], ime[1]) - f[1], 32 * dp, f'too little of the field is above the keyboard: {f}, the keyboard starts at {ime[1]}')
                 if turn == '0':
@@ -2463,7 +2463,7 @@ class Phone(unittest.TestCase):
                         'steps': [{'n': 1, 'text': 'Open the suction valve'}, {'n': 2, 'text': 'Start the pump'}]}], f)
         r = subprocess.run([SERVER, 'publish-data', plant, '--config', cfg], cwd=self.dir, capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        code = '11LAB70AA501'
+        code = '11LAB70AA500'
         other = '11LAB70AA599'
         for k in (code, other):
             self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'link', 'payload': {'proc': 'P-1', 'step': 1, 'kks': k, 'on': True}})['status'], 'approved')
@@ -2550,9 +2550,9 @@ class Phone(unittest.TestCase):
         """requests 6, 9 and 10 as a member: the leaderboard; Updates on Manage's top level (not in Account); My
         proposals filtered by status and grouped by code"""
         tala = self.member('tala', 'Tala Member', 'tala password 1')
-        now = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('notes', '')
+        now = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes', '')
         for note in ('first e2e note', 'second e2e note'):     # the second is held: it clashes with the first
-            r = tala.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'notes': note},
+            r = tala.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'notes': note},
                                                                                 'base': {'notes': now}}})
             self.assertIn(r.get('status'), ('pending', 'conflict'), r)
         first = [x for x in self.boss.req('GET', '/api/submissions')['submissions']
@@ -2574,7 +2574,7 @@ class Phone(unittest.TestCase):
         self.assertFalse(ui.present('Check now', exact=True), 'Updates still in Account')
         ui.sh('input', 'keyevent', '4')
         ui.tap('My proposals', exact=True)
-        ui.find('11LAB70AA501', exact=True, timeout=15)
+        ui.find('11LAB70AA500', exact=True, timeout=15)
         ui.find('second e2e note')
         ui.tap('Status: Rejected')
         ui.find('first e2e note', timeout=10)

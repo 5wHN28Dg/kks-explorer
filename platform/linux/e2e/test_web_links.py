@@ -29,7 +29,7 @@ SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/shee
           {'id': 'b', 'name': 'Sheet B', 'w': 1000, 'h': 600, 'scale': 2, 'file': 'data/sheets/b.png', 'notes': [],
            'links': [link('C16', 900, 500), link('D2', 120, 80), link('D2', 600, 80)]},
           {'id': 'c', 'name': 'Sheet C', 'w': 1000, 'h': 600, 'file': 'data/sheets/c.png', 'notes': []}]
-TAGS = [tag('a:1', 'a', '11LAB70AA501', 40), tag('b:1', 'b', '11LAB70AA502', 40)]
+TAGS = [tag('a:1', 'a', '11LAB70AA500', 40), tag('b:1', 'b', '11LAB70AA502', 40)]
 
 
 # the open sheet's image has loaded and its tags are drawn over it (index.js: openSheet clears data-sheet at once,

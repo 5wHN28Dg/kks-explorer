@@ -165,7 +165,7 @@ function markForm(bb){
 }
 async function sendMark(){
   const kks=$('#mkK').value.trim().toUpperCase().replace(/\s/g,''), isa=$('#mkI').value.trim().toUpperCase();
-  if(kks&&!/^\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3}[A-Z0-9]{0,4}$/.test(kks)){ toast('That is not a valid KKS (e.g. 11LAB70AA501); leave it empty if unsure'); return }
+  if(kks&&!/^\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3}[A-Z0-9]{0,4}$/.test(kks)){ toast('That is not a valid KKS (e.g. 11LAB70AA500); leave it empty if unsure'); return }
   const r=await send('tag_add',{sheet:cur.id,bbox:mark.pending.map(v=>Math.round(v*10)/10),kks,isa,note:$('#mkN').value.trim()},kks||'marked tag');
   if(r){ markMode(false); closePanel() }
 }
@@ -757,7 +757,7 @@ async function saveEq(k){
 async function review(id,status){
   const kv=($('#rvK')?.value||'').trim().toUpperCase().replace(/\s/g,''), iv=($('#rvI')?.value||'').trim().toUpperCase();
   let d={status};
-  if(status==='confirmed'){ const m=kv.match(/^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]*)$/); if(!m){toast('That is not a valid KKS (e.g. 11LAB70AA501)');return}
+  if(status==='confirmed'){ const m=kv.match(/^(\d{2}[A-Z]{3}\d{2}[A-Z]{2}\d{3})([A-Z0-9]*)$/); if(!m){toast('That is not a valid KKS (e.g. 11LAB70AA500)');return}
     d={status,kks:m[1],suffix:m[2],isa:iv||null} }
   else if(!await K.confirm('Mark this as not a tag?','It is no longer shown as a tag, on every device.','Mark as not a tag')) return;
   const r=await send('review',{tag_id:id,data:d,base:STATE.reviews[id]||null},status==='confirmed'?`${d.kks}${d.suffix}`:'not a tag'); if(!r) return;
@@ -909,7 +909,7 @@ function pickList(){
       :h('p',null,'Nothing selected yet: click tags on the drawing, drag a box around several, pick search results, or add codes below.')) };
   draw();
   const said=h('div',{class:'warn',id:'pickAddSaid',role:'status',style:'display:none'});
-  const ta=h('textarea',{id:'pickAddText',rows:2,class:'mono',placeholder:'11LAB70AA501, 11LAB70AA502 …'});
+  const ta=h('textarea',{id:'pickAddText',rows:2,class:'mono',placeholder:'11LAB70AA500, 11LAB70AA502 …'});
   const add=()=>{ const r=addCodes(ta.value); if(!r.added.length&&!r.unknown.length&&!r.over.length&&!ta.value.trim()){ toast('Type the codes first'); return }
     const L=[];
     if(r.added.length) L.push(`Added ${nCodes(r.added.length)}.`);

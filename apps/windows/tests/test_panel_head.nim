@@ -49,7 +49,7 @@ suite "the tag panel's heading":
   test "Copy and Close stay at the top while the panel scrolls to its end":
     let head = newPage(main)
     let body = newPage(main)
-    head.title("11LAB70AA501")
+    head.title("11LAB70AA500")
     head.dim("Gate valve")
     let bs = head.buttons(("Copy", proc () = discard), ("Close", proc () = discard))
     var first: HWND
@@ -78,7 +78,7 @@ suite "the tag panel's heading":
   test "without the heading the panel takes the whole column":
     let head = newPage(main)
     let body = newPage(main)
-    head.title("11LAB70AA501")
+    head.title("11LAB70AA500")
     body.label("a line")
     var r: RECT
     GetClientRect(main, addr r)

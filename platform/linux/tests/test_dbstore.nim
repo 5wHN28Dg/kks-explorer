@@ -152,13 +152,13 @@ suite "SQLite store, sealed at rest":
       check p.waitForExit() == 9
       p.close()
     # the photo, its comment, then the row with the client_id: killed at the row
-    killedAt(photo("11LAB70AA501", "die-photo-1"), 1)
+    killedAt(photo("11LAB70AA500", "die-photo-1"), 1)
     st = openDbStore(P, path, key)
     n = newNode(P, st, devKey)
     check n.entries.len == 1 and st.subs.len == 0 and st.notes.len == 0
     var a = newApi(n)
-    check a.handle(a.owner[1], "POST", "/api/submit", initTable[string, string](), photo("11LAB70AA501", "die-photo-1"), 1_790_000_200_000).status == 200
-    check a.handle(a.owner[1], "POST", "/api/submit", initTable[string, string](), photo("11LAB70AA501", "die-photo-1"), 1_790_000_300_000).json["duplicate"].b
+    check a.handle(a.owner[1], "POST", "/api/submit", initTable[string, string](), photo("11LAB70AA500", "die-photo-1"), 1_790_000_200_000).status == 200
+    check a.handle(a.owner[1], "POST", "/api/submit", initTable[string, string](), photo("11LAB70AA500", "die-photo-1"), 1_790_000_300_000).json["duplicate"].b
     check n.countType("photo") == 1 and n.countType("comment") == 1
     st.close()
     # several codes: killed at the second code's row; the first one is whole, the second absent

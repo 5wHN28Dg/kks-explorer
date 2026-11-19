@@ -41,7 +41,7 @@ rule wins, so they stay. Each one adds to the rulebook rule named in brackets.
   place** while the content scrolls (its bounds in the accessibility tree don't change).
 - **WD-E7 (Advice):** a form's Save or Send is in a bar that stays visible, or directly after the last field; never
   after a list that can grow without limit.
-- **WD-I5 (Block; adds to I5):** the copy confirmation **names what was copied** ("Copied 11LAB70AA501"), except
+- **WD-I5 (Block; adds to I5):** the copy confirmation **names what was copied** ("Copied 11LAB70AA500"), except
   where the platform shows its own preview (Android 13 and later). Identifiers drawn as part of a picture (tags on a
   drawing, codes on Plant's control room screens and P&IDs) can't be selected; there the item's card or panel, one
   tap away, offers the copy. This exemption is looser than I5 read strictly: under the rulebook's 0.2 it stays only until the next

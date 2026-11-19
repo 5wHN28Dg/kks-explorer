@@ -134,7 +134,7 @@ fun SelectList(selected: List<String>, places: Map<String, List<Drawn>>?, onUnti
             else LazyColumn(Modifier.heightIn(max = 260.dp)) {
                 items(selected, key = { it }) { code ->
                     val on = places?.get(code)?.map { it.sheetName }?.distinct()
-                    // one switch per row: the whole row toggles, TalkBack says "11LAB70AA501, Sample sheet, checkbox, checked"
+                    // one switch per row: the whole row toggles, TalkBack says "11LAB70AA500, Sample sheet, checkbox, checked"
                     Row(Modifier.fillMaxWidth().toggleable(value = true, role = Role.Checkbox, onValueChange = { onUntick(code) })
                         .padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = true, onCheckedChange = null)
