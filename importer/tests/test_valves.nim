@@ -225,12 +225,12 @@ suite "tags.json (--keep-tags)":
     let d = fromPdfPage(doc, 0, images = false)
     doc.close()
     let tags = parseStrict("""[
-      {"id": "s:0", "sheet": "s", "kks": "11LAB70AA001", "status": "verified", "bbox": [170, 414, 230, 450],
+      {"id": "s:0", "sheet": "s", "kks": "11LAB70AA091", "status": "verified", "bbox": [170, 414, 230, 450],
        "note": "kept", "symbol": {"type": "check valve"}},
       {"id": "s:1", "sheet": "s", "kks": "11LAB70CP001", "isa": "PI", "status": "auto", "bbox": [10, 10, 60, 40]},
-      {"id": "s:2", "sheet": "s", "kks": "11LAB70AA002", "status": "auto", "bbox": [1000, 700, 1060, 740],
+      {"id": "s:2", "sheet": "s", "kks": "11LAB70AA092", "status": "auto", "bbox": [1000, 700, 1060, 740],
        "symbol": {"type": "stale"}},
-      {"id": "o:0", "sheet": "other", "kks": "11LAB70AA003", "bbox": [170, 414, 230, 450], "symbol": {"type": "x"}}]""")
+      {"id": "o:0", "sheet": "other", "kks": "11LAB70AA093", "bbox": [170, 414, 230, 450], "symbol": {"type": "x"}}]""")
     let before = parseStrict(toText(tags))
     let r = annotate(tags, "s", d, 2.0)
     check r.hasLegend and r.valves == 2 and r.typed == 1

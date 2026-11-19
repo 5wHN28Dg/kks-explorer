@@ -36,7 +36,7 @@ def tag(i, sheet, kks, x, suffix='', isa=None, status='auto'):
 SHEETS = [{'id': 'a', 'name': 'Sheet A', 'w': 1000, 'h': 600, 'file': 'data/sheets/a.png', 'notes': []},
           {'id': 'b', 'name': 'Sheet B', 'w': 1000, 'h': 600, 'file': 'data/sheets/b.png', 'notes': []}]
 TAGS = [tag('a:1', 'a', '11LAB70', 50), tag('a:2', 'a', '11LAB70AA500', 150),
-        tag('a:3', 'a', '11HAD70CT101', 250, 'R', 'TIAC'), tag('a:4', 'a', '11LAB70AA503', 350, status='verified'),
+        tag('a:3', 'a', '11HAD70CT109', 250, 'R', 'TIAC'), tag('a:4', 'a', '11LAB70AA503', 350, status='verified'),
         tag('a:6', 'a', '12LBA10AA101', 450),
         tag('b:1', 'b', '11LAB70AA500', 150), tag('b:2', 'b', '11LAB71AP001', 650)]
 LOCATIONS = {'source': 'test list', 'entries': [{'kks': 'LAB70AA500', 'level': '14.50m', 'cabinet': 'C1', 'desc': 'feed valve north', 'page': 1}]}
@@ -94,7 +94,7 @@ class WebSystems(unittest.TestCase):
         n = lambda t, k: k + ' · ' + K[t][k]
         return [
             [n('blocks', '11') + ' (5)', [
-                [n('systems', 'HAD') + ' (1)', [['HAD70 (1)', [[n('components', 'CT') + ' (1)', ['11HAD70CT101R']]]]]],
+                [n('systems', 'HAD') + ' (1)', [['HAD70 (1)', [[n('components', 'CT') + ' (1)', ['11HAD70CT109R']]]]]],
                 [n('systems', 'LAB') + ' (4)', [
                     ['LAB70 (3)', [[n('components', 'AA') + ' (3)', ['11LAB70AA500', '11LAB70AA503', '11LAB70AA504']]]],
                     ['LAB71 (1)', [[n('components', 'AP') + ' (1)', ['11LAB71AP001']]]]]]]],
@@ -167,10 +167,10 @@ class WebSystems(unittest.TestCase):
                 page.keyboard.press('Enter')
                 self.assertTrue(page.evaluate("document.activeElement.parentElement.open"), name + ': Enter did not open ' + want)
             page.keyboard.press('Tab')
-            self.assertTrue(focused().startswith('BUTTON:') and '11HAD70CT101R' in focused(), name + ': ' + focused())
+            self.assertTrue(focused().startswith('BUTTON:') and '11HAD70CT109R' in focused(), name + ': ' + focused())
             page.keyboard.press('Enter')
             page.wait_for_function("() => document.activeElement && document.activeElement.getAttribute('role') === 'heading'", timeout=15000)
-            self.assertIn('11HAD70CT101R', page.evaluate("document.activeElement.textContent"))
+            self.assertIn('11HAD70CT109R', page.evaluate("document.activeElement.textContent"))
             # a row on another sheet switches the drawing
             page.get_by_role('button', name='Systems').click()   # (closes)
             page.get_by_role('button', name='Systems').click()   # (opens, rebuilt)

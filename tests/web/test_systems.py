@@ -15,7 +15,7 @@ SAMPLE = {
     'tags': [
         {'id': 'a:1', 'sheet': 'a', 'kks': '11LAB70', 'suffix': '', 'isa': None, 'kind': 'equipment', 'status': 'auto'},
         {'id': 'a:2', 'sheet': 'a', 'kks': '11LAB70AA500', 'suffix': '', 'isa': None, 'kind': 'equipment', 'status': 'auto'},
-        {'id': 'a:3', 'sheet': 'a', 'kks': '11HAD70CT101', 'suffix': 'R', 'isa': 'TIAC', 'kind': 'instrument', 'status': 'auto'},
+        {'id': 'a:3', 'sheet': 'a', 'kks': '11HAD70CT109', 'suffix': 'R', 'isa': 'TIAC', 'kind': 'instrument', 'status': 'auto'},
         {'id': 'a:4', 'sheet': 'a', 'kks': None, 'suffix': '', 'isa': None, 'kind': 'other', 'status': 'review'},
         {'id': 'a:5', 'sheet': 'a', 'kks': '11LAB70AA502', 'suffix': '', 'isa': None, 'kind': 'equipment', 'status': 'auto'}],
     'kks': {'systems': {'LAB': 'Feed water piping system', 'HAD': 'HP drum'},
@@ -64,7 +64,7 @@ class Systems(unittest.TestCase):
             got = pg.evaluate(RUN, SAMPLE)
             b.close()
         v = got['all']
-        # a:2 11LAB70AA500, a:3 11HAD70CT101R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected
+        # a:2 11LAB70AA500, a:3 11HAD70CT109R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected
         self.assertEqual(v['total'], 5)
         self.assertEqual(len(v['blocks']), 1)
         self.assertEqual((v['blocks'][0]['blk'], v['blocks'][0]['blk_name']), ('11', 'Block 1'))
@@ -85,7 +85,7 @@ class Systems(unittest.TestCase):
         had = systems[0]
         self.assertEqual((had['sys_name'], had['count'], had['subsystems'][0]['kinds'][0]['comp_name']),
                          ('HP drum', 1, 'Temperature measurement'))
-        self.assertEqual(had['subsystems'][0]['kinds'][0]['items'][0]['code'], '11HAD70CT101R')
+        self.assertEqual(had['subsystems'][0]['kinds'][0]['items'][0]['code'], '11HAD70CT109R')
         self.assertEqual(had['subsystems'][0]['kinds'][0]['items'][0]['photos'], 'none')
         self.assertEqual([x['code'] for x in v['other']], ['11LAB70'])
         self.assertEqual(got['temperature']['total'], 1)
@@ -174,7 +174,7 @@ class ValveType(unittest.TestCase):
                                            '11LAB70AA503': {'custom': [{'k': 'Valve type', 'v': 'check valve'}]},
                                            '11LAB70AA502': {'custom': [{'k': 'Valve type', 'v': 'butterfly valve'}]}}})
             reviewed = run({'equipment': {}, 'reviews': {
-                'a:1': {'status': 'confirmed', 'kks': '11LAB70CP501', 'isa': '', 'suffix': ''},
+                'a:1': {'status': 'confirmed', 'kks': '11LAB70CP591', 'isa': '', 'suffix': ''},
                 'a:3': {'status': 'confirmed', 'kks': '11LAB70AA513', 'isa': '', 'suffix': ''}}})
             b.close()
         g = v['a:1']

@@ -65,7 +65,7 @@ with the format in the group's description or an AdwActionRow subtitle that wrap
 
 **GNOME2-4 (A2; Block) Photos unnamed by tag and date.** Where: the panel's Photos. What: the photo button's name is
 "Open photo[: caption]" (`photos.nim:782`); the by-line with the date is a separate label. SMALL: "Photo of
-11LAB70AA501, 2026-11-15[, caption]".
+11LAB70AA500, 2026-11-15[, caption]".
 
 **GNOME2-5 (P3; Block) Bundles freeze the window.** Where: Manage → Devices → Save a bundle; setup → Join with a file.
 What: building or importing a bundle (all plant data and photos, base64 in gzip JSON) runs on the UI thread with no

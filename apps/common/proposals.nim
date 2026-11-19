@@ -21,7 +21,7 @@ proc str(n: JNode, k: string): string =
   else: toText(v)
 
 proc proposalTitle*(sub: JNode): string =
-  ## "Location and notes · 10LCE21AA101"
+  ## "Location and notes · 10LCE29AA109"
   let p = sub.get("payload")
   let what = case str(sub, "kind")
     of "equipment": "Location and notes"
