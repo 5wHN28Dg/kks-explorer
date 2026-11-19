@@ -66,7 +66,6 @@ static func wanted(settings: ConfigFile, opts: Dictionary) -> bool:
 	for k in SCRIPTED:      # (a scripted or measured start never waits for a press)
 		if opts.has(k):
 			return false
-		return false
 	return DisplayServer.get_name() != "headless" or renderer_override != ""
 
 
