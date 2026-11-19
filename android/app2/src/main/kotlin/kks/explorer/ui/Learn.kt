@@ -684,7 +684,7 @@ fun Worked(w: JSONObject, nav: Nav, gloss: Map<String, String>) {
 
 @Composable
 fun KksTool(nav: Nav) {
-    var code by remember { mutableStateOf("11 LAB 70 AA 501") }
+    var code by rememberSaveable { mutableStateOf("11 LAB 70 AA 501") }
     val tables = remember { call("GET", "/native/kks-tables").json }
     val raw = code.uppercase().replace(Regex("[\\s_.\\-]"), "")
     val m = Regex("^(\\d{2})([A-Z]{3})(\\d{2})([A-Z]{2})(\\d{3})([A-Z]?)$").matchEntire(raw)
@@ -813,7 +813,7 @@ fun Reading(p: JSONObject, nav: Nav, gloss: Map<String, String>) {
     var stats by remember { mutableStateOf(Triple(0, 0, 0)) }
     val pool = items.filter { it.getString("cat") in on }
     val cur = remember(round, on) { pool.randomOrNull()?.let { d -> val v = d.getJSONArray("values").list().random().let { (it as Number).toDouble() }; Triple(d, v, judge(d, v)) } }
-    var answer by remember(round, on) { mutableStateOf("") }
+    var answer by remember(round, on) { mutableStateOf("") }      // (not saved: it belongs to this random reading, which is not kept)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             cats.forEach { c -> FilterChip(selected = c in on, onClick = { on = if (c in on) on - c else on + c }, label = { Text(c) }) } }

@@ -941,6 +941,9 @@ class Phone(unittest.TestCase):
         with open(os.path.join(SHOTS, 'android-multi-list.png'), 'wb') as f:
             f.write(subprocess.run(ui.ADB + ['exec-out', 'screencap', '-p'], capture_output=True).stdout)
         ui.tap('Close', exact=True)
+        # (the code that was not added stays in the field, typed: Close asks before it goes, #426)
+        ui.find('Discard what you typed?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
         ui.find('4 selected', exact=True)
         # Photo for all: three codes have no floor, so it is asked first, naming them; 714 keeps its own
         ui.tap('Photo for all', exact=True)
@@ -2490,7 +2493,8 @@ class Phone(unittest.TestCase):
         ui.find('Mark this as not a tag?', exact=True, timeout=10)
         ui.tap('Mark as not a tag', exact=True)          # (the question's button names the action)
         self.wait_server(lambda: (reviewed() or {}).get('status') == 'rejected', 'Not a tag sent nothing')
-        ui.sh('input', 'keyevent', '4')
+        time.sleep(2)
+        if ui.present('Close', exact=True): ui.sh('input', 'keyevent', '4')     # (the panel closes itself once its tag is gone)
         # Unlink: no question, an Undo in the snackbar
         ui.tap('Procedures', exact=True)
         ui.tap('P-1  Start the test pump', exact=True, timeout=20)
@@ -2509,6 +2513,288 @@ class Phone(unittest.TestCase):
         self.wait_server(lambda: not linked() and not linked(other), 'the two unlinks never reached the server')
         ui.tap('Undo', exact=True)
         self.wait_server(lambda: linked() and linked(other), 'Undo did not link both again')
+
+    def test_saved_place(self):
+        """#366 (G2, D3, R2): turning the phone and Android stopping the app in the background bring back the open tag,
+        the Edit form and what was typed in it; Back with typed text asks first (Keep editing keeps it, Discard drops
+        it); Back leaves Mark a missing tag and full view before anything else"""
+        PKG_ACT = f'{PKG}/kks.explorer.MainActivity'
+
+        def typed_kept():
+            # the typed text in the panel; at the largest font sizes the panel's kept scroll may leave it just out of view
+            if ui.present('north door typed', exact=True): return
+            try: ui.scroll_to('north door typed', exact=True, up=True, tries=6)
+            except AssertionError: ui.scroll_to('north door typed', exact=True, tries=12)
+        self.assertEqual(self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [1000, 300, 1120, 360],
+                                                                                           'kks': '11LAB70AA502', 'isa': '', 'note': ''}})['status'], 'approved')
+        self.join()
+        ui.type_into('Search KKS or description', 'LAB70AA501')
+        ui.tap('11LAB70AA501', exact=True)
+        ui.find('Feed water piping system', timeout=10)
+        ui.scroll_to('Edit', exact=True)
+        ui.tap('Edit', exact=True)
+        ui.scroll_to('Near / landmark', exact=True)
+        ui.type_into('Near / landmark', 'north door typed')
+        # the activity made again (a font size change: turning the phone is handled in place, configChanges in the
+        # manifest): the form and the text are still there
+        scale = ui.sh('settings', 'get', 'system', 'font_scale').strip() or '1.0'    # (put back as it was: a run at 1.3 stays at 1.3)
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', scale)
+        pid0 = ui.sh('pidof', PKG).strip()
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.15' if scale != '1.15' else '1.2')
+        time.sleep(3)
+        typed_kept()
+        ui.sh('settings', 'put', 'system', 'font_scale', scale)
+        time.sleep(3)
+        typed_kept()
+        self.assertEqual(ui.sh('pidof', PKG).strip(), pid0, 'the font change restarted the process, not just the screen')
+        # stopped by Android in the background (am kill: what the system does to a cached app), then opened again
+        pid = ui.sh('pidof', PKG).strip()
+        ui.sh('input', 'keyevent', '3')                       # Home
+        time.sleep(2)
+        ui.sh('am', 'kill', PKG)
+        for _ in range(20):
+            if ui.sh('pidof', PKG).strip() != pid: break
+            time.sleep(0.5)
+        self.assertNotEqual(ui.sh('pidof', PKG).strip(), pid, 'am kill did not stop the app')
+        ui.sh('am', 'start', '-n', PKG_ACT)
+        ui.find('Copy 11LAB70AA501', exact=True, timeout=30)
+        typed_kept()                                          # the tag's panel, its Edit form and the typed text
+        evidence('restored-after-kill')
+        self.assertTrue(ui.present('11LAB70AA501', exact=True), 'not the same tag')
+        # Back with typed text asks; Keep editing keeps it
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        evidence('discard-edits')
+        ui.tap('Keep editing', exact=True)
+        ui.find('north door typed', exact=True, timeout=10)
+        # another tag from the search, with text typed: asked first; Keep editing keeps this tag and the text
+        ui.type_into('Search KKS or description', 'LAB70AA502')
+        ui.tap('11LAB70AA502', exact=True, timeout=10)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('north door typed', exact=True, timeout=10)
+        self.assertTrue(ui.present('11LAB70AA501', exact=True), 'the panel moved to the other tag')
+                # Close asks too; Keep editing keeps the panel and the text
+        ui.tap('Close', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('north door typed', exact=True, timeout=10)
+        # Back again, Discard: the form goes, the panel stays (Back closed the top layer only)
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        time.sleep(1)
+        self.assertFalse(ui.present('north door typed', exact=True), 'Discard kept the text')
+        self.assertTrue(ui.present('Copy 11LAB70AA501', exact=True), 'Discard closed the panel too')   # (its heading)
+        # Back now closes the panel (nothing typed), and the app stays
+        ui.sh('input', 'keyevent', '4')
+        time.sleep(1)
+        self.assertFalse(ui.present('Copy 11LAB70AA501', exact=True), 'Back did not close the panel')
+        # full view: Back leaves it first, the app stays
+        ui.tap('Full screen: the drawing only', exact=True)
+        ui.find('Show the header and search', exact=True, timeout=10)
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Full screen: the drawing only', exact=True, timeout=10)
+        # Mark a missing tag: Back ends the mode, the app stays
+        ui.tap('More', exact=True)
+        ui.tap('Mark a missing tag', exact=True)
+        ui.find('Drag a box around the tag the app missed (two fingers move the drawing)', timeout=10)
+        ui.sh('input', 'keyevent', '4')
+        time.sleep(1)
+        self.assertFalse(ui.present('Drag a box around the tag the app missed (two fingers move the drawing)'), 'Back did not end marking')
+        self.assertTrue(ui.present('Search equipment by KKS code or description'), 'Back left the app')
+
+    def test_saved_place_more(self):
+        """#426 audit pass 2: the on-screen Back buttons ask as system Back does (Setup's Back, Manage's "‹ Manage", the
+        Selected list's Close); a description or tag that arrives by sync while text is typed leaves the typed text and
+        the panel; Account's fields follow a change that arrives while nothing is typed in them; the reading drill's
+        answer is not kept for another reading after the screen is made again; the bottom tabs' question names the
+        panel when its forms hold the text"""
+        PKG_ACT = f'{PKG}/kks.explorer.MainActivity'
+
+        def kill():
+            """Android stops the app in the background (am kill), then it is opened again"""
+            pid = ui.sh('pidof', PKG).strip()
+            ui.sh('input', 'keyevent', '3')                       # Home
+            time.sleep(2)
+            ui.sh('am', 'kill', PKG)
+            for _ in range(20):
+                if ui.sh('pidof', PKG).strip() != pid: break
+                time.sleep(0.5)
+            self.assertNotEqual(ui.sh('pidof', PKG).strip(), pid, 'am kill did not stop the app')
+            ui.sh('am', 'start', '-n', PKG_ACT)
+            time.sleep(3)
+
+        def no_question():
+            time.sleep(1.5)
+            self.assertFalse(any(ui.present(q, exact=True) for q in ('Discard your edits?', 'Discard what you typed?')),
+                             'asked about text nobody typed')
+        # Setup: the page's own Back button asks before the typed address goes
+        ui.tap('Join through a server', exact=True)
+        ui.type_into('Server address', 'typed.example:1')
+        ui.type_into('Username', 'typeduser')
+        ui.type_into('Password', 'typed password')
+        kill()                                                # the join page and what is typed come back
+        ui.find('typed.example:1', exact=True, timeout=30)
+        ui.find('typeduser', exact=True)
+        evidence('setup-after-kill')
+        self.assertFalse(ui.present('typed password'), 'the password is shown in clear')
+        ui.tap('Back', exact=True)
+        ui.find('Discard what you typed?', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('typed.example:1', exact=True, timeout=10)
+        ui.tap('Back', exact=True)
+        ui.find('Discard what you typed?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.find('Join through a server', exact=True, timeout=10)
+        added = self.boss.req('POST', '/api/submit', {'kind': 'tag_add', 'payload': {'sheet': 'sample', 'bbox': [1000, 300, 1120, 360],
+                                                                                     'kks': '11LAB70AA502', 'isa': '', 'note': ''}})
+        self.assertEqual(added['status'], 'approved', added)
+        added_id = next(a['id'] for a in self.boss.req('GET', '/api/state').get('added_tags', []) if a.get('kks') == '11LAB70AA502')
+
+        def describe(text):
+            base = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA501', {}).get('custom') or []
+            nxt = [c for c in base if c['k'] != 'Description'] + [{'k': 'Description', 'v': text}]
+            r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA501', 'changes': {'custom': nxt},
+                                                                                      'base': {'custom': base}}})
+            self.assertEqual(r.get('status'), 'approved', r)
+        describe('First description')
+        self.join()
+
+        def sync():          # (type_into has put the keyboard away: another Escape would be Back, which asks)
+            ui.tap('Sync', exact=True)
+            ui.find('Synced with', timeout=30)
+            time.sleep(2)
+        # a description that arrives while another is being typed: the typed text stays, and the bottom tabs ask in the
+        # panel's words
+        self.open_tag()
+        ui.scroll_to('Edit description', exact=True)
+        ui.tap('Edit description', exact=True)
+        ui.type_into('First description', 'typed description', clear=True)   # (the field, by its text: the heading is "Description")
+        describe('Second description')
+        sync()
+        ui.find('typed description', exact=True, timeout=10)
+        ui.tap('typed description', exact=True)               # the keyboard up, then Close: the question over it (R3)
+        time.sleep(1.5)
+        ui.tap('Close', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        evidence('discard-keyboard-up')
+        ui.tap('Keep editing', exact=True)
+        ui.hide_keyboard()
+        ui.tap('Manage', exact=True)
+        ui.find('What you typed in the panel has not been saved.', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('typed description', exact=True, timeout=10)
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.sh('input', 'keyevent', '4')                       # the panel closes
+        time.sleep(1)
+        # the open tag removed by a sync while its form holds text: the panel and the text stay
+        ui.type_into('Search KKS or description', 'LAB70AA502')
+        ui.tap('11LAB70AA502', exact=True)
+        ui.find('Copy 11LAB70AA502', exact=True, timeout=10)
+        try: ui.scroll_to('Edit', exact=True, up=True, tries=6)    # (the panel may open scrolled: at the largest font)
+        except AssertionError: ui.scroll_to('Edit', exact=True, tries=12)
+        ui.tap('Edit', exact=True)
+        ui.scroll_to('Near / landmark', exact=True)
+        ui.type_into('Near / landmark', 'kept near')
+        r = self.boss.req('POST', '/api/submit', {'kind': 'tag_remove', 'payload': {'id': added_id}})
+        self.assertEqual(r.get('status'), 'approved', r)
+        sync()
+        ui.find('kept near', exact=True, timeout=10)
+        self.assertTrue(ui.present('Copy 11LAB70AA502', exact=True), 'the panel closed under the typed text')
+        ui.scroll_to('This tag was removed from the drawing meanwhile.', up=True, tries=6)
+        evidence('removed-tag-kept')
+        kill()                                                # still there after Android stopped the app
+        ui.find('Copy 11LAB70AA502', exact=True, timeout=30)
+        ui.scroll_to('kept near', exact=True, tries=8)
+        ui.sh('input', 'keyevent', '4')
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        time.sleep(2)                                         # nothing typed in a removed tag's panel: it closes
+        self.assertFalse(ui.present('Copy 11LAB70AA502', exact=True), 'an empty panel of a removed tag stayed')
+        self.assertTrue(ui.present('Search equipment by KKS code or description'), 'Discard left the app')
+        # the Selected list: its Close asks before typed codes go
+        ui.tap('More', exact=True)
+        ui.tap('Select tags', exact=True)
+        ui.tap('List', exact=True)
+        ui.type_into('Add codes', '11LAB70AA501')
+        kill()
+        ui.find('11LAB70AA501', exact=True, timeout=30)       # the list and the typed codes come back
+        evidence('selected-after-kill')
+        ui.tap('Close', exact=True)
+        ui.find('Discard what you typed?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.tap('Done', exact=True, timeout=10)
+        # Manage: "‹ Manage" asks before typed Account text goes
+        ui.tap('Manage', exact=True)
+        ui.tap('Account', exact=True)
+        ui.type_into('The Manager', 'Typed Name', clear=True)                  # (the Full name field, by its text)
+        kill()
+        ui.find('Typed Name', exact=True, timeout=30)          # Manage's Account and the typed name come back
+        evidence('account-after-kill')
+        ui.tap('‹ Manage', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.find('Account', exact=True, timeout=10)
+        # nothing typed: a new name that arrives by sync shows in the field, and leaving asks nothing
+        ui.tap('Account', exact=True)
+        ui.find('The Manager', exact=True, timeout=10)
+        me = self.boss.req('GET', '/api/me')['user']
+        self.boss.req('POST', '/api/profile', {'full_name': 'The Renamed Manager', 'position': me.get('position', '')})
+        ui.find('The Renamed Manager', exact=True, timeout=200)       # (the phone syncs on its own every 2 min on screen)
+        ui.tap('‹ Manage', exact=True)
+        no_question()
+        # the photo editor: Android stops the app while the camera app is in front; the photo comes back into the
+        # editor, and the editor with its marks after another stop
+        w, h = map(int, re.findall(r'(\d+)x(\d+)', ui.sh('wm', 'size'))[-1])
+        ui.tap('Drawings', exact=True)
+        self.open_tag()
+        ui.scroll_to('Equipment: take photo', exact=True)
+        ui.tap('Equipment: take photo', exact=True)
+        if ui.present('Which floor is it on?', exact=True):
+            ui.tap('Floor 5')
+            ui.tap('Continue', exact=True)
+        self.allow_camera()
+        time.sleep(5)
+        ui.sh('am', 'kill', PKG)                              # (Walkdown is in the background behind the camera)
+        time.sleep(2)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+        time.sleep(4)
+        ui.sh('input', 'tap', str(w // 2), str(int(h * 0.94)))
+        ui.find('Send', exact=True, timeout=40)
+        ui.find('Add an equipment photo', exact=True)
+        ui.sh('input', 'swipe', str(w // 3), str(h // 2), str(w * 2 // 3), str(h * 3 // 5), '400')    # an arrow
+        time.sleep(1)
+        kill()
+        ui.find('Add an equipment photo', exact=True, timeout=30)
+        evidence('photo-editor-after-kill')
+        ui.tap('Cancel', exact=True)
+        ui.find('Discard the photo?', exact=True, timeout=10)  # the arrow came back: there is something to discard
+        ui.tap('Discard photo', exact=True)
+        ui.sh('input', 'keyevent', '4')                        # the panel closes
+        time.sleep(1)
+        # the reading drill: an answer, then the screen made again (a font change): no verdict left over for whatever
+        # reading shows now
+        ui.tap('Learning', exact=True)
+        ui.tap('HRSG Course', timeout=15)
+        ui.tap('Contents', exact=True, timeout=15)
+        ui.scroll_to('Reading drill', exact=True, tries=20)
+        ui.tap('Reading drill', exact=True)
+        ui.scroll_to('Within limits (no alarm)', tries=20)
+        ui.tap('Within limits (no alarm)')
+        time.sleep(1)
+        self.assertTrue(any('\u2713' in ui.label(n) for n in ui.nodes()), 'the answer was not marked')
+        scale = ui.sh('settings', 'get', 'system', 'font_scale').strip() or '1.0'
+        self.addCleanup(ui.sh, 'settings', 'put', 'system', 'font_scale', scale)
+        ui.sh('settings', 'put', 'system', 'font_scale', '1.15' if scale != '1.15' else '1.2')
+        time.sleep(4)
+        ui.scroll_to('Within limits (no alarm)', tries=20)
+        self.assertFalse(any(('\u2713' in ui.label(n) or '\u2717' in ui.label(n)) for n in ui.nodes()),
+                         'a verdict kept from before, over another reading')
+        ui.sh('settings', 'put', 'system', 'font_scale', scale)
+        time.sleep(3)
 
     def test_question_stays(self):
         """#365 review: a proposal that arrives (by sync) while Reject's question is open does not take the question
@@ -2601,7 +2887,7 @@ PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'flow', 'course_figures', 'photo_marks'),
-         ('destructive', 'question_stays', 'join_unreachable'))
+         ('destructive', 'question_stays', 'saved_place', 'saved_place_more', 'join_unreachable'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))

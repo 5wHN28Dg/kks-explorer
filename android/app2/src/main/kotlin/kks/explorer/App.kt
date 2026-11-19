@@ -17,6 +17,7 @@ class App : Application() {
         Core.listeners.add { why -> if (why.startsWith("wiped:")) removed(this, why.removePrefix("wiped:")) }
         kks.explorer.sync.SyncWorker.schedule(this)
         kks.explorer.sync.PhotoQueue.init(this)
+        Thread { runCatching { kks.explorer.ui.EditFiles.prune(this) } }.start()
     }
 
     companion object {
@@ -31,6 +32,7 @@ class App : Application() {
             Keys.wipe(ctx)
             File(ctx.filesDir, "core").deleteRecursively()
             kks.explorer.sync.PhotoQueue.wipe(ctx)
+            kks.explorer.ui.EditFiles.dir(ctx).deleteRecursively()      // (a photo being marked up)
             if (visible) ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)?.let {
                 ctx.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             }

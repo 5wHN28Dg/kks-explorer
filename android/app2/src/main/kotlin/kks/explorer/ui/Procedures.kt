@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -22,7 +23,7 @@ fun Procedures(ui: Ui, snack: SnackbarHostState) {
     val rev = Changes.rev
     BackHandler(enabled = ui.activeProc.isNotEmpty()) { ui.activeProc = "" }
     if (ui.activeProc.isNotEmpty()) { ProcedureDetail(ui, ui.activeProc, rev, snack); return }
-    var q by remember { mutableStateOf("") }
+    var q by rememberSaveable { mutableStateOf("") }
     val all = remember(rev) { call("GET", "/native/procs").json.optJSONArray("procs").objects() }
     val shown = remember(all, q) {
         val query = q.trim().lowercase()

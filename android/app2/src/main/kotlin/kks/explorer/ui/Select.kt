@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -125,9 +126,12 @@ fun SelectBar(n: Int, modifier: Modifier, onList: () -> Unit, onPhoto: () -> Uni
 @Composable
 fun SelectList(selected: List<String>, places: Map<String, List<Drawn>>?, onUntick: (String) -> Unit,
                onAdd: (List<String>) -> List<String>, onClose: () -> Unit) {
-    var typed by remember { mutableStateOf("") }
+    var typed by rememberSaveable { mutableStateOf("") }
     var said by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onClose, title = { Text("Selected tags") }, text = {
+    var discarding by remember { mutableStateOf(false) }
+    if (discarding) Confirm("Discard what you typed?", "The codes you typed are not added.", "Discard", onClose, { discarding = false }, no = "Keep editing")
+    AlertDialog(onDismissRequest = { if (typed.isNotBlank()) discarding = true else onClose() },
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false), title = { Text("Selected tags") }, text = {
         // scrolls as a whole: with the keyboard up on a small phone the field and Add must still be reachable
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (selected.isEmpty()) Dim("Nothing selected.")
@@ -163,7 +167,7 @@ fun SelectList(selected: List<String>, places: Map<String, List<Drawn>>?, onUnti
                     .filter { it.isNotEmpty() }.joinToString(" ")
             }) { Text("Add") }
         }
-    }, confirmButton = { TextButton(onClick = onClose) { Text("Close") } })
+    }, confirmButton = { TextButton(onClick = { if (typed.isNotBlank()) discarding = true else onClose() }) { Text("Close") } })
 }
 
 private val PLACE = FIELDS.filter { it.first != "notes" }
@@ -173,8 +177,9 @@ private val PLACE = FIELDS.filter { it.first != "notes" }
 @Composable
 fun PlaceForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
     HoldLinks()           // (a link waits: it would close this with what is typed or picked)
-    val values = remember { mutableStateMapOf<String, String>() }
-    var note by remember { mutableStateOf("") }
+    // (saved: turning the phone or the app stopped in the background keeps what is typed, #366)
+    var values by rememberSaveable { mutableStateOf(HashMap<String, String>()) }
+    var note by rememberSaveable { mutableStateOf("") }
     // the values shown (the bases): Send waits for them, or every code with a value would be sent as a clash
     var current by remember { mutableStateOf<Map<String, JSONObject>?>(null) }
     var sending by remember { mutableStateOf(false) }
@@ -182,10 +187,15 @@ fun PlaceForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Un
     LaunchedEffect(codes) { current = withContext(Dispatchers.IO) { equipmentOf(codes) } }
     val filled = PLACE.map { it.first }.filter { (values[it] ?: "").isNotBlank() }
     val replaced = codes.count { c -> val e = current?.get(c); e != null && filled.any { f -> e.optString(f).isNotBlank() && e.optString(f) != values[f]!!.trim() } }
-    AlertDialog(onDismissRequest = onClose, title = { Text("Place for ${codes.size} code" + if (codes.size == 1) "" else "s") }, text = {
+    // typed text is not dropped by Back or a tap beside the dialog without asking (#366, D3)
+    var discarding by remember { mutableStateOf(false) }
+    val typedPlace = values.values.any { it.isNotBlank() } || note.isNotBlank()
+    if (discarding) Confirm("Discard what you typed?", "The place for these codes is not sent.", "Discard", onClose, { discarding = false }, no = "Keep editing")
+    AlertDialog(onDismissRequest = { if (typedPlace) discarding = true else onClose() }, properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
+        title = { Text("Place for ${codes.size} code" + if (codes.size == 1) "" else "s") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Dim("Only the fields you fill are sent; the others stay as they are.")
-            for ((f, title) in PLACE) OutlinedTextField(values[f] ?: "", { values[f] = it }, label = { Text(title) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            for ((f, title) in PLACE) OutlinedTextField(values[f] ?: "", { values = HashMap(values).apply { put(f, it) } }, label = { Text(title) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(note, { note = it }, label = { Text("Note for the approver (optional)") }, modifier = Modifier.fillMaxWidth())
             if (replaced > 0) Text("$replaced of ${codes.size} codes already have another value here: it will be replaced.",
                 color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
@@ -198,18 +208,22 @@ fun PlaceForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Un
             val (ok, m) = withContext(Dispatchers.IO) { submitMany("equipment", codes, JSONObject().put("changes", changes), note, shown = shown) }
             sending = false; onSent(m); if (ok) onClose()
         }
-    }) { Text("Send") } }, dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } })
+    }) { Text("Send") } }, dismissButton = { TextButton(onClick = { if (typedPlace) discarding = true else onClose() }) { Text("Cancel") } })
 }
 
 /** one note added under each code's own notes (never replacing them) */
 @Composable
 fun NoteForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Unit) {
     HoldLinks()           // (a link waits: it would close this with what is typed or picked)
-    var text by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
+    var note by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    AlertDialog(onDismissRequest = onClose, title = { Text("Note for ${codes.size} code" + if (codes.size == 1) "" else "s") }, text = {
+    var discarding by remember { mutableStateOf(false) }
+    val typedNote = text.isNotBlank() || note.isNotBlank()
+    if (discarding) Confirm("Discard what you typed?", "The note for these codes is not sent.", "Discard", onClose, { discarding = false }, no = "Keep editing")
+    AlertDialog(onDismissRequest = { if (typedNote) discarding = true else onClose() }, properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false),
+        title = { Text("Note for ${codes.size} code" + if (codes.size == 1) "" else "s") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Dim("Added under each code's notes; what is there stays.")
             OutlinedTextField(text, { text = it }, label = { Text("Note to add") }, modifier = Modifier.fillMaxWidth())
@@ -221,7 +235,7 @@ fun NoteForAll(codes: List<String>, onSent: (String) -> Unit, onClose: () -> Uni
             val (ok, m) = withContext(Dispatchers.IO) { submitMany("equipment", codes, JSONObject().put("append", JSONObject().put("notes", text.trim())), note) }
             sending = false; onSent(m); if (ok) onClose()
         }
-    }) { Text("Send") } }, dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } })
+    }) { Text("Send") } }, dismissButton = { TextButton(onClick = { if (typedNote) discarding = true else onClose() }) { Text("Cancel") } })
 }
 
 /** the selected codes that have no floor yet: none on the equipment, and none this person has proposed that is still
@@ -266,7 +280,11 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var picked by remember { mutableStateOf<Bitmap?>(null) }
-    var fromCamera by remember { mutableStateOf(true) }
+    // the picture in the editor, kept in a file while it is there, as for one tag's photo (#366: the app stopped in
+    // the background, the camera app in front of it, brings it back to its editor)
+    val editFile = remember { File(ctx.cacheDir, "editing/for-all.img").also { it.parentFile?.mkdirs() } }
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var fromCamera by rememberSaveable { mutableStateOf(true) }
     val camFile = remember { File(ctx.cacheDir, "camera/shot.jpg").also { it.parentFile?.mkdirs() } }
     val camUri = remember { FileProvider.getUriForFile(ctx, "io.github.walkdown.files", camFile) }
     var preparing by remember { mutableStateOf(false) }       // reading and scaling the picture (a second or more)
@@ -276,11 +294,20 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
             withContext(Dispatchers.IO) {
                 val raw = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
                 if (uri == camUri) camFile.delete()
-                orientedBitmap(raw)
+                orientedBitmap(raw)?.also { EditFiles.write(editFile, raw) }
             }
         } finally { preparing = false }
+        editing = picked != null
         if (picked == null) onSaid("Could not read that picture")
     }
+    LaunchedEffect(editing) {
+        if (editing && picked == null) {
+            preparing = true
+            picked = try { withContext(Dispatchers.IO) { EditFiles.read(editFile)?.let { orientedBitmap(it) } } } finally { preparing = false }
+            if (picked == null) editing = false
+        }
+    }
+    fun closeEditor() { picked = null; editing = false; editFile.delete() }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u: Uri? -> if (u != null) load(u) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) load(camUri) }
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -291,7 +318,7 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
         if (ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera.launch(camUri) else perm.launch(Manifest.permission.CAMERA)
     }
     val title = "Photo for ${codes.size} code" + if (codes.size == 1) "" else "s"
-    if (picked == null) AlertDialog(onDismissRequest = onClose, title = { Text(title) }, text = {
+    if (picked == null && !editing) AlertDialog(onDismissRequest = onClose, title = { Text(title) }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Dim("One picture showing all of them; each code gets it.")
             if (preparing) {
@@ -303,9 +330,9 @@ fun PhotoForAll(codes: List<String>, floor: String, floorCodes: List<String>, on
         }
     }, confirmButton = { TextButton(onClick = onClose) { Text("Cancel") } })
     picked?.let { bmp ->
-        Annotate(bmp, false, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { picked = null },
-            onRetake = { picked = null; if (fromCamera) shoot() else gallery.launch("image/*") }) { out, caption, note ->
-            picked = null
+        Annotate(bmp, false, retake = if (fromCamera) "Retake" else "Choose another", onCancel = { closeEditor() },
+            onRetake = { closeEditor(); if (fromCamera) shoot() else gallery.launch("image/*") }) { out, caption, note ->
+            closeEditor()
             // the queue encodes and sends it in the background, like any other photo, whether or not the app stays open
             if (codes.isEmpty()) { onClose(); return@Annotate }
             PhotoQueue.add(ctx, out, codes.first(), caption, note, floor, codes = if (codes.size > 1) codes else emptyList(), floorCodes = floorCodes)
