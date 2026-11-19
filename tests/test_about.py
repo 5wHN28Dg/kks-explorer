@@ -344,6 +344,6 @@ class AccessibilityStatement(unittest.TestCase):
             a = json.load(f)['accessibility']
         self.check(a, 'Accessibility of Walkdown Plant')
         text = ' '.join(a['intro'] + a['gaps'] + [a['report']])
-        for s in ('Android: no screen reader', '#443', '#418', '#457', 'Narrator and Orca'):
+        for s in ('Android: no screen reader', '#443', '#418', '#457', 'Narrator, Orca'):
             self.assertIn(s, text)
         self.assertIn(about.REPOSITORY + '/issues', a['report'])

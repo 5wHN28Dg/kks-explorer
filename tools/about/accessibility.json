@@ -2,28 +2,28 @@
  "walkdown": {
   "url": "https://github.com/5wHN28Dg/kks-explorer#accessibility",
   "intro": [
-   "Walkdown is meant to work with a screen reader, with the keyboard alone, with large text and in a dark theme. It is checked with TalkBack on Android, Narrator on Windows, Orca on Linux (GNOME), and Orca with Firefox for the web app.",
-   "The apps follow the system's dark theme and text size. On a computer, the drawing pans with the arrow keys and zooms with + and −. Every tag can also be found by searching for its code or description, without seeing the drawing. Dark drawings help in dim rooms.",
-   "Apple devices (iPhone, iPad, Safari on a Mac) are not checked: there is none to test on. The web app is kept working on them as far as it can be without one, but VoiceOver is not checked."
+   "Walkdown is meant to work with a screen reader, with the keyboard alone, with large text and in a dark theme. It is made for TalkBack on Android, Narrator on Windows, Orca on Linux (GNOME), and Orca with Firefox for the web app. The tests check what these screen readers read (each platform's accessibility tree); TalkBack's speech is checked on a phone before each release.",
+   "The Android, GNOME and Windows apps follow the system's dark theme; the web app is always dark. The apps follow the system's text size. On a computer, the drawing pans with the arrow keys and zooms with + and −. Every tag can also be found by searching for its code or description, without seeing the drawing. Dark drawings help in dim rooms.",
+   "Apple devices (iPhone, iPad, Safari on a Mac) are not checked: there is none to test on. The web app is kept working on them as far as it can be without one, but VoiceOver is not checked. Windows on ARM64 is not checked either, for the same reason; it runs the same code as the x86-64 app."
   ],
   "gaps": [
-   "Some buttons have no name for a screen reader, and some status messages are not announced (#374).",
+   "Some buttons have no name for a screen reader, and some status messages are not announced (#374). On Windows, the main window's tabs don't say which one is selected (#433).",
    "Some actions need a drag or a pinch and have no keyboard or tap alternative, such as marking up a photo (#375). In the web app, two file pickers can't be reached with the keyboard (#403).",
    "Large text, zoom and narrow windows can cut off or hide controls in the web app, on GNOME and on Android (#376).",
    "Windows: the dark theme is not complete, and the system's text size and display scaling are not fully followed (#377).",
    "Arabic notes can split a KKS code across the line in the web app, on Windows and on Android (#379).",
-   "Some text, highlights and borders have too little contrast (#368, #369). Some states are shown by colour alone: a tag's state, photo coverage and course answers (#370).",
+   "Some text, highlights and borders have too little contrast (#368, #369); in Safari (WebKit), the header's drop-down lists are hard to read (#404). Some states are shown by colour alone: a tag's state, photo coverage and course answers (#370).",
    "Some touch targets are too small for gloves (#367).",
-   "The web app's course figures still move when the system asks for reduced motion (#380).",
-   "In the web app, the check with Orca and Firefox is not set up yet; until it is, the browser's accessibility tree is checked instead."
+   "In the Android, GNOME and Windows apps, course figures still move when the system asks for reduced motion (#380).",
+   "In the web app, Orca with Firefox itself is not run yet; the browser's accessibility tree is checked instead."
   ],
-  "report": "To report a barrier, tell your plant's manager, or open an issue at https://github.com/5wHN28Dg/kks-explorer/issues (Report a problem, in About). Leave plant data out of an issue: no codes, drawings, photos or names. A reported barrier counts as a major problem until it has been looked at."
+  "report": "To report a barrier, tell your plant's manager, or open an issue at https://github.com/5wHN28Dg/kks-explorer/issues (About links to it). Leave plant data out of an issue: no codes, drawings, photos or names. A reported barrier counts as a major problem until it has been looked at."
  },
  "plant": {
   "url": "https://github.com/5wHN28Dg/kks-explorer#accessibility-of-walkdown-plant",
   "intro": [
    "Walkdown Plant can be played with a keyboard and mouse, a gamepad, or touch. Its settings have a UI size from 100 % to 200 % (it sets the text size too), Reduced motion (no camera shake or head bob, and Go there without flying), and a run key that toggles instead of being held.",
-   "On Windows and Linux, its menus and panels are named for screen readers through the Godot Engine's AccessKit, checked with Narrator and Orca."
+   "On Windows and Linux, its menus and panels are named for screen readers (Narrator, Orca) through the Godot Engine's AccessKit; the tests read that accessibility tree on Linux."
   ],
   "gaps": [
    "Android: no screen reader support yet, because the Godot Engine has none there. It is checked again with each engine update.",
@@ -32,6 +32,7 @@
    "The Settings panel can run off the screen, with its Close out of reach (#381).",
    "On phones, the alarm rows on the screens are small to tap (#423), and a drag that starts on a button doesn't scroll (#425).",
    "The manual reader's buttons have too little contrast (#422).",
+   "Some buttons that reset or remove sit close to others, the codes on the control room screens are small on phones, panels can cover the look stick, and the HUD's text has no backing (#412).",
    "Graphics below the minimum (What it needs, in the README) get a slower renderer: about 12 frames a second on Intel HD Graphics 4400. Smooth play on Windows with the graphics it asks for is not checked: there is no such computer to test on (#457)."
   ],
   "report": "To report a barrier, open an issue at https://github.com/5wHN28Dg/kks-explorer/issues (Walkdown Plant has no Report a problem in the app yet: #446). A reported barrier counts as a major problem until it has been looked at."

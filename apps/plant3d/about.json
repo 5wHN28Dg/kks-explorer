@@ -196,7 +196,7 @@
  "accessibility": {
   "intro": [
    "Walkdown Plant can be played with a keyboard and mouse, a gamepad, or touch. Its settings have a UI size from 100 % to 200 % (it sets the text size too), Reduced motion (no camera shake or head bob, and Go there without flying), and a run key that toggles instead of being held.",
-   "On Windows and Linux, its menus and panels are named for screen readers through the Godot Engine's AccessKit, checked with Narrator and Orca."
+   "On Windows and Linux, its menus and panels are named for screen readers (Narrator, Orca) through the Godot Engine's AccessKit; the tests read that accessibility tree on Linux."
   ],
   "gaps": [
    "Android: no screen reader support yet, because the Godot Engine has none there. It is checked again with each engine update.",
@@ -205,6 +205,7 @@
    "The Settings panel can run off the screen, with its Close out of reach (#381).",
    "On phones, the alarm rows on the screens are small to tap (#423), and a drag that starts on a button doesn't scroll (#425).",
    "The manual reader's buttons have too little contrast (#422).",
+   "Some buttons that reset or remove sit close to others, the codes on the control room screens are small on phones, panels can cover the look stick, and the HUD's text has no backing (#412).",
    "Graphics below the minimum (What it needs, in the README) get a slower renderer: about 12 frames a second on Intel HD Graphics 4400. Smooth play on Windows with the graphics it asks for is not checked: there is no such computer to test on (#457)."
   ],
   "report": "To report a barrier, open an issue at https://github.com/5wHN28Dg/kks-explorer/issues (Walkdown Plant has no Report a problem in the app yet: #446). A reported barrier counts as a major problem until it has been looked at.",
