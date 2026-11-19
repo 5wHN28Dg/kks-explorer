@@ -557,10 +557,17 @@ async function confirmDesc(t){ const d=descriptionOf(t); if(d?.status!=='draft')
   if(await send(d.confirm.kind,d.confirm.payload,full(t)+': description confirmed')) reselect() }
 // the open panel again, at the same scroll position (after a change made from it: focus is still in it)
 function reselect(){ const P=$('#panel'); if(!selTag||!P.classList.contains('open')) return; const sc=P.scrollTop; select(eff(TAGS.find(x=>x.id===selTag.id)||selTag)); P.scrollTop=sc }
+// A panel form's Cancel with something typed in it asks first (#436; the apps' question): Discard drops that form,
+// Keep editing leaves it as it was. `typed` says whether anything was typed (a field differs from what it opened with).
+const typedIn=el=>!!el&&[...el.querySelectorAll('input,textarea')].some(x=>!x.readOnly&&x.value.trim()!==x.defaultValue.trim());
+async function cancelForm(form,typed,what,go){
+  if(typed&&!await K.confirm('Discard your edits?',what+' has not been saved.','Discard',{keep:'Keep editing'})) return;
+  if(form.isConnected) go();      // (the form gone meanwhile: nothing left to drop)
+}
 function editDesc(t,text){
   const ta=h('textarea',{id:'descEdit',rows:4,maxlength:2000,style:'width:100%'},text);
   put($('#descSec'),h('h3',null,'Description'),h('div',{class:'field'},h('label',{for:'descEdit'},'What this equipment does'),ta),
-    h('button',{class:'primary',onclick:()=>saveDesc(t,ta.value.trim())},'Save'),' ',h('button',{class:'ghost',onclick:()=>$('#descSec').replaceWith(descSec(t))},'Cancel'));
+    h('button',{class:'primary',onclick:()=>saveDesc(t,ta.value.trim())},'Save'),' ',h('button',{class:'ghost',onclick:()=>{ const sec=$('#descSec'); cancelForm(sec,typedIn(sec),'The description you typed',()=>sec.replaceWith(descSec(t))) }},'Cancel'));
   $('#descSec').classList.add('editing'); ta.focus();
 }
 async function saveDesc(t,text){
@@ -658,7 +665,10 @@ function select(t){
           h('button',{class:'ghost',id:'cfAdd',style:'display:none',onclick:()=>$('#cfs').append(cfRow('',''))},'+ Custom field')),
         h('div',{id:'eqSave',style:'margin-top:10px;display:none'},
           canApprove()?null:h('input',{id:'f_rnote',maxlength:500,placeholder:'Note for the approver (optional)',style:'width:100%;margin-bottom:8px'}),
-          h('button',{class:'primary',onclick:()=>saveEq(k)},'Save'),' ',h('button',{class:'ghost',onclick:()=>select(eff(selTag))},'Cancel'))),
+          h('button',{class:'primary',onclick:()=>saveEq(k)},'Save'),' ',h('button',{class:'ghost',onclick:()=>{ const f=$('#eqSave'), cfs=$('#cfs');
+            const typed=['f_area','f_floor','f_elev','f_near','f_loc','f_notes','f_rnote'].some(id=>typedIn(document.getElementById(id)?.parentNode))
+              ||typedIn(cfs)||cfs.querySelectorAll('.cf').length!==cf.length;
+            cancelForm(f,typed,'What you typed in Location and notes',()=>{ if(selTag) select(eff(selTag)) }) }},'Cancel'))),
       h('div',{class:'sec'},h('h3',null,'Photos'),
         h('div',{class:'photos'},photos.map(p=>h('figure',null,h('img',{src:'photos/'+encodeURIComponent(p.file),alt:p.caption||'Photo',onclick:ev=>lightbox(ev.currentTarget.src)}),
           h('button',{onclick:()=>delPhoto(p.id,t.id),'aria-label':'Delete this photo'},'✕'),
@@ -701,7 +711,7 @@ function valveSec(t,vt){
     const sendBtn=h('button',{class:'primary',onclick:submit},'Send');   // (the section's buttons wait while it sends)
     const form=h('div',{class:'field editing'},h('label',{for:'vtValue'},'Valve type (as it really is)'),inp,
       h('div',{style:'margin-top:8px'},sendBtn,' ',
-        h('button',{class:'ghost',onclick:()=>{ form.remove(); btns.style.display='' }},'Cancel')));
+        h('button',{class:'ghost',onclick:()=>cancelForm(form,typedIn(form),'The valve type you typed',()=>{ form.remove(); btns.style.display='' })},'Cancel')));
     btns.style.display='none'; sec.append(form); inp.focus(); inp.select();
   }
   return sec;

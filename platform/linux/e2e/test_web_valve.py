@@ -38,6 +38,26 @@ for n, e in enumerate(ENGINES):
 
 
 class WebValve(unittest.TestCase):
+    def ask_keep(self, page, text):
+        """the in-page question "Discard your edits?" (#436) with `text`; Keep editing (its default) answers it"""
+        ask = page.locator('dialog.kconfirm')
+        ask.wait_for(state='visible', timeout=10000)
+        self.assertEqual(ask.locator('h2').text_content(), 'Discard your edits?')
+        self.assertIn(text, ask.text_content())
+        self.assertEqual(ask.locator('.kq-yes').text_content(), 'Discard')
+        self.assertEqual(page.evaluate('document.activeElement.className'), 'kq-keep')
+        os.makedirs(SHOTS, exist_ok=True)
+        page.screenshot(path=os.path.join(SHOTS, 'discard-question-%s.png' % page.context.browser.browser_type.name))
+        ask.locator('.kq-keep').click()
+        ask.wait_for(state='detached', timeout=10000)
+
+    def ask_discard(self, page):
+        ask = page.locator('dialog.kconfirm')
+        ask.wait_for(state='visible', timeout=10000)
+        self.assertEqual(ask.locator('h2').text_content(), 'Discard your edits?')
+        ask.locator('.kq-yes').click()
+        ask.wait_for(state='detached', timeout=10000)
+
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-web-valve-')
@@ -120,8 +140,14 @@ class WebValve(unittest.TestCase):
             self.assertEqual(live.inner_text(), 'Save or cancel your edits first')
             self.assertEqual(page.input_value('#f_notes'), 'half typed')
             self.assertIsNone(self.custom(gate))
+            # #436: Cancel with something typed asks first; Keep editing keeps it, Discard drops it
             page.click('#eqSave button:text-is("Cancel")')
+            self.ask_keep(page, 'What you typed in Location and notes has not been saved.')
+            self.assertEqual(page.input_value('#f_notes'), 'half typed')
+            page.click('#eqSave button:text-is("Cancel")')
+            self.ask_discard(page)
             page.wait_for_selector('#layer .vsym')
+            self.assertEqual(page.input_value('#f_notes'), '')
             # Confirm: sent as it is
             page.click('#valveSec button:text-is("Confirm type")')
             page.wait_for_function("() => document.getElementById('vtLine')?.textContent === 'Valve type: gate valve, motor-operated (confirmed)'",
@@ -136,9 +162,21 @@ class WebValve(unittest.TestCase):
             page.click('#valveSec button:text-is("Correct type")')
             self.assertEqual(page.input_value('#vtValue'), 'globe valve, normally closed')
             self.assertEqual(page.evaluate("document.activeElement.id"), 'vtValue')
-            # Cancel goes back to the two buttons; an empty value is refused
+            # Cancel goes back to the two buttons (nothing typed: no question); an empty value is refused
             page.click('#valveSec button:text-is("Cancel")')
             self.assertEqual(page.locator('#vtValue').count(), 0)
+            self.assertEqual(page.locator('dialog.kconfirm').count(), 0)
+            # #436: with something typed, Cancel asks first; Keep editing keeps it, Discard drops it
+            page.click('#valveSec button:text-is("Correct type")')
+            page.fill('#vtValue', 'typed valve')
+            page.click('#valveSec button:text-is("Cancel")')
+            self.ask_keep(page, 'The valve type you typed has not been saved.')
+            self.assertEqual(page.input_value('#vtValue'), 'typed valve')
+            page.screenshot(path=os.path.join(SHOTS, f'valve-cancel-kept-{name}.png'))
+            page.click('#valveSec button:text-is("Cancel")')
+            self.ask_discard(page)
+            self.assertEqual(page.locator('#vtValue').count(), 0)
+            self.assertIsNone(self.custom(globe))
             page.click('#valveSec button:text-is("Correct type")')
             page.fill('#vtValue', '   ')
             page.click('#valveSec button:text-is("Send")')
