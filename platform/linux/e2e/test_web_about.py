@@ -119,6 +119,9 @@ class WebAbout(unittest.TestCase):
             page.keyboard.press('Escape')
             expect(dlg).to_have_count(0)
 
+            if os.environ.get('KKS_SHOTS'):
+                self.shots(browser, name)
+
             # (in a context of its own without the service worker: routes don't see what a worker answers)
             rctx = browser.new_context(service_workers='block')
             rctx.add_init_script(CSP_WATCH)
@@ -187,6 +190,23 @@ class WebAbout(unittest.TestCase):
 
             self.assertEqual(errors, [])
             browser.close()
+
+    def shots(self, browser, engine):
+        """evidence (KKS_SHOTS=folder): the sign-in screen's About scrolled to the accessibility statement, at phone
+        width (360 px) in light and dark, at desktop width, and at 200 % zoom (640 × 400 CSS px at scale 2)"""
+        os.makedirs(os.environ['KKS_SHOTS'], exist_ok=True)
+        for tag, size, scale, scheme in (('phone-light', (360, 740), 1, 'light'), ('phone-dark', (360, 740), 1, 'dark'),
+                                         ('desktop-light', (1280, 800), 1, 'light'), ('zoom200-dark', (640, 400), 2, 'dark')):
+            ctx = browser.new_context(viewport={'width': size[0], 'height': size[1]}, device_scale_factor=scale,
+                                      color_scheme=scheme)
+            page = ctx.new_page()
+            page.goto(self.base + '/')
+            page.get_by_role('button', name='About Walkdown').click()
+            head = page.locator('dialog#kabout').get_by_role('heading', name='Accessibility', exact=True)
+            head.scroll_into_view_if_needed()
+            head.evaluate('h => h.scrollIntoView({block: "start"})')
+            page.screenshot(path=os.path.join(os.environ['KKS_SHOTS'], f'web-about-accessibility-{engine}-{tag}.png'))
+            ctx.close()
 
     def test_chromium(self): self.engine('chromium')
     def test_firefox(self): self.engine('firefox')
