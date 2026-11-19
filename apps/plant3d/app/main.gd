@@ -122,6 +122,7 @@ const ScriptCost = preload("res://app/script_cost.gd")
 const WalkFrames = preload("res://app/walk_frames.gd")
 const WeatherView = preload("res://app/weather_view.gd")
 const W = preload("res://ui/widgets.gd")
+const MinGpu = preload("res://app/min_gpu.gd")
 # The start's slow scripts and the plant's model are made on worker threads while the sky frame is drawn and the plant
 # loads (`_prep_begin`): preloaded here, the UI's, the Workshop's and the session's scripts were compiled on the main
 # thread before the scene was ready (most of the Note 9's 5.2 s to `ready`), and the model read there in the `ui` stage
@@ -210,6 +211,17 @@ func _ready() -> void:
 		return
 	cf = Quality.settings()
 	_apply_ui_size()
+	# the minimum GPU (decision 0076): a desktop that Godot put on the Compatibility renderer is told so, once, before
+	# anything of the plant is loaded, and may quit (app/min_gpu.gd)
+	if MinGpu.wanted(cf, opts):
+		var notice = MinGpu.new(cf)
+		add_child(notice)
+		_say("minimum GPU: the Compatibility renderer on %s; the message is shown" % RenderingServer.get_video_adapter_name())
+		var go: bool = await notice.answered
+		_say("minimum GPU: %s" % ("continued" if go else "quit"))
+		if not go:
+			get_tree().quit()
+			return
 	OS.delta_smoothing = false
 	_environment()
 	_launch("environment")

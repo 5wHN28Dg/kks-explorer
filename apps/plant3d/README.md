@@ -395,6 +395,19 @@ instance when the app already runs.
   laptop and left out (0057; SSAO cost the full tier its 60 fps).
 - `apps/plant3d/about.json` (from `tools/about.py --plant`) lists the CC0 assets; the build packs it.
 
+## The minimum GPU (decision 0076)
+
+- **Windows and Linux:** a GPU whose driver supports Vulkan 1.0 or Direct3D 12 (feature level 12_0): Godot's minimum
+  for its Forward+ renderer (https://docs.godotengine.org/en/stable/about/system_requirements.html). For example Intel
+  HD Graphics 510 or newer (6th generation Core, Skylake), AMD GCN (Radeon HD 7700 or newer; the low-end HD 7000 models are older TeraScale chips) with a current driver,
+  NVIDIA Kepler or newer (GeForce GTX 600 and 700; the low-end GT 610–630 are mostly Fermi).
+- **Android:** Android 10 or newer with Vulkan (the Mobile renderer); the Note 9 is the minimum (0041).
+- **Below it:** Godot falls back to its Compatibility renderer (OpenGL 3.3, or ANGLE on Direct3D 11). Plant runs, but
+  no tier is tuned for it: an Intel HD Graphics 4400 walked it at about 12 frames a second (#432). At such a start a
+  message comes before the plant loads (`app/min_gpu.gd`): what the computer lacks, that it will be slow, Continue
+  anyway or Quit, and "Don't show this again" (`[graphics] min_gpu_notice_off` in `user://settings.cfg`). Escape and
+  gamepad B mean Continue anyway. Not on phones, and not for a measurement started with `walk=` or `shot=`.
+
 ## Quality tiers (R9)
 
 The tiers are the bench's measured presets (0041):
@@ -403,7 +416,7 @@ The tiers are the bench's measured presets (0041):
 - `lean+vis` is for phones (Mobile renderer). It draws at 60 % resolution with FSR, with a 2048 px shadow atlas and
   shadows to 40 m. Its LOD threshold is 4 px, and `detail` pieces are cut at 3 px.
 
-The Compatibility fallback gets `lean+vis` too, but it has not been measured.
+The Compatibility fallback gets `lean+vis` too; it is below the minimum GPU (above): about 12 fps on an Intel HD Graphics 4400 (#432).
 
 Choosing a tier:
 

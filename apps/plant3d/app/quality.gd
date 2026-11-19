@@ -4,8 +4,8 @@
 ##   lean+vis   phones (Mobile renderer; the Note 9 is the minimum): 60 % resolution with FSR 1, a 2048 px shadow
 ##              atlas, shadows to 40 m, mesh LOD threshold 4 px, and `detail` pieces cut at 3 px on the screen
 ##              (PLANT3D.md §10). 0041: 99.9 % of frames shown at >= 30 fps on the Note 9 over 10 minutes.
-## The Compatibility renderer (no Vulkan or Direct3D 12: Godot falls back to it) gets lean+vis too; it has not been
-## measured on any device.
+## The Compatibility renderer (no Vulkan or Direct3D 12: Godot falls back to it) gets lean+vis too. It is below the
+## minimum GPU (decision 0076, app/min_gpu.gd): an Intel HD Graphics 4400 walked lean+vis at about 12 fps (#432).
 ##
 ## Which tier (R9: "measured on the device, not guessed"): a manual choice in the settings wins. Otherwise phones take
 ## lean+vis (their class was measured: full showed a 120 ms hitch on the Note 9, 0041), and a desktop measures its
