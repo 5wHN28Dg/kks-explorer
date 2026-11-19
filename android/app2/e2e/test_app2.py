@@ -1767,6 +1767,27 @@ class Phone(unittest.TestCase):
         # the description comes before the location fields
         ui.scroll_to('Draft description (unchecked)', exact=True)
         ui.scroll_to('Feed water isolation valve', exact=True)
+        # #436: the description's Cancel with something typed asks first; Keep editing keeps it, Discard drops it
+        ui.scroll_to('Edit description', exact=True)
+        ui.tap('Edit description', exact=True)
+        ui.tap('Cancel', exact=True)                        # nothing typed: closes at once
+        ui.find('Edit description', exact=True, timeout=10)
+        self.assertFalse(ui.present('Discard your edits?', exact=True), 'asked about text nobody typed')
+        ui.tap('Edit description', exact=True)
+        ui.type_into('Feed water isolation valve', 'typed description', clear=True)
+        ui.scroll_to('Cancel', exact=True)
+        ui.tap('Cancel', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.find('The description you typed has not been saved.', exact=True)
+        evidence('description-cancel-asks')
+        ui.tap('Keep editing', exact=True)
+        ui.find('typed description', exact=True, timeout=10)
+        ui.scroll_to('Cancel', exact=True)
+        ui.tap('Cancel', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.find('Edit description', exact=True, timeout=10)
+        self.assertFalse(ui.present('typed description', exact=True), 'Discard kept the typed text')
         ui.scroll_to('Confirm', exact=True)
         ui.tap('Confirm', exact=True)
 
@@ -1862,6 +1883,14 @@ class Phone(unittest.TestCase):
         ui.tap('Correct type', exact=True)
         ui.scroll_to('gate valve, motor-operated', exact=True)      # the field, holding the drawing's reading
         ui.type_into('gate valve, motor-operated', 'check valve', clear=True)
+        # #436: Cancel with something typed asks first; Keep editing keeps it
+        ui.scroll_to('Cancel', exact=True)
+        ui.tap('Cancel', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.find('The valve type you typed has not been saved.', exact=True)
+        evidence('valve-cancel-asks')
+        ui.tap('Keep editing', exact=True)
+        ui.find('check valve', exact=True, timeout=10)
         ui.scroll_to('Send', exact=True)
         ui.tap('Send', exact=True)
 

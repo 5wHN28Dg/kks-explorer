@@ -99,8 +99,8 @@ class WebRequests(unittest.TestCase):
         errors = []
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.on('dialog', lambda d: d.accept(''))
-        self.asked = []
-        answer_confirms(page, lambda msg: (self.asked.append(msg), True)[1])
+        self.asked, self.answer = [], True      # (self.answer False: the in-page question's safe button)
+        answer_confirms(page, lambda msg: (self.asked.append(msg), self.answer)[1])
         return browser, ctx, page, errors
 
     def tag(self, code, n):
@@ -162,19 +162,16 @@ class WebRequests(unittest.TestCase):
         self.assertEqual(page.locator('dialog.kconfirm').count(), 0)
         page.locator('#descSec').get_by_role('button', name='Edit').click()
         page.fill('#descEdit', 'typed and kept')
+        self.asked.clear()
+        self.answer = False                                 # Keep editing
         page.locator('#descSec').get_by_role('button', name='Cancel').click()
-        ask = page.locator('dialog.kconfirm')
-        ask.wait_for(state='visible', timeout=10000)
-        self.assertEqual(ask.locator('h2').text_content(), 'Discard your edits?')
-        self.assertIn('The description you typed has not been saved.', ask.text_content())
-        ask.locator('.kq-keep').click()
-        ask.wait_for(state='detached', timeout=10000)
+        page.wait_for_function("() => !document.querySelector('dialog.kconfirm')")
+        self.assertEqual(self.asked, ['Discard your edits?\n\nThe description you typed has not been saved.'])
         self.assertEqual(page.input_value('#descEdit'), 'typed and kept')
+        self.answer = True                                  # Discard
         page.locator('#descSec').get_by_role('button', name='Cancel').click()
-        ask.wait_for(state='visible', timeout=10000)
-        ask.locator('.kq-yes').click()
-        ask.wait_for(state='detached', timeout=10000)
-        self.assertEqual(page.locator('#descEdit').count(), 0)
+        page.wait_for_function("() => !document.getElementById('descEdit')")
+        self.assertEqual(len(self.asked), 2)
         page.locator('#descSec').get_by_role('button', name='Edit').click()
         page.fill('#descEdit', 'Feed water pump inlet isolation valve')
         page.locator('#descSec').get_by_role('button', name='Save').click()
