@@ -6,6 +6,10 @@
 ## decision 0041), never for a measurement started from the command line (walk=, shot=), never without a display
 ## unless a test asks for it.
 ##
+## Switched off until the owner's check (the user's UI and UX policy 8.5: a tier-2 change merges behind a switch that
+## is off): the project setting `walkdown/min_gpu_message` (project.godot), turned on for the check by an override.cfg
+## beside the exe ([walkdown] min_gpu_message=true), and by the owner's OK in project.godot.
+##
 ## Keys: Tab and the arrows move between the box and the buttons, Enter or Space presses; Escape and gamepad B mean
 ## Continue anyway (they close the message, as they close any layer: UI-UX-POLICY R2; quitting is always a press).
 extends CanvasLayer
@@ -33,6 +37,12 @@ var scroll: ScrollContainer
 var _done := false
 
 
+## The switch (see above); `switch_override` for the tests (-1: the project setting).
+static var switch_override := -1
+static func switched_on() -> bool:
+	return switch_override == 1 if switch_override >= 0 else bool(ProjectSettings.get_setting("walkdown/min_gpu_message", false))
+
+
 static func renderer() -> String:
 	return renderer_override if renderer_override != "" else RenderingServer.get_current_rendering_method()
 
@@ -44,6 +54,8 @@ static func on_phone() -> bool:
 ## Whether the message is due at this start: a desktop on the Compatibility renderer, not turned off in the settings,
 ## not a measurement, and a display to show it on (or a test's renderer).
 static func wanted(settings: ConfigFile, opts: Dictionary) -> bool:
+	if not switched_on():
+		return false
 	if on_phone() or renderer() != "gl_compatibility":
 		return false
 	if bool(settings.get_value(SECTION, KEY_OFF, false)):

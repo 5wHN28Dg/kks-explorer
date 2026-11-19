@@ -17,6 +17,8 @@ func run(tree: SceneTree) -> Array:
 	var had: bool = saved.has_section_key(MinGpu.SECTION, MinGpu.KEY_OFF)
 	var was = saved.get_value(MinGpu.SECTION, MinGpu.KEY_OFF, false)
 	_forget()
+	await _switched_off(tree, p)
+	MinGpu.switch_override = 1     # (the owner's check: the message on)
 	_when(p)
 	await _shown_then_continue(tree, p)
 	await _not_again(tree, p)
@@ -28,6 +30,7 @@ func run(tree: SceneTree) -> Array:
 	await _scroll_by_keys(tree, p)
 	MinGpu.renderer_override = ""
 	MinGpu.phone_override = -1
+	MinGpu.switch_override = -1
 	_forget()
 	if had:
 		var cf := Quality.settings()
@@ -41,6 +44,23 @@ func _forget() -> void:
 	if cf.has_section_key(MinGpu.SECTION, MinGpu.KEY_OFF):
 		cf.erase_section_key(MinGpu.SECTION, MinGpu.KEY_OFF)
 		Quality.save(cf)
+
+
+## Switched off (the project's setting, until the owner's check): no message on a desktop on Compatibility, the plant
+## loads at once, as before the change.
+func _switched_off(tree: SceneTree, p: Array) -> void:
+	if bool(ProjectSettings.get_setting("walkdown/min_gpu_message", true)):
+		p.append("the message is switched on in project.godot before the owner's check")
+	MinGpu.switch_override = -1
+	MinGpu.renderer_override = "gl_compatibility"
+	MinGpu.phone_override = 0
+	if MinGpu.wanted(ConfigFile.new(), {}):
+		p.append("the message is due while switched off")
+	var main: Node = UiApp.start(tree)
+	if main.get_node_or_null("min_gpu") != null or main.ui == null:
+		p.append("switched off, the start is not as before (a message, or the plant not loaded at once)")
+	await tree.process_frame
+	main.free()
 
 
 ## The rule alone.

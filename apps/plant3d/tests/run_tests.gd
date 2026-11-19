@@ -73,6 +73,7 @@ func _run() -> void:
 		# nor the minimum GPU message's mocked renderer (tests/test_min_gpu.gd): every later start would wait at it
 		MinGpu.renderer_override = ""
 		MinGpu.phone_override = -1
+		MinGpu.switch_override = -1
 		var cf := ConfigFile.new()
 		if cf.load("user://settings.cfg") == OK and cf.has_section_key("ui", "ui_size"):
 			cf.erase_section_key("ui", "ui_size")

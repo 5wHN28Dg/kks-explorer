@@ -33,6 +33,12 @@ window/handheld/orientation=4
 
 enabled=PackedStringArray("res://addons/walkdown_plant_android/plugin.cfg", "res://builder/bake/plugin.cfg")
 
+[walkdown]
+
+; the minimum GPU's message (app/min_gpu.gd, decision 0076): off until the owner's check (UI-UX policy 8.5); an
+; override.cfg beside the exe with `[walkdown]` `min_gpu_message=true` turns it on for that check
+min_gpu_message=false
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

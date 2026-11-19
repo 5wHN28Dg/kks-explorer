@@ -20,6 +20,7 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(out)
 	MinGpu.renderer_override = "gl_compatibility"
 	MinGpu.phone_override = 0
+	MinGpu.switch_override = 1
 	W.pick_scale()
 	for f in [1.0, 1.5, 2.0]:
 		W.apply_ui_size(root, f)
