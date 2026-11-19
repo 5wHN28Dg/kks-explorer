@@ -2,7 +2,7 @@
 
 Stage: **pre-release** (the user, 2026-11-19, in the session: GitHub releases `plant-v…` reach testers, no one relies
 on it yet) · Owner budget: **30 minutes a month** (the user, 2026-11-19, in the session) · Profile version 2 · Review:
-both passes on PR #444 (version 1) and on PR #NNN (version 2: the owner's decisions), posted there as comments (1.7).
+both passes on PR #444 (version 1) and on PR #451 (version 2: the owner's decisions), posted there as comments (1.7).
 
 The rulebook is the user's `global/UI-UX-POLICY.md`, version 4.13 (where to read it: [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md) section 1); project rules and the
 user's carried-over decisions are in [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md). Section numbers are the rulebook's.

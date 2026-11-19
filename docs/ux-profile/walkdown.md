@@ -1,7 +1,7 @@
 # UX profile: Walkdown
 
 Stage: **live** (the user, 2026-11-19, in the session) · Owner budget: **60 minutes a month** (the user, 2026-11-19,
-in the session) · Profile version 2 · Review: both passes on PR #444 (version 1) and on PR #NNN (version 2: the
+in the session) · Profile version 2 · Review: both passes on PR #444 (version 1) and on PR #451 (version 2: the
 owner's decisions, iPhones dropped), posted there as comments (1.7).
 
 The rulebook is the user's `global/UI-UX-POLICY.md`, version 4.13 (where to read it: [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md) section 1); project rules and the
