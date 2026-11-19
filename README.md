@@ -71,6 +71,14 @@ The full day's buses, meals and off-duty life in the camp, lifts, the Workshop, 
 the realism work came after the newest release
 (`plant-v0.3.0`): they are on `main` until the next one.
 
+**What it needs.** Windows 10/11 or Linux: graphics whose driver supports Vulkan or Direct3D 12, such as Intel HD
+Graphics 510 or newer (6th generation Core), AMD Radeon HD 7700 (GCN) or newer with a current driver, or NVIDIA
+GeForce GTX 600 (Kepler) or newer. For smooth play in a window of about 1600 × 900: roughly Intel Iris Xe or a GPU at
+least as fast, such as a GeForce GTX 1050 or Radeon RX 460 (or 560) (Iris Xe measured on Linux; the GTX 1050 and RX 460
+are Godot's recommendation, an estimate). Graphics between the minimum and that run, but slowly; a larger window needs
+faster graphics. Graphics below the minimum get Godot's slower fallback renderer: Plant runs there, slowly (about 12 frames a second on an Intel HD Graphics 4400). Android: Android 10 or newer with Vulkan; the
+Samsung Galaxy Note 9 is the oldest phone it is tuned for. Decision `docs/decisions/0076-plant-minimum-gpu.md`.
+
 Its guides and pictures are on the wiki: [Walkdown Plant](https://github.com/5wHN28Dg/kks-explorer/wiki/Walkdown-Plant).
 
 **No plant data is in this repository.** Drawings, tag lists, procedures and photos belong to a plant: its manager

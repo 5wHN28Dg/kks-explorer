@@ -19,6 +19,7 @@ var errors := ScriptErrors.new()
 const Autosave = preload("res://ui/autosave.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const W = preload("res://ui/widgets.gd")
+const MinGpu = preload("res://app/min_gpu.gd")
 const TEST_SAVE := "user://tests-run.save"
 
 func _init() -> void:
@@ -69,6 +70,10 @@ func _run() -> void:
 		Engine.time_scale = 1.0          # a test stopped half way must not leave its time scale to the next
 		# nor its UI size (ui/widgets.gd ui_size, the window's content scale, the settings file's): each file starts at 100 %
 		W.apply_ui_size(root, 1.0)
+		# nor the minimum GPU message's mocked renderer (tests/test_min_gpu.gd): every later start would wait at it
+		MinGpu.renderer_override = ""
+		MinGpu.phone_override = -1
+		MinGpu.switch_override = -1
 		var cf := ConfigFile.new()
 		if cf.load("user://settings.cfg") == OK and cf.has_section_key("ui", "ui_size"):
 			cf.erase_section_key("ui", "ui_size")
