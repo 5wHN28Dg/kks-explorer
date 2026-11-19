@@ -27,6 +27,24 @@ var
   refreshTicks = 0
 
 proc showMain()
+proc syncLine(): string
+
+var statusRow = 0       # the bottom row's height at the last layout
+
+proc statusText(): string = (if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine()
+
+proc bottomRow(W: int): tuple[st, statusW, n, qw: int, q: bool] =
+  ## the bottom row: the status line, then the photo queue's line and "Photos not sent (n)…" while there are any; as
+  ## tall as the status line's text needs (a plain-words error is a sentence or two, #371), up to four lines
+  var right = W - int(px(8))
+  result.n = if w.failedButton != nil: failedCount() else: 0
+  if result.n > 0: right -= int(px(170)) + int(px(8))
+  result.q = w.queueLabel != nil and queuedCount() > 0
+  result.qw = if result.q: min(int(px(520)), (right - int(px(8))) div 2) else: 0
+  if result.q: right -= result.qw + int(px(8))
+  result.statusW = max(10, right - int(px(8)))
+  let lineH = textHeight(w.status, "Ag", result.statusW)
+  result.st = max(int(px(StatusH)), min(textHeight(w.status, statusText(), result.statusW), 4 * lineH) + int(px(10)))
 
 proc layoutMain() =
   var r: RECT
@@ -38,7 +56,8 @@ proc layoutMain() =
     return
   let side = int(px(SideW))
   let panelW = if w.selected.len > 0 or w.picking: int(px(PanelW)) else: 0
-  let st = int(px(StatusH))
+  let (st, statusW, n, qw, q) = bottomRow(W)
+  statusRow = st
   # the tabs within the sidebar's width, wrapped when they don't fit (they ran 472 px into a 380 px sidebar, Manage
   # under the drawing); the sidebar's page under them
   let tabH = placeTabs(w.tabButtons, 0, 0, side)
@@ -48,25 +67,30 @@ proc layoutMain() =
   # shouldn't be hidden or move away when I scroll down"); as tall as what it holds
   discard placeColumn(w.panelHead, w.panel, W - panelW, panelW, H - st, headOn = panelW > 0 and not w.picking)
   ShowWindow(w.panel.hwnd, if panelW > 0: SW_SHOW else: SW_HIDE)
-  # the bottom row: the status line, then the photo queue's line and "Photos not sent (n)…" while there are any
-  var right = W - int(px(8))
+  var at = W - int(px(8))
   if w.failedButton != nil:
-    let n = failedCount()
     ShowWindow(w.failedButton, if n > 0: SW_SHOW else: SW_HIDE)
     if n > 0:
-      let bw = int(px(170))
-      right -= bw
-      MoveWindow(w.failedButton, int32(right), int32(H - st + int(px(1))), int32(bw), int32(st - int(px(2))), 1)
-      right -= int(px(8))
+      at -= int(px(170))
+      MoveWindow(w.failedButton, int32(at), int32(H - st + int(px(1))), px(170), px(StatusH - 2), 1)
+      at -= int(px(8))
   if w.queueLabel != nil:
-    let q = queuedCount() > 0
     ShowWindow(w.queueLabel, if q: SW_SHOW else: SW_HIDE)
     if q:
-      let qw = min(int(px(520)), (right - int(px(8))) div 2)
-      right -= qw
-      MoveWindow(w.queueLabel, int32(right), int32(H - st + int(px(4))), int32(qw), int32(st - int(px(6))), 1)
-      right -= int(px(8))
-  MoveWindow(w.status, px(8), int32(H - st + int(px(4))), int32(max(10, right - int(px(8)))), int32(st - int(px(6))), 1)
+      at -= qw
+      MoveWindow(w.queueLabel, int32(at), int32(H - st + int(px(4))), int32(qw), int32(st - int(px(6))), 1)
+  MoveWindow(w.status, px(8), int32(H - st + int(px(4))), int32(statusW), int32(st - int(px(6))), 1)
+
+proc statusFits() =
+  ## the window laid out again when the status line's text needs another number of lines
+  if w == nil or w.v == nil or setupP != nil: return
+  var r: RECT
+  GetClientRect(w.hwnd, addr r)
+  if bottomRow(int(r.right)).st != statusRow: layoutMain()
+
+proc setStatus() =
+  w.status.setText(statusText())
+  statusFits()
 
 proc doShowSheet(id: string) =
   let (ok, si) = w.m.sheetById(id)
@@ -148,7 +172,7 @@ proc refresh() =
   elif w.m.sheets.len > 0: doShowSheet(w.m.sheets[0].id)
   if w.tab != "manage" or liveManage(): w.sideChanged()   # never under the keyboard; typed searches stay (#168)
   w.panelChanged()            # never under the keyboard, or over what was typed into a form (win.panelHeld)
-  w.status.setText((if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine())
+  setStatus()
   w.refreshFollowers()        # open windows that show the plant's data (Equipment by system), never under the focus
 
 proc setTab(t: string) =
@@ -279,7 +303,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
         changed = false
         guard: refresh()
       elif w.v != nil and setupP == nil:
-        w.status.setText((if w.lastMsg.len > 0: w.lastMsg & "   ·   " else: "") & syncLine())
+        setStatus()
       if w.v != nil and setupP == nil:
         guard: w.catchUpFollowers()     # a window marked stale under the focus, once the focus has left it
         guard: w.panelCatchUp()         # the panel too, left alone under the keyboard or typed text
@@ -434,6 +458,7 @@ proc main() =
     elif why != "relay": changed = true   # presence only: the status line catches up on its timer
   w = Win(a: a, hwnd: hw, tab: "drawings")
   w.status = control(hw, "STATIC", "", SS_LEFT or SS_NOPREFIX)[0]
+  statusChanged = statusFits      # (a toast of more lines makes the bottom row taller, #371)
   onError = proc (msg: string) = w.toast("Something went wrong: " & msg)
   w.showSheet = doShowSheet
   w.selectTag = doSelectTag

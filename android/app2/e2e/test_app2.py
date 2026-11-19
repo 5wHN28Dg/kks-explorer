@@ -2534,6 +2534,18 @@ class Phone(unittest.TestCase):
         st = self.wait_server(decided, 'the Reject never reached the server')
         self.assertEqual((st[first['id']], st[second['id']]), ('rejected', 'pending'), 'Reject decided the wrong proposal')
 
+    def test_join_unreachable(self):
+        """#371 (F2): joining a server that isn't there says so in plain words, with the address, not the socket's
+        exception and errno"""
+        ui.tap('Join through a server', exact=True)
+        ui.type_into('Server address', '127.0.0.1:1')
+        ui.type_into('Username', 'boss')
+        ui.type_into('Password', 'a long password')
+        ui.tap('Join', exact=True)
+        ui.find("Couldn't reach the server at 127.0.0.1:1. Check the address and that this phone is on the plant's network.", exact=True, timeout=40)
+        evidence('join-unreachable')
+        self.assertFalse(ui.present('ECONNREFUSED'), 'the socket error is shown')
+
     def test_member_pages(self):
         """requests 6, 9 and 10 as a member: the leaderboard; Updates on Manage's top level (not in Account); My
         proposals filtered by status and grouped by code"""
@@ -2589,7 +2601,7 @@ PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'flow', 'course_figures', 'photo_marks'),
-         ('destructive', 'question_stays'))
+         ('destructive', 'question_stays', 'join_unreachable'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))

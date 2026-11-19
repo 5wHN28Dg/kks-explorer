@@ -379,6 +379,15 @@ proc measure(p: Page, text: string, font: HFONT, width: int): int =
   ReleaseDC(p.hwnd, dc)
   int(r.bottom - r.top)
 
+proc textHeight*(h: HWND, text: string, width: int): int =
+  ## how tall `text` is in the normal font, wrapped at `width` px (the main window's status line, #371)
+  let dc = GetDC(h)
+  SelectObject(dc, fontNormal)
+  var r = RECT(left: 0, top: 0, right: int32(max(10, width)), bottom: 0)
+  discard DrawTextW(dc, newWideCString(if text.len == 0: " " else: text), -1, addr r, DT_CALCRECT or DT_WORDBREAK or DT_NOPREFIX)
+  ReleaseDC(h, dc)
+  int(r.bottom - r.top)
+
 proc textWidth(p: Page, text: string, font: HFONT): int =
   let dc = GetDC(p.hwnd)
   SelectObject(dc, font)
@@ -696,6 +705,17 @@ proc restoreText*(p: Page, kept: KeptText): KeptText =
         inc nth
     if not found: result.add k
 
+
+proc setLabel*(h: HWND, text: string) =
+  ## a page's label given new text: its height is measured again (a status line that becomes a sentence or two wraps
+  ## instead of being cut after its first line, #371)
+  h.setText(text)
+  let pg = GetParent(h)
+  if pg in pages:
+    let p = pages[pg]
+    for it in p.items.mitems:
+      if it.kind in {ikLabel, ikDim} and h in it.hwnds: it.text = text
+    p.layout()
 
 proc label*(p: Page, text: string): HWND {.discardable.} =
   result = control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX or SS_EDITCONTROL)[0]

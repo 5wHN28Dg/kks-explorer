@@ -451,6 +451,26 @@ int wmain(int argc, wchar_t **argv) {
         CONTROLTYPEID only2 = (cmd == "enter" || cmd == "select") ? UIA_TreeItemControlTypeId : 0;
         IUIAutomationElement *e = wait_for(pid, arg, timeout, only, only2);
         if (!e) { say("ERROR: not found: " + arg + " (line " + std::to_string(lineNo) + ")"); find(pid, "", true); return 1; }
+        if (cmd == "resize") {
+            // resize\tNAME\tW\tH: the window NAME is in, restored and made W x H (at 96 dpi): a narrow window (#371)
+            UIA_HWND hw = 0; e->get_CurrentNativeWindowHandle(&hw); e->Release();
+            HWND root = hw ? GetAncestor((HWND)hw, GA_ROOT) : nullptr;
+            if (!root || f.size() < 4) { say("ERROR: can't resize " + arg); return 1; }
+            UINT dpi = GetDpiForWindow(root);
+            ShowWindow(root, SW_RESTORE); Sleep(300);
+            SetWindowPos(root, nullptr, 0, 0, std::stoi(f[2]) * (int)dpi / 96, std::stoi(f[3]) * (int)dpi / 96, SWP_NOMOVE | SWP_NOZORDER);
+            Sleep(500);
+            continue;
+        }
+        if (cmd == "height") {
+            // height\tNAME\tMIN: NAME is at least MIN px tall (at 96 dpi): a status line that needs two lines has them (#371)
+            UIA_HWND hw = 0; e->get_CurrentNativeWindowHandle(&hw);
+            RECT r; e->get_CurrentBoundingRectangle(&r); e->Release();
+            UINT dpi = hw ? GetDpiForWindow((HWND)hw) : 96;
+            int h = (int)(r.bottom - r.top) * 96 / (int)(dpi ? dpi : 96);
+            if (f.size() < 3 || h < std::stoi(f[2])) { say("ERROR: " + arg + " is " + std::to_string(h) + " px tall, not at least " + (f.size() > 2 ? f[2] : "?")); return 1; }
+            continue;
+        }
         if (cmd == "value") {
             std::wstring want = wide(f.size() > 2 ? f[2] : "");
             bool ok = false;

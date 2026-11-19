@@ -86,7 +86,7 @@ fun submitMany(kind: String, codes: List<String>, payload: JSONObject, note: Str
         .put("client_id", "many-" + java.util.UUID.randomUUID().toString().replace("-", ""))
     if (note.isNotBlank()) body.put("note", note.trim())
     val r = Core.api("POST", "/api/submit-many", body)
-    if (r.status >= 400) return false to r.json.optString("error", "error ${r.status}")
+    if (r.status >= 400) return false to Errors.text(r.status, r.json)
     Changes.rev++
     val res = r.json.optJSONArray("results").objects()
     val waiting = res.count { it.optString("status") == "pending" }

@@ -34,7 +34,7 @@ fun submit(kind: String, payload: JSONObject, note: String = ""): Pair<Boolean, 
     val body = JSONObject().put("kind", kind).put("payload", payload)
     if (note.isNotBlank()) body.put("note", note.trim())
     val r = Core.api("POST", "/api/submit", body)
-    if (r.status >= 400) return false to r.json.optString("error", "error ${r.status}")
+    if (r.status >= 400) return false to Errors.text(r.status, r.json)
     Changes.rev++
     return true to when (r.json.optString("status")) { "approved" -> "Saved"; "conflict" -> "Held: it clashes with a pending change"; else -> "Sent for approval" }
 }

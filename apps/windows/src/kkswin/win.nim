@@ -152,9 +152,13 @@ proc sideChanged*(w: Win) =
 proc sideCatchUp*(w: Win) =
   if w.sideStale and not w.sideHeld(): w.rebuildSideKeeping()
 
+var statusChanged*: proc () = nil
+  ## set by the main window: its bottom row grows when the status line's text needs more lines (#371)
+
 proc toast*(w: Win, msg: string) =
   w.lastMsg = msg
   w.status.setText(msg)
+  if statusChanged != nil: statusChanged()
 
 proc fileOr*(w: Win, path: string, dflt: string): string =
   let (ok, data) = w.a.file(path)

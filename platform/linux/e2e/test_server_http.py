@@ -29,7 +29,14 @@ class Client:
         except urllib.error.HTTPError as e:
             b = e.read()
             try:
-                return e.code, json.loads(b), e.headers
+                j = json.loads(b)
+                # #371: every error says its kind (the clients' own sentences come from it); checked here for each
+                # error a test meets, then taken off so the tests compare the server's text as before
+                if isinstance(j, dict) and 'error' in j:
+                    want = {401: 'sign_in', 403: 'not_allowed', 404: 'not_found', 409: 'conflict', 413: 'too_large',
+                            429: 'too_many'}.get(e.code, 'invalid' if 400 <= e.code < 500 else 'server')
+                    assert j.pop('code', None) == want, (e.code, j)
+                return e.code, j, e.headers
             except ValueError:
                 return e.code, b, e.headers
 

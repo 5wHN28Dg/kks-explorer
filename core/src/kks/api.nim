@@ -82,6 +82,20 @@ proc fail*(status: int, msg: string, extra: JNode = nil) {.noreturn.} =
 
 proc bad(msg: string) {.noreturn.} = fail(400, msg)
 
+proc errorCode*(status: int): string =
+  ## what kind of error a status is, for the clients' own sentences (#371: each client says it in plain words; the
+  ## core's text goes along as the detail): invalid (the request; the text says what), sign_in, not_allowed,
+  ## not_found, conflict, too_large, too_many, server
+  case status
+  of 401: "sign_in"
+  of 403: "not_allowed"
+  of 404: "not_found"
+  of 409: "conflict"
+  of 413: "too_large"
+  of 429: "too_many"
+  of 400, 402, 405 .. 408, 410 .. 412, 414 .. 428, 430 .. 499: "invalid"
+  else: "server"
+
 proc ok(v: JNode = nil): Response =
   Response(status: 200, json: (if v == nil: newObj(@[("ok", newBool(true))]) else: v), contentType: "application/json")
 
@@ -1961,7 +1975,7 @@ proc handle*(a: Api, me: Actor, meth, path: string, q: Table[string, string], bo
   try:
     result = a.route(me, meth, path, q, d, now)
   except ApiError as e:
-    var j = O(("error", S(e.msg)))
+    var j = O(("error", S(e.msg)), ("code", S(errorCode(e.status))))
     if e.extra != nil:
       for (k, v) in e.extra.fields: j[k] = v
     result = Response(status: e.status, json: j, contentType: "application/json")

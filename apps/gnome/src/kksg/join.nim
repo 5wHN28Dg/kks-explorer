@@ -5,6 +5,7 @@ import std/[asyncdispatch, strutils, tables]
 import kks/[json, api]
 import kksl/[mdns, dbstore]
 import gtk, ui, appstate, win, qr, camera
+import errwords
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -119,17 +120,19 @@ proc runJoin(w: Win, hosts: seq[(string, int)], peer: string, token: JNode, user
     await sleepAsync(2000)
     try: ack = await w.a.askJoin(host, port, peer, token, req)
     except CatchableError as e:
-      gtk_label_set_text(status, ("Lost the connection: " & e.msg).cstring)
+      stderr.writeLine "join: " & e.msg
+      gtk_label_set_text(status, LostJoin.cstring)
       return
   if ack["state"].s != "accepted":
-    gtk_label_set_text(status, ("Not accepted: " & ack["state"].s & (if s(ack, "why").len > 0: " (" & s(ack, "why") & ")" else: "")).cstring)
+    gtk_label_set_text(status, notJoined(ack["state"].s, s(ack, "why")).cstring)
     return
   proc finish() {.async.} =
     gtk_label_set_text(status, "Accepted. Syncing…")
     try:
       discard await w.a.syncOne(host, port, peer, adoptRoot = ack["root"].s)
     except CatchableError as e:
-      gtk_label_set_text(status, ("Accepted, but the first sync failed: " & e.msg & ". Try again.").cstring)
+      stderr.writeLine "join, first sync: " & e.msg
+      gtk_label_set_text(status, FirstSyncFailed.cstring)
       return
     if w.a.joined:
       w.a.store.setMeta("sync_peers", toText(newArr(@[newStr(host & ":" & $port & "@" & peer)])))
