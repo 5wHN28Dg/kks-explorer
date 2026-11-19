@@ -404,13 +404,13 @@ instance when the app already runs.
   Windows drivers; on Linux, Mesa also gives Vulkan to some older Intel chips (Broadwell, and incompletely Haswell),
   and AMD's later low-end rebrands of TeraScale chips (such as the Radeon R5 230) have no Vulkan at all.
 - **Not caught:** a Linux computer whose only Vulkan driver is Mesa's software one (lavapipe) stays on Forward+, drawn
-  on the CPU, and gets no message.
+  on the CPU, and gets no message; so does a Linux Haswell (HD 4400) on Mesa's incomplete Vulkan driver (hasvk), unmeasured.
 - **Android:** Android 10 or newer with Vulkan (the Mobile renderer); the Note 9 is the minimum (0041).
 - **Below it:** Godot falls back to its Compatibility renderer (OpenGL 3.3, or ANGLE on Direct3D 11). Plant runs, but
   no tier is tuned for it: an Intel HD Graphics 4400 walked it at about 12 frames a second (#432). At such a start a
   message comes before the plant loads (`app/min_gpu.gd`): what the computer lacks, that it will be slow, Continue
   anyway or Quit, and "Don't show this again" (`[graphics] min_gpu_notice_off` in `user://settings.cfg`). Escape and
-  gamepad B mean Continue anyway. Not on phones, and not for a measurement started with `walk=` or `shot=`. **Off
+  gamepad B mean Continue anyway. Not on phones, and not for a scripted start (`walk=`, `shot=`, `mp=`, `probe=` and the like: `SCRIPTED` in the script). **Off
   until the owner's check** (the UI and UX policy's tier 2, 8.5): the project setting `walkdown/min_gpu_message`;
   an `override.cfg` beside the exe with `[walkdown]` and `min_gpu_message=true` turns it on for the check.
 

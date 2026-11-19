@@ -74,6 +74,8 @@ func _when(p: Array) -> void:
 		["mobile", 0, {}, false, "a desktop on the Mobile renderer"],
 		["gl_compatibility", 0, {"walk": "frames"}, false, "a measured walk"],
 		["gl_compatibility", 0, {"shot": "a@0,0,0,0,0"}, false, "a shot"],
+		["gl_compatibility", 0, {"mp": "CODE@127.0.0.1"}, false, "a scripted multiplayer client"],
+		["gl_compatibility", 0, {"probe": "1"}, false, "a probe"],
 	]
 	for c in cases:
 		MinGpu.renderer_override = c[0]

@@ -3,7 +3,7 @@
 ## (OpenGL 3.3, or ANGLE on Direct3D 11), a message says so once, before the plant loads: what the computer lacks, that
 ## the plant will be slow (an Intel HD Graphics 4400 walked it at about 12 frames a second, #432), and Continue anyway
 ## or Quit, with "Don't show this again" kept in user://settings.cfg. Never on a phone (Android has its own path,
-## decision 0041), never for a measurement started from the command line (walk=, shot=), never without a display
+## decision 0041), never for a measurement started from the command line (walk=, shot=, mp= …: SCRIPTED), never without a display
 ## unless a test asks for it.
 ##
 ## Switched off until the owner's check (the user's UI and UX policy 8.5: a tier-2 change merges behind a switch that
@@ -11,7 +11,7 @@
 ## beside the exe ([walkdown] min_gpu_message=true), and by the owner's OK in project.godot.
 ##
 ## Keys: Tab and the arrows move between the box and the buttons, Enter or Space presses; Escape and gamepad B mean
-## Continue anyway (they close the message, as they close any layer: UI-UX-POLICY R2; quitting is always a press).
+## Continue anyway (they close the message, as they close any layer: the rulebook's N2; quitting is always a press).
 extends CanvasLayer
 
 const W = preload("res://ui/widgets.gd")
@@ -20,6 +20,8 @@ const Quality = preload("res://app/quality.gd")
 const SECTION := "graphics"
 const KEY_OFF := "min_gpu_notice_off"
 const MEASURED_FPS := 12    # #432: the frame walk on an Intel HD Graphics 4400, 80–86 ms a frame median
+## Command-line options of scripted starts (measurements, test clients: app/main.gd's list) that skip the message.
+const SCRIPTED := ["walk", "shot", "mp", "mp_inputs", "probe", "seconds", "digest", "step", "voice", "crowd", "crews"]
 const PAD := 8              # the words' margin inside their scroll (px)
 
 ## Tests only: the rendering method and the device kind as if Godot had reported them ("" and -1: the real ones).
@@ -61,7 +63,9 @@ static func wanted(settings: ConfigFile, opts: Dictionary) -> bool:
 		return false
 	if bool(settings.get_value(SECTION, KEY_OFF, false)):
 		return false
-	if opts.has("walk") or opts.has("shot"):
+	for k in SCRIPTED:      # (a scripted or measured start never waits for a press)
+		if opts.has(k):
+			return false
 		return false
 	return DisplayServer.get_name() != "headless" or renderer_override != ""
 
@@ -87,7 +91,7 @@ func _ready() -> void:
 	var v := VBoxContainer.new()
 	panel.add_child(v)
 	v.add_child(W.label("This computer's graphics are below what Walkdown Plant needs", 26))
-	# the words scroll on a small window or a large UI size; the buttons stay below them, always on screen (R1)
+	# the words scroll on a small window or a large UI size; the buttons stay below them, always on screen (the rulebook's N3)
 	scroll = ScrollContainer.new()
 	scroll.name = "words"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -110,7 +114,7 @@ func _ready() -> void:
 			+ "second, where smooth movement needs 30 or more.") % MEASURED_FPS, 20))
 	words.add_child(W.label(("Walkdown Plant needs graphics that support %s (a graphics card's or computer's "
 			+ "specifications list it). For example: Intel HD Graphics 510 or newer (computers from 2015 on), AMD Radeon "
-			+ "HD 7700 or newer, or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating "
+			+ "HD 7700 or newer (not the low-end models), or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating "
 			+ "its graphics driver (the software for its graphics) may fix this.")
 			% ("Vulkan or Direct3D 12" if OS.get_name() == "Windows" else "Vulkan"), 20, W.DIM))
 	dont_show = CheckBox.new()
@@ -119,7 +123,7 @@ func _ready() -> void:
 	dont_show.focus_mode = Control.FOCUS_ALL
 	dont_show.custom_minimum_size.y = 52 * W.scale
 	dont_show.add_theme_font_size_override("font_size", int(20 * W.scale))
-	# the box drawn light on the button's slate (Godot's own dark grey box hardly shows there: K3), ticked or empty
+	# the box drawn light on the button's slate (Godot's own dark grey box hardly shows there: non-text contrast, A2), ticked or empty
 	var px := int(22 * W.scale)
 	dont_show.add_theme_icon_override("unchecked", box_icon(px, false))
 	dont_show.add_theme_icon_override("checked", box_icon(px, true))
@@ -178,7 +182,7 @@ func _place() -> void:
 	var rest := panel.get_combined_minimum_size().y      # the title, the box, the buttons and the margins
 	scroll.custom_minimum_size.y = clampf(_words_height(w), 0.0, maxf(60.0 * W.scale, vs.y - 32.0 - rest))
 	# words that don't all fit can be scrolled from the keyboard and gamepad: the scroll takes the focus then (Tab,
-	# arrows or the D-pad up and down, Page Up and Down), with the focus ring (UI-UX-POLICY A1)
+	# arrows or the D-pad up and down, Page Up and Down), with the focus ring (keyboard and gamepad reach everything: A18)
 	var scrolls := _words_height(w) > scroll.custom_minimum_size.y + 1.0
 	if not scrolls and scroll.has_focus():
 		continue_button.grab_focus()   # (the words stop taking the focus: it goes on to Continue anyway, never nowhere)

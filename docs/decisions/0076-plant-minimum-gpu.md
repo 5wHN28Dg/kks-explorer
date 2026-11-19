@@ -38,7 +38,8 @@ target, with a lower tier of its own, or is it below a stated minimum?
   is a tier-2 change: merged switched off (`walkdown/min_gpu_message`), on after the owner's check.
 - The UX profile (docs/ux-profile/plant.md) states the minimum; the HD 4400 laptop leaves it (a narrowing by this
   decision).
-- **Not caught:** an Android device without Vulkan 1.0 would fall back the same way, silently: Android's minimum is
+- **Not caught:** Linux with only a software Vulkan (lavapipe), or Mesa's incomplete Vulkan on Haswell (hasvk):
+  Forward+, no message, unmeasured. An Android device without Vulkan 1.0 would fall back the same way, silently: Android's minimum is
   unchanged (the export asks for Vulkan) and the message is for desktops only.
 - No new dependency.
 
