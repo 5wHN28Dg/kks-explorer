@@ -55,7 +55,7 @@ proc plantStore(edits = 30): (MemStore, PrivateKey) =
   let me = api.owner[1]
   for i in 0 ..< edits:
     let r = api.handle(me, "POST", "/api/submit", initTable[string, string](), parseStrict(
-      """{"kind":"equipment","payload":{"kks":"11LAB70AA50""" & $(i mod 10) & """","changes":{"notes":"round """ & $i &
+      """{"kind":"equipment","payload":{"kks":"11LAB70AA51""" & $(i mod 10) & """","changes":{"notes":"round """ & $i &
       """"},"base":{}}}"""), now())
     doAssert r.status < 400, $r.status
     n.saveState()

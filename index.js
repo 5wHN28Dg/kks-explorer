@@ -157,7 +157,7 @@ function markForm(bb){
       h('button',{class:'x',onclick:cancel},'×')),
     h('div',{class:'sec'},h('div',{class:'crop','data-sheet':t.sheet,style:cropStyle(t)}),
       h('div',{class:'sub'},'Type the code if you can read it. If not, leave it empty: it goes to the review queue.'),
-      h('div',{class:'row2',style:'margin-top:8px'},h('div',{class:'field'},h('label',null,'KKS (with suffix)'),h('input',{id:'mkK',class:'mono',placeholder:'e.g. 11LAB90CP501'})),
+      h('div',{class:'row2',style:'margin-top:8px'},h('div',{class:'field'},h('label',null,'KKS (with suffix)'),h('input',{id:'mkK',class:'mono',placeholder:'e.g. 11LAB70CP500'})),
         h('div',{class:'field'},h('label',null,'Function letters (instruments)'),h('input',{id:'mkI',class:'mono',placeholder:'e.g. PI, TIAC'}))),
       h('div',{class:'field'},h('label',null,'Note (optional)'),h('input',{id:'mkN',placeholder:'e.g. hard to read, second one below it'})),
       h('button',{class:'primary',onclick:()=>sendMark()},'Send'),' ',h('button',{class:'ghost',onclick:cancel},'Cancel')));
