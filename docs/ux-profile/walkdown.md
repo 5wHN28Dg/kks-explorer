@@ -223,7 +223,7 @@ notifications), and the kinds above.
 - **Evidence tools** (development only, outside every product manifest): `tools/ui_audit/` (README there); the e2e
   harnesses `android/app2/e2e/` (emulator only, `ANDROID_SERIAL=emulator-…`), `platform/linux/e2e/test_web_*.py`
   and `tests/web/` (Playwright, three engines), `apps/gnome/e2e/` under `headless.sh` only (and, for the web's screen-reader check, Orca with Firefox in the same
-  headless session: *phase 2*; until then by hand on the owner's laptop), `apps/windows/e2e/` (the
+  headless session: *phase 2*; until then see "Accepted Not-checked reasons"), `apps/windows/e2e/` (the
   VMs, one at a time under `vm.lock`, and the owner's Windows 10 laptop when `~/kks-work/bin/laptop-free` allows); the
   servers come from `tests/e2e_server.py`. The memory and lock rules in CLAUDE.md and `~/kks-work/build/agent-rules.md` apply to every run: one emulator or VM at a time under `vm.lock`; GNOME runs only under `headless.sh` and one at a time under `flock ~/kks-work/build/gnome-e2e.lock`.
 - **Test data:** the sample sheet `importer/tests/vectors/kkp-sample.pdf`; Walkdown Plant's generated P&IDs of an
@@ -255,7 +255,8 @@ notifications), and the kinds above.
 
 | Reason | Covers | Expires |
 |---|---|---|
-| No Apple device on hand: VoiceOver on iOS Safari and Safari on a real iPhone, iPad or Mac (hardware not owned; Playwright's WebKit and the accessibility tree stand in; the web app is kept working on them as far as it can be, the owner's 2026-11-19 answer) | WEB4's Safari, A8's VoiceOver, P5's iPhone timing | renewable (hardware); listed in the accessibility statement (#440) |
+| No Apple device on hand: VoiceOver on iOS Safari and Safari on a real iPhone, iPad or Mac (hardware not owned; Playwright's WebKit and the accessibility tree stand in; the web app is kept working on them as far as it can be, the owner's 2026-11-19 answer) | WEB4's Safari on a device (not its home-screen clause, which is checked in every engine), A8's VoiceOver | renewable (hardware); listed in the accessibility statement (#440) |
+| No Orca-with-Firefox harness yet (phase 2): the web's screen-reader check; the accessibility tree from Playwright stands in | A8 on the web with Orca | 2027-05-19 |
 | Real TalkBack speech, sunlight and gloves: checked on the Note 9 in the owner's check before release (8.5, FIELD2); the tree and measured sizes stand in for the merge | A8's speech, A1 in sun, A19 with gloves | 2027-05-19 |
 | Windows on ARM64: no ARM64 machine here (hardware not owned); the same code as x86-64. Never covers the never-waivable set (S1–S3, S8, A10, T0, T1, T9, Z1), which is checked through the shared x86-64 code | the other rules on Windows ARM64 | renewable (hardware) |
 
