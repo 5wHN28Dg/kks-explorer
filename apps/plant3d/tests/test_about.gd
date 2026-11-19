@@ -1,5 +1,6 @@
 ## About (decision 0054 §7, app/about.gd): opened from the settings panel, it shows the app's version, the commit
-## build.sh recorded, the assets of built/about.json with their licence, and Godot's own notices; it scrolls by
+## build.sh recorded, the accessibility statement (#440), the assets of built/about.json with their licence, and
+## Godot's own notices; it scrolls by
 ## gamepad (D-pad, stick) and keyboard (Page Down, Home); gamepad A opens it and B, Esc or Back returns to the settings with the walker's
 ## controls still held.
 extends RefCounted
@@ -44,6 +45,15 @@ func run(tree: SceneTree) -> Array:
 	if not (bi.commit is String and bi.commit.length() == 40 and shown.contains("commit " + bi.commit)):
 		p.append("About does not show the commit build.sh recorded (%s)" % str(bi.get("commit")))
 	var assets: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://about.json"))
+	# the accessibility statement (#440): second, after the name and version; what works, each gap, how to report one
+	var acc: Dictionary = assets.accessibility
+	var secs: Array = hud.about.sections()
+	if secs.size() < 2 or secs[1][0] != "Accessibility":
+		p.append("About's second section is not Accessibility")
+	for t in acc.intro + acc.gaps.map(func(g): return "• " + g) + [acc.report, acc.url]:
+		if not shown.contains(t):
+			p.append("About's accessibility statement lacks: %s" % t.left(60))
+			break
 	for a in assets.assets:
 		if not shown.contains("%s: %s" % [a.name, a.license]):
 			p.append("About does not list %s with its licence" % a.name)

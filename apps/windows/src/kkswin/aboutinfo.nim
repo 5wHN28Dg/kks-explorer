@@ -1,7 +1,7 @@
 ## What the About window shows (about.nim), from the shared About content (data/about.json, format "walkdown-about"
 ## v1, made by tools/about.py) that kksl/buildinfo compiles in: Walkdown's name, licence and links, the third-party
 ## parts of the Windows app (`platforms.windows` set) each with its notice and the full text of its licences, and the
-## course photos' credits. No Win32 here: tests/test_about.nim checks it on Windows and Linux alike.
+## course photos' credits, and the accessibility statement (#440). No Win32 here: tests/test_about.nim checks it on Windows and Linux alike.
 
 import std/strutils
 import kks/json
@@ -27,6 +27,8 @@ type
     platformTitle*, platformNote*: string
     parts*: seq[Part]
     photos*: seq[Photo]
+    accessibility*: string     ## the accessibility statement as plain text ("" when about.json has none)
+    accessibilityUrl*: string  ## the README's full statement
 
 proc str(n: JNode, k: string): string =
   if n != nil and n.kind == jObj and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -56,6 +58,19 @@ proc row*(p: Part): string =
   if p.system: result.add " (the system's copy)"
   elif p.version.len > 0: result.add " " & versionText(p.version)
   if p.licenseName.len > 0: result.add " · " & p.licenseName
+
+proc accessibilityText*(a: JNode): string =
+  ## about.json's accessibility statement (the UI/UX policy's T11; the README's "Accessibility" says the same) as
+  ## plain text: what works, the known gaps one per line, how to report a barrier; "" when there is none
+  var paras: seq[string]
+  for p in a.arr("intro"):
+    if p.isStr: paras.add p.s
+  var gaps: seq[string]
+  for g in a.arr("gaps"):
+    if g.isStr: gaps.add "• " & g.s
+  if gaps.len > 0: paras.add "Known gaps:\n" & gaps.join("\n")
+  if a.str("report").len > 0: paras.add a.str("report")
+  paras.join("\n\n")
 
 proc parseAbout*(text: string, platform = "windows"): About =
   ## -> the About for `platform`'s parts. Raises ValueError (JsonError is one) when `text` is not the About content
@@ -98,6 +113,8 @@ proc parseAbout*(text: string, platform = "windows"): About =
       else: txt.add "\n\n" & name
     p.detail = txt
     result.parts.add p
+  result.accessibility = accessibilityText(d.obj("accessibility"))
+  result.accessibilityUrl = d.obj("accessibility").str("url")
   for ph in d.arr("photos"):
     var p = Photo(text: ph.str("text"))
     for l in ph.arr("links"): p.links.add Link(text: l.str("text"), url: l.str("url"))

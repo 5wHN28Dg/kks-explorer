@@ -1322,5 +1322,25 @@
    "text": "AI-generated illustration (Google Gemini), checked against the plant's flue gas P&ID",
    "links": []
   }
- ]
+ ],
+ "accessibility": {
+  "intro": [
+   "Walkdown is meant to work with a screen reader, with the keyboard alone, with large text and in a dark theme. It is checked with TalkBack on Android, Narrator on Windows, Orca on Linux (GNOME), and Orca with Firefox for the web app.",
+   "The apps follow the system's dark theme and text size. On a computer, the drawing pans with the arrow keys and zooms with + and −. Every tag can also be found by searching for its code or description, without seeing the drawing. Dark drawings help in dim rooms.",
+   "Apple devices (iPhone, iPad, Safari on a Mac) are not checked: there is none to test on. The web app is kept working on them as far as it can be without one, but VoiceOver is not checked."
+  ],
+  "gaps": [
+   "Some buttons have no name for a screen reader, and some status messages are not announced (#374).",
+   "Some actions need a drag or a pinch and have no keyboard or tap alternative, such as marking up a photo (#375). In the web app, two file pickers can't be reached with the keyboard (#403).",
+   "Large text, zoom and narrow windows can cut off or hide controls in the web app, on GNOME and on Android (#376).",
+   "Windows: the dark theme is not complete, and the system's text size and display scaling are not fully followed (#377).",
+   "Arabic notes can split a KKS code across the line in the web app, on Windows and on Android (#379).",
+   "Some text, highlights and borders have too little contrast (#368, #369). Some states are shown by colour alone: a tag's state, photo coverage and course answers (#370).",
+   "Some touch targets are too small for gloves (#367).",
+   "The web app's course figures still move when the system asks for reduced motion (#380).",
+   "In the web app, the check with Orca and Firefox is not set up yet; until it is, the browser's accessibility tree is checked instead."
+  ],
+  "report": "To report a barrier, tell your plant's manager, or open an issue at https://github.com/5wHN28Dg/kks-explorer/issues (Report a problem, in About). Leave plant data out of an issue: no codes, drawings, photos or names. A reported barrier counts as a major problem until it has been looked at.",
+  "url": "https://github.com/5wHN28Dg/kks-explorer#accessibility"
+ }
 }

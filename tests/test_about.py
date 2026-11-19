@@ -291,3 +291,59 @@ class PlantAbout(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AccessibilityStatement(unittest.TestCase):
+    """the accessibility statement (the UI/UX policy's T11, #440): each product's About carries it (about.json's
+    `accessibility`, from tools/about/accessibility.json), and the README's section says the same, sentence for
+    sentence, with each gap's issue linked; what it must say: the screen readers it is checked with, Apple devices
+    not checked, the known gaps, and how to report a barrier."""
+
+    def readme_section(self, heading):
+        with open(os.path.join(REPO, 'README.md'), encoding='utf-8') as f:
+            text = f.read()
+        # (from the heading to the paragraph on reporting a barrier, which ends it)
+        m = re.search(r'^#+ ' + re.escape(heading) + r'\n(.*?^To report a barrier[^\n]*\n)', text, re.M | re.S)
+        self.assertIsNotNone(m, 'README.md has no section "%s"' % heading)
+        return m.group(1)
+
+    @staticmethod
+    def plain(md):
+        # [#374](…/issues/374) → #374, <https://…> → https://…, and the lines of a paragraph joined
+        md = re.sub(r'\[(#\d+)\]\(https://github\.com/5wHN28Dg/kks-explorer/issues/(\d+)\)',
+                    lambda m: m.group(1) if m.group(1) == '#' + m.group(2) else 'MISMATCH', md)
+        return re.sub(r'<(https://[^>]+)>', r'\1', md)
+
+    def check(self, a, heading):
+        section = self.readme_section(heading)
+        flat = self.plain(section)
+        self.assertNotIn('MISMATCH', flat, 'an issue link in the README points at another issue')
+        for p in a['intro'] + [a['report']]:
+            self.assertIn(p, flat)
+        for g in a['gaps']:
+            self.assertIn('\n- ' + g + '\n', flat)
+        # every issue the README section links is in the statement the apps show, and the other way round
+        self.assertEqual(set(re.findall(r'#(\d+)', flat)), set(re.findall(r'#(\d+)', ' '.join(a['gaps'] + [a['report']]))))
+        anchor = re.sub(r'[^a-z0-9 -]', '', heading.lower()).replace(' ', '-')
+        self.assertEqual(a['url'], 'https://github.com/5wHN28Dg/kks-explorer#' + anchor)
+
+    def test_walkdown(self):
+        a = load()['accessibility']
+        self.check(a, 'Accessibility')
+        text = ' '.join(a['intro'] + a['gaps'] + [a['report']])
+        for at in ('TalkBack', 'Narrator', 'Orca on Linux (GNOME)', 'Orca with Firefox', 'VoiceOver'):
+            self.assertIn(at, text)
+        self.assertIn('Apple devices', text)
+        for issue in ('#374', '#375', '#376', '#377', '#379'):
+            self.assertIn(issue, text)
+        self.assertIn(about.REPOSITORY + '/issues', a['report'])
+        self.assertIn("plant's manager", a['report'])
+
+    def test_plant(self):
+        with open(os.path.join(REPO, 'apps', 'plant3d', 'about.json'), encoding='utf-8') as f:
+            a = json.load(f)['accessibility']
+        self.check(a, 'Accessibility of Walkdown Plant')
+        text = ' '.join(a['intro'] + a['gaps'] + [a['report']])
+        for s in ('Android: no screen reader', '#443', '#418', '#457', 'Narrator and Orca'):
+            self.assertIn(s, text)
+        self.assertIn(about.REPOSITORY + '/issues', a['report'])

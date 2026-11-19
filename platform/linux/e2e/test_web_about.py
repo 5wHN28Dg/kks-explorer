@@ -1,7 +1,7 @@
 """The About page of the web client (the user, 2026-10-15), in Chromium, Firefox and WebKit, against the Nim server:
   1. from the sign-in screen, before any account: Walkdown, its summary, the server's version and commit, a link to
-     the source of exactly that commit (the AGPL's offer of the Corresponding Source, §13), the licence, the links;
-     Escape closes it;
+     the source of exactly that commit (the AGPL's offer of the Corresponding Source, §13), the licence, the links,
+     the accessibility statement (#440); Escape closes it;
   2. signed in, from the main page's About button: the web app's and the server's third-party parts with their
      licences and notices, the course photos' credits, the licence texts; Close closes it;
   3. Manage → About shows the same as a page;
@@ -68,6 +68,17 @@ class WebAbout(unittest.TestCase):
         expect(dlg).to_contain_text('By Walkdown contributors. Licence: GNU Affero General Public License v3.0 or later.')
         for name, url in (('Home page', d['links']['homepage']), ('Report a problem', d['links']['issues']), ('Help', d['links']['help'])):
             self.assertEqual(dlg.get_by_role('link', name=name, exact=True).get_attribute('href'), url)
+        # the accessibility statement (#440): what works, the known gaps with their issues linked, how to report one
+        acc = d['accessibility']
+        expect(dlg.get_by_role('heading', name='Accessibility', exact=True)).to_be_visible()
+        for t in acc['intro'] + [acc['report']]:
+            expect(dlg.locator('p', has_text=t[:60]).first).to_have_text(t)
+        items = dlg.locator('h2:text-is("Accessibility") ~ ul').first.locator('li')
+        expect(items).to_have_text(acc['gaps'])
+        self.assertEqual(dlg.get_by_role('link', name='#377', exact=True).get_attribute('href'),
+                         'https://github.com/5wHN28Dg/kks-explorer/issues/377')
+        self.assertEqual(dlg.get_by_role('link', name='The accessibility statement in the README', exact=True)
+                         .get_attribute('href'), acc['url'])
 
     def check_parts(self, view):
         d = self.about['about']

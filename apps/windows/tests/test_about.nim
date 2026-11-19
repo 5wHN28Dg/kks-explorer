@@ -79,6 +79,16 @@ suite "about content":
     for ph in a.photos:
       for l in ph.links: check isWebLink(l.url)
 
+  test "the accessibility statement (#440): what works, every gap on a line of its own, how to report one":
+    let acc = raw["accessibility"]
+    check a.accessibility.startsWith(acc["intro"].elems[0].s & "\n\n")
+    check "\n\nKnown gaps:\n• " & acc["gaps"].elems[0].s & "\n" in a.accessibility
+    for g in acc["gaps"].elems: check "\n• " & g.s in a.accessibility
+    check a.accessibility.endsWith("\n\n" & acc["report"].s)
+    check "Narrator" in a.accessibility and "#377" in a.accessibility and "#379" in a.accessibility
+    check a.accessibilityUrl == "https://github.com/5wHN28Dg/kks-explorer#accessibility" and isWebLink(a.accessibilityUrl)
+    check parseAbout("""{"format":"walkdown-about","version":1}""").accessibility == ""   # (none: no section)
+
   test "only https links reach the browser":
     check isWebLink("https://github.com/5wHN28Dg/kks-explorer/tree/0123456789abcdef0123456789abcdef01234567")
     for bad in ["http://example.org", "file:///C:/Windows/System32/calc.exe", "C:\\Windows\\System32\\calc.exe",

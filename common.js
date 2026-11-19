@@ -320,12 +320,24 @@ K.aboutView = a => {
     h('p', null, `By ${d.developer}. Licence: `, link(d.license.name, d.license.url), '.'),
     h('p', {class: 'kab-sub'}, d.notice),
     h('p', {class: 'kab-links'}, link('Home page', d.links.homepage), link('Report a problem', d.links.issues), link('Help', d.links.help)),
+    d.accessibility ? K.aboutAccessibility(d.accessibility, link) : null,
     parts('web'), parts('server'),
     h('h2', null, 'Course photos'),
     h('ul', {class: 'kab-list'}, d.photos.map(p => h('li', null, h('span', null, p.text), p.links.length ? h('div', {class: 'kab-sub'}, p.links.map((l, i) => [i ? ' · ' : '', link(l.text, l.url)])) : null))),
     h('h2', null, 'Licences'),
     used.map(id => licence(id).text ? h('details', null, h('summary', null, licence(id).name), text(licence(id).text))
                                     : h('p', {class: 'kab-licence'}, link(licence(id).name, licence(id).url))));
+};
+// the accessibility statement (the UI/UX policy's T11, #440; the README's "Accessibility" says the same): what works,
+// the known gaps with their issues, how to report a barrier. Plain text from about.json; its issue numbers and its
+// address become links.
+K.aboutAccessibility = (a, link) => {
+  const h = K.h, issues = 'https://github.com/5wHN28Dg/kks-explorer/issues';
+  const linked = t => t.split(/(https:\/\/\S+|#\d+)/).map((x, i) => i % 2 === 0 ? x
+    : x.startsWith('#') ? link(x, issues + '/' + x.slice(1)) : link(x, x));
+  return [h('h2', null, 'Accessibility'), a.intro.map(p => h('p', null, linked(p))),
+    h('p', null, 'Known gaps:'), h('ul', {class: 'kab-list'}, a.gaps.map(g => h('li', null, linked(g)))),
+    h('p', null, linked(a.report)), h('p', null, link('The accessibility statement in the README', a.url))];
 };
 K.aboutCss = `#kabout{width:min(720px,94vw);max-height:88vh;padding:0;border:1px solid var(--line,#3a5061);border-radius:10px;background:var(--chrome2,#243440);color:var(--ink,#e9eef2);font:14px/1.45 system-ui,sans-serif}
 #kabout::backdrop{background:rgba(0,0,0,.55)}#kabout .kab-close{position:sticky;top:8px;float:right;margin:8px;background:var(--chrome,#1c2730);color:inherit;border:1px solid var(--line,#3a5061);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
