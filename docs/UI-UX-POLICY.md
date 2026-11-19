@@ -16,12 +16,12 @@ This page holds only what is specific to this project:
 
 ## 1. The rulebook and the profiles
 
-- **The rulebook:** [docs/ui-policy/UI-UX-POLICY.md](ui-policy/UI-UX-POLICY.md), an unchanged copy of the user's
-  `global/UI-UX-POLICY.md` (in their Personal-LLM-prompts repository), version 4.13 (2026-11-18), sha256
-  `6313744f37b408b72d99028684caa70c10e4aa6118e05e87a7bef51f6f29ffe5`. The copy is kept here so that CI, reviewers
-  and anyone reading this public repository see exactly the version in force. When the user changes the global
-  policy, the copy is replaced in a PR of its own that quotes the new version line. Only the user changes the rules
-  (its section 11).
+- **The rulebook:** the user's `global/UI-UX-POLICY.md` in their Personal-LLM-prompts repository (on the owner's
+  machine `~/Documents/GitHub/Personal-LLM-prompts/global/UI-UX-POLICY.md`), **version 4.13 (2026-11-18), sha256
+  `6313744f37b408b72d99028684caa70c10e4aa6118e05e87a7bef51f6f29ffe5`**. Agents and reviewers read that file and
+  check its hash; if it differs, the version in force here is still 4.13 until a PR updates this line with the new
+  version line. Whether a copy of it is also kept in this public repository is the owner's choice (#442). Only the
+  user changes the rules (its section 11).
 - **The profiles** (its section 1):
   - [docs/ux-profile/walkdown.md](ux-profile/walkdown.md): Walkdown (web, GNOME, Windows, Android, and the server's
     command line);
@@ -46,20 +46,28 @@ rule wins, so they stay. Each one adds to the rulebook rule named in brackets.
   drawing, codes on Plant's control room screens and P&IDs) can't be selected; there the item's card or panel, one
   tap away, offers the copy. This exemption is how the old policy read I5's ancestor; a reviewer who reads I5 as
   stricter applies I5 (section 0.2: when unclear, both apply).
-- **WD-S5 (Advice; adds to S5):** after a bulk action the list keeps its place and says what happened
-  ("12 accepted"). S5's check here: 20 synthetic items in each such list are decided in at most 4 actions.
+- **WD-S5 (Block; adds to S5):** 20 synthetic items in each list that asks the same decision of many are decided
+  in at most 4 actions (the old B1's check).
+- **WD-S5a (Advice):** after a bulk action the list keeps its place and says what happened ("12 accepted").
 - **WD-S2 (Block; adds to S2):** web confirmations use the page's own dialog, never the browser's `confirm()`, which
   can't name its buttons.
 - **WD-C4 (Block; adds to C4):** a Walkdown feature that one client lacks is also recorded in
   `docs/m6/CAPABILITIES.md`, beside the issue for each client left out.
 - **WD-A18 (Block; adds to A18):** the drawing pans with the arrow keys and zooms with + and − on every client with
   a keyboard.
+- **WD-8.9 (process; adds to 8.9):** besides the rulebook's full audits, a full audit runs before each release
+  that changed UI on more than one platform (the old policy's 3.1).
 - **WD-A12 (Block; adds to A12):** each sheet's tags are also reachable as a list (search or the sheet's tag list)
   that opens the same panel as tapping the tag, so a screen-reader or keyboard user reaches every tag.
 
 Everything else the old policy asked is covered by a rulebook rule at least as strict (the map in section 5), or by a
 number in a profile (gloves: 48 dp targets also on the web at phone width; sun: 7:1 for codes, values and body text on
 phones; the frame rules).
+
+One old point changes by the adoption itself: the old CLAUDE.md rule made the UI audit's two passes come "on top of
+the two code reviews"; the rulebook (0.2, 8.4) makes the two review passes of the global workflow also the UI passes,
+with the policy, profile, brief and evidence added. A reviewer may still post the code review and the UI table as
+separate comments.
 
 Two old points were looser than the rulebook and are dropped, as the user asked for a replacement: "Advice fails never
 block" (now section 9.1 decides), and "a new screen built from shared widgets carries their filed fails as
@@ -126,9 +134,9 @@ unsure, it is touched). In this repository that is at least:
 | C1 identifiers copyable | I5, WD-I5 | D4 sign-out counts | S3 |
 | C2 exactly the identifier | I5 | X1 same name | W1, C2 |
 | C3 copy says what | I5, WD-I5 | X2 feature parity | C4, WD-C4 |
-| B1 bulk decisions | S5 (no 5-item threshold now) | X3 platform conventions | C3, I2, GNOME1, WIN1, AND1, WEB3, A18 |
+| B1 bulk decisions | S5, WD-S5 (no 5-item threshold now) | X3 platform conventions | C3, I2, GNOME1, WIN1, AND1, WEB3, A18 |
 | B2 bulk shows count, one undo | S5 | A1 keyboard | A18, A23, WD-A18 |
-| B3 list keeps its place (Advice) | WD-S5, P4 | A2 names | A8, AND5, GNOME4, WIN2 |
+| B3 list keeps its place (Advice) | WD-S5a, P4 | A2 names | A8, AND5, GNOME4, WIN2 |
 | K1 text contrast | A1 | A3 drawing without sight | A12, WD-A12 |
 | K2 7:1 on phones | A1 (profile raises to 7:1) | A4 motion | A11, A10 |
 | K3 non-text 3:1 | A2, A23 | A5 Plant screen readers | A8, GM7.3 |
@@ -184,7 +192,7 @@ reviewers (section 9.5); the floor column is the least the rulebook allows (sect
 
 Filed at the adoption (2026-11-19): #437 Plant's "Restart in it" (S1, S2), #438 Plant evidence runs and the real
 Godot user folder (Z1), #439 install warnings and steps (U1, T6), #440 the accessibility statement (T11), #441 server
-updates' PASS/FAIL (S8), #443 lightning in fast-forward (A10, GM8.3); and the owner's decisions, #442.
+updates' PASS/FAIL (S8), #443 lightning in fast-forward (A10, GM8.3), #446 Plant has no "Report a problem" (FIELD1); and the owner's decisions, #442.
 
 The later audit issues (#394–#397, #399–#404, #408, #428) keep their rules the same way: the old ID in their text
 maps by the table in 5.1.

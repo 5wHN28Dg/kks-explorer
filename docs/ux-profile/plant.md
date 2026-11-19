@@ -1,9 +1,9 @@
 # UX profile: Walkdown Plant
 
 Stage: **pre-release** (proposed; the owner confirms: GitHub releases `plant-v…` reach testers, no one relies on it
-yet) · Profile version 1 · Reviewed: 2026-11-19, both passes on the PR that added it (1.7).
+yet) · Profile version 1 · Review: both passes on PR #444, posted there as comments (1.7).
 
-The rulebook is [docs/ui-policy/UI-UX-POLICY.md](../ui-policy/UI-UX-POLICY.md) (version 4.13); project rules and the
+The rulebook is the user's `global/UI-UX-POLICY.md`, version 4.13 (where to read it: [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md) section 1); project rules and the
 user's carried-over decisions are in [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md). Section numbers are the rulebook's.
 Plant's plant is generic and invented. Lines marked *(assumption)* are checked first by the first round with users.
 
@@ -60,7 +60,10 @@ problem) applies, as to every product with users besides the owner.
 - **Abilities (floor, 1.1):** the floor in full; no group is N/A. Play without sight is the hardest case in a 3D
   world: GM9 applies; the first full audit records what it can and can't give.
 - **Age:** adults; not aimed at children (T9: N/A below).
-- **Languages:** English UI only (the user, 2026-09-30); no user content beyond player names in sessions (Arabic and
+- **Recipients who never run it:** none today. When push-to-talk voice reaches the app (its codec exists in
+  `voice/`; the app doesn't play voice yet, milestones MP4 and MP5), the other players hear it: then its main task,
+  the microphone permission (T4) and GM10.2 come with that change.
+- **Languages:** English UI only (the user, 2026-09-30); user content today is player names in sessions (Arabic and
   mixed names: L2).
 
 ## Platforms, sizes, inputs, assistive technology, network
@@ -69,7 +72,7 @@ problem) applies, as to every product with users besides the owner.
 |---|---|---|---|---|
 | Android | 10 and later, arm64 only | Samsung Galaxy Note 9 (Android 10, Mali-G72, 2220 × 1080 at density 420): the frame rules are measured there | the Note 9 and the owner's Honor 600 (Plant only on the Honor) | touch (two sticks), gamepad |
 | Windows | 10 and 11 | the owner's Windows 10 laptop (Intel HD 4400, 4 GB): runs only the Compatibility renderer at about 12 fps (#432); Plant's stated minimum GPU comes with the PR for #432 and is added here then | the owner's laptop *(assumption)* | keyboard and mouse, gamepad |
-| Linux (Flatpak) | a current GNOME LTS, Godot BaseApp 4.7 | — (the same minimum as Windows, from #432) | the owner's laptop | keyboard and mouse, gamepad |
+| Linux (Flatpak) | a current GNOME LTS, Godot BaseApp 4.7 | the owner's laptop is the only Linux device (i7-12700H, about 37 GB, Iris Xe); a lower Linux minimum comes with #432's stated GPU minimum | the same laptop | keyboard and mouse, gamepad |
 
 - **Sizes:** landscape only (the two-stick controls need it: AND4's orientation is essential); the canvas is
   1600 × 900, stretched; desktops from 1280 × 720 *(assumption)*; phones from 360 dp tall.
@@ -84,6 +87,11 @@ problem) applies, as to every product with users besides the owner.
   statement (#440), rechecked at each engine upgrade.
 - **Network:** offline single play; LAN sessions; sessions over the internet through Plant's relay.
 
+## Numbers this profile raises (1.5)
+
+- **Contrast (A1):** on phones, codes, values and body text in panels and on the screens reach **7:1** (the old
+  policy's K2, which applied to Plant on phones too); secondary text keeps 4.5:1.
+
 ## Main tasks
 
 Targets set 2026-11-19 *(assumptions until a round with users)*.
@@ -93,15 +101,16 @@ Targets set 2026-11-19 *(assumptions until a round with users)*.
 | 1 | "Install it and start walking" | trainee | once | from the release page, through the install warnings (#439), to walking in the plant | first walkable frame ≤ 15 s on the Note 9 (cool start); playing within 60 s of the first input (H1) |
 | 2 | "Go to the feed pump and see its state" | trainee | every session | the equipment's card is open | the map or a tour gets there; feels unhurried, never lost |
 | 3 | "Start the pump as the procedure says" | trainee | every session | the procedure's steps ticked, the plant in the expected state | most trainees finish the first procedure without help *(target share set with the first round)* |
-| 4 | "Answer the alarm" (control room screens) | trainee | most sessions | the alarm acknowledged and its cause dealt with | — |
-| 5 | "Isolate it and lock it" (permits) | trainee | some sessions | the permit's steps done; a lock that would trip something asks first | — |
-| 6 | "Take the transmitter apart; run it on the bench" (Workshop) | trainee | some sessions | parts named, put back; the bench run | — |
+| 4 | "Answer the alarm" (control room screens) | trainee | most sessions | the alarm acknowledged and its cause dealt with | acknowledging ≤ 2 actions from the screens; feels like a real DCS alarm list |
+| 5 | "Isolate it and lock it" (permits) | trainee | some sessions | the permit's steps done; a lock that would trip something asks first | each lock ≤ 2 actions from the permit; most trainees finish a permit without help *(share set with the first round)* |
+| 6 | "Take the transmitter apart; run it on the bench" (Workshop) | trainee | some sessions | parts named, put back; the bench run | into the Workshop from the card in 1 action; feels hands-on and clear |
 | 7 | "Train together" (host or join a session, take a role) | trainee, instructor | some sessions | everyone in, roles taken; a dropped player rejoins | joining ≤ 1 min |
-| 8 | "Inject a fault; restart in a scenario" (instructor) | instructor | some sessions | the fault applied; the restart asked first (#437) | — |
-| 9 | "What did I do wrong?" (debrief) | trainee | after each scenario | the steps beside the right ones (TRAIN2) | — |
+| 8 | "Inject a fault; restart in a scenario" (instructor) | instructor | some sessions | the fault applied; the restart asked first (#437) | ≤ 3 actions from the Instructor panel |
+| 9 | "What did I do wrong?" (debrief) | trainee | after each scenario | the steps beside the right ones (TRAIN2) | ≤ 2 actions from the end of a scenario |
 | 10 | "Carry on tomorrow" / "start again" (the saved run) | trainee | every session | the run continues, or a new one starts and the old one is kept | progress lost on a crash ≤ one scenario step or 5 minutes (GM5.2) |
-| 11 | "Make it fit me" (UI size, controls, pace, quality, motion) | anyone | once | the setting applied and kept | — |
-| 12 | "Report a problem" | anyone | rare | a prefilled public issue after seeing the redacted diagnostics, or a private report (FIELD1) | — |
+| 11 | "Make it fit me" (UI size, controls, pace, quality, motion) | anyone | once | the setting applied and kept | each setting ≤ 3 actions from the walk (Settings, the setting) |
+| 12 | "Report a problem" | anyone | rare | a prefilled public issue after seeing the redacted diagnostics, or a private report (FIELD1) | ≤ 4 actions. **Missing today** (#446) |
+| 13 | "Update to the new release" (a new APK, MSIX or Flatpak over the old; there is no updater in the app) | anyone | per release | the new version runs with the saved run and settings kept | the same steps as installing, with the warnings explained (#439) |
 
 ## Screen table
 
@@ -117,6 +126,9 @@ template is `W.panel(title, on_close)` in `ui/widgets.gd`: one row covers all pa
 | The Workshop (top bar, parts tree, Info, Tools, the bench's run panel, the step line) | 6 | Back to the plant, the machine, the parts tree or Info (one at a time on phones), the step line | the take-apart slider / Run | as panels; drag to orbit with tap and key alternatives (A20) | 1. the machine; 2. the selected part's name; 3. the tools |
 | Map | 2 | the plant overview, Close | go to a floor | tap a floor; gamepad and keys per README | 1. where I am; 2. where to go |
 | Settings and About | 11 | UI size, Close | — | as panels | 1. UI size; 2. controls; 3. the rest |
+| The player's phone and music, Discussions (in Crew) | 7 | the phone's screen, Close | the call or message action | as panels | 1. who or what; 2. the action |
+| The hoist pendant, trends (on the screens) | 3, 4 | the pendant's buttons or the trend, Close | the pendant's move buttons (hold-to-move needs a toggle: A22) | tap, click, gamepad, keys | 1. the control; 2. its state |
+| A link from Walkdown or a chat opening Plant (`walkdown-plant://`, `ui/links_in.gd`) | 2, 7 | what the link will do, the confirm and Cancel (N5) | the confirmation | tap, click, keys | 1. what will happen; 2. confirm |
 | Start-up offer ("Continue the saved run?") | 10 | the question, Continue, New run | Continue | as panels | 1. the question; 2. Continue |
 
 ## Budgets (with tolerance) and the benchmark walk
@@ -182,7 +194,8 @@ GM (7.5) including GM10; AND (7.3) where it applies to a Godot app (back, insets
 
 | Rule | Platforms | Reason |
 |---|---|---|
-| WEB, TUI, CLI, MSG, READER, SHARE, ALERT, FILTER, VIEW, HAND1 | all | none of these surfaces (the command-line options are developer tools) |
+| WEB, TUI, CLI, MSG, READER, SHARE, ALERT, FILTER | all | none of these surfaces (the command-line options are developer tools) |
+| VIEW, HAND1 | — | not N/A: VIEW applies to Plant's P&ID drawing viewer; HAND1 to a session's join code, link and QR code |
 | FIELD2 | all | not a field tool (FIELD1 applies) |
 | A15 | all | no prerecorded video |
 | A12 for walking the 3D world | — | not N/A: GM9 decides what play without sight gives; recorded at the first full audit |
@@ -197,7 +210,7 @@ GM (7.5) including GM10; AND (7.3) where it applies to a Godot app (back, insets
 
 | Reason | Covers | Expires |
 |---|---|---|
-| The Note 9's frame walk outside the owner's phone window: the change's walk waits for the window; the desktop's probe stands in meanwhile | GM6.1, GM6.2, P1 on the phone | 2027-05-19 |
+| The Note 9's frame walk outside the owner's phone window: the change's walk waits for the window; the desktop's probe stands in meanwhile; if no window comes within 3 days, ask the user (the old policy's rule) | GM6.1, GM6.2, P1 on the phone | 2027-05-19 |
 | Plant's arm64 build doesn't run on the x86-64 emulator: the phone layout on the desktop (`--phone`) stands in until a phone session | phone-only checks of A19, A3, GM1.5 | 2027-05-19 |
 
 ## Third-party surfaces

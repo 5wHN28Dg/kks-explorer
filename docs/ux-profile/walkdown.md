@@ -1,9 +1,9 @@
 # UX profile: Walkdown
 
-Stage: **live** (proposed; the owner confirms, see "Owner items" at the end) · Profile version 1 · Reviewed:
-2026-11-19, both passes on the PR that added it (1.7).
+Stage: **live** (proposed; the owner confirms, see "Owner items" at the end) · Profile version 1 · Review: both
+passes on PR #444, posted there as comments (1.7).
 
-The rulebook is [docs/ui-policy/UI-UX-POLICY.md](../ui-policy/UI-UX-POLICY.md) (version 4.13); project rules and the
+The rulebook is the user's `global/UI-UX-POLICY.md`, version 4.13 (where to read it: [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md) section 1); project rules and the
 user's carried-over decisions are in [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md). Section numbers below (1.1, 8.5 …)
 are the rulebook's. **No plant data in this file:** real numbers about the plant (sheet counts, reader accuracy) stay
 in the gitignored `CLAUDE.local.md`. Lines marked *(assumption)* are not yet backed by watching users; the first round
@@ -79,9 +79,9 @@ drawings and the draft descriptions.
 | Platform | Versions | Oldest / smallest device | Typical device | Sizes | First-class inputs | Secondary |
 |---|---|---|---|---|---|---|
 | Android | 10 and later (the user, 2026-09-26) | Samsung Galaxy Note 9, Android 10, 6.4", 2220 × 1080 px at density 420 (about 846 × 411 dp), Mali-G72, 6 GB | the owner's Honor 600, Android 16 *(colleagues' phones: assumption, mostly Android)* | portrait and landscape; phones and tablets by window size class | touch | keyboard |
-| Web (from the plant's server) | Chromium, Firefox, WebKit; Safari 17+ for iPhones (from the home screen) | an iPhone in Safari at 320 CSS px *(no iPhone here)*; a desktop browser at 1280 × 800 | Chromium on Android or a laptop *(assumption)* | 320 CSS px to 1920 px; 200 % zoom | touch at phone width; keyboard and pointer at desktop width | — |
+| Web (from the plant's server) | Chromium, Firefox, WebKit; Safari 17+ on iPhones (from the home screen; supported, but no iPhone is reachable here, so the profile commits to no iPhone as its oldest or typical device) | Chromium on the Note 9 at 412 CSS px; any browser at 320 CSS px width (A4's reflow) | Chromium on Android or a laptop *(assumption)* | 320 CSS px to 1920 px; 200 % zoom | touch at phone width; keyboard and pointer at desktop width | — |
 | Windows | 10 and 11, x86-64 and ARM64 | the owner's Windows 10 laptop: i7 4th gen U (2 cores), 4 GB, Intel HD 4400, 1920 × 1080 at 125 % | the same laptop *(assumption)* | windows from 360 × 640 logical px up | keyboard and pointer | touch |
-| GNOME (Flatpak) | a current GNOME LTS distribution, GNOME 50 runtime | 360 × 294 logical px window (GNOME2) | the owner's laptop | 360 × 294 to full screen | keyboard and pointer | touch (pinch on the drawing) |
+| GNOME (Flatpak) | a current GNOME LTS distribution, GNOME 50 runtime | the owner's laptop is the only GNOME device (i7-12700H, about 37 GB, Iris Xe), at its smallest window, 360 × 294 logical px (GNOME2); an older Linux machine is not committed to | the same laptop | 360 × 294 to full screen | keyboard and pointer | touch (pinch on the drawing) |
 | The server's command line | Linux (Debian 13 on the server) | 80 × 24 terminal | an SSH session | 80 × 24 and up | keyboard | — |
 
 - **Assistive technology (floor, 1.2):** TalkBack, font scale up to 2.0 and Remove animations on Android; the
@@ -90,6 +90,15 @@ drawings and the draft descriptions.
   animations off on GNOME.
 - **Network:** often offline on the plant floor; LAN sync with the server or other devices; across the internet
   through the relay; metered networks sync only when allowed.
+
+## Numbers this profile raises (1.5)
+
+- **Targets (A19):** 48 × 48 dp on Android **and 48 × 48 CSS px on the web at phone width** (gloves; the old policy's
+  T1, stricter than A19's 44 CSS px); destructive targets 8 dp or px from any other.
+- **Contrast (A1):** on phones (Android and the web at phone width), KKS codes, measured values and the main text of
+  cards and lists reach **7:1** in both themes (sun on the plant floor; the old policy's K2, WCAG 1.4.6); secondary
+  text (hints, timestamps) keeps 4.5:1.
+- **Copy (I5):** see WD-I5 in docs/UI-UX-POLICY.md.
 
 ## Main tasks
 
@@ -105,13 +114,16 @@ them)*. Times are an expert's, on the Note 9 unless said.
 | 5 | "Mark a tag the reader missed; correct a reading" | engineer | weekly | the proposal is sent or waiting | ≤ 5 actions |
 | 6 | "Approve or reject what people sent" (bulk) | manager, admin | weekly | the decided items leave the queue, with one Undo or one confirmation for a batch | 20 items in ≤ 4 actions (WD-S5) |
 | 7 | "Add a device; remove a lost phone" (removes a device's trust: never undone) | manager, admin | monthly | the device can or can't sync | ≤ 5 actions, plus S2's confirmation |
-| 8 | "Publish new drawings" (the server's command line) | manager | monthly | the new plant data reaches the devices; a backup exists before | the documented steps, each reporting PASS or FAIL (S8, #441) |
+| 8 | "Publish new drawings" (admin.html's Drawings: import, re-import, remove; or the server's `publish-data`); each publishes a new plant-data version to every device | manager | monthly | the new plant data reaches the devices; the tag list is backed up first and put back if an import fails | ≤ 5 actions in admin.html plus the import's wait; each part reports PASS or FAIL (S8, #441) |
 | 9 | "Install, join the plant, and update" | new colleague | once; updates monthly | from the release page to task 1, through the install warnings, each explained beforehand (#439); joining by server sign-in, QR code, an admin on the Wi-Fi, or a file; a sign-up waits for approval as a designed state | joining ≤ 2 min excluding the wait for approval |
-| 10 | "Get back in" (a forgotten password, a lost phone) | anyone | rare | a path shown in the product leads back (S9) | — |
-| 11 | "Sign out; delete my photo or note; withdraw a proposal" | anyone | rare | done, with the unsent count shown before (S3) | — |
-| 12 | "Make it readable for me" (dark drawings; the system's text size, contrast and motion settings are followed) | anyone | once | the app follows the setting | — |
-| 13 | "Take a course" | anyone | occasionally | a page read, a question answered, progress kept privately | — |
+| 10 | "Get back in" (a forgotten password, a lost phone) | anyone | rare | a path shown in the product leads back (S9) | a forgotten password: a reset link from the manager in ≤ 5 of the manager's actions *(assumption)* |
+| 11 | "Sign out; delete my photo or note; withdraw a proposal" | anyone | rare | done, with the unsent count shown before (S3) | ≤ 3 actions plus the confirmation |
+| 12 | "Make it readable for me" (dark drawings; the system's text size, contrast and motion settings are followed) | anyone | once | the app follows the setting | dark drawings ≤ 2 actions; the system settings followed with no action in the app |
+| 13 | "Take a course" | anyone | occasionally | a page read, a question answered, progress kept privately | ≤ 3 actions from the open screen to the page where the learner left off |
 | 14 | "Report a problem" (diagnostics to the manager) | anyone | rare | the report reaches the manager privately (FIELD1) | ≤ 4 actions |
+| 15 | "Remove someone's access" (deactivate a person, remove their devices; never undone for devices) | manager, admin | rare | the person can no longer sign in or sync | ≤ 4 actions plus S2's confirmation, which names the person and the consequence |
+| 16 | "Open or close sign-up" (the sign-up code; admin.html) | manager | rare | new people can or can't ask to join | ≤ 3 actions |
+| 17 | "Update the server" (`deploy/` scripts on the server) and its other commands (`set-signup-code`, `reset-password`, `reset-manager`, `web-sign-in`) | manager | per release | the new build runs and is healthy, or the previous one is back | each part reports PASS or FAIL (S8, CLI5; #441) |
 
 ## Screen table
 
@@ -132,6 +144,8 @@ evidence includes the group's most complex member. Intent order is for V1.
 | Join, sign-in, sign-up, set up this device (web overlays, Android setup, GNOME and Windows setup) | 9, 10 | the ways in, each with one line saying what it needs | the chosen way in | tap, click, keyboard; paste and QR (A26) | 1. the ways in; 2. what each needs |
 | Manage and its pages: Approvals, My proposals (web "My submissions"), History, People (web "Users"), Devices, Leaderboard, Account, Diagnostics, Updates (web), Drawings (web); admin.html | 6, 7, 11, 14 | the page's title, its list's first rows, its batch bar when items are picked | per page: Approve selected; Add a device | tap, click, keyboard (I8 for tables on the web) | 1. what waits for a decision; 2. the batch actions; 3. the rest |
 | About (all clients) | 9, 14 | name, version (copyable), licences | — | — | 1. name and version |
+| QR scanner (joining with a code; adding a device) | 9 | the camera view, what to point it at, Cancel, the paste alternative | — (scanning is automatic) | touch, click; paste as the alternative (A26) | 1. the camera view; 2. what to do |
+| Status bars and cards: the photo queue bar ("N photos waiting"), the background-sync notice (phones that limit it), the offline and sync state | 3, 9 | the count and what it means | the notice's "Open settings" | tap, click | 1. what waits or what is wrong; 2. what to do |
 | Update banner and Updates card (Android), Updates tab (web admin) | 9 | what changed, Install, Later | Install | tap, click | 1. what changed; 2. Install |
 | Learning list and course reader (learning.html, course.html, the apps' Learning) | 13 | the course or page title, the page, Next | Next / answer | tap, click, keyboard | 1. the page's content; 2. where in the course; 3. Next |
 | The server's command line (`kks-server` commands) | 8, 10 | — (80 × 24) | — | keyboard | 1. PASS or FAIL per part; 2. what to do about a FAIL |
@@ -207,7 +221,7 @@ notifications), and the kinds above.
   harnesses `android/app2/e2e/` (emulator only, `ANDROID_SERIAL=emulator-…`), `platform/linux/e2e/test_web_*.py`
   and `tests/web/` (Playwright, three engines), `apps/gnome/e2e/` under `headless.sh` only, `apps/windows/e2e/` (the
   VMs, one at a time under `vm.lock`, and the owner's Windows 10 laptop when `~/kks-work/bin/laptop-free` allows); the
-  servers come from `tests/e2e_server.py`. The memory and lock rules in CLAUDE.md apply to every run.
+  servers come from `tests/e2e_server.py`. The memory and lock rules in CLAUDE.md and `~/kks-work/build/agent-rules.md` apply to every run: one emulator or VM at a time under `vm.lock`; GNOME runs only under `headless.sh` and one at a time under `flock ~/kks-work/build/gnome-e2e.lock`.
 - **Synthetic data:** the sample sheet `importer/tests/vectors/kkp-sample.pdf`; Walkdown Plant's generated P&IDs of an
   invented plant (the README's screenshots); the tag 11LAB70AA501 with long text; the Arabic fixture
   `مضخة التغذية 11LAB70AA501 تعمل` and the mixed line of L2; made-up people ("The Manager", "Tom Tester",
@@ -227,7 +241,7 @@ notifications), and the kinds above.
 | L1's plurals in other languages, L6 | all | the UI is English only (the user, 2026-09-30); English plurals still follow W5 |
 | T9 | all | no children use it (adult plant staff); in any case it has no tracking, no ads and no contact with strangers |
 | T13 | all | it republishes nothing |
-| S8 | the four clients | no client changes a network, a firewall or a service; S8 applies to the server's update scripts and commands (#441) |
+| S8 | GNOME, Windows and Android | these clients change no network, firewall or service, and no plant data beyond proposals; S8 applies to admin.html's Drawings and Sign-up (they change the running server's published data and sign-up) and to the server's commands and update scripts, where the way back is never at risk (data, not network) but rollback and PASS/FAIL per part are tracked in #441 |
 | GNOME6 | GNOME | no privileged work |
 | WEB6 | web | served by a full server, not a router |
 | AND6's Wi-Fi Direct part | Android | not used |
@@ -239,7 +253,7 @@ notifications), and the kinds above.
 |---|---|---|
 | No iPhone here: Safari and VoiceOver on a real iPhone (hardware not owned; Playwright's WebKit and the ARIA snapshot stand in) | WEB4's Safari, A8's VoiceOver, P5's iPhone timing | renewable (hardware); listed in the accessibility statement (#440) |
 | Real TalkBack speech, sunlight and gloves: checked on the Note 9 in the owner's check before release (8.5, FIELD2); the tree and measured sizes stand in for the merge | A8's speech, A1 in sun, A19 with gloves | 2027-05-19 |
-| Windows on ARM64: no ARM64 machine here; the same code as x86-64 (hardware not owned) | every rule on Windows ARM64 | renewable (hardware) |
+| Windows on ARM64: no ARM64 machine here (hardware not owned); the same code as x86-64. Never covers the never-waivable set (S1–S3, S8, A10, T0, T1, T9, Z1), which is checked through the shared x86-64 code | the other rules on Windows ARM64 | renewable (hardware) |
 
 ## Third-party surfaces
 

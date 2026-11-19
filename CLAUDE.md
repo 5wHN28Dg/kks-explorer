@@ -28,7 +28,7 @@ the drawings). The deployed relay's URL never goes in tracked files or the wiki.
   (https://github.com/5wHN28Dg/kks-explorer/wiki; clone https://github.com/5wHN28Dg/kks-explorer.wiki.git).
 - The repository keeps only what code and tests point at: the specs (`docs/PROTOCOL-v2.md`, `PATHSTORE.md`,
   `COURSES.md`, `GLYPHLIB.md`), `docs/decisions/`, `docs/m6/` (requirements, capability matrix, measurements) and each
-  component's build README; also the UI and UX policy, profiles and audits (`docs/UI-UX-POLICY.md`, `docs/ui-policy/`,
+  component's build README; also the UI and UX policy, profiles and audits (`docs/UI-UX-POLICY.md`,
   `docs/ux-profile/`, `docs/ui-audit/`), which reviewers read.
 - The wiki is public too.
 
@@ -79,15 +79,15 @@ What the evidence-first-engineering skill needs to know here:
 
 ## UI and UX
 
-For any change a user can see, hear or touch, follow `docs/ui-policy/UI-UX-POLICY.md` (its section 0.2 says how it fits
-the steps above): its evidence is part of step 2, its blockers (section 9) are part of step 5's "merge when CI is
+For any change a user can see, hear or touch, follow the user's `global/UI-UX-POLICY.md` (version 4.13; where to read it and its hash:
+`docs/UI-UX-POLICY.md` section 1; its section 0.2 says how it fits the global workflow's steps): its evidence is part of step 2, its blockers (section 9) are part of step 5's "merge when CI is
 green", and in step 6, don't deploy a tier-2 or tier-3 UI change that is still waiting for my check (its section 8.5),
 unless it is merged switched off; report it as waiting instead. A parent agent that delegates UI work to a subagent runs
 this policy's evidence and passes on the result itself.
 
-- **Where this comes from:** the lines above are the policy's Appendix G, with the path pointing at this repository's
-  pinned copy of the user's `global/UI-UX-POLICY.md` (version 4.13). The user approved adopting it, replacing the
-  earlier UI audit rule, in `~/kks-work/INBOX.md` on 2026-11-19 at 06:21: "I have a new UI/UX policy, adopt it instead
+- **Where this comes from:** the lines above are the policy's Appendix G, with the path and "the steps" adjusted to
+  this file. The user approved adopting it, replacing the earlier UI audit rule, in `~/kks-work/INBOX.md` on
+  2026-11-19 (marked read at 06:21): "I have a new UI/UX policy, adopt it instead
   of the current one, it is tailor made of my projects". The PR that added these lines quotes it too.
 - **What is project-specific:** `docs/UI-UX-POLICY.md` (the project's `WD-` rules on top, the user's carried-over
   decisions, which files count as UI, the map from the old rule IDs and audit issues), the profiles

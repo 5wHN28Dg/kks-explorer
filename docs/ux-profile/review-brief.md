@@ -12,7 +12,7 @@ make the change and you are not told what its author thinks of it.
 
 Read, in this order:
 
-1. `docs/ui-policy/UI-UX-POLICY.md` sections 0, 8.2 to 8.4, 8.8 and 9, and Appendix B; Appendix H finds any rule by
+1. The rulebook (where to read it and its sha256: `docs/UI-UX-POLICY.md` section 1; check the hash) sections 0, 8.2 to 8.4, 8.8 and 9, and Appendix B; Appendix H finds any rule by
    its ID. For a profile edit, also section 1.
 2. `docs/UI-UX-POLICY.md` (this project's rules on top, `WD-…`, and the user's decisions).
 3. The product's profile: `docs/ux-profile/walkdown.md` or `docs/ux-profile/plant.md`.
