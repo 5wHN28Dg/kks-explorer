@@ -6,10 +6,12 @@
 - laptop: the owner's Windows 10 laptop (Intel HD 4400, driver 10.18.15.4248), an unbaked headless export of commit 5d35e712 (before the switch: always on), real fallback to Compatibility through ANGLE/D3D11; screen captured with apps/windows/e2e/shot.cpp, cropped to the window; Enter sent to the window
 
 - windows-vm: the kks-win10 VM (no GPU; Godot run with --rendering-method gl_compatibility --accessibility always, which goes through ANGLE on D3D11 on Microsoft Basic Render Driver), an unbaked headless export of 66bdb494 with override.cfg turning the switch on; virsh screenshot cropped above the taskbar; Enter sent to the window (log: 'the message is shown', 'continued', first frame drawn). File names carry each shot's real window size.
+- a11y/uia-windows10-compat.txt: the UIA tree (raw view) of the final build in the kks-win10 VM while the message was up (System.Windows.Automation from the desktop session, apps/windows/e2e/runapp.ps1); run with --accessibility always
 
 | file | sha256 |
 |---|---|
 | ./a11y/at-spi-linux-compat.json | 929a65f388db36aa7590a2ffc289bd669ada14c07aa700fe35004b9792381e3e |
+| ./a11y/uia-windows10-compat.txt | 56b7cfc74296fe4efa267dc3af481b3daf60695e320a753c5db255d2af45feff |
 | ./desktop/min-gpu-1600x863-100-pseudo-ticked.png | 4cc783f13e6a780ad8ddbfbc6e81fa56c6f2a19f8f76731351b233095504678a |
 | ./desktop/min-gpu-1600x863-100-ticked.png | 26b7f4d811aa56b4992e361bd5fb467689068b585f70cee42b453885a2926117 |
 | ./desktop/min-gpu-1600x863-150-pseudo.png | c6e0546df9622e6804c05c0c3ec5869c49796858b01b04859c3147019945329f |

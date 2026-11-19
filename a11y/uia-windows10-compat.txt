@@ -1,0 +1,10 @@
+try 0 lines 9
+ControlType.Window 'Walkdown Plant' focus=False
+  ControlType.Text 'This computer's graphics are below what Walkdown Plant needs' focus=False
+  ControlType.Pane 'The message's text' focus=False
+    ControlType.Text 'Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn a slower way. It will probably run slowly and jerkily: on a similar laptop it showed about 12 pictures a second, where smooth movement needs 30 or more.' focus=False
+    ControlType.Text 'Walkdown Plant needs graphics that support Vulkan or Direct3D 12 (a graphics card's or computer's specifications list it). For example: Intel HD Graphics 510 or newer (computers from 2015 on), AMD Radeon HD 7700 or newer, or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating its graphics driver (the software for its graphics) may fix this.' focus=False
+  ControlType.CheckBox 'Don't show this again' focus=False toggle=Off
+  ControlType.Button 'Continue anyway' focus=True
+  ControlType.Button 'Quit' focus=False
+  ControlType.Text '' focus=False
