@@ -234,6 +234,6 @@ None.
 ## T0 and owner items
 
 T0's checklist is the owner's (#442); places: GitHub releases (APK, MSIX, Flatpak bundle) and Plant's relay; a change with an open T0 question doesn't merge until the owner answers. Decided
-(the user, 2026-11-19, in the session (the question tool); #442, PR #451): the stage (pre-release) and the owner budget (30 minutes a month), confirmed with "Yes but that doesn't mean the web app stops working on apple devices, we do what we can without apple devices on hand to test on". This
+(the user, 2026-11-19, in the session (the question tool); #442, PR #451): the stage (pre-release) and the owner budget (30 minutes a month), confirmed in one answer that covered both products' stages and budgets and Walkdown's Apple devices: "Yes but that doesn't mean the web app stops working on apple devices, we do what we can without apple devices on hand to test on". This
 records the profile's decisions only: the owner's check before release (8.5) stays a separate step. The other
 owner items for both products are listed in #442.

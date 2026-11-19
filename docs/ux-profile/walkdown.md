@@ -87,7 +87,8 @@ drawings and the draft descriptions.
 
 - **Assistive technology (floor, 1.2):** TalkBack, font scale up to 2.0 and Remove animations on Android; the
   browser's zoom, `forced-colors` and screen readers on the web, checked with Orca on Firefox (the owner's
-  choice, same answer); Narrator, contrast themes and text size on Windows;
+  2026-11-19 answer quoted under "Owner items"), and VoiceOver on iOS Safari, since iPhones still use the web app
+  (not checked: no Apple device on hand, see "Accepted Not-checked reasons"); Narrator, contrast themes and text size on Windows;
   Orca, Large Text, High Contrast, Reduced Motion and animations off on GNOME.
 - **Network:** often offline on the plant floor; LAN sync with the server or other devices; across the internet
   through the relay; metered networks sync only when allowed.
@@ -221,7 +222,8 @@ notifications), and the kinds above.
 
 - **Evidence tools** (development only, outside every product manifest): `tools/ui_audit/` (README there); the e2e
   harnesses `android/app2/e2e/` (emulator only, `ANDROID_SERIAL=emulator-…`), `platform/linux/e2e/test_web_*.py`
-  and `tests/web/` (Playwright, three engines), `apps/gnome/e2e/` under `headless.sh` only, `apps/windows/e2e/` (the
+  and `tests/web/` (Playwright, three engines), `apps/gnome/e2e/` under `headless.sh` only (and, for the web's screen-reader check, Orca with Firefox in the same
+  headless session: *phase 2*; until then by hand on the owner's laptop), `apps/windows/e2e/` (the
   VMs, one at a time under `vm.lock`, and the owner's Windows 10 laptop when `~/kks-work/bin/laptop-free` allows); the
   servers come from `tests/e2e_server.py`. The memory and lock rules in CLAUDE.md and `~/kks-work/build/agent-rules.md` apply to every run: one emulator or VM at a time under `vm.lock`; GNOME runs only under `headless.sh` and one at a time under `flock ~/kks-work/build/gnome-e2e.lock`.
 - **Test data:** the sample sheet `importer/tests/vectors/kkp-sample.pdf`; Walkdown Plant's generated P&IDs of an
@@ -253,6 +255,7 @@ notifications), and the kinds above.
 
 | Reason | Covers | Expires |
 |---|---|---|
+| No Apple device on hand: VoiceOver on iOS Safari and Safari on a real iPhone, iPad or Mac (hardware not owned; Playwright's WebKit and the accessibility tree stand in; the web app is kept working on them as far as it can be, the owner's 2026-11-19 answer) | WEB4's Safari, A8's VoiceOver, P5's iPhone timing | renewable (hardware); listed in the accessibility statement (#440) |
 | Real TalkBack speech, sunlight and gloves: checked on the Note 9 in the owner's check before release (8.5, FIELD2); the tree and measured sizes stand in for the merge | A8's speech, A1 in sun, A19 with gloves | 2027-05-19 |
 | Windows on ARM64: no ARM64 machine here (hardware not owned); the same code as x86-64. Never covers the never-waivable set (S1–S3, S8, A10, T0, T1, T9, Z1), which is checked through the shared x86-64 code | the other rules on Windows ARM64 | renewable (hardware) |
 
@@ -280,8 +283,8 @@ an owner-check item, and the change it belongs to doesn't merge until the owner 
 ## Owner items (only the owner settles these)
 
 Decided (the user, 2026-11-19, in the session (the question tool); #442, PR #451), confirming: the stage (live), the owner budget (60 minutes a
-month), iPhones dropped from this profile (iPads and Safari on a Mac not supported either), and the web screen reader
-checked with Orca on Firefox. The owner's words: "Yes but that doesn't mean the web app stops working on apple devices, we do what we can without apple devices on hand to test on". This records the profile's decisions only: the owner's check
+month), Apple devices (iPhones, iPads, Safari on a Mac) not checked, with the web app kept working on them as far as it
+can be without the hardware, and the web screen reader checked with Orca on Firefox. The owner's words: "Yes but that doesn't mean the web app stops working on apple devices, we do what we can without apple devices on hand to test on". This records the profile's decisions only: the owner's check
 before release (8.5) stays a separate step. Still open in #442, each with options: the cadence and people of rounds
 with users; the real-data evaluations' combined score, first snapshot, held-out part and tolerance; the T0 checklist;
 confirming the reference products and experience intent above.
