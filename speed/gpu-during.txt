@@ -1,0 +1,5 @@
+walkdown-plant.          pid  1152663  render engine   523.4 ms/s
+Xwayland                 pid  1152692  render engine    45.1 ms/s
+mutter                   pid  1152629  render engine    13.9 ms/s
+kks_explorer             pid  1160706  render engine    12.2 ms/s
+mutter                   pid  1151166  render engine     3.2 ms/s

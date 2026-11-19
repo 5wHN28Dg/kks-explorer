@@ -1,0 +1,50 @@
+LAUNCH ready at 2201 ms (+2201)
+lightmap filter: bicubic
+LAUNCH environment at 2212 ms (+11)
+tier full (given on the command line), renderer forward_plus, Intel(R) Iris(R) Xe Graphics (ADL GT2)
+LAUNCH tier at 2213 ms (+1)
+LAUNCH sky frame at 2381 ms (+168)
+loaded the plant in 446 ms (15 areas)
+LAUNCH  ground: load 50 ms, instance 8 ms, add 12 ms
+LAUNCH  control: load 49 ms, instance 1 ms, add 0 ms
+LAUNCH  bop: load 12 ms, instance 1 ms, add 0 ms
+LAUNCH  ct: load 13 ms, instance 2 ms, add 2 ms
+LAUNCH  cw: load 15 ms, instance 1 ms, add 0 ms
+LAUNCH  gt1: load 9 ms, instance 2 ms, add 1 ms
+LAUNCH  trafo1: load 3 ms, instance 0 ms, add 0 ms
+LAUNCH  hrsg1: load 29 ms, instance 4 ms, add 3 ms
+LAUNCH  st: load 31 ms, instance 6 ms, add 3 ms
+LAUNCH  rack: load 0 ms, instance 0 ms, add 0 ms
+LAUNCH  wtp: load 70 ms, instance 10 ms, add 6 ms
+LAUNCH  intake: load 5 ms, instance 1 ms, add 1 ms
+LAUNCH  gate: load 12 ms, instance 0 ms, add 0 ms
+LAUNCH  admin: load 10 ms, instance 3 ms, add 1 ms
+LAUNCH  road_west: load 4 ms, instance 2 ms, add 1 ms
+LAUNCH  camp: load 23 ms, instance 10 ms, add 6 ms
+LAUNCH plant at 2827 ms (+446)
+LAUNCH workshop's warm-up begun at 2836 ms (+9)
+lightmap: 1201 meshes baked
+LAUNCH lightmap at 3849 ms (+1013)
+LAUNCH workshop's pieces at 3851 ms (+2)
+LAUNCH plant's pipelines queued at 4178 ms (+327)
+LAUNCH player, map, hud at 4259 ms (+81)
+LAUNCH  worker threads: model 643 ms (from +363), done by +2047 ms, the scripts by +2047 ms; waited 0 ms
+LAUNCH ui at 4680 ms (+421)
+first frame drawn 9683 ms after the engine started
+pipelines compiled: mesh 3, surface 25, draw 0, specialization 9
+EARLY frame 43.9 ms at +51 ms; pipelines compiled since the frame before: surface 0, specialization 0
+EARLY frame 15.3 ms at +1258 ms; pipelines compiled since the frame before: surface 1, specialization 0
+SIM at 65 s: 10 steps/s, 6 ms of model per s, 0.66 ms a step, speed 1, cap 37.7x
+PIPELINE 2 compiled at 68.9 s (frame 17.8 ms), at (55.12793, 0.001, -17.47607)
+SIM at 125 s: 10 steps/s, 11 ms of model per s, 0.72 ms a step, speed 1, cap 34.6x
+SIM at 185 s: 10 steps/s, 5 ms of model per s, 0.57 ms a step, speed 1, cap 44.2x
+SIM at 246 s: 10 steps/s, 6 ms of model per s, 0.64 ms a step, speed 1, cap 39.1x
+SIM at 306 s: 10 steps/s, 5 ms of model per s, 0.65 ms a step, speed 1, cap 38.7x
+SIM at 366 s: 10 steps/s, 7 ms of model per s, 0.74 ms a step, speed 1, cap 33.9x
+SIM at 426 s: 10 steps/s, 8 ms of model per s, 0.65 ms a step, speed 1, cap 38.3x
+SIM at 486 s: 10 steps/s, 8 ms of model per s, 0.74 ms a step, speed 1, cap 33.8x
+SIM at 547 s: 10 steps/s, 7 ms of model per s, 0.73 ms a step, speed 1, cap 34.1x
+CADENCE up_to_17.5ms=85.5% up_to_34.2ms=14.4% longer=0.0%
+RESULT tier=full renderer=forward_plus walk=frames frames=35968 median=16.7ms p95=18.3ms p99=21.1ms max=44.2ms over100=0 ff_frames=0 gpu_median=9.5ms gpu_p95=10.9ms stuck=0 static_mem=0MB vram=423MB first_frame=9683ms load=446ms
+MEM rd_textures=245MB rd_buffers=93MB rd_total=423MB
+SIM_RESULT model_ms_per_s_mean=6.9 model_ms_per_s_max=14.8 step_ms=0.660 ff_cap=37.9 model_time=0:10:04

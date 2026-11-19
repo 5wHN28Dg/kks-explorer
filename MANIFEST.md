@@ -7,6 +7,7 @@
 
 - windows-vm: the kks-win10 VM (no GPU; Godot run with --rendering-method gl_compatibility --accessibility always, which goes through ANGLE on D3D11 on Microsoft Basic Render Driver), an unbaked headless export of 66bdb494 with override.cfg turning the switch on; virsh screenshot cropped above the taskbar; Enter sent to the window (log: 'the message is shown', 'continued', first frame drawn). File names carry each shot's real window size.
 - a11y/uia-windows10-compat.txt: the UIA tree (raw view) of the final build in the kks-win10 VM while the message was up (System.Windows.Automation from the desktop session, apps/windows/e2e/runapp.ps1); run with --accessibility always
+- speed/: the speed class's walk (2026-11-19, commit 5e897e16 plus the bake): the Linux release-style export (`build.sh bake`, then a headless export), `offscreen.sh walkdown-plant.x86_64 --resolution 1600x900 -- --quality=full --walk=frames --seconds=600` at XH_SIZE=1600x900@60 with an empty Godot data folder; gpu_clients.py before and 5 minutes in
 
 | file | sha256 |
 |---|---|
@@ -56,5 +57,8 @@
 | ./desktop/min-gpu-640x360-200-pseudo.png | f391897a9a3a0142c4f14a38c1e0f9499841f9d134dde3575aaa1fb1525dce13 |
 | ./laptop/win10-hd4400-shot1-message.png | ca0ec351e6368a66cbf97ccac30e0fdd53731991bbc916c6fc1421fdb184bb12 |
 | ./laptop/win10-hd4400-shot2-after-continue.png | 64bc5cf6e2d58e742d4366a09ae9a46430222eeabdd89a216190f624ae6f9cbe |
+| ./speed/gpu-before.txt | 6a97a2e61bf7431d3d8aeb367f79231e232322be32532370e19798de02b52338 |
+| ./speed/gpu-during.txt | c8b71666f65ed0b5e17aae74c231ac4e7f3c43ffc5395c40372720edb51c0217 |
+| ./speed/result.txt | a5f5e05e6388f55a155e2b1bba0c7cecb37d1c052116de4a50521a6adbdec315 |
 | ./windows-vm/win10-after-continue.png | 3d4365647d596df0bbe724c787294925b90400adcf2538cf187124b1b07530c4 |
 | ./windows-vm/win10-message.png | 9f6b2f53d6bfa405ec844a26f836d8554257f74c1d9126eb32187959ac6513f8 |
