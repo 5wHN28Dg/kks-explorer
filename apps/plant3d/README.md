@@ -406,8 +406,9 @@ instance when the app already runs.
 - **Not caught:** a Linux computer whose only Vulkan driver is Mesa's software one (lavapipe) stays on Forward+, drawn
   on the CPU, and gets no message; so does a Linux Haswell (HD 4400) on Mesa's incomplete Vulkan driver (hasvk), unmeasured.
 - **Smooth play (the speed class, the user's verdict on #455):** roughly Intel Iris Xe or a dedicated GPU. Iris Xe is
-  measured: the owner's Iris Xe laptop at 1600 × 900, Forward+, `full` tier, 10 minutes: p95 12.2 ms (82 fps), 0 % of frames over 33 ms and none over 100 ms (decision 0041's bench, on the plant of then; it has grown since); a dedicated GPU of Godot's recommended class (GTX 1050, RX 460) is an
-  estimate. Older graphics that meet the minimum above run, but slowly (unmeasured).
+  measured on the app (decision 0057, 2026-10-20): the owner's Iris Xe laptop, `full` tier in a 1600 × 900 window, 10 minutes: GPU time p95 8.5–8.8 ms, frame p95 11.0 ms (a second run 24.0 ms while other jobs shared the GPU). At the laptop's native 2880 × 1800 the `full` tier misses the rules (decision 0041's bench: p95 34.7 ms), so smooth means a window of about 1600 × 900 on such graphics; a dedicated GPU of Godot's recommended class (GTX 1050, RX 460) is an
+  estimate. Older graphics that meet the minimum above run, but slowly: the tier probe gives them `lean+vis`, unmeasured
+  there.
 - **Android:** Android 10 or newer with Vulkan (the Mobile renderer); the Note 9 is the minimum (0041).
 - **Below it:** Godot falls back to its Compatibility renderer (OpenGL 3.3, or ANGLE on Direct3D 11). Plant runs, but
   no tier is tuned for it: an Intel HD Graphics 4400 walked it at about 12 frames a second (#432). At such a start a

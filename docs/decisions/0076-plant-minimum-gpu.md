@@ -31,11 +31,13 @@ target, with a lower tier of its own, or is it below a stated minimum?
   AMD's later TeraScale rebrands (e.g. Radeon R5 230) have no Vulkan.
 - **A speed class for smooth play** (the user, 2026-11-19, #455: "Add a speed class"): the feature minimum says which
   computers get Godot's normal renderer, not which ones reach the frame rules. Smooth play (the project's desktop
-  frame rules at the `full` tier) needs roughly **Intel Iris Xe or a dedicated GPU**. Iris Xe is measured: the owner's Iris Xe laptop at 1600 × 900, Forward+, `full` tier, 10 minutes: p95 12.2 ms (82 fps), 0 % of frames over 33 ms and none over 100 ms (decision 0041's bench, on the plant of then; it has grown since).
+  frame rules at the `full` tier) needs roughly **Intel Iris Xe or a dedicated GPU**. Iris Xe is measured on the app (decision 0057, 2026-10-20): the owner's Iris Xe laptop, `full` tier in a 1600 × 900 window, 10 minutes: GPU time p95 8.5–8.8 ms, frame p95 11.0 ms (a second run 24.0 ms while other jobs shared the GPU). At the laptop's native 2880 × 1800 the `full` tier misses the rules (decision 0041's bench: p95 34.7 ms), so smooth means a window of about 1600 × 900 on such graphics.
   A dedicated GPU of at least Godot's recommended class (GeForce GTX 1050, Radeon RX 460: its system requirements page,
   above) is Godot's recommendation, **an estimate here** (not measured). Older GPUs that meet the feature minimum (the
-  HD Graphics 510's 12 execution units are fewer than the HD 4400's 20) run, but slowly: unmeasured, an estimate from
-  the HD 4400's about 12 fps on Compatibility (#432, the evidence for "below").
+  HD Graphics 510's 12 execution units are fewer than the HD 4400's 20) run, but slowly: the tier probe gives them the lighter `lean+vis` tier at first start (app/quality.gd),
+  whose speed there is unmeasured, an estimate from the HD 4400's about 12 fps on Compatibility (#432, the evidence for
+  "below"). In the UX profile the speed class is therefore the oldest device for the frame rules, and the band between
+  the feature minimum and it "runs, not supported for frame rate": a narrowing, approved by the owner's verdict on #455.
 - **Android stays as it is:** Android 10 or newer with Vulkan (the Mobile renderer; the Samsung Note 9, Mali-G72, is
   the minimum and its frame rule is decision 0041's).
 - **No lower graphics tier** (option B of #432): not built.
