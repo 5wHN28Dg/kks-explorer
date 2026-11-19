@@ -181,6 +181,7 @@ class Plant(unittest.TestCase):
     def join(self, a, user='boss', password='a long password'):
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
         atspi.find(a, 'label', contains="Forgot your password? Ask your plant's manager or an admin")   # the way back in (#449)
+        self.evidence(a, 'join-server-form')
         atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
         atspi.set_text(atspi.find(a, 'text', name='Username'), user)
         atspi.set_text(atspi.find(a, 'password text', name='Password'), password)
