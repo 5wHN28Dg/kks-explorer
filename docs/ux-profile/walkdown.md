@@ -1,7 +1,8 @@
 # UX profile: Walkdown
 
-Stage: **live** (proposed; the owner confirms, see "Owner items" at the end) · Profile version 1 · Review: both
-passes on PR #444, posted there as comments (1.7).
+Stage: **live** · Owner budget: **60 minutes a month** (both: the user, 2026-11-19, in the session (the question tool), confirming #442's
+options with "Yes but that doesn't mean the web app stops working on apple devices, we do what we can without apple devices on hand to test on"; see "Owner items") · Profile version 2 · Review: both passes on PR #444 (version 1) and on PR #451 (version 2: the
+owner's decisions, iPhones dropped), posted there as comments (1.7).
 
 The rulebook is the user's `global/UI-UX-POLICY.md`, version 4.13 (where to read it: [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md) section 1); project rules and the
 user's carried-over decisions are in [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md). Section numbers below (1.1, 8.5 …)
@@ -79,15 +80,16 @@ drawings and the draft descriptions.
 | Platform | Versions | Oldest / smallest device | Typical device | Sizes | First-class inputs | Secondary |
 |---|---|---|---|---|---|---|
 | Android | 10 and later (the user, 2026-09-26) | Samsung Galaxy Note 9, Android 10, 6.4", 2220 × 1080 px at density 420 (about 846 × 411 dp), Mali-G72, 6 GB | the owner's Honor 600, Android 16 *(colleagues' phones: assumption, mostly Android)* | portrait and landscape; phones and tablets by window size class | touch | keyboard |
-| Web (from the plant's server) | Chromium, Firefox, WebKit; Safari 17+ on iPhones (from the home screen). **Open, owner item (#442):** no iPhone is reachable here; the rulebook (1.2, 1.6) asks for an oldest iPhone, owned, borrowed or rented, or else dropping iPhones, a narrowing only the owner may choose | Chromium on the Note 9 at 412 CSS px; any browser at 320 CSS px width (A4's reflow) | Chromium on Android or a laptop *(assumption)* | 320 CSS px to 1920 px; 200 % zoom | touch at phone width; keyboard and pointer at desktop width | — |
+| Web (from the plant's server) | Chromium, Firefox, WebKit (Playwright's builds). **Apple devices (iPhones, iPads, Safari on a Mac) are not checked** (the user, 2026-11-19, in the session (the question tool): "Yes but that doesn't mean the web app stops working on apple devices, we do what we can without apple devices on hand to test on"): no Apple device is on hand, so none is a checked device, but the web app is kept working on them as far as it can be without one: the WebKit e2e stays, and so does Safari-safe code (CLAUDE.md: the pages must also work in Safari; Safari 17+, REQUIREMENTS.md N8), including the Home Screen path. WEB4's clause for a page opened from an iPhone's home screen (every panel has its own Back or Close) still applies: it is in the rule, not excused by this row | Chromium on the Note 9 at 412 CSS px; any browser at 320 CSS px width (A4's reflow) | Chromium on Android or a laptop *(assumption)* | 320 CSS px to 1920 px; 200 % zoom | touch at phone width; keyboard and pointer at desktop width | — |
 | Windows | 10 and 11, x86-64 and ARM64 | the owner's Windows 10 laptop: i7 4th gen U (2 cores), 4 GB, Intel HD 4400, 1920 × 1080 at 125 % | the same laptop *(assumption)* | windows from 360 × 640 logical px up | keyboard and pointer | touch |
 | GNOME (Flatpak) | a current GNOME LTS distribution, GNOME 50 runtime | the owner's laptop is the only GNOME device (i7-12700H, about 37 GB, Iris Xe), at its smallest window, 360 × 294 logical px (GNOME2); an older Linux machine is not committed to | the same laptop | 360 × 294 to full screen | keyboard and pointer | touch (pinch on the drawing) |
 | The server's command line | Linux (Debian 13 on the server) | 80 × 24 terminal | an SSH session | 80 × 24 and up | keyboard | — |
 
 - **Assistive technology (floor, 1.2):** TalkBack, font scale up to 2.0 and Remove animations on Android; the
-  browser's zoom, `forced-colors` and screen readers on the web, and VoiceOver on iOS Safari (iPhones use the web
-  app); Narrator, contrast themes and text size on Windows; Orca, Large Text, High Contrast, Reduced Motion and
-  animations off on GNOME.
+  browser's zoom, `forced-colors` and screen readers on the web, checked with Orca on Firefox (the owner's
+  2026-11-19 answer quoted under "Owner items"), and VoiceOver on iOS Safari, since iPhones still use the web app
+  (not checked: no Apple device on hand, see "Accepted Not-checked reasons"); Narrator, contrast themes and text size on Windows;
+  Orca, Large Text, High Contrast, Reduced Motion and animations off on GNOME.
 - **Network:** often offline on the plant floor; LAN sync with the server or other devices; across the internet
   through the relay; metered networks sync only when allowed.
 
@@ -220,7 +222,8 @@ notifications), and the kinds above.
 
 - **Evidence tools** (development only, outside every product manifest): `tools/ui_audit/` (README there); the e2e
   harnesses `android/app2/e2e/` (emulator only, `ANDROID_SERIAL=emulator-…`), `platform/linux/e2e/test_web_*.py`
-  and `tests/web/` (Playwright, three engines), `apps/gnome/e2e/` under `headless.sh` only, `apps/windows/e2e/` (the
+  and `tests/web/` (Playwright, three engines), `apps/gnome/e2e/` under `headless.sh` only (and, for the web's screen-reader check, Orca with Firefox in the same
+  headless session: *phase 2*; until then see "Accepted Not-checked reasons"), `apps/windows/e2e/` (the
   VMs, one at a time under `vm.lock`, and the owner's Windows 10 laptop when `~/kks-work/bin/laptop-free` allows); the
   servers come from `tests/e2e_server.py`. The memory and lock rules in CLAUDE.md and `~/kks-work/build/agent-rules.md` apply to every run: one emulator or VM at a time under `vm.lock`; GNOME runs only under `headless.sh` and one at a time under `flock ~/kks-work/build/gnome-e2e.lock`.
 - **Test data:** the sample sheet `importer/tests/vectors/kkp-sample.pdf`; Walkdown Plant's generated P&IDs of an
@@ -252,7 +255,8 @@ notifications), and the kinds above.
 
 | Reason | Covers | Expires |
 |---|---|---|
-| No iPhone here: Safari and VoiceOver on a real iPhone (hardware not owned; Playwright's WebKit and the ARIA snapshot stand in) | WEB4's Safari, A8's VoiceOver, P5's iPhone timing | renewable (hardware); listed in the accessibility statement (#440) |
+| No Apple device on hand: VoiceOver on iOS Safari and Safari on a real iPhone, iPad or Mac (hardware not owned; Playwright's WebKit and the accessibility tree stand in; the web app is kept working on them as far as it can be, the owner's 2026-11-19 answer) | WEB4's Safari on a device (not its home-screen clause, which is checked in every engine), A8's VoiceOver | renewable (hardware); listed in the accessibility statement (#440) |
+| No Orca-with-Firefox harness yet (phase 2): the web's screen-reader check; the accessibility tree from Playwright stands in | A8 on the web with Orca | 2027-05-19 |
 | Real TalkBack speech, sunlight and gloves: checked on the Note 9 in the owner's check before release (8.5, FIELD2); the tree and measured sizes stand in for the merge | A8's speech, A1 in sun, A19 with gloves | 2027-05-19 |
 | Windows on ARM64: no ARM64 machine here (hardware not owned); the same code as x86-64. Never covers the never-waivable set (S1–S3, S8, A10, T0, T1, T9, Z1), which is checked through the shared x86-64 code | the other rules on Windows ARM64 | renewable (hardware) |
 
@@ -279,6 +283,9 @@ an owner-check item, and the change it belongs to doesn't merge until the owner 
 
 ## Owner items (only the owner settles these)
 
-Listed in #442, each with options: the stage; the owner budget (minutes a month); the cadence and people of rounds
+Decided (the user, 2026-11-19, in the session (the question tool); #442, PR #451), confirming: the stage (live), the owner budget (60 minutes a
+month), Apple devices (iPhones, iPads, Safari on a Mac) not checked, with the web app kept working on them as far as it
+can be without the hardware, and the web screen reader checked with Orca on Firefox. The owner's words: "Yes but that doesn't mean the web app stops working on apple devices, we do what we can without apple devices on hand to test on". This records the profile's decisions only: the owner's check
+before release (8.5) stays a separate step. Still open in #442, each with options: the cadence and people of rounds
 with users; the real-data evaluations' combined score, first snapshot, held-out part and tolerance; the T0 checklist;
 confirming the reference products and experience intent above.

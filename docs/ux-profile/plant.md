@@ -1,7 +1,8 @@
 # UX profile: Walkdown Plant
 
-Stage: **pre-release** (proposed; the owner confirms: GitHub releases `plant-v…` reach testers, no one relies on it
-yet) · Profile version 1 · Review: both passes on PR #444, posted there as comments (1.7).
+Stage: **pre-release** (GitHub releases `plant-v…` reach testers, no one relies on it yet) · Owner budget: **30 minutes
+a month** (both: the user, 2026-11-19, in the session (the question tool), confirming #442's options; see "T0 and owner items") · Profile version 2 · Review:
+both passes on PR #444 (version 1) and on PR #451 (version 2: the owner's decisions), posted there as comments (1.7).
 
 The rulebook is the user's `global/UI-UX-POLICY.md`, version 4.13 (where to read it: [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md) section 1); project rules and the
 user's carried-over decisions are in [docs/UI-UX-POLICY.md](../UI-UX-POLICY.md). Section numbers are the rulebook's.
@@ -232,5 +233,7 @@ None.
 
 ## T0 and owner items
 
-T0's checklist is the owner's (#442); places: GitHub releases (APK, MSIX, Flatpak bundle) and Plant's relay; a change with an open T0 question doesn't merge until the owner answers. The owner
-items for both products are listed in #442.
+T0's checklist is the owner's (#442); places: GitHub releases (APK, MSIX, Flatpak bundle) and Plant's relay; a change with an open T0 question doesn't merge until the owner answers. Decided
+(the user, 2026-11-19, in the session (the question tool); #442, PR #451): the stage (pre-release) and the owner budget (30 minutes a month), confirmed in one answer that covered both products' stages and budgets and Walkdown's Apple devices: "Yes but that doesn't mean the web app stops working on apple devices, we do what we can without apple devices on hand to test on". This
+records the profile's decisions only: the owner's check before release (8.5) stays a separate step. The other
+owner items for both products are listed in #442.
