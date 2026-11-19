@@ -73,6 +73,11 @@ func _run() -> void:
 
 func _save(path: String) -> void:
 	await RenderingServer.frame_post_draw
+	# (the file's name carries the window's size at this shot: a UI size above 100 % can change it)
+	var parts := path.get_file().split("-")
+	if parts.size() > 2:
+		parts[2] = "%dx%d" % [root.size.x, root.size.y]
+		path = path.get_base_dir() + "/" + "-".join(parts)
 	root.get_texture().get_image().save_png(path)
 	print("saved " + path)
 

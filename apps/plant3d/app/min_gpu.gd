@@ -106,12 +106,13 @@ func _ready() -> void:
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pad.add_child(words)
 	words.add_child(W.label(("Its graphics chip or driver lacks a feature Walkdown Plant needs, so the plant is drawn "
-			+ "a slower way. It will run slowly and jerkily: on a similar laptop it showed about %d pictures a second, "
-			+ "where smooth movement needs 30 or more.") % MEASURED_FPS, 20))
-	words.add_child(W.label(("Walkdown Plant needs graphics whose driver supports %s: for example "
-			+ "Intel HD Graphics 510 or newer (6th generation Core processors, from 2015), AMD Radeon HD 7700 or newer, "
-			+ "or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating the graphics "
-			+ "driver may fix this.") % ("Vulkan or Direct3D 12" if OS.get_name() == "Windows" else "Vulkan"), 20, W.DIM))
+			+ "a slower way. It will probably run slowly and jerkily: on a similar laptop it showed about %d pictures a "
+			+ "second, where smooth movement needs 30 or more.") % MEASURED_FPS, 20))
+	words.add_child(W.label(("Walkdown Plant needs graphics that support %s (a graphics card's or computer's "
+			+ "specifications list it). For example: Intel HD Graphics 510 or newer (computers from 2015 on), AMD Radeon "
+			+ "HD 7700 or newer, or NVIDIA GeForce GTX 600 or newer. If this computer's graphics are that new, updating "
+			+ "its graphics driver (the software for its graphics) may fix this.")
+			% ("Vulkan or Direct3D 12" if OS.get_name() == "Windows" else "Vulkan"), 20, W.DIM))
 	dont_show = CheckBox.new()
 	dont_show.name = "dont_show"
 	dont_show.text = "Don't show this again"
@@ -179,6 +180,8 @@ func _place() -> void:
 	# words that don't all fit can be scrolled from the keyboard and gamepad: the scroll takes the focus then (Tab,
 	# arrows or the D-pad up and down, Page Up and Down), with the focus ring (UI-UX-POLICY A1)
 	var scrolls := _words_height(w) > scroll.custom_minimum_size.y + 1.0
+	if not scrolls and scroll.has_focus():
+		continue_button.grab_focus()   # (the words stop taking the focus: it goes on to Continue anyway, never nowhere)
 	scroll.focus_mode = Control.FOCUS_ALL if scrolls else Control.FOCUS_NONE
 	var h := panel.get_combined_minimum_size().y
 	panel.size = Vector2(w, h)
@@ -202,7 +205,8 @@ func _words_height(w: float) -> float:
 ## The words scrolled from the keyboard and gamepad while they have the focus: the arrows and the D-pad (ui_up,
 ## ui_down) by a line, Page Up and Down by most of a page, Home and End.
 func _scroll_keys(e: InputEvent) -> void:
-	if not e.is_pressed():
+	# (not the sticks: an axis sends an event for every small movement, which would race through the words)
+	if not e.is_pressed() or e is InputEventJoypadMotion:
 		return
 	var line := 40.0 * W.scale
 	var page := scroll.size.y * 0.9

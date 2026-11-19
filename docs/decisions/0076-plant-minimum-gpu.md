@@ -1,7 +1,7 @@
 # 0076 Walkdown Plant: a stated minimum GPU (Vulkan or Direct3D 12), no lower graphics tier
 
 Date 2026-11-19 · Scope: `apps/plant3d` on Windows and Linux · Status: decided (the user, 2026-11-19: "State a minimum
-GPU")
+GPU", given in the coordinating agent session that handed this work out; quoted on #432)
 
 **Question:** on the user's Windows 10 test laptop (Intel HD Graphics 4400, 2013) Godot finds neither Direct3D 12 nor
 Vulkan, falls back to its Compatibility renderer, and Plant walks at about 12 frames a second (#432). Is such a GPU a
@@ -38,6 +38,8 @@ target, with a lower tier of its own, or is it below a stated minimum?
   is a tier-2 change: merged switched off (`walkdown/min_gpu_message`), on after the owner's check.
 - The UX profile (docs/ux-profile/plant.md) states the minimum; the HD 4400 laptop leaves it (a narrowing by this
   decision).
+- **Not caught:** an Android device without Vulkan 1.0 would fall back the same way, silently: Android's minimum is
+  unchanged (the export asks for Vulkan) and the message is for desktops only.
 - No new dependency.
 
 ## When to revisit

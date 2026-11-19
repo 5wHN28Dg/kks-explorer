@@ -28,6 +28,7 @@ func run(tree: SceneTree) -> Array:
 	await _not_shown(tree, p, "mobile", 0, "with the Mobile renderer")
 	await _quit_and_escape(tree, p)
 	await _scroll_by_keys(tree, p)
+	await _touch(tree, p)
 	MinGpu.renderer_override = ""
 	MinGpu.phone_override = -1
 	MinGpu.switch_override = -1
@@ -106,7 +107,7 @@ func _shown_then_continue(tree: SceneTree, p: Array) -> void:
 	await tree.process_frame
 	await tree.process_frame
 	var shown := UiApp.texts(notice)
-	for w in ["below what Walkdown Plant needs", "run slowly", "about 12 pictures a second", "supports Vulkan",
+	for w in ["below what Walkdown Plant needs", "run slowly", "about 12 pictures a second", "support Vulkan",
 			"Intel HD Graphics 510", "Continue anyway", "Quit", "Don't show this again"]:
 		if not shown.contains(w):
 			p.append("the message does not say \"%s\"" % w)
@@ -216,6 +217,28 @@ func _quit_and_escape(tree: SceneTree, p: Array) -> void:
 	_forget()
 
 
+## By touch (a desktop's touch screen): a tap on Continue anyway answers continue (Godot's mouse from touch).
+func _touch(tree: SceneTree, p: Array) -> void:
+	var n = MinGpu.new(ConfigFile.new())
+	tree.root.add_child(n)
+	for i in 3:
+		await tree.process_frame
+	var got := []
+	n.answered.connect(func(go): got.append(go))
+	var at: Vector2 = n.continue_button.get_global_rect().get_center()
+	for down in [true, false]:
+		var t := InputEventScreenTouch.new()
+		t.index = 0
+		t.position = at
+		t.pressed = down
+		tree.root.push_input(t, true)
+	await tree.process_frame
+	if got != [true]:
+		p.append("a tap on Continue anyway did not continue (%s)" % str(got))
+	if is_instance_valid(n):
+		n.free()
+
+
 ## At UI size 200 % the words don't all fit: the keyboard reaches them (the scroll takes the focus, and the down arrow
 ## and Page Down scroll it); at 100 % they fit and the scroll takes no focus.
 func _scroll_by_keys(tree: SceneTree, p: Array) -> void:
@@ -266,6 +289,13 @@ func _scroll_by_keys(tree: SceneTree, p: Array) -> void:
 				await tree.process_frame
 				if n.scroll.scroll_vertical != 0 or tree.root.gui_get_focus_owner() != n.scroll:
 					p.append("Up a little under the top did not scroll the words to the top (at %d)" % n.scroll.scroll_vertical)
+				# the window grows while the words have the focus: they stop scrolling, the focus goes to Continue anyway
+				W.apply_ui_size(tree.root, 1.0)
+				for i in 3:
+					await tree.process_frame
+				if tree.root.gui_get_focus_owner() != n.continue_button:
+					var fo2 := tree.root.gui_get_focus_owner()
+					p.append("after the words stopped scrolling the focus is on %s, not Continue anyway" % [fo2.name if fo2 else "nothing"])
 				for c: Control in [n.continue_button, n.quit_button, n.dont_show]:
 					if not tree.root.get_visible_rect().encloses(c.get_global_rect()):
 						p.append("at 200 %% %s is off the window" % c.name)
