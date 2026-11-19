@@ -57,4 +57,7 @@ target, with a lower tier of its own, or is it below a stated minimum?
 
 - If the plant's users turn out to have such computers (a site's desktops, the training room's PCs): then measure what
   a Compatibility tier would need (option B of #432).
+- The speed class: when a Windows device at it can be measured (none is reachable), when the plant's content grows
+  by a milestone (re-measure the `full` tier on the Iris Xe laptop), or when the tier is chosen again on a window's
+  resize (#456).
 - When Godot changes its renderers' minimum (its system requirements page), or drops the Compatibility fallback.
