@@ -11,6 +11,11 @@
 ## already lag their kind's targets by minutes), so every multiplayer peer, stepping the same run, sees and hears the
 ## same weather. The lightning's flashes are placed by the model's step number and the world seed, not by a random
 ## number of this device. A scenario without weather leaves the plant's light as lighting.gd set it.
+## The flashes are lit by real time, not by the model's steps (UI-UX-POLICY A10, no seizures; issue #443): a flash
+## lights the plant only FLASH_GAP real seconds or more after the last one did, whatever the speed (fast-forward, a
+## jump's steps in one frame), so never more than one flash in any second; the others are heard, not seen. With
+## Reduced motion on, a flash is a soft glow instead (GLOW_RISE of the light at most, below the 10 % change WCAG 2.3.1
+## counts as a flash), eased in and out.
 extends Node
 
 const Lighting = preload("res://app/lighting.gd")
@@ -35,6 +40,10 @@ const FLASH_SLOT := 20                      # model steps (2 s at 1x) in which a
 const FLASH_RATE := 0.08                    # flashes per slot at `lightning` 1 (one every 25 s)
 const FLASH_TIME := 0.15                    # seconds a flash lights the plant
 const FLASH_ENERGY := 3.0                   # the flash's light on top of the sun's
+const FLASH_GAP := 2.0                      # real seconds from one lit flash to the next, at least (1x's slot)
+const GLOW_RISE := 0.05                     # Reduced motion: the glow's light at most, a share of the light it adds to
+const GLOW_UP := 0.5                        # seconds the glow takes to rise, and to fade (GLOW_DOWN)
+const GLOW_DOWN := 1.0
 
 var env: Environment
 var sun: DirectionalLight3D
@@ -45,8 +54,12 @@ var particles: GPUParticles3D
 var on := false                             # the run has weather (its scenario's world.weather)
 var drawn := {}                             # the drawn values (eased): VALUES' names -> float
 var look := {}                              # the last look_of(drawn): what was set
-var flashes := 0                            # flashes drawn (the tests read it)
+var flashes := 0                            # the model's flashes come (each heard; the tests read it)
+var lit := 0                                # of them, those lit (FLASH_GAP apart in real time)
+var soft := false                           # Reduced motion (ui/plant_ui.gd's setting): a soft glow, no flash
 var _flash_left := 0.0
+var _since_lit := FLASH_GAP                 # real seconds since the last lit flash began
+var _glow := -1.0                           # seconds into the soft glow, -1 for none
 var _pending: Array = []                    # flashes to come: [their step, distance]
 const THUNDER_MAX := 3
 var _thunder: Array = []                    # [seconds left, gain dB] of thunder on its way
@@ -229,6 +242,8 @@ func _process(delta: float) -> void:
 	# the clear sky's solar as the model's lagged solar would be in clear weather: a first-order lag follows a ramp
 	# about tau behind it (else the sun would dip at every dawn while the model's solar catches up)
 	look = look_of(drawn, table_at(_clear_solar, fposmod(hour - _solar_tau / 60.0, 24.0)))
+	if ui.get("bindings") != null:
+		soft = bool(ui.bindings.reduced_motion)   # the settings' Reduced motion
 	_flash(e, delta)
 	_apply(look)
 	if in_workshop:   # the Workshop's bench is indoors: its materials (the same shader) stay dry and clean
@@ -285,8 +300,14 @@ func _apply(l: Dictionary) -> void:
 	env.fog_density = l.fog_density
 	env.fog_light_color = l.fog_colour
 	env.fog_sky_affect = l.sky_affect
-	env.fog_light_energy = lerpf(0.55, 1.0, l.sun) + (0.6 if _flash_left > 0.0 else 0.0)
-	sun.light_energy = Lighting.SUN_ENERGY * l.sun + (FLASH_ENERGY if _flash_left > 0.0 else 0.0)
+	var fog: float = lerpf(0.55, 1.0, l.sun)
+	var sunl: float = Lighting.SUN_ENERGY * l.sun
+	if _flash_left > 0.0:
+		fog += 0.6
+		sunl += FLASH_ENERGY
+	var g := glow()
+	env.fog_light_energy = fog * (1.0 + g)
+	sun.light_energy = sunl * (1.0 + g)
 	sun.shadow_opacity = lerpf(0.25, 1.0, smoothstep(0.2, 0.8, l.sun))
 	_apply_globals(l)
 	particles.amount_ratio = l.ratio
@@ -318,6 +339,34 @@ static func _apply_globals(l: Dictionary) -> void:
 		globals[kv[0]] = x
 		RenderingServer.global_shader_parameter_set(kv[0], x)
 
+## The light of the flashes after a frame of `delta` real seconds in which `due` of the model's flashes came: one is
+## lit when FLASH_GAP real seconds have passed since the last lit one began (a flash then, or the soft glow with
+## Reduced motion on), the others are not.
+func light(due: int, delta: float) -> void:
+	_flash_left = maxf(0.0, _flash_left - delta)
+	_since_lit += delta
+	if _glow >= 0.0:
+		_glow += delta
+		if _glow >= GLOW_UP + GLOW_DOWN:
+			_glow = -1.0
+	if due > 0 and _since_lit >= FLASH_GAP:
+		lit += 1
+		_since_lit = 0.0
+		if soft:
+			_glow = 0.0
+		else:
+			_flash_left = FLASH_TIME
+	if soft:
+		_flash_left = 0.0           # (turned on during a flash: it ends now)
+
+## The soft glow's share of the light now: 0 to GLOW_RISE, eased in over GLOW_UP and out over GLOW_DOWN.
+func glow() -> float:
+	if _glow < 0.0:
+		return 0.0
+	if _glow < GLOW_UP:
+		return GLOW_RISE * smoothstep(0.0, GLOW_UP, _glow)
+	return GLOW_RISE * (1.0 - smoothstep(GLOW_UP, GLOW_UP + GLOW_DOWN, _glow))
+
 ## Lightning, after every model step (the clock's `stepped`): at each slot's first step, whether a flash falls in it
 ## by the model's own `lightning` there (every peer steps the same values: never this device's eased ones), kept until
 ## its step comes. Thunder follows a flash after the strike's distance at 343 m/s.
@@ -328,20 +377,21 @@ func _on_step(e) -> void:
 	if not f.is_empty():
 		_pending.append(f)
 
-## The flashes whose step has come: each counted and lit (several in one frame, in fast play, light it once), the
-## thunder of at most the last THUNDER_MAX of them.
+## The flashes whose step has come: each counted and heard (the thunder of at most the last THUNDER_MAX of them),
+## and lit only FLASH_GAP real seconds after the last lit one (several in one frame, in fast play, light it once).
 func _flash(e, delta: float) -> void:
-	_flash_left = maxf(0.0, _flash_left - delta)
 	var keep_p: Array = []
+	var due := 0
 	for f in _pending:
 		if int(f[0]) > int(e.step_no):
 			keep_p.append(f)
 			continue
 		flashes += 1
-		_flash_left = FLASH_TIME
+		due += 1
 		var d := float(f[1])
 		_thunder.append([d / 343.0, -20.0 * log(d / 400.0) / log(10.0)])
 	_pending = keep_p
+	light(due, delta)
 	if _thunder.size() > THUNDER_MAX:
 		_thunder = _thunder.slice(_thunder.size() - THUNDER_MAX)
 	var keep: Array = []

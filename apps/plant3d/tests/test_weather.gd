@@ -337,6 +337,15 @@ func _app(tree: SceneTree) -> Array:
 	ui.clock.stepped.disconnect(count)
 	if want[0] == 0 or wv.flashes - f0 < want[0] - 1 or wv.flashes - f0 > want[0]:
 		p.append("%d flashes in 200 slots, the model's lightning at each slot gives %d" % [wv.flashes - f0, want[0]])
+	# the settings' Reduced motion: the lightning glows softly instead of flashing (issue #443), and flashes again off
+	ui._setting("reduced_motion", true)
+	wv._process(0.016)
+	if not wv.get("soft"):
+		p.append("with Reduced motion on, the lightning still flashes")
+	ui._setting("reduced_motion", false)
+	wv._process(0.016)
+	if wv.get("soft"):
+		p.append("with Reduced motion off, the lightning only glows")
 	# a session's engine installed (a join or a resync): bound at once, before its catch-up steps (no frame between)
 	var e2 = e.clone()
 	ui.clock.install(e2)

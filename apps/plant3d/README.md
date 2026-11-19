@@ -523,6 +523,9 @@ saves each Workshop kind with its panels, and with its guided steps started.
   names drawn as a sign's text, black valves and grey actuators.
 - `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
   site, each tier's effects.
+- `test_flash_rate`: the lightning's flashes at every clock speed (paused, 1x, fast-forward to 60x, jumps) and frame
+  rate, through 120 s of real time each: never more than 3 flashes (pairs of opposing changes of 10 % of the light) in
+  any second, and none with Reduced motion on (UI-UX-POLICY A10, issue #443).
 - `test_bake_prep`: what `build.sh` does before the bake (CI cannot bake): the editor's script documentation cache.
 - `test_frame_probe`: `probe=1`'s frames.csv and `pipeline_save_mb`.
 
