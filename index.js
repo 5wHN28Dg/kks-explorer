@@ -1404,7 +1404,7 @@ const phoneHeader=(()=>{
     // a link that leaves the page: the menu's entry goes first, so Back from the next page comes straight here
     if(t.localName==='a'&&entry&&e.button===0&&!(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)&&history.state?.kksMenu){
       e.preventDefault(); const go=t.href; entry=false; menu.hidden=true; btn.setAttribute('aria-expanded','false');
-      backs++; addEventListener('popstate',()=>{ location.href=go },{once:true}); history.back(); return }
+      backs++; addEventListener('popstate',()=>{ location.href=K.safeUrl(go) },{once:true}); history.back(); return }
     setTimeout(()=>{ const f=document.activeElement, lost=!f||f===document.body||menu.contains(f); close(false); if(lost) btn.focus() }) });
   // a floor: the chip shows it; picked on a touch screen (its own list), the menu closes. Picked with the keyboard (the
   // select's own list) the menu stays until Escape or Tab.
