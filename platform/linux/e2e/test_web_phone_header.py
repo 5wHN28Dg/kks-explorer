@@ -247,10 +247,13 @@ class WebPhoneHeader(tws.WebSystems):
         self.assertFalse((page.evaluate("history.state") or {}).get('kksMenu'), label + ': Back landed on the menu\'s entry')
         self.assertFalse(page.is_visible('#moreMenu'))
         # a reload with the menu open: its history entry becomes an ordinary one (no Back press that does nothing)
+        page.evaluate("history.pushState({mark: 1}, '')")   # (an entry of this page to come back from)
         page.click('#moreBtn')
         page.reload()
-        page.wait_for_function("() => typeof cur !== 'undefined' && !!cur", timeout=30000)
-        self.assertFalse((page.evaluate("history.state") or {}).get('kksMenu'), label + ': the reload kept the menu\'s entry')
+        page.wait_for_function("() => typeof cur !== 'undefined' && !!cur && !(history.state && history.state.kksMenu)", timeout=30000)
+        self.assertEqual(page.evaluate("history.state"), {'mark': 1}, label + ': not back on the page\'s own entry')
+        page.evaluate("history.back()")
+        page.wait_for_function("() => !(history.state && history.state.mark)", timeout=10000)   # one Back leaves it
         # Shift+Tab to More and Tab again goes back into the menu, also with the floor button showing
         page.evaluate("document.getElementById('floorSel').append(Object.assign(document.createElement('option'), {value: '3', textContent: 'Floor 3'}))")
         page.click('#moreBtn')

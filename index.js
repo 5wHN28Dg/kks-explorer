@@ -1384,7 +1384,7 @@ const phoneHeader=(()=>{
     if(focus) btn.focus() }
   addEventListener('popstate',()=>{ if(backs){ backs--; return } if(entry){ entry=false; const f=menu.contains(document.activeElement); close(f) }
     else if(history.state?.kksMenu) history.replaceState(null,'') });   // (Forward into a menu's old entry)
-  if(history.state?.kksMenu) history.replaceState(null,'');   // a reload with the menu open: its entry is an ordinary one now
+  if(history.state?.kksMenu){ backs++; history.back() }   // a reload with the menu open: off its entry, so Back leaves
   addEventListener('resize',()=>{ if(isOpen()) fit() });   // a phone turned with the menu open
   btn.onclick=()=>isOpen()?close(true):open();
   btn.addEventListener('keydown',e=>{ if(e.key==='Escape'&&isOpen()){ e.preventDefault(); e.stopPropagation(); close(true) }
