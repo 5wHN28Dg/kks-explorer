@@ -895,6 +895,7 @@ func _kept_fill(v: VBoxContainer, said: String, at := 0) -> void:
 		var f: Array = files[i]
 		var row := VBoxContainer.new()      # the words wrap in the panel's width, the buttons under them
 		row.name = "kept_" + f[0].validate_node_name()
+		row.set_meta("kept_row", true)      # (two names from the folder can make the same node name)
 		v.add_child(row)
 		_kept_row(row, v, dir, f, i)
 		rows.append(row)
@@ -930,7 +931,7 @@ static func _shown_name(n: String) -> String:
 	return "\u2068" + out + "\u2069"
 
 
-func _keep_in_view(c: Control) -> void:
+func _keep_in_view(c) -> void:
 	if not is_instance_valid(c) or not c.is_inside_tree():
 		return
 	var sc = c.get_parent()
@@ -950,7 +951,8 @@ func _kept_row(row: VBoxContainer, v: VBoxContainer, dir: String, f: Array, i: i
 	row.add_child(bar)
 	var ask := W.button("Delete", func():
 		W.clear(row)
-		row.add_child(W.label("Delete %s? It can't be undone." % name, 18))
+		var q := W.label("Delete %s? It can't be undone." % name, 18)
+		row.add_child(q)
 		var bar2 := HBoxContainer.new()
 		bar2.add_theme_constant_override("separation", int(24 * W.scale))   # room between Keep and the one that deletes
 		row.add_child(bar2)
@@ -969,11 +971,13 @@ func _kept_row(row: VBoxContainer, v: VBoxContainer, dir: String, f: Array, i: i
 			else:
 				said = "%s deleted." % name
 			_kept_fill(v, said, i)           # the focus to the row now in this one's place (the next), else the last
-			var rows := v.get_children().filter(func(c): return c.name.begins_with("kept_") and c is VBoxContainer)
+			var rows := v.get_children().filter(func(c): return c.has_meta("kept_row"))
 			_kept_focus(rows[mini(i, rows.size() - 1)] if not rows.is_empty() else v.get_node_or_null("kept_folder"), v))
 		bar2.add_child(del)
 		W.destructive(del)                   # (in the tree: it starts from the layer's own button style)
-		keep.grab_focus.call_deferred())
+		keep.grab_focus.call_deferred()
+		# the question itself in view too, after the panel has followed the focus to Keep (S1: the file it names)
+		get_tree().create_timer(0.1).timeout.connect(func(): _keep_in_view(q)))
 	ask.name = "kept_delete"
 	bar.add_child(ask)
 

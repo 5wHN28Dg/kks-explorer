@@ -1247,8 +1247,10 @@ func _kept_list(tree: SceneTree, p: Array) -> void:
 	var fx := FileAccess.get_file_as_bytes("res://tests/fixtures/run-0.3.0.save")
 	var names := ["tests-run-kept-0.3.0-2026-11-20.save", "tests-run-kept-damaged-2026-11-21.save",
 			"tests-run-kept-older-2026-11-22.save"]
-	for n in names:
-		FileAccess.open(dir.path_join(n), FileAccess.WRITE).store_buffer(fx)
+	for i in names.size():
+		FileAccess.open(dir.path_join(names[i]), FileAccess.WRITE).store_buffer(fx)
+		# newest first in the list: names in this order whatever second the files were written in
+		OS.execute("touch", ["-d", "2026-11-21 1%d:00:00" % (2 - i), ProjectSettings.globalize_path(dir.path_join(names[i]))])
 	RunSave.remove(path)
 	# the live run's files and look-alikes beside them: never listed, never deleted
 	var live := ["tests-run.save", "tests-run.save.tmp.1", "tests-run.save.prev", "tests-run-kept-x.save.tmp",
