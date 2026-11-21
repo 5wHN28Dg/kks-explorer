@@ -57,7 +57,7 @@ class WebPhoneHeader(tws.WebSystems):
     def check_size(self, page, label, w, h):
         """the phone header at this size: what stays, its sizes, nothing overlapping or wider than the window"""
         order = page.evaluate(ORDER)
-        self.assertEqual(order, ['brand', 'search', 'sheetSel', 'revBtn', 'moreBtn', 'floorChip', 'syncStatus', 'moreMenu']
+        self.assertEqual(order, ['brand', 'search', 'sheetSel', 'revBtn', 'floorChip', 'moreBtn', 'syncStatus', 'moreMenu']
                          + ['menu:' + i for i in MENU], label)
         self.assertTrue(page.evaluate("document.querySelector('header').classList.contains('phonehead')"), label)
         self.assertFalse(page.is_visible('.brand'), label)
@@ -126,6 +126,10 @@ class WebPhoneHeader(tws.WebSystems):
         self.assertEqual(page.evaluate("document.getElementById('floorSel').value"), '', label + ': the arrows changed the floor')
         page.keyboard.press('ArrowUp')
         self.assertEqual(page.evaluate(FOCUSED), 'floorSel')
+        page.keyboard.press('End')
+        self.assertEqual(page.evaluate(FOCUSED), 'manageBtn')
+        self.assertEqual(page.evaluate("document.getElementById('floorSel').value"), '', label + ': End changed the floor')
+        page.focus('#floorSel')
         page.keyboard.press('Tab')
         self.assertEqual(page.evaluate(FOCUSED), 'procBtn')
         page.keyboard.press('End')
@@ -242,6 +246,24 @@ class WebPhoneHeader(tws.WebSystems):
         page.wait_for_function("() => typeof cur !== 'undefined' && !!cur", timeout=30000)
         self.assertFalse((page.evaluate("history.state") or {}).get('kksMenu'), label + ': Back landed on the menu\'s entry')
         self.assertFalse(page.is_visible('#moreMenu'))
+        # a reload with the menu open: its history entry becomes an ordinary one (no Back press that does nothing)
+        page.click('#moreBtn')
+        page.reload()
+        page.wait_for_function("() => typeof cur !== 'undefined' && !!cur", timeout=30000)
+        self.assertFalse((page.evaluate("history.state") or {}).get('kksMenu'), label + ': the reload kept the menu\'s entry')
+        # Shift+Tab to More and Tab again goes back into the menu, also with the floor button showing
+        page.evaluate("document.getElementById('floorSel').append(Object.assign(document.createElement('option'), {value: '3', textContent: 'Floor 3'}))")
+        page.click('#moreBtn')
+        page.select_option('#floorSel', '3')
+        page.keyboard.press('Escape')
+        self.assertTrue(page.is_visible('#floorChip'))
+        page.click('#moreBtn')
+        page.keyboard.press('Shift+Tab')
+        page.keyboard.press('Tab')
+        self.assertEqual(page.evaluate(FOCUSED), 'sysBtn', label)
+        self.assertTrue(page.is_visible('#moreMenu'))
+        page.select_option('#floorSel', '')
+        page.keyboard.press('Escape')
         # the account's row says what it is
         self.assertTrue(page.text_content('#manageBtn').startswith('Account ·'), page.text_content('#manageBtn'))
         # Android's Back (K.back) closes the menu first

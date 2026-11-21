@@ -10,6 +10,7 @@
 :root{
   --chrome:#1c2730; --chrome2:#243440; --chrome3:#2f4352; --line:#3a5061;
   --ink:#e9eef2; --muted:#94a6b4; --accent:#ff7a1a; --review:#f2b705; --ok:#4f9cff; --bad:#ff5a5a;
+  --focus:#fff; --shadow-pop:0 8px 32px rgba(0,0,0,.5);
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   --sans: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
 }
@@ -200,9 +201,9 @@ header.phonehead #sheetSel{flex:1 1 140px;width:140px;min-width:0;max-width:100%
 #moreMenu>select{max-width:100%;width:100%;min-width:0}
 /* the phone header's selects drawn by the page (WebKit drew them light with the page's light text), the arrow from
    two gradients (no image file) */
-header.phonehead select{-webkit-appearance:none;appearance:none;color:var(--ink);padding-right:36px;
-  background:linear-gradient(45deg,transparent 50%,var(--ink) 50%) right 20px center/8px 8px no-repeat,
-    linear-gradient(135deg,var(--ink) 50%,transparent 50%) right 12px center/8px 8px no-repeat,var(--chrome)}
+header.phonehead select{-webkit-appearance:none;appearance:none;color:var(--ink);padding-right:32px;
+  background:linear-gradient(45deg,transparent 50%,var(--ink) 50%) right 16px center/8px 8px no-repeat,
+    linear-gradient(135deg,var(--ink) 50%,transparent 50%) right 8px center/8px 8px no-repeat,var(--chrome)}
 header.phonehead>.btn{min-height:48px;min-width:48px;display:inline-flex;align-items:center;justify-content:center}
 header.phonehead .sync{white-space:normal;flex:1 1 auto;min-width:0;min-height:1.45em}
 @media (max-width:720px){header.phonehead .search,header.phonehead .sync{flex-basis:100%}}
@@ -210,13 +211,13 @@ header.phonehead .sync{white-space:normal;flex:1 1 auto;min-width:0;min-height:1
 #floorChip{max-width:40vw;min-width:0}
 #floorChip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inmenu{display:none}
-#moreMenu{position:absolute;right:8px;top:calc(100% + 4px);z-index:60;display:flex;flex-direction:column;gap:4px;width:max-content;min-width:min(220px,calc(100vw - 16px));max-width:calc(100vw - 16px);overflow:auto;overscroll-behavior:contain;background:var(--chrome2);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5);padding:8px}
+#moreMenu{position:absolute;right:8px;top:calc(100% + 4px);z-index:60;display:flex;flex-direction:column;gap:4px;width:max-content;min-width:min(220px,calc(100vw - 16px));max-width:calc(100vw - 16px);overflow:auto;overscroll-behavior:contain;background:var(--chrome2);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-pop);padding:8px}
 #moreMenu[hidden]{display:none}
 #moreMenu>.btn,#moreMenu>select{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;margin:0;border-radius:8px;padding:0 16px;text-align:left;font-size:16px}
 #moreMenu>.btn{border-color:transparent;background:none}
 #moreMenu>.btn:hover{background:var(--chrome3)}
 #moreMenu .inmenu{display:inline}
-#moreMenu>:focus-visible{outline:3px solid #fff;outline-offset:-3px}
+#moreMenu>:focus-visible{outline:3px solid var(--focus);outline-offset:-3px}
 .app #moreMenu>.app-hide{display:none}
 .lk{display:flex;gap:6px;align-items:flex-start}.lk>input,.lk>textarea{flex:1;min-width:0}
 .lock input[readonly],.lock textarea[readonly]{background:transparent;border-color:transparent;padding-left:0;resize:none}

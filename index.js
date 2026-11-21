@@ -1382,15 +1382,17 @@ const phoneHeader=(()=>{
   function close(focus){ if(!isOpen()) return; menu.hidden=true; btn.setAttribute('aria-expanded','false');
     if(entry){ entry=false; if(history.state?.kksMenu){ backs++; history.back() } }
     if(focus) btn.focus() }
-  addEventListener('popstate',()=>{ if(backs){ backs--; return } if(entry){ entry=false; const f=menu.contains(document.activeElement); close(f) } });
+  addEventListener('popstate',()=>{ if(backs){ backs--; return } if(entry){ entry=false; const f=menu.contains(document.activeElement); close(f) }
+    else if(history.state?.kksMenu) history.replaceState(null,'') });   // (Forward into a menu's old entry)
+  if(history.state?.kksMenu) history.replaceState(null,'');   // a reload with the menu open: its entry is an ordinary one now
   addEventListener('resize',()=>{ if(isOpen()) fit() });   // a phone turned with the menu open
   btn.onclick=()=>isOpen()?close(true):open();
   btn.addEventListener('keydown',e=>{ if(e.key==='Escape'&&isOpen()){ e.preventDefault(); e.stopPropagation(); close(true) }
     else if(e.key==='ArrowDown'&&!isOpen()){ e.preventDefault(); open() } });
   menu.addEventListener('keydown',e=>{
     if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); close(true); return }
-    // (the up and down arrows move on past the floor select too: it opens with Space, Enter or Alt+Down)
-    if(e.target.localName==='select'&&(e.altKey||!['ArrowDown','ArrowUp'].includes(e.key))) return;
+    // (the arrows, Home and End move on past the floor select too: it opens with Space, Enter or Alt+Down)
+    if(e.target.localName==='select'&&(e.altKey||!['ArrowDown','ArrowUp','Home','End'].includes(e.key))) return;
     const L=shown(), i=L.indexOf(document.activeElement);
     const to={ArrowDown:i+1,ArrowUp:i-1,Home:0,End:L.length-1}[e.key];
     if(to===undefined||!L.length) return;
@@ -1402,8 +1404,8 @@ const phoneHeader=(()=>{
       e.preventDefault(); const go=t.href; entry=false; menu.hidden=true; btn.setAttribute('aria-expanded','false');
       backs++; addEventListener('popstate',()=>{ location.href=go },{once:true}); history.back(); return }
     setTimeout(()=>{ const f=document.activeElement, lost=!f||f===document.body||menu.contains(f); close(false); if(lost) btn.focus() }) });
-  // a floor: the chip shows it; picked on a touch screen (its own list), the menu closes. With the keyboard the arrows
-  // change the floor one by one, so the menu stays until Escape or Tab.
+  // a floor: the chip shows it; picked on a touch screen (its own list), the menu closes. Picked with the keyboard (the
+  // select's own list) the menu stays until Escape or Tab.
   let touched=false;
   $('#floorSel').addEventListener('pointerdown',()=>{ touched=true });
   $('#floorSel').addEventListener('keydown',()=>{ touched=false });
@@ -1420,7 +1422,7 @@ const phoneHeader=(()=>{
   menu.addEventListener('focusout',away); btn.addEventListener('focusout',away);
   function apply(){
     const on=PHONE.matches, f=document.activeElement, keep=f&&items.includes(f); hdr.classList.toggle('phonehead',on);
-    if(on){ menu.append(...items); $('#revBtn').after(btn); btn.after(chip); hdr.append(menu); label() }
+    if(on){ menu.append(...items); $('#revBtn').after(chip); chip.after(btn); hdr.append(menu); label() }
     else { close(false); items.forEach((el,i)=>marks[i].after(el)); btn.remove(); chip.remove(); menu.remove() }
     if(keep&&document.activeElement!==f) (on&&menu.hidden?btn:f).focus()   // a turned phone keeps the keyboard's place
   }
