@@ -1,5 +1,7 @@
 # UI audit 2026-11, pass 1: Walkdown Android (helper "vm")
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 ## 1. What was run
 
 - Build: main at 9eb5b09b (branch ui-audit-2026-11). Debug APK `./gradlew --no-daemon --max-workers=2 -PkksNativeJobs=3
@@ -8,7 +10,7 @@
 - Emulator: AVD Pixel_9_Pro_XL (Android 16, x86_64 only, 1344 × 2992, density 480 = 3.0), started as CLAUDE.md says
   (own scope MemoryMax=8G, `-gpu guest`), under `vm.lock`, `ANDROID_SERIAL=emulator-5554` for every call. Demo-mode status bar (12:00) for the screenshots.
 - Data (synthetic only): a fresh server with the sample sheet `importer/tests/vectors/kkp-sample.pdf`, 21 marked tags
-  11LAB70AA501…521, 11LAB70AA501 with long "How to find it" text and the fixture note `مضخة التغذية 11LAB70AA501 تعمل`
+  (the audit server's list), 11LAB70AA500 with long "How to find it" text and the fixture note `مضخة التغذية 11LAB70AA500 تعمل`
   (Near and Notes), a member `تالا Member` with 20 open proposals. The phone joined as the manager.
 - Driven with `android/app2/e2e/adbui.py` (uiautomator dump, input). Checked: setup, join form (wrong password, server
   down), main/drawing, search, tag panel (top, scrolled to the end, edit form), Procedures, Review, Learning, Manage and
@@ -32,7 +34,7 @@
 | T3 | N/A (desktop rule) |
 | T4 | Fail, advice (AND-9) |
 | T5 | Fail (AND-10) |
-| R1 | Fail: in progress, branch tag-copy-sticky-batch (panel Close scrolls away: at the end of 11LAB70AA501's panel `Close` is not on screen) |
+| R1 | Fail: in progress, branch tag-copy-sticky-batch (panel Close scrolls away: at the end of 11LAB70AA500's panel `Close` is not on screen) |
 | R2 | Pass (Back closes panel, menu, Manage sub-page; on the first screen it leaves the app) [a] |
 | R3 | Pass [b] |
 | R4 | Fail, advice (AND-11) |
@@ -67,7 +69,7 @@
 | X3 | Pass (Material 3, system Back, edge-to-edge with insets) |
 | A1 | N/A (no keyboard-driven desktop UI; Android is touch) |
 | A2 | Fail (AND-26) |
-| A3 | Pass (every tag is a named virtual node "11LAB70AA501, verified" and reachable by search) |
+| A3 | Pass (every tag is a named virtual node "11LAB70AA500, verified" and reachable by search) |
 | A4 | Pass (code: course figures read ANIMATOR_DURATION_SCALE, Learn.kt:1099; no other custom animation) |
 | A5 | N/A (Plant) |
 | L1 | Fail (AND-1) |
@@ -105,8 +107,8 @@ Notes:
 ## 3. Findings
 
 **AND-1** L1 (Block). Tag panel, Notes / Near (view and edit form), also portrait and landscape. The fixture note
-`مضخة التغذية 11LAB70AA501 تعمل` shows as `11 مضخة التغذيةLAB70AA501 تعمل`: the paragraph turns RTL from its first
-Arabic letter and the digits `11` are moved away from `LAB70AA501`, so the KKS code reads wrong. Evidence:
+`مضخة التغذية 11LAB70AA500 تعمل` shows as `11 مضخة التغذيةLAB70AA500 تعمل`: the paragraph turns RTL from its first
+Arabic letter and the digits `11` are moved away from `LAB70AA500`, so the KKS code reads wrong. Evidence:
 shots/android-AND-1-arabic-note-splits-code.png; Panel.kt:55 (plain `Text`). Size SMALL: wrap KKS-shaped runs in user
 text in LRI…PDI (U+2066/U+2069) before showing (a shared helper, also for the edit field's display), with a test on the
 fixture string.
@@ -144,7 +146,7 @@ Approve/Reject measured 40 dp tall at the list's bottom edge (cut by the bar, no
 (manage-history: Revert 830-1027 px, Restore 1027-1248 px); with the keyboard up the panel's Close overlapped the drag
 handle (1262-1334 px). Size SMALL: 8 dp spacing (or move Restore into a menu).
 
-**AND-9** T4 (Advice). A tap 13 dp or 22 dp above 11LAB70AA501's box, or in the 5 dp gap between two boxes, picks
+**AND-9** T4 (Advice). A tap 13 dp or 22 dp above 11LAB70AA500's box, or in the 5 dp gap between two boxes, picks
 nothing at the default zoom. Hit slop is 8 screen px ≈ 2.7 dp (SheetView.kt:205-209). Size SMALL: 24 dp slop with
 nearest-wins and a choice when two are equally near.
 
@@ -219,7 +221,7 @@ error wording differs (AND-3 vs Windows "The remote computer refused the network
 **AND-28** G1 (Block). The main search field is a plain text field: IME inputType 0x8001 (text with auto-correct, no
 caps; Root.kt:451); the review form's KKS fields (Panel.kt:210-211) and Mark a missing tag's KKS field (Root.kt:566)
 have no KeyboardOptions either. Only Select's "Add codes" sets Characters + no autocorrect (Select.kt:151). Search
-itself accepts `11 lab70 aa501` (found 11LAB70AA501). Size SMALL.
+itself accepts `11 lab70 aa500` (found 11LAB70AA500). Size SMALL.
 
 **AND-29** G4 (Advice). Search and the Sheets/Sync/More actions are at the top of the screen (y 180-528 px of 2992);
 only the bottom bar is in thumb reach. Size LARGE (design).

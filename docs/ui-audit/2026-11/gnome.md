@@ -1,5 +1,7 @@
 # UI/UX audit 2026-11, pass 1 (blind): Walkdown GNOME app
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 Auditor: desk. Policy: `docs/UI-UX-POLICY.md` (adopted 2026-11-15). Code: main at 9eb5b09b.
 
 ## 1. What was run
@@ -7,12 +9,12 @@ Auditor: desk. Policy: `docs/UI-UX-POLICY.md` (adopted 2026-11-15). Code: main a
 - **Builds** (from 9eb5b09b, Nim 2.2, each through heavyslot + memjob 4): `kks_server`, `kks_import` (MuPDF 1.28.5),
   the GNOME app `kks_explorer` (GTK 4.22.4, libadwaita 1.9.1, system libraries).
 - **Data:** synthetic only: `test_gnome.py`'s `Plant` fixture (server on loopback, `importer/tests/vectors/kkp-sample.pdf`
-  imported twice as "Sample sheet" and "Second sheet", tag 11LAB70AA501, draft description, location row and
-  instrument point). Arabic note `مضخة التغذية 11LAB70AA501 تعمل` typed into the tag's Notes.
+  imported twice as "Sample sheet" and "Second sheet", tag 11LAB70AA500, draft description, location row and
+  instrument point). Arabic note `مضخة التغذية 11LAB70AA500 تعمل` typed into the tag's Notes.
 - **Session:** `apps/gnome/e2e/headless.sh` (private mutter 1280 × 900, own D-Bus, XDG dirs) under
   `flock ~/kks-work/build/gnome-e2e.lock`, memjob 8. Desktop checked before and after every run (doc mount ID 579
   unchanged; keyrings, flatpak/db and dconf/user mtimes unchanged; desktop `text-scaling-factor` still 1.0).
-- **Walk** (`gnome_audit.py`, scratch): join through the server, search (`lab70aa501`, `11 lab70 aa501`), tag panel,
+- **Walk** (`gnome_audit.py`, scratch): join through the server, search (`lab70aa500`, `11 lab70 aa500`), tag panel,
   Edit form with the Arabic note, Save, the seven sidebar pages (Procedures, Equipment by system, Coverage, Learning,
   Review queue, Connectors, Notes), Manage and its pages (Approvals, My proposals, History, People, Devices, Account).
   Each step: window screenshot (`KKS_SHOT_ON_SIGNAL`) and AT-SPI dump (role, name, states, extents).
@@ -76,7 +78,7 @@ Auditor: desk. Policy: `docs/UI-UX-POLICY.md` (adopted 2026-11-15). Code: main a
 | A4 | Pass (code) | course figures follow `gtk-enable-animations` (`coursefig.nim:150`); libadwaita animations follow it; not run |
 | A5 | N/A | Plant rule |
 | L1 | Pass | Arabic note with the code renders right-to-left with the code intact (`*-04b-saved-arabic`) |
-| L2 | **Fail** | GNOME-3: History rows squeeze title/code into a ~50 px column, words broken mid-word ("equipme-nt", "11LAB70 / AA501") at 100 %; header subtitle "Test plant · 1 device reacha…" cut at 100 % and 125 % |
+| L2 | **Fail** | GNOME-3: History rows squeeze title/code into a ~50 px column, words broken mid-word ("equipme-nt", "11LAB70 / AA500") at 100 %; header subtitle "Test plant · 1 device reacha…" cut at 100 % and 125 % |
 | L3 | Pass | units shown where values appear (location "33 m", coverage %) |
 | L4 | Pass | dates as 2026-11-15 |
 | L5 | Advice: **Fail** | GNOME-9: "1 tags" in the sheet list |
@@ -85,7 +87,7 @@ Auditor: desk. Policy: `docs/UI-UX-POLICY.md` (adopted 2026-11-15). Code: main a
 | P3 | Not checked | no action timings taken (every walk step completed within its wait) |
 | P3a, P4 | Not checked / N/A | |
 | Z1–Z3 | Pass | fixture data only. Raw shots of Devices/Account show this laptop's host name as the device label and Learning shows the plant courses' names: those shots were not copied; the Devices crop shows other rows only |
-| G1 | Pass | `lab70aa501` and `11 lab70 aa501` both find 11LAB70AA501; GTK has no autocorrect on desktop |
+| G1 | Pass | `lab70aa500` and `11 lab70 aa500` both find 11LAB70AA500; GTK has no autocorrect on desktop |
 | G2–G4 | N/A | phone rules |
 
 Counts (table rows): Pass 22, Fail 14 (12 Block, 2 Advice), N/A 10, Not checked 9 (3 of them Advice).
@@ -105,7 +107,7 @@ no indicator at all (pixels at its edge unchanged). Review-tag outline amber at 
 drawing (draw a ring when focused) and the ring opacity (CSS `outline-color`); amber outline SMALL (darker amber).
 
 **GNOME-3 (T2, L2) History rows.** Revert and Restore are 6 px apart (both destructive; [81,188,81,34] and
-[168,188,88,34]). The row's title/subtitle get ~50 px: "#", "· ·", "equipme-nt", "11LAB70 / AA501",
+[168,188,88,34]). The row's title/subtitle get ~50 px: "#", "· ·", "equipme-nt", "11LAB70 / AA500",
 "74105c36f4cd85c8…" broken across 3–6 lines. Evidence: `gnome-GNOME-3-history-rows-crushed.png`,
 `light-21-History.json`. SMALL: buttons under the text (or in a menu) with ≥ 8 px gap.
 

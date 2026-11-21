@@ -101,7 +101,14 @@ private fun ServerJoin(onJoined: () -> Unit) {
         }
     }) { Text("Join") }
     if (msg.isNotEmpty()) Text(msg)
+    Spacer(Modifier.height(8.dp))
+    androidx.compose.foundation.text.selection.SelectionContainer { Dim(FORGOT_PASSWORD) }   // (the command can be copied)
 }
+
+/** the way back in after a forgotten password, under "Join through a server" (#449; the web's sign-in, GNOME and
+ *  Windows say the same words: tests/test_forgot_password.py): the manager (or an admin, for a member) makes a one-time password link
+ *  (admin.html → Users → Password link); the manager's own comes from the server's command line */
+const val FORGOT_PASSWORD = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and use it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME."
 
 /** asks until the admin decides; in the lobby the person confirms the code before the first sync (§16) */
 @Composable

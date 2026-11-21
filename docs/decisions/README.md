@@ -72,6 +72,7 @@ maintainer, a compatible license (the project is AGPL-3.0), and survival of a ma
 | [0074](0074-photo-size-2560.md) | Photos stored at up to 2560 px (was 1600), JPEG XL d1.9 effort 7 on every client (replaces effort 9 of 0018/0037); Android scales with its own Lanczos-3 | decided (the user, 2026-11-17) |
 | [0075](0075-android-in-app-camera.md) | Android: an in-app camera (CameraX 1.6 with the phone's Extensions) beside the system camera, for a trial on the Honor 600; a one-line hint if it does not help | decided for a trial (the user, 2026-11-17) |
 | [0076](0076-plant-minimum-gpu.md) | Walkdown Plant's minimum GPU on desktops: a driver with Vulkan 1.0 or Direct3D 12 (Godot's Forward+ minimum); below it a message at start (Continue anyway or Quit), no lower graphics tier; Android unchanged | decided (the user, 2026-11-19) |
+| [0077](0077-plant-flash-analyser-iris.md) | Walkdown Plant's flash evidence (A10): EA's IRIS (BSD-3), built in user space with vcpkg, on Godot Movie Maker videos; PEAT ruled out (no games, Windows only); development only | decided |
 
 ## Audit of existing dependencies (2026-09-30)
 

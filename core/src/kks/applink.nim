@@ -49,7 +49,7 @@ proc parseAppLink*(s: string): AppLink =
 
 proc findCode*(m: Model, code: string): (bool, Tag) =
   ## the tag a code link opens: the first, in the drawings' order, whose code with its suffix is `code`; else the first
-  ## whose code without the suffix is (a link to 11HAD70CT101 finds the tag printed 11HAD70CT101R). Unread tags never.
+  ## whose code without the suffix is (a link to 11HAD70CT109 finds the tag printed 11HAD70CT109R). Unread tags never.
   if code.len == 0: return
   for t in m.tags:
     if t.full == code: return (true, t)

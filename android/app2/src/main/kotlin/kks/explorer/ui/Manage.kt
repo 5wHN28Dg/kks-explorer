@@ -805,7 +805,7 @@ private fun DiagnosticsReports(rev: Int) {
     }
 }
 
-/** what a proposal is about, in words: "Location and notes · 10LCE21AA101" (not the raw kind and entity key) */
+/** what a proposal is about, in words: "Location and notes · 10LCE29AA109" (not the raw kind and entity key) */
 fun proposalTitle(sub: JSONObject): String {
     val p = sub.optJSONObject("payload") ?: JSONObject()
     val what = when (sub.str("kind")) {

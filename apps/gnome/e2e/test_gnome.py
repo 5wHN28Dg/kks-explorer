@@ -193,6 +193,8 @@ class Plant(unittest.TestCase):
 
     def join(self, a, user='boss', password='a long password'):
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
+        atspi.find(a, 'label', contains="Forgot your password? Ask your plant's manager for a password link")   # the way back in (#449)
+        self.evidence(a, 'join-server-form')
         atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
         atspi.set_text(atspi.find(a, 'text', name='Username'), user)
         atspi.set_text(atspi.find(a, 'password text', name='Password'), password)
@@ -2704,8 +2706,9 @@ class Gnome(Plant):
 
     def test_zzzzzzzzz_about(self):
         """About Walkdown (AdwAboutDialog, about.nim), from the main menu of the setup screen and of the main screen:
-        this build's version and commit, the link to its source, the legal page with every part's licence (libjxl's
-        BSD notice, the fonts' OFL, the app's AGPL), the course photos' credits; it closes with its Close button."""
+        this build's version and commit, the link to its source, the accessibility statement on Details (#440), the
+        legal page with every part's licence (libjxl's BSD notice, the fonts' OFL, the app's AGPL), the course photos'
+        credits; it closes with its Close button."""
         os.makedirs(SHOTS, exist_ok=True)
         shot = os.path.join(SHOTS, 'gnome-about-now.png')
         state = os.path.join(self.dir, 'about-hook')
@@ -2734,8 +2737,17 @@ class Gnome(Plant):
                         targets)
         self.assertIn('debug=Walkdown ' + v, targets)
         # Details: the summary, the website and this version's source
-        self.about_page(d, 'details', state)
-        atspi.find(d, 'label', name='Find plant equipment on P&ID drawings by KKS code')
+        self.about_page(d, 'details', state, shot, pid)
+        # (the summary, then the accessibility statement, #440: what works, the known gaps, how to report one)
+        acc = about['accessibility']
+        details = atspi.find(d, 'label', contains='Find plant equipment on P&ID drawings by KKS code').get_name()
+        self.assertTrue(details.startswith('Find plant equipment on P&ID drawings by KKS code\n\nAccessibility\n\n'
+                                           + acc['intro'][0]), details[:300])
+        for g in acc['gaps']:
+            self.assertIn('\n• ' + g, details)
+        self.assertTrue(details.endswith(acc['report']), details[-300:])
+        atspi.find(d, 'link', name='Accessibility statement')
+        self.assertIn('link Accessibility statement=' + acc['url'], targets)
         atspi.find(d, 'link', name='Website')
         src = atspi.find(d, 'link', contains='Source of this version')
         self.assertEqual(src.get_name(), 'Source of this version' + (' (without its local changes)' if 'local changes' in v else ''))

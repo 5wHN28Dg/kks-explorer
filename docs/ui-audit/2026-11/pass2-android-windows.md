@@ -1,5 +1,7 @@
 # UI audit 2026-11, pass 2 (adversarial): Walkdown Android and Windows
 
+*Example codes in this record and in its screenshots were replaced with an invented code or blurred on 2026-11-19 (the owner's decision); the findings are unchanged.*
+
 Pass 1's results: android.md and windows.md in this folder. This pass ran nothing on the emulator or a VM: it reads
 the code at 9eb5b09b (the checkout pass 1 built) and pass 1's raw outputs in `~/kks-work/build/ui-audit/vm/`
 (uiautomator dumps and their `.txt` reports, UIA dumps and `.issues.txt`, screenshots). Contrast ratios are computed
@@ -80,7 +82,7 @@ shrink; hide the labels of items that aren't selected, or allow two lines). Size
 let them wrap (the app bar can drop to titleSmall, or use a larger top app bar).
 
 **AND2-10** A2 (Block). Photos are named "Open photo[: caption]" instead of by tag and date, and every photo's Delete
-has the same name (Photos.kt:77, 92, 162). Size SMALL: "Photo of 11LAB70AA501, 2026-11-15" and "Delete photo of …,
+has the same name (Photos.kt:77, 92, 162). Size SMALL: "Photo of 11LAB70AA500, 2026-11-15" and "Delete photo of …,
 2026-11-15".
 
 **AND2-11** G3 (Block). After a rotation the sheet isn't fitted to the new size, and in landscape the drawing gets

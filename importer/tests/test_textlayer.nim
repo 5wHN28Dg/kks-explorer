@@ -40,7 +40,7 @@ proc page(): string =
   result.add txt("10LAB71", 400, 100, m = Up) & txt("AA102", 407, 100, m = Up)      # up the page, the next line right
   result.add txt("10LAB72AA301", 50, 200)                                           # a whole code alone
   result.add txt("Sheet 2, Field 3/B, 10LAB73AA401", 50, 150)                       # a code inside a sentence
-  result.add txt("TIRAZ", 300, 150) & txt("MAD11", 300, 143) & txt("CT031A", 300, 136)  # no unit number
+  result.add txt("TIRAZ", 300, 150) & txt("MAD19", 300, 143) & txt("CT039A", 300, 136)  # no unit number
   result.add txt("10LAB70", 450, 350) & txt("AA101", 450, 343)                      # the same code again
   result.add txt("10LAB75", 450, 250, m = "0.7071 0.7071 -0.7071 0.7071") &        # slanted: not read
              txt("AA501", 455, 245, m = "0.7071 0.7071 -0.7071 0.7071")
@@ -96,12 +96,12 @@ suite "tags from the text layer":
       last = t.bbox[1]
 
   test "a code without its unit number: the review queue, or --unit":
-    let r = tagsOf(dir / "text.pdf").filterIt(it.bottom.endsWith("CT031A"))
+    let r = tagsOf(dir / "text.pdf").filterIt(it.bottom.endsWith("CT039A"))
     check r.len == 1 and r[0].status == "review" and r[0].interp.kind == "suspect" and not r[0].interp.hasKks
     check "unit number" in r[0].interp.note
-    let u = tagsOf(dir / "text.pdf", "10").find("10MAD11CT031A")
+    let u = tagsOf(dir / "text.pdf", "10").find("10MAD19CT039A")
     check u.len == 1 and u[0].status == "auto" and u[0].interp.kind == "instrument" and u[0].interp.isa == "TIRAZ"
-    check u[0].interp.kks == "10MAD11CT031" and u[0].interp.suffix == "A" and "10" in u[0].interp.note
+    check u[0].interp.kks == "10MAD19CT039" and u[0].interp.suffix == "A" and "10" in u[0].interp.note
 
   test "the grammar of a code read from text":
     check textInterp("", "10LAB70AA101").kind == "equipment"

@@ -192,6 +192,7 @@ class Phone(unittest.TestCase):
     # ---- helpers for the 2026-10-08 requests' tests
     def join(self, user='boss', pw='a long password'):
         ui.tap('Join through a server', exact=True)
+        ui.find("Forgot your password? Ask your plant's manager for a password link")   # the way back in (#449)
         ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
         ui.type_into('Username', user)
         ui.type_into('Password', pw)
@@ -2354,7 +2355,7 @@ class Phone(unittest.TestCase):
         that commit's source; a third-party part (libjxl) shows its copyright notice, a font the OFL's full text, the
         app's licence its full text, an Apache part its NOTICE file; a part's or a licence's page has one back button,
         "‹ About Walkdown" (not Manage's or the first screen's as well); a course photo's credit; light and dark (screenshots in KKS_SHOTS); a link opens
-        in the browser"""
+        in the browser; the accessibility statement (#440)"""
         import io
         from PIL import Image, ImageStat
         with open(os.path.join(REPO, 'data', 'about.json'), encoding='utf-8') as f:
@@ -2398,6 +2399,16 @@ class Phone(unittest.TestCase):
         # the APK under test is built from this checkout's HEAD (a stale APK names another commit)
         commit = subprocess.run(['git', '-C', REPO, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
         self.assertEqual(m.group(2), commit[:12], f'the APK names commit {m.group(2)}, this checkout is at {commit[:12]}')
+        # the accessibility statement (#440): after the links, before the third-party parts; every gap, how to report one
+        acc = about['accessibility']
+        ui.scroll_to('Accessibility', exact=True, tries=12)
+        ui.scroll_to('Known gaps:', exact=True, tries=8)
+        self.assertFalse(ui.present('•', exact=True), 'the gaps\' bullets are read out (they are drawn only)')
+        for t in acc['intro'] + acc['gaps'] + [acc['report']]:
+            ui.scroll_to(t, exact=True, tries=6)
+        ui.scroll_to('The accessibility statement in the README', exact=True, tries=4)
+        ui.find(acc['url'], exact=True)
+        shot('about-accessibility-light.png')
         # a part's page has one back button, the one to About; About's own page the one to the first screen
         lib = next(c for c in about['components'] if c['id'] == 'libjxl')
         row = f'{lib["name"]} · {lib["version"]}'

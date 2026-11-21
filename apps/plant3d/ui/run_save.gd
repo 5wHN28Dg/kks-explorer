@@ -10,8 +10,10 @@
 ## a run, and that a field added by a subclass goes round). The procedure tracker likewise (all but TRACKER_BUILT).
 ##
 ## Loading is strict: a file over MAX_BYTES, a wrong magic, length or hash, a payload that is not the expected
-## Dictionary, a save of another format, app version or content, or engine state whose fields or types differ from
-## this engine's, is refused with a reason; nothing of it is applied (read() and check() return a reason, never half a run).
+## Dictionary, a save of another format, or engine state whose fields or types differ from this engine's, is refused
+## with a reason; nothing of it is applied (read() and check() return a reason, never half a run). A save of another
+## app version or content is made again in this build from its inputs (ui/run_migrate.gd, issue #447); a save that
+## can't be is kept aside under a name of its own (keep_aside), never deleted.
 extends RefCounted
 
 const MAGIC := "WDPSAVE\n"
@@ -27,13 +29,39 @@ const PAYLOAD_KEYS := {"app": TYPE_STRING, "content": TYPE_STRING, "scenario": T
 
 ## The app's version: its configured version and the hash of the code that makes and reads a run's state, which
 ## build.sh writes to built/code.sha256 (sim/*.gd and the save's and the tracker's scripts: an export keeps the
-## scripts only compiled, so the app can't hash them itself). A save of any other build is refused.
+## scripts only compiled, so the app can't hash them itself). A save of any other build is not put back as it is: it
+## is made again from its inputs (ui/run_migrate.gd).
 const CODE_HASH := "res://built/code.sha256"
 
 
 static func app_version() -> String:
 	var code := FileAccess.get_file_as_string(CODE_HASH).strip_edges() if FileAccess.file_exists(CODE_HASH) else ""
 	return "%s+%s" % [str(ProjectSettings.get_setting("application/config/version", "")), code.left(16)]
+
+
+## The release part of an app version ("0.3.0" of "0.3.0+0123456789abcdef"); "unknown" for anything that is not a
+## short run of digits, letters, dots and dashes (it comes from the file, and goes into words on screen and a file name).
+static func version_of(app: String) -> String:
+	var v := app.get_slice("+", 0)
+	if v.is_empty() or v.length() > 24:
+		return "unknown"
+	for ch in v:
+		if not (ch >= "0" and ch <= "9" or ch >= "a" and ch <= "z" or ch >= "A" and ch <= "Z" or ch == "." or ch == "-"):
+			return "unknown"
+	return v
+
+
+## -1, 0 or 1 as release a is before, the same as or after b (dotted whole numbers; a missing part counts 0; a part
+## that is not a number counts as 0 too).
+static func compare_versions(a: String, b: String) -> int:
+	var x := a.split(".")
+	var y := b.split(".")
+	for i in maxi(x.size(), y.size()):
+		var u := x[i].to_int() if i < x.size() and x[i].is_valid_int() else 0
+		var v := y[i].to_int() if i < y.size() and y[i].is_valid_int() else 0
+		if u != v:
+			return -1 if u < v else 1
+	return 0
 
 
 ## SHA-256 (hex) of every file under `dir`, by sorted relative path: the content a run was made with.
@@ -162,7 +190,9 @@ static func decode(b: PackedByteArray) -> Dictionary:
 		return _no("corrupt", "it is not a saved run")
 	var fmt := b.decode_u32(8)
 	if fmt != FORMAT:
-		return _no("format", "it was saved by another version of the app (save format %d)" % fmt)
+		var r := _no("format", "it was saved by another version of the app (save format %d)" % fmt)
+		r["format"] = fmt
+		return r
 	var n := b.decode_u64(12)
 	if n != b.size() - HEAD:
 		return _no("corrupt", "the file is cut short or has bytes after its end")
@@ -239,6 +269,7 @@ static func read(path: String) -> Dictionary:
 		else:
 			r = decode(f.get_buffer(len))
 		f.close()
+		r["file"] = p
 		if r["ok"]:
 			if best.is_empty() or r["payload"]["saved_unix"] > best["payload"]["saved_unix"]:
 				best = r
@@ -247,6 +278,58 @@ static func read(path: String) -> Dictionary:
 	if not best.is_empty():
 		return best
 	return first if not first.is_empty() else _no("missing", "there is no saved run")
+
+
+## A free name beside path for a save kept aside: "run-kept-<label>-<date>.save", "-2", "-3"… when taken.
+static func kept_name(path: String, label: String) -> String:
+	var dir := path.get_base_dir()
+	var stem := "%s-kept-%s-%s" % [path.get_file().get_basename(), label.validate_filename().replace(" ", "-"),
+			Time.get_date_string_from_system()]
+	var name := stem + ".save"
+	var k := 2
+	while FileAccess.file_exists(dir.path_join(name)):
+		name = "%s-%d.save" % [stem, k]
+		k += 1
+	return name
+
+
+## The saves kept aside beside path (kept_name's names), newest first: [[name, modified unix time, bytes or -1], …].
+static func kept_files(path: String) -> Array:
+	var dir := path.get_base_dir()
+	var pre := path.get_file().get_basename() + "-kept-"
+	var out: Array = []
+	for f in DirAccess.get_files_at(dir):
+		if f.begins_with(pre) and f.ends_with(".save"):
+			var p := dir.path_join(f)
+			var fa := FileAccess.open(p, FileAccess.READ)
+			out.append([f, FileAccess.get_modified_time(p), fa.get_length() if fa != null else -1])   # (-1: unknown)
+	out.sort_custom(func(a, b): return a[1] > b[1] or a[1] == b[1] and a[0] < b[0])
+	return out
+
+
+## Keeps the save that was read from `file` (path or a .tmp beside it) under `name` beside path, by a copy of its bytes,
+## and then (with remove_rest) removes path and its .tmp files. OK only when the kept copy was written whole.
+static func keep_aside(path: String, file: String, name: String, remove_rest := true) -> Error:
+	if not FileAccess.file_exists(file):
+		return ERR_FILE_NOT_FOUND
+	var dest := path.get_base_dir().path_join(name)
+	# copied in pieces (a damaged file can be of any size), then compared by length and SHA-256
+	var err := DirAccess.copy_absolute(ProjectSettings.globalize_path(file), ProjectSettings.globalize_path(dest))
+	if err != OK:
+		if FileAccess.file_exists(dest):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(dest))   # (a part copy: never left as "kept")
+		return err
+	var a := FileAccess.open(file, FileAccess.READ)
+	var b := FileAccess.open(dest, FileAccess.READ)
+	var same := a != null and b != null and a.get_length() == b.get_length()
+	a = null
+	b = null
+	if not same or FileAccess.get_sha256(file) != FileAccess.get_sha256(dest):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(dest))
+		return ERR_FILE_CANT_WRITE
+	if remove_rest:
+		remove(path)
+	return OK
 
 
 static func remove(path: String) -> void:
