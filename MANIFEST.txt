@@ -1,0 +1,28 @@
+# Evidence for PR #484 (second set, after review pass 1; replaces the first)
+scripts' commit: 9b46ce71 (the apps built from a186ade6 and later; their UI code unchanged since)
+data: synthetic (the e2e test plants: test_gnome.py, test_windows.py, test_app2.py; sample sheet importer/tests/vectors/kkp-sample.pdf)
+gnome/: apps/gnome/e2e/test_gnome.py OfflineState under headless.sh (1280x900, KKS_UX=offline-state KKS_OFFLINE_AFTER=4 KKS_SYNC_EVERY=2000, the server SIGSTOPped then SIGCONTed); .png the window, .json the accessibility tree (role, name, extents; showing nodes only)
+windows/: apps/windows/e2e/test_windows.py test_offline_state on the kks-win11 VM (window resized to 1100x700 for the shots)
+android/: android/app2/e2e/test_app2.py Phone.test_offline_state on the emulator (Pixel 9 Pro XL image, debug build, DEBUG_UX on=offline-state, offline_after 6 s); .xml the uiautomator dump
+
+
+sha256 per file:
+3f91721af397d0962cb238c2ba4065752640d5bb8d452fb795c0c25a630c097d  android/offline-state-back.png
+b38844e6ba3c4e2893c3eba21685f8a4d493ead85438126707f015add73eb84d  android/offline-state-back.xml
+69540783adbed0a1acbd624ccf1bc6e72f72cb3b686c67a8f7ffd4a14cdf2640  android/offline-state-offline.png
+c1578671e529060a3de27fb8747062068a8fce56c3ef5f1da112897c586e7090  android/offline-state-offline.xml
+2bc9c77258395c821e1d64fc842faca0ac5ab588ca44cde982bc84ee3534867c  android/offline-state-online.png
+0e25eeab190e1dd3e5ed4e4d56189409bade6ede29141e010cbbf4228c0e181f  android/offline-state-online.xml
+ba571064480fc1cee7e3288e1bef18fd2b6bfae270e126d43325cacbc072aeb3  android/offline-state-waiting.png
+69aee9da80ec6ae0cd52051f8f23c06dfbd1976c043895bd2bf460830dce8620  android/offline-state-waiting.xml
+e0f79df375e1709968bc195fb867614cbbd979f55379f50108aec085140df4ab  gnome/offline-state-back.json
+9a508422ec0bb937702401f7bd6158acad76b8495a6bf35348daa0c073b6d92f  gnome/offline-state-back.png
+c7a8246c42d169770931a238cfc615834d83337cdfc8fbd74b9b767ef06899c3  gnome/offline-state-offline.json
+c7f307cb8c08892194d14f4d89965daece116fbeb79fc1f775b7e9ba74e9764c  gnome/offline-state-offline.png
+b94e1a47dfb30b94d7240db3432e4b9574341273c762d97e3aaf947b3ffa00b9  gnome/offline-state-online.json
+c0c3acc18e4e45fc026e361c4dda4134ecaecd547dd269a546248f7e6b5bd40e  gnome/offline-state-online.png
+1c8bc4d4bb77e2d21cb41240730f79bd04522f4fe73231745f1e0a4e296e3120  gnome/offline-state-waiting.json
+e8416c2525060f300a92d16a1149bd12182c53a01c4c31b658b44982a82a0696  gnome/offline-state-waiting.png
+b739f7e8a50843916444312b4b4e443f383ddc650c91c7056dbb1b850032243f  windows/win-offline-offline.png
+e7cbe5244b1908ada8e5bcfd7d034a9967bf0dd52794b43e205642bfce24cf6a  windows/win-offline-online.png
+42f3f3eb4be81c9dbe8a2d254f64fd7d5eac9d756ff9311663da840c0051e030  windows/win-offline-waiting.png
