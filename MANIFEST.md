@@ -1,18 +1,18 @@
-# UX evidence: Saved runs kept aside (#474), round 3
+# UX evidence: Saved runs kept aside (#474), round 4
 
-Synthetic, commit 1fadb5527ddf1ec9eab25d5d1888a3fb155eb09a, `apps/plant3d/tests/kept_saves_shots.gd`, the switch forced on. desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout). States: kept_list, kept_delete_asks (Keep focused; Delete for good destructive with the layer's padding), kept_after_delete (said beside the focused row, in view), kept_empty.
+Synthetic, commit 9c1f507d0ec0574f1fc1f4a6b53b5b81e5b30056, `apps/plant3d/tests/kept_saves_shots.gd`, the switch forced on (the shot of the question no longer scrolls the section itself: the app brings the question into view). desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout). States: kept_list, kept_delete_asks, kept_after_delete, kept_empty.
 
 ```
-7b6bd65951b1ceeee0b4333797ec60cb942a71e77a01f7e865de8070bd2ca71a  desk_ui2_kept_after_delete.png
-c14586409d687c1d41124b15385a76f4f3ff0a8f953e86c2d30ead8bb63ba589  desk_ui2_kept_delete_asks.png
-9c08d6ffeba630dc6f4b7a15505e929281078fe0c9c7e059856437c32b33d530  desk_ui2_kept_empty.png
-0200a694bd62ab01d2a6f4194d826a5f36b823d802d4b5a065d728878ea48b7d  desk_ui2_kept_list.png
-b207761dfe89fe910827658bbfb80aa198ba55caff036671509f7f2b839c4e37  desk_uidefault_kept_after_delete.png
-40f15d0d1292682e3f77d35d88ebe73bc372cb7b6ad03d127e0d4dd4fbb014a7  desk_uidefault_kept_delete_asks.png
+a886820c29fc7c639bf40738028eac07c4c8807efa975744d3427f3142bbe715  desk_ui2_kept_after_delete.png
+42da0c680b1aef9eac5222018de2b6ce529b210f331f17cab2c7e83e9064e2f2  desk_ui2_kept_delete_asks.png
+ca8ddb0af7cde9b6edc9c73181fca333b5437ab86168216f934e21af1494807f  desk_ui2_kept_empty.png
+7a1dc693c632207dc0273e0f66825b46ca72d29eb36f842dee3cf096457d9b5c  desk_ui2_kept_list.png
+008e795937d5d5b6c8124625370921ebd17d3298f487ba94ece4e8f16d07972d  desk_uidefault_kept_after_delete.png
+58448f278ab48bcb885ba32a14f779299d41ccd08b895d698b6d40d644023497  desk_uidefault_kept_delete_asks.png
 a430c27f7938126092b6546beaa0c5d20f814597f427d0f3bad0929bfe8b4d54  desk_uidefault_kept_empty.png
-dd29587ae60430ad00ee172e1c7d621ff409c18686f4f568f5e67684948d6d6c  desk_uidefault_kept_list.png
-02f2aa4ca85c9595112e32a0beff4a2497c939dc2cb78a402f81b81ecb27c25e  phone_uidefault_kept_after_delete.png
-e4e12fbd88152dd23246d58aaba30dcb9536e595f461f342af104f11b9f0015d  phone_uidefault_kept_delete_asks.png
-05a8119e7f7f41b4ef5f91e767593b0a7229ae3ea43eff445914b9ac86ef3e90  phone_uidefault_kept_empty.png
-c8b4844c50eba8f4bdf6815cf9ad99c289e1fc1ccaf28018c3c3f27b385d1c81  phone_uidefault_kept_list.png
+cd26ad5e294f474f5ac1fc39b1a6d384ed0fe547f87d2bcdfa42f493f354d2d2  desk_uidefault_kept_list.png
+2741cbaf6012a77368bec1666f90fae03d534dc98890856617d5553a781eb90a  phone_uidefault_kept_after_delete.png
+0b8754c61227abebd90a59169b92c6af8372ba4d6e6498415c64f8c68a2e92a2  phone_uidefault_kept_delete_asks.png
+0ab74a5cd29effc99f938dcacb0bb3317ac4efcd5baa994be5448ae01bdf8ac0  phone_uidefault_kept_empty.png
+39bc7dbbcf197772c0f34a31427dfadf67cc0d4894da7d4f53f3738afba0bf1c  phone_uidefault_kept_list.png
 ```
