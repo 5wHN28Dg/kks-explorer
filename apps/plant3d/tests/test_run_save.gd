@@ -8,8 +8,12 @@
 ## - the atomic write: a crash while writing (half a .tmp) leaves the previous save; a missing save with a complete
 ##   .tmp (a rename that could not replace, Windows) loads the .tmp; a failed write leaves the old file;
 ## - the app: Continue at start puts the plant, the procedure's progress, the operations' results, the alarms' times
-##   and the trainee back, and the run goes on as the saved one did; New run replaces the save; a save of other
-##   content or a damaged one is refused with its reason and a new run starts.
+##   and the trainee back, and the run goes on as the saved one did; New run replaces the save; a run with a deviation
+##   is continued;
+## - another build's save (#447): one of other code or content, and the release before's (tests/fixtures/run-0.3.0.save),
+##   are made again in this build from their inputs, the file as saved kept aside; a save this build can't continue (a
+##   newer version's or format's, damaged, a state that doesn't fit, a scenario this plant hasn't) is refused with its
+##   reason and kept aside under the name the offer gives, and a new run starts.
 extends RefCounted
 
 const PlantModel = preload("res://sim/plant_model.gd")
@@ -799,28 +803,34 @@ func _app(tree: SceneTree, p: Array) -> void:
 	# a save of other content, then a damaged one: refused with the reason, a new run starts
 	var pl: Dictionary = ui.autosave.payload()
 	main.free()
-	for c in [["content", "content has changed"], ["app", "another version of the app"],
-			["contents", "a machine in a state it doesn't have"], ["damaged", "cut short"]]:
+	# a save this build can't continue: refused with the reason, kept aside under the name the offer gives (#447), a new
+	# run starts
+	for c in [["newer", "newer version of the app (99.0.0)"],
+			["contents", "a machine in a state it doesn't have"], ["damaged", "cut short"],
+			["format", "save format 7"]]:
 		if c[0] == "contents":
 			var q := pl.duplicate(true)
 			q["engine"]["mstate"][0] = 99         # under a matching hash
 			RunSave.write(path, RunSave.encode(q))
-		elif c[0] == "content":
+		elif c[0] == "newer":
 			var q := pl.duplicate(true)
-			q["content"] = "0".repeat(64)
+			q["app"] = "99.0.0+0123456789abcdef"
 			RunSave.write(path, RunSave.encode(q))
-		elif c[0] == "app":
-			var q := pl.duplicate(true)
-			q["app"] = "0.0.1+0123456789abcdef"
-			RunSave.write(path, RunSave.encode(q))
+		elif c[0] == "format":
+			var b := RunSave.encode(pl)
+			b.encode_u32(8, 7)
+			RunSave.write(path, b)
 		else:
 			var b := FileAccess.get_file_as_bytes(path)
 			FileAccess.open(path, FileAccess.WRITE).store_buffer(b.slice(0, b.size() - 3))
+		var as_saved := FileAccess.get_file_as_bytes(path)
 		main = App.start(tree)
 		ui = main.ui
 		var txt := App.texts(ui)
-		if App.find_button(ui, "Continue") != null or not txt.contains("can't be continued") or not txt.contains(c[1]):
-			p.append("a save (%s) was not refused with its reason: %s" % [c[0], txt.left(300)])
+		var kept: String = ui.autosave.kept
+		if App.find_button(ui, "Continue") != null or not txt.contains("can't be continued") or not txt.contains(c[1]) \
+				or kept == "" or not txt.contains("kept on this device as %s" % kept):
+			p.append("a save (%s) was not refused with its reason and the name it is kept under: %s" % [c[0], txt.left(400)])
 		var nb2 := App.find_button(ui, "New run")
 		if nb2 == null:
 			p.append("a refused save offers no New run")
@@ -828,7 +838,14 @@ func _app(tree: SceneTree, p: Array) -> void:
 			nb2.pressed.emit()
 			if not ui.autosave.armed or ui.clock.engine.step_no != 0:
 				p.append("after a refused save the new run did not start")
+			var kp := path.get_base_dir().path_join(kept)
+			if kept == "" or FileAccess.get_file_as_bytes(kp) != as_saved:
+				p.append("a refused save (%s) was not kept aside as it was (%s)" % [c[0], kept])
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
 		main.free()
+	await _other_build(tree, pl, p)
+	await _old_release(tree, p)
+	await _deviation(tree, p)
 	if not FileAccess.file_exists(path + ".prev"):
 		p.append("New run did not keep the run it replaced")
 	# a second window while another one saves to the run: it offers nothing and saves apart
@@ -847,3 +864,174 @@ func _app(tree: SceneTree, p: Array) -> void:
 	RunSave.remove(path)
 	RunSave.remove(path.get_base_dir().path_join("run-second.save"))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path + ".prev"))
+
+
+## A save of another build of this release (an update with other code or content, #447): offered, and Continue makes
+## it again in this build; the file as saved is kept aside.
+func _other_build(tree: SceneTree, pl: Dictionary, p: Array) -> void:
+	var path: String = Autosave.default_path
+	for c in [["app", "0.0.1+0123456789abcdef"], ["content", "0".repeat(64)]]:
+		var q := pl.duplicate(true)
+		q[c[0]] = c[1]
+		RunSave.write(path, RunSave.encode(q))
+		var as_saved := FileAccess.get_file_as_bytes(path)
+		var main := App.start(tree)
+		var ui = main.ui
+		var cont := App.find_button(ui, "Continue")
+		var kept: String = ui.autosave.kept
+		if cont == null or kept == "" or not App.texts(ui).contains("kept as %s" % kept):
+			p.append("a save of another build (%s) was not offered with the name it is kept under: %s" % [c[0], App.texts(ui).left(400)])
+			main.free()
+			continue
+		cont.pressed.emit()
+		for i in 600:
+			if ui.autosave.offer_panel == null:
+				break
+			await tree.process_frame
+		var r := RunSave.read(path)
+		var kp := path.get_base_dir().path_join(kept)
+		if ui.autosave.offer_panel != null or not ui.autosave.armed or not r["ok"] \
+				or r["payload"]["app"] != RunSave.app_version() or r["payload"]["content"] != ui.autosave.content:
+			p.append("a save of another build (%s) was not continued in this one: %s" % [c[0], App.texts(ui).left(300)])
+		if FileAccess.get_file_as_bytes(kp) != as_saved:
+			p.append("a save of another build (%s) was not kept aside as it was" % c[0])
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
+		main.free()
+	RunSave.remove(path)
+
+
+## The save of the release before (tests/fixtures/run-0.3.0.save, written by plant-v0.3.0's own autosave:
+## tools/plant3d/old_saves/): Continue makes the run again in this build (the plant at the saved step with the same
+## inputs, the procedure's progress and its deviation, the operation still pending, the trainee where they were) and
+## the file as saved is kept aside; the run goes on and is saved as this build's. Then the same save with a scenario
+## this plant hasn't: kept aside with its reason, a new run.
+func _old_release(tree: SceneTree, p: Array) -> void:
+	var path: String = Autosave.default_path
+	RunSave.remove(path)
+	var fx := FileAccess.get_file_as_bytes("res://tests/fixtures/run-0.3.0.save")
+	var d := RunSave.decode(fx)
+	if not d["ok"]:
+		p.append("the 0.3.0 fixture does not decode: %s" % d.get("text", ""))
+		return
+	var op: Dictionary = d["payload"]
+	if RunSave.version_of(op["app"]) != "0.3.0" or op["engine"]["inputs"].size() != 4 \
+			or op["tracker"]["deviations"].size() != 1:
+		p.append("the 0.3.0 fixture is not the one described (%s)" % op["app"])
+		return
+	RunSave.write(path, fx)
+	var main := App.start(tree)
+	var ui = main.ui
+	var txt := App.texts(ui)
+	var cont := App.find_button(ui, "Continue")
+	var kept: String = ui.autosave.kept
+	if cont == null or not txt.contains("saved by version 0.3.0") or not txt.contains("kept as %s" % kept) \
+			or not kept.contains("0.3.0"):
+		p.append("the 0.3.0 save was not offered to continue: %s" % txt.left(400))
+		main.free()
+		RunSave.remove(path)
+		return
+	cont.pressed.emit()
+	for i in 1200:
+		if ui.autosave.offer_panel == null:
+			break
+		await tree.process_frame
+	var e = ui.clock.engine
+	if ui.autosave.offer_panel != null or not ui.autosave.armed:
+		p.append("the 0.3.0 save was not made again: %s" % App.texts(ui).left(300))
+		main.free()
+		RunSave.remove(path)
+		return
+	if e.step_no != op["engine"]["step_no"] or var_to_bytes(e.inputs) != var_to_bytes(op["engine"]["inputs"]):
+		p.append("the 0.3.0 run made again is at step %d with %d inputs, not %d with %d" % [e.step_no, e.inputs.size(),
+				op["engine"]["step_no"], op["engine"]["inputs"].size()])
+	var t = ui.tracker
+	if t == null or t.proc.get("id") != "cold_start":
+		p.append("the 0.3.0 run's procedure did not come back")
+	else:
+		if t.index != op["tracker"]["index"] or t.log != op["tracker"]["log"]:
+			p.append("the 0.3.0 run's procedure is at step %d, not %d" % [t.index, op["tracker"]["index"]])
+		var dv: Array = t.deviations
+		if dv.size() != 1 or dv[0][1] != op["tracker"]["deviations"][0][1] or dv[0][2] < 0 or dv[0][2] >= e.events.size() \
+				or e.events[dv[0][2]][1] != "op" or e.events[dv[0][2]][2] != "30PAR10AA001":
+			p.append("the 0.3.0 run's deviation does not point at its operation: %s" % str(dv))
+	if ui.player.global_position.distance_to(Vector3(12.0, 9.0, -7.0)) > 0.01 or ui.player.mode != ui.player.Mode.FLY:
+		p.append("the 0.3.0 run did not put the trainee back: %s" % str(ui.player.global_position))
+	var kp := path.get_base_dir().path_join(kept)
+	if FileAccess.get_file_as_bytes(kp) != fx:
+		p.append("the 0.3.0 save was not kept aside as it was (%s)" % kept)
+	var r := RunSave.read(path)
+	if not r["ok"] or r["payload"]["app"] != RunSave.app_version() or ui.autosave.check(r["payload"]) != "":
+		p.append("the 0.3.0 run made again was not saved as this build's: %s" % (ui.autosave.check(r["payload"]) if r["ok"] else r["text"]))
+	# it goes on: the operation sent before the save is made at the next step
+	var n0: int = e.events.size()
+	ui.clock.run_steps(5)
+	var pending_done := false
+	for i in range(n0, e.events.size()):
+		if e.events[i].size() > 2 and e.events[i][1] == "op" and e.events[i][2] == "00PGC10AP002":
+			pending_done = true
+	if not pending_done:
+		p.append("the 0.3.0 run's pending operation was not made after it was continued")
+	main.free()
+	# started again: an ordinary save of this build
+	main = App.start(tree)
+	ui = main.ui
+	if App.find_button(ui, "Continue") == null or ui.autosave.kept != "":
+		p.append("the 0.3.0 run made again is not offered as this build's save: %s" % App.texts(ui).left(300))
+	main.free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
+	# the same save in a scenario this plant hasn't: it can't be made again; kept aside, a new run
+	var q := op.duplicate(true)
+	q["scenario"] = "no_such_scenario"
+	var bad := RunSave.encode(q)
+	RunSave.write(path, bad)
+	main = App.start(tree)
+	ui = main.ui
+	txt = App.texts(ui)
+	kept = ui.autosave.kept
+	if App.find_button(ui, "Continue") != null or not txt.contains("can't be continued") \
+			or not txt.contains("scenario is not in this version's plant") or not txt.contains("kept on this device as %s" % kept):
+		p.append("a 0.3.0 save that can't be made again was not refused with its reason and name: %s" % txt.left(400))
+	var nb := App.find_button(ui, "New run")
+	if nb != null:
+		nb.pressed.emit()
+	kp = path.get_base_dir().path_join(kept)
+	r = RunSave.read(path)
+	if nb == null or FileAccess.get_file_as_bytes(kp) != bad or not r["ok"] or r["payload"]["engine"]["step_no"] != 0:
+		p.append("a 0.3.0 save that can't be made again was not kept aside, or no new run started")
+	main.free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
+	RunSave.remove(path)
+
+
+## A run with a deviation in its procedure is saved and offered to continue (it was refused: the check expected a
+## deviation of two items, the tracker writes five).
+func _deviation(tree: SceneTree, p: Array) -> void:
+	var path: String = Autosave.default_path
+	RunSave.remove(path)
+	var main := App.start(tree)
+	var ui = main.ui
+	ui.start_procedure("cold_start", null, false)
+	ui.go_control_room()
+	ui.do_op({"kks": "00PGC10AP001", "do": "start"}, null)    # step 2's, at step 1: a deviation
+	ui.clock.run_steps(5)
+	var devs: Array = ui.tracker.deviations.duplicate(true)
+	if devs.is_empty():
+		p.append("the deviation test made no deviation")
+	ui.autosave.save_now()
+	var r := RunSave.read(path)
+	var why: String = ui.autosave.check(r["payload"]) if r["ok"] else r["text"]
+	if why != "":
+		p.append("a run with a deviation is refused: %s" % why)
+	main.free()
+	main = App.start(tree)
+	ui = main.ui
+	var cont := App.find_button(ui, "Continue")
+	if cont == null:
+		p.append("a run with a deviation was not offered: %s" % App.texts(ui).left(300))
+	else:
+		cont.pressed.emit()
+		await tree.process_frame
+		if ui.tracker == null or ui.tracker.deviations != devs:
+			p.append("a run with a deviation did not come back with it")
+	main.free()
+	RunSave.remove(path)

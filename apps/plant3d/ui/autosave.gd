@@ -1077,8 +1077,6 @@ func _migrate_frame() -> void:
 	_choose(q)
 
 
-func _place_offer() -> void:
-
 # ------------------------------------------------------------------ saving
 
 ## The plant's speed to keep: behind the Workshop, the speed it had before (it pauses the clock only while it shows).
