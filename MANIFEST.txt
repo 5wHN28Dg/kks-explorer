@@ -1,0 +1,25 @@
+# Evidence for PR #461
+scripts' commit: 324c146dbb5d8d37702371acc9a6564d001055ca
+commands: web: KKS_SHOTS=DIR platform/linux/e2e/test_web_about.py; plant: OFFSCREEN_GODOT_DATA=<empty dir> tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --script tools/ui_audit/plant_audit.gd -- --out=DIR [--phone] (03_about); gnome: KKS_SHOTS=DIR apps/gnome/e2e/headless.sh python3 test_gnome.py Gnome.test_zzzzzzzzz_about (gnome-about-details.png). All from 324c146d's text.
+data: synthetic (the test fixtures)
+
+sha256 per image:
+e4c8237f74c28ea098e6b4754a41cd926a935f143452ed0a299b2865d2a8fd1b  gnome-about-details.png
+b9c59bb4ed016605fbe6340ff6240651ee26e43c7195efe655b8a9bcf5f7efc5  plant-about-accessibility-desktop.png
+be6f058aa7f7152e739e583c18d628455aefaab9c331c9e4f039a3b3b3fed8b5  plant-about-phone.png
+34e4e06524deaacac7e3ee5e60dabc2f2c9e3af37ef4af25222a5faa69b2d5c5  web-about-accessibility-chromium-desktop-light.png
+6efcf87fcc238c62ecad85489a6d915fee68c02c20e3c7efc327438d42558845  web-about-accessibility-chromium-phone-dark.png
+6efcf87fcc238c62ecad85489a6d915fee68c02c20e3c7efc327438d42558845  web-about-accessibility-chromium-phone-light.png
+2bc697e20323fbf5fe7b037f4df8cc0227e2f15c7c2bf0e1535a0d49aaa5d7d6  web-about-accessibility-chromium-zoom200-dark.png
+3e6e9e65e5d06c645ec980165b256962de436192b22997d1ad4c2f05a756d423  web-about-accessibility-firefox-desktop-light.png
+6645b7d38280539b5ffdf31817b497ff3fa6d631bbf06fb4fea82bcfd5137eb4  web-about-accessibility-firefox-phone-dark.png
+6645b7d38280539b5ffdf31817b497ff3fa6d631bbf06fb4fea82bcfd5137eb4  web-about-accessibility-firefox-phone-light.png
+f9e9b267caf1a5b6d9b1d07344d888cd8a9d311ceca01fc9b8e6bd4716bc3509  web-about-accessibility-firefox-zoom200-dark.png
+8ba1b248d8c6da24739ef8df8e342be07c5e587382016545b430ff461f752026  web-about-accessibility-webkit-desktop-light.png
+fb352ad6be14cf04880f181be7451ff12a192984b92beae1a65171f9b8624a64  web-about-accessibility-webkit-phone-dark.png
+fb352ad6be14cf04880f181be7451ff12a192984b92beae1a65171f9b8624a64  web-about-accessibility-webkit-phone-light.png
+537f8b85cfacdd23c45558f02acc663dc42ead854af9ffef92b599e478392d26  web-about-accessibility-webkit-zoom200-dark.png
+
+Added 2026-11-21: from the build of main + #461 (324c146d) + #462 (5d58922e) + #465 (532a47f8): Windows UIA e2e on kks-win11 (KKS_SHOTS), Android test_app2 (KKS_SHOTS) on the Pixel_9_Pro_XL emulator; synthetic test servers.
+2d6dd14f274d70db3cdd52260ce92a067760c41b538aad4057ffe38c8d5d8afd  windows-about-accessibility.png
+b20164adbd1ec8d469f2a5ee74f817abaa7c7a6db5db944ddcb4e17a100e8495  android-about-accessibility-light.png
