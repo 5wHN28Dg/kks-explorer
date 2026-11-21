@@ -1025,7 +1025,9 @@ class Windows(unittest.TestCase):
         self.check('applinkf0.uia', ['click\tEdit', 'set\tNotes\ttyped, not saved yet'])
         self.check('applinkf1.uia', ['wait\t~A link from another app opens once the form is saved or cancelled\t20',
                                      'value\tNotes\ttyped, not saved yet', 'sleep\t2500', 'value\tNotes\ttyped, not saved yet',
-                                     'click\tCancel', 'wait\t11LAB70AA602\t20'], link='walkdown://kks/11LAB70AA602')
+                                     # (typed text: Cancel asks first since #436; Discard)
+                                     'click\tCancel', 'wait\tDiscard your edits?\t10', 'click\tDiscard',
+                                     'wait\t11LAB70AA602\t20'], link='walkdown://kks/11LAB70AA602')
         # malformed links do nothing: each would open something if it were read loosely
         self.check('applink5.uia', ['close\tThe control loop in one picture', 'gone\tThe control loop in one picture'])
         self.check('applink6.uia', ['sleep\t2000', 'gone\t~Instrumentation and control — '], link='walkdown://course/inc/loop?x=1')
