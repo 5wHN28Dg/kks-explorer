@@ -149,6 +149,16 @@ class WebValve(unittest.TestCase):
             self.ask_discard(page)
             page.wait_for_selector('#layer .vsym')
             self.assertEqual(page.input_value('#f_notes'), '')
+            # Save, then Cancel: what was saved is not "typed" any more (no question), the form closes
+            page.click('button[aria-label="Edit Notes"]')
+            page.fill('#f_notes', 'saved note')
+            page.click('#eqSave button:text-is("Save")')
+            page.wait_for_function("() => (document.getElementById('toast')?.textContent || '').startsWith('Saved')", timeout=15000)
+            page.click('#eqSave button:text-is("Cancel")')
+            page.wait_for_timeout(500)
+            self.assertEqual(page.locator('dialog.kconfirm').count(), 0, 'asked about text that was saved')
+            page.wait_for_selector('#layer .vsym')
+            self.assertEqual(page.input_value('#f_notes'), 'saved note')
             # Confirm: sent as it is
             page.click('#valveSec button:text-is("Confirm type")')
             page.wait_for_function("() => document.getElementById('vtLine')?.textContent === 'Valve type: gate valve, motor-operated (confirmed)'",
