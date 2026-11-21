@@ -1122,7 +1122,7 @@ func _old_release(tree: SceneTree, p: Array) -> void:
 		txt = App.texts(ui.autosave.offer_panel) if ui.autosave.offer_panel != null else ""
 		fo = ui.root.get_viewport().gui_get_focus_owner()
 		if not txt.contains("came out differently") or not txt.contains("00QFA10AN001 start at 0:00:00 of plant time") \
-				or not txt.contains("done in the saved run, unknown now") or ui.autosave.armed \
+				or not txt.contains("done in the saved run, not made now") or ui.autosave.armed \
 				or FileAccess.get_file_as_bytes(path) != bad or fo == null or not fo is Button or fo.text != "Continue anyway":
 			p.append("an action that came out otherwise was not said before anything was replaced: %s, focus %s"
 					% [txt.left(400), str(fo)])
@@ -1210,10 +1210,23 @@ func _remap(p: Array) -> void:
 	var new_ev := [[4, "y"], [5, "alarm"], [5, "op", "A"], [5, "op", "B"], [6, "x"]]
 	var t: Dictionary = Migrate.remap_tracker({"_seen": 2, "ev_from": 1, "ev_to": 3, "deviations": [[5, "t", 1, 0, 0]]},
 			old_ev, new_ev, 6)
-	if t["_seen"] != 4 or t["ev_from"] != 2 or t["ev_to"] != 5 or t["deviations"][0][2] != 3:
+	if t["_seen"] != 4 or t["ev_from"] != 3 or t["ev_to"] != 5 or t["deviations"][0][2] != 3:
 		p.append("the procedure's event positions were not moved by their place in their step: %s" % str(t))
 	# ended at step 100, saved later with no events after it; the run made again has an alarm at 300: not the procedure's
 	t = Migrate.remap_tracker({"_seen": 1, "ev_from": 0, "begin_step": 100, "ev_to": 1, "end_step": 100, "deviations": []},
 			[[100, "op", "A"]], [[100, "op", "A"], [300, "alarm"]], 500)
 	if t["ev_from"] != 0 or t["ev_to"] != 1 or t["_seen"] != 2:
 		p.append("a procedure's end was not moved by its step: %s" % str(t))
+	# the outcomes compared after a replay: a permit's "done" (its action is "done" too) refused now; the plant's own
+	# events and the new run's extra ones are not the trainee's; one event more earlier shifts nothing; text from the
+	# file is shown only as short plain words
+	var d: Array = Migrate.diff_events(
+			[[10, "permit", "W1", "done", "P", "done", []], [12, "op", "A1", "start", "done", []],
+				[13, "permit", "W2", "auto", null, "done", []]],
+			[[9, "op", "X9", "stop", "done", []], [10, "permit", "W1", "done", "P", "refused", ["authority"]],
+				[12, "op", "A1", "start", "done", []]])
+	if d.size() != 1 or not d[0].contains("W1 done P at 0:00:01 of plant time: done in the saved run, refused now"):
+		p.append("a permit refused after the replay was not found, or other events were: %s" % str(d))
+	d = Migrate.diff_events([[12, "op", "\u202e" + "x".repeat(20), "start", "done", []]], [])
+	if d.size() != 1 or d[0].contains("\u202e") or not d[0].contains("unknown start"):
+		p.append("text from the file reached the words as it is: %s" % str(d))

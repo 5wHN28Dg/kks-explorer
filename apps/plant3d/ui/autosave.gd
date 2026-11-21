@@ -1184,7 +1184,7 @@ func _migrate_frame() -> void:
 	if why != "":
 		migrating = null
 		_offer_title.text = "The saved run can't be continued"
-		_focus_new_run(true)
+		_set_buttons([["New run", func(): _choose({})]], 0)   # (Back would only make it again to the same end)
 		_offer_text.text = ("Because %s. It is kept on this device as %s; nothing of it is "
 				+ "lost. Choose New run to start afresh.") % [why, kept]
 		last_error = why

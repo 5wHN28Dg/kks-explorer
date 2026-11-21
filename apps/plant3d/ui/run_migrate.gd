@@ -147,48 +147,67 @@ func made_again() -> String:
 ## or unknown in this version's plant, or the other way round), in words, at most `most`; [] when every one came out
 ## the same. The engine logs an input when it is queued and decides it at its step, so the input logs alone can't tell.
 func differences(most := 3) -> Array:
-	var a := outcomes(p["engine"]["events"])
-	var b := outcomes(e.events)
+	return diff_events(p["engine"]["events"], e.events, most)
+
+
+## differences() between two event lists (the saved run's, the run made again's).
+static func diff_events(old_events: Array, new_events: Array, most := 3) -> Array:
+	var a := outcomes(old_events)
+	var b := outcomes(new_events)
+	# matched by what the action was (its event without its outcome), in order, step by step: an action the new run
+	# leaves out, or one it decides otherwise, is a difference; one only the new run has (the plant's own) is not
+	var now := {}
+	for y in b:
+		var key := var_to_bytes(y[0])
+		if not now.has(key):
+			now[key] = []
+		now[key].append(y)
 	var out: Array = []
 	var n := 0
-	for i in maxi(a.size(), b.size()):
-		var x = a[i] if i < a.size() else null
-		var y = b[i] if i < b.size() else null
-		if x == y:
+	for x in a:
+		var key := var_to_bytes(x[0])
+		var same = null
+		var list: Array = now.get(key, [])
+		for i in list.size():
+			if list[i][0] == x[0]:
+				same = list[i]
+				list.remove_at(i)
+				break
+		if same != null and same[1] == x[1]:
 			continue
 		n += 1
 		if out.size() < most:
-			var w = x if x != null else y
-			out.append("%s at %s of plant time: %s in the saved run, %s now" % [_words(w), W.model_time(w[0]),
-					_outcome(x), _outcome(y)])
+			out.append("%s at %s of plant time: %s in the saved run, %s now" % [_words(x[0]), W.model_time(x[0][0]),
+					x[1], "not made" if same == null else same[1]])
 	if n > out.size():
 		out.append("and %d more" % (n - out.size()))
 	return out
 
 
-## Each decided input's event, up to its outcome: [step, kind, …, "done" | "refused" | "unknown"], in order.
+## Each decided action's event as [what it was, its outcome]: what it was is the event up to its outcome, which is the
+## last "done", "refused" or "unknown" in it ("done" is also a permit's action); the plant's own ("auto") are left out.
 static func outcomes(events: Array) -> Array:
 	var out: Array = []
 	for ev in events:
-		if ev.size() < 3 or typeof(ev[1]) != TYPE_STRING or not INPUT_SIZES.has(ev[1]):
+		if ev.size() < 3 or typeof(ev[1]) != TYPE_STRING or not INPUT_SIZES.has(ev[1]) or "auto" in ev:
 			continue
-		for k in range(2, ev.size()):
+		for k in range(ev.size() - 1, 1, -1):
 			if typeof(ev[k]) == TYPE_STRING and ev[k] in ["done", "refused", "unknown"]:
-				out.append(ev.slice(0, k + 1))
+				out.append([ev.slice(0, k), ev[k]])
 				break
 	return out
 
 
+## An action in words: its strings after the kind (the code and what was done, for an operation), each a short plain
+## word or "unknown" (they come from the file), at most four.
 static func _words(w: Array) -> String:
 	var parts: Array = []
-	for k in range(2 if w[1] == "op" else 1, w.size() - 1):
-		if typeof(w[k]) == TYPE_STRING:
-			parts.append(RunSave.version_of(w[k]) if w[k].length() > 24 else w[k])
+	for k in range(2 if w[1] == "op" else 1, w.size()):
+		if typeof(w[k]) == TYPE_STRING and parts.size() < 4:
+			parts.append(RunSave.version_of(w[k]))
 	return " ".join(parts)
 
 
-static func _outcome(w) -> String:
-	return "not made" if w == null else str(w[-1])
 
 
 func fraction() -> float:
@@ -263,7 +282,20 @@ static func _pos_in_step(pos: int, s: int, old_ev: Array, new_ev: Array) -> int:
 	var first := _first_at(new_ev, s)
 	var n := _first_at(new_ev, s + 1) - first
 	var rank := clampi(pos - first_old, 0, n_old)
-	return first + (n if rank >= n_old else mini(rank, n))
+	if rank >= n_old:
+		return first + n
+	# the same event in the new step (the k-th like it, as in the old step), else the same rank
+	var ev = old_ev[first_old + rank]
+	var k := 0
+	for i in range(first_old, first_old + rank):
+		if old_ev[i] == ev:
+			k += 1
+	for i in range(first, first + n):
+		if new_ev[i] == ev:
+			if k == 0:
+				return i
+			k -= 1
+	return first + mini(rank, n)
 
 
 ## A deviation's op event moved to the new list: the op event of the same rank among its step's op events (-1 when
