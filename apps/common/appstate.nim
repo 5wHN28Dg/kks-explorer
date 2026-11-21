@@ -93,7 +93,7 @@ else:
 proc keyJson(k: PrivateKey): JNode = newObj(@[("scalar", newStr(hex(k.scalar))), ("pub", newStr(b64u(k.pub)))])
 proc keyOf(j: JNode): PrivateKey = PrivateKey(scalar: unhex(j["scalar"].s), pub: unb64u(j["pub"].s))
 
-const ForgotPassword* = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and open it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME."
+const ForgotPassword* = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and use it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME."
   ## the way back in after a forgotten password, under "Join through a server" (#449; the web's sign-in and Android
   ## say the same words: tests/test_forgot_password.py): the manager (or an admin, for a member) makes a one-time password link
   ## (admin.html → Users → Password link); the manager's own comes from the server's command line

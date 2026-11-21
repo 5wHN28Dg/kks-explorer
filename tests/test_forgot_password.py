@@ -58,6 +58,13 @@ class ForgotPassword(unittest.TestCase):
         self.assertIn('SelectionContainer { Dim(FORGOT_PASSWORD) }', body(self.kt, 'private fun ServerJoin(', '\n}\n'))
         self.assertIn('label(ForgotPassword, "dim-label", selectable = true)', body(self.gnome, 'proc setupScreen(', '# a new plant'))
 
+    def test_link_not_valid(self):
+        """a password link that is used or out of date: the screen says who makes a new one, in the line's words, and
+        leads back to sign in"""
+        src = body(self.web, "if (h.get('reset'))", 'try {')
+        self.assertIn("K.box('Link not valid', `${info.error} Ask your plant's manager for a new one (an admin can also make one for a member).`, 'Back to sign in', done)", src)
+        self.assertNotIn('Ask an admin', src)
+
     def test_not_before_setup(self):
         """before the server has a manager there is nobody to ask: the web's sign-in screen leaves the line out"""
         self.assertIn("cfg?.setup_needed ? null : K.h('p', {id: 'forgotPw'}", body(self.web, 'K.signIn = ', 'K.signUp = '))
@@ -65,7 +72,7 @@ class ForgotPassword(unittest.TestCase):
     def test_what_it_says_is_true(self):
         s = literal(self.nim, r'const ForgotPassword\* = ')
         self.assertIn('password link', s)
-        self.assertIn('3 days', s)
+        self.assertIn('use it within 3 days', s)   # (the link's time is checked again when the password is saved)
         self.assertIn('kks-server reset-password --user NAME', s)
         server = read('platform', 'linux', 'src', 'kksl', 'server.nim')
         # Users → Password link (admin.html) and the command both make a reset token of 3 days

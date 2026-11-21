@@ -218,6 +218,12 @@ class WebSignInBeforeSetup(unittest.TestCase):
                 expect(page.locator('#kov form')).to_contain_text('No manager account exists yet')
                 expect(page.locator('#kov form #signinAbout')).to_be_visible()
                 self.assertEqual(page.locator('#kov form #forgotPw').count(), 0, name)
+                # a password link that is not valid says who makes a new one and leads back to sign in (#462)
+                page.goto(self.base + '/#reset=not-a-token')
+                page.reload()                                          # (a new hash alone loads nothing)
+                expect(page.locator('#kov .box')).to_contain_text("Ask your plant's manager for a new one (an admin can also make one for a member).")
+                page.locator('#kov .box').get_by_role('button', name='Back to sign in').click()
+                expect(page.locator('#kov form #signinAbout')).to_be_visible()
                 browser.close()
 
 

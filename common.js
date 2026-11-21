@@ -233,7 +233,8 @@ K.start = async () => {
       samePw(v); await K.api('/api/setup', {token: h.get('setup'), username: v.username, password: v.password, full_name: v.full_name, position: v.position}); done() }));
   if (h.get('reset')) {
     const info = await K.api(`/api/token-info?kind=reset&token=${encodeURIComponent(h.get('reset'))}`).catch(e => ({error: e.message}));
-    if (info.error) { K.box('Link not valid', `${info.error} Ask an admin for a new one.`); return new Promise(() => {}) }
+    // (who can make a new one, as the sign-in screen's line says; and the way back to sign in, #462)
+    if (info.error) { K.box('Link not valid', `${info.error} Ask your plant's manager for a new one (an admin can also make one for a member).`, 'Back to sign in', done); return new Promise(() => {}) }
     return new Promise(() => K.form('Set your password', '', [{name: 'u', label: '', value: info.username, ac: 'username'}, ...pwFields], 'Save password', async v => {
       samePw(v); await K.api('/api/password-reset', {token: h.get('reset'), password: v.password}); done() }));
   }
@@ -283,7 +284,7 @@ K.watchLease = () => {
 // The way back in after a forgotten password (#449; the same words on every client's sign-in form, tests/test_forgot_password.py):
 // the manager (or an admin, for a member) makes a one-time password link (admin.html → Users → Password link, /api/users/N/reset); the
 // manager's own comes from the server's command line (kks-server reset-password, reset-manager).
-K.forgotPassword = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and open it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME.";
+K.forgotPassword = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and use it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME.";
 // The sign-in screen. Where the manager has set a sign-up code (/api/config: signup), it also leads to "Request an
 // account": the request waits for an admin (Manage → Users); until then signing in says so.
 K.signIn = cfg => K.form(cfg?.plant_name || 'Walkdown', cfg?.setup_needed ? 'No manager account exists yet: use the setup link printed on the server console.' : 'Sign in to see plant data.',
