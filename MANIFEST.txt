@@ -1,0 +1,67 @@
+# Evidence for PR #462
+scripts' commit: e14524d9 (sign-in, Android, GNOME shots); 3bfe1b28's common.js for the overlay shots
+commands: web sign-in: KKS_REPO=. KKS_SERVER=... python scripts/web_signin_shots.py DIR (2734d625's common.js); web overlays: KKS_REPO=. KKS_SERVER=... python scripts/overlay_shots.py DIR (3bfe1b28: sign-in before setup, setup, sign-up, password link, link not valid; 320x640 and 320x400 at scale 2); android: test_app2's join helper on the emulator (Pixel_9_Pro_XL), font scale 1.0 and 2.0, light and dark (e14524d9's wording); gnome: test_gnome.py test_systems under headless.sh (join-server-form, e14524d9's wording)
+data: synthetic (fresh test servers, 'Test plant')
+
+sha256 per file:
+4b05ba6d836edccc3c590fe2f6882f471d754eb5993d5f8e30efc91bbe65e392  android-join-server-dark-font1.0.png
+d269b3e113ddd0cc0fbcef6aae4fd7b647225176581cf052c2c5d004b2577409  android-join-server-dark-font2.0.png
+85ad1a6ccd67b5ac4829134b09908df2d7a2cea2acd952f0150aed8b372dd16d  android-join-server-light-font1.0.png
+cfb66d86e257f14b6e8ae0dab2423a4375b2d304999374ecd4b0bb034b454ea2  android-join-server-light-font2.0.png
+045c2ac01ee34150416531f170f1a594755dbfd950ee247d42c25d4cb0c1671e  join-server-form.png
+389c390d034a1af88a9dfcce7a7eb75d062ba3f9719610f9bb73ef4d64bad685  web-chromium-password-link-form-320.png
+116a1c86a3245b2a207198a0fd4f947d9a5bd86fd9688bc317e5e80f9efb7039  web-chromium-password-link-form-zoom200.png
+2da49460fae445d6caade551f2caad54e80a7df0afa82cfd7fffe4b267247044  web-chromium-password-link-not-valid-320.png
+5dc84a8566df680a89f2fe7f682479728b72c23085a07d36b40150aa599ad258  web-chromium-password-link-not-valid-zoom200.png
+7fd5791874162f2701f1a92be04ab9c3b6a50157ba0a87aa6e55a4d02d68b62f  web-chromium-setup-form-320.png
+79f3be16b3e6c330dddd299f909f7c140d2e5437d19a17fc339d8535fa2d90fe  web-chromium-setup-form-zoom200.png
+9fa48909e3054064b2aac046d7420aa3b2140cd195bbef570fdec996dba88cb3  web-chromium-signin-before-setup-320.png
+2b76f6a2ff6f47d2e4fe797e89149752e36dcffccf2e2e676c1387bdc0633e93  web-chromium-signin-before-setup-zoom200.png
+b7ddb12d905f17484cb4caf68bc194cb695ec9a36f7ce7bcf32e045f129976d3  web-chromium-signin-phone412-dark.png
+b7ddb12d905f17484cb4caf68bc194cb695ec9a36f7ce7bcf32e045f129976d3  web-chromium-signin-phone412-light.png
+cc274f343bf7a513a67867fc08842ea8a62241c1a0fb3c1197af0bfb8d375d96  web-chromium-signin-signup-320-dark.png
+cc274f343bf7a513a67867fc08842ea8a62241c1a0fb3c1197af0bfb8d375d96  web-chromium-signin-signup-320-light.png
+1e5a4f23a19ec8499e1dd0a399b47256bafea73265b2b4e2bdccfa174c307461  web-chromium-signin-signup-phone412-dark.png
+1e5a4f23a19ec8499e1dd0a399b47256bafea73265b2b4e2bdccfa174c307461  web-chromium-signin-signup-phone412-light.png
+64a4fbeaa79e1217e39e617d2d46dd964d3f0b7154a7ac523ae66646cbe72e48  web-chromium-signin-signup-zoom200-dark.png
+64a4fbeaa79e1217e39e617d2d46dd964d3f0b7154a7ac523ae66646cbe72e48  web-chromium-signin-signup-zoom200-light.png
+c8e05d9a7874750fbb5610b4a2e72d24a314e2b36d238904298d94f3fcb55325  web-chromium-signup-form-320.png
+deda2f503810047f9432e3033c8f0a617922a95841b296429604ec8560b7ff84  web-chromium-signup-form-zoom200.png
+00ab1eb31237aaa0b66335805c6bd11e7d4fa87674acf4766c7f5d778792f56c  web-firefox-password-link-form-320.png
+e9f883bb29154300eaf2fad20a9e670fd390e2f4ee2cc64587ab1fc919b16514  web-firefox-password-link-form-zoom200.png
+2cefd8c84a8872e4ce215912a86b611fc17a7ec2da318aa4197f2ff1ac924589  web-firefox-password-link-not-valid-320.png
+d0565bafd09b5e4fe4c56a39d31ae3c2d7878b392f5820e9ea594956e86f78ad  web-firefox-password-link-not-valid-zoom200.png
+ddaeee027b0d762482120814892d69d9206468bfa2301a48070ba0df6493d412  web-firefox-setup-form-320.png
+1b12c2de4be136a9cf1b012d981ff4486a311e6da2a103a39e6922d867b573cd  web-firefox-setup-form-zoom200.png
+62c0f7d2f1581160b1b111199071a6bb71a8df4df01c2abaeba1b83b57e8e5ac  web-firefox-signin-before-setup-320.png
+99ed1d6ba9e1a2282b0e82501080b4a0beaec321391166bbb68f9d7e6782d6e2  web-firefox-signin-before-setup-zoom200.png
+4936e8d8af9adc475c0057907ebe5ff385e853322c34de3255f8a1e6841e86d5  web-firefox-signin-phone412-dark.png
+4936e8d8af9adc475c0057907ebe5ff385e853322c34de3255f8a1e6841e86d5  web-firefox-signin-phone412-light.png
+158957f686e39e821501d8846d98e4ab98dd4cb55fa6953463fb1e918caf74cb  web-firefox-signin-signup-320-dark.png
+158957f686e39e821501d8846d98e4ab98dd4cb55fa6953463fb1e918caf74cb  web-firefox-signin-signup-320-light.png
+a861b89efdcf42a360b25eddddce8937108a4f02d877eb3fec98828cab7ef5ef  web-firefox-signin-signup-phone412-dark.png
+a861b89efdcf42a360b25eddddce8937108a4f02d877eb3fec98828cab7ef5ef  web-firefox-signin-signup-phone412-light.png
+ff4398684599b2b8dec97f9a2dbafb075fd63db5195ea23a785171b585c23354  web-firefox-signin-signup-zoom200-dark.png
+ff4398684599b2b8dec97f9a2dbafb075fd63db5195ea23a785171b585c23354  web-firefox-signin-signup-zoom200-light.png
+a2d27bed6a97cc39f4bc0c0a14c44f4c1770cec83dc6e4ed795ad7b8754d76b4  web-firefox-signup-form-320.png
+b7287007f666256ef0521c2df58ff37117157fd4bf5ca0d750944221d6ef2dbc  web-firefox-signup-form-zoom200.png
+0aa8e4de8bcf1c9baf5dc95af963bf69a6d70a005e3014481447bdad5ffc382b  web-webkit-password-link-form-320.png
+36374c89ec27525a345a3e6492b8b0bcd8e8a51e034e33a242b925191cb427d4  web-webkit-password-link-form-zoom200.png
+b32bb7ffa3c3183b69680237bac90734f42a3c9f24534c1251b0158749e8aae9  web-webkit-password-link-not-valid-320.png
+a79bddd8044ab04558f2961a6e0b36968691322dce54c7a13041c7bc236538d9  web-webkit-password-link-not-valid-zoom200.png
+2164708c63685303bd0cfea335bdf31df577fb0595a1f25f9abef7e507bc828f  web-webkit-setup-form-320.png
+69401105bd9a668192e610f10d0e5aec9f4a51b1cf33cdb6a024eab469af46ae  web-webkit-setup-form-zoom200.png
+c27c2b645f48982f438e49c94188942bd190e142d03d41066586d3419a674c1c  web-webkit-signin-before-setup-320.png
+d0b7fc4f6a5af9f47e5a4fef901fbf62f59904a204901557260a590ac522c4a8  web-webkit-signin-before-setup-zoom200.png
+4bb0df8fad3d8c8c8f279378171c1d1d1877334ee67d9dc5fd9c44c3b3861f92  web-webkit-signin-phone412-dark.png
+4bb0df8fad3d8c8c8f279378171c1d1d1877334ee67d9dc5fd9c44c3b3861f92  web-webkit-signin-phone412-light.png
+2c9183a5a962e6ef5522e50c217afe7e95ebaed84d9ad699f632df095b465bce  web-webkit-signin-signup-320-dark.png
+2c9183a5a962e6ef5522e50c217afe7e95ebaed84d9ad699f632df095b465bce  web-webkit-signin-signup-320-light.png
+f5e4bb58b26534b31205bc496091d9c6364f837459d13cd4ec8aa72893805397  web-webkit-signin-signup-phone412-dark.png
+f5e4bb58b26534b31205bc496091d9c6364f837459d13cd4ec8aa72893805397  web-webkit-signin-signup-phone412-light.png
+1cb3fb5dbe30c0eeaab286755ea99c617d0cbd7d445213c6eb5de64c6693f23c  web-webkit-signin-signup-zoom200-dark.png
+1cb3fb5dbe30c0eeaab286755ea99c617d0cbd7d445213c6eb5de64c6693f23c  web-webkit-signin-signup-zoom200-light.png
+d9e966d19786df6784f20c5a7383a90cd5d6db21df33dad638bc8693eaa48424  web-webkit-signup-form-320.png
+3e09335dc17a7719bf28ad721bec0947fd042dbcef314539978911284a77681f  web-webkit-signup-form-zoom200.png
+87348251b2a14a7a160a5e156188c6e36b61e46a3e0b3a4c9ef28a32f19538db  scripts/overlay_shots.py
+3f5534d664c11f5a6e03392a8d145c083760bd5d7ea11d041514a08f68a02a09  scripts/web_signin_shots.py
