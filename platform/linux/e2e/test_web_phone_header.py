@@ -37,9 +37,13 @@ FOCUSED = "document.activeElement && (document.activeElement.id || document.acti
 class WebPhoneHeader(tws.WebSystems):
     """the server and plant of test_web_systems (its setUpClass), these tests instead of its own"""
 
-    def page_at(self, browser, w, h, scale, switch):
+    def page_at(self, browser, w, h, scale, switch, cls=False):
         ctx = browser.new_context(viewport={'width': w, 'height': h}, device_scale_factor=scale)
         ctx.add_init_script(CSP_WATCH)
+        if cls:
+            ctx.add_init_script("""window.__cls = 0; new PerformanceObserver(l => { for (const e of l.getEntries())
+                if (!e.hadRecentInput) { window.__cls += e.value; (window.__shifts ||= []).push([+e.value.toFixed(3),
+                  e.sources.map(s => s.node && (s.node.id || s.node.className || s.node.nodeName))]) } }).observe({type: 'layout-shift', buffered: true})""")
         r = ctx.request.post(self.base + '/api/login', data={'username': 'boss', 'password': 'a long password'},
                              headers={'Origin': self.base})
         self.assertTrue(r.ok, r.text())
@@ -53,7 +57,7 @@ class WebPhoneHeader(tws.WebSystems):
     def check_size(self, page, label, w, h):
         """the phone header at this size: what stays, its sizes, nothing overlapping or wider than the window"""
         order = page.evaluate(ORDER)
-        self.assertEqual(order, ['brand', 'search', 'sheetSel', 'revBtn', 'moreBtn', 'syncStatus', 'moreMenu']
+        self.assertEqual(order, ['brand', 'search', 'sheetSel', 'revBtn', 'moreBtn', 'floorChip', 'syncStatus', 'moreMenu']
                          + ['menu:' + i for i in MENU], label)
         self.assertTrue(page.evaluate("document.querySelector('header').classList.contains('phonehead')"), label)
         self.assertFalse(page.is_visible('.brand'), label)
@@ -155,6 +159,7 @@ class WebPhoneHeader(tws.WebSystems):
         page.wait_for_function("() => document.activeElement.id === 'moreBtn'")
         self.assertFalse(page.is_visible('#moreMenu'), label)
         page.click('#procDrawer [data-close]')
+        self.assertEqual(page.evaluate(FOCUSED), 'moreBtn', label + ': closing Procedures dropped the focus')
         # Tab out of the open menu closes it
         page.click('#moreBtn')
         page.focus('#manageBtn')
@@ -164,6 +169,48 @@ class WebPhoneHeader(tws.WebSystems):
         page.click('#moreBtn')
         page.mouse.click(5, page.viewport_size['height'] - 5)
         self.assertFalse(page.is_visible('#moreMenu'), label)
+        # ... also on a tag: the menu closes, the tag's panel doesn't open from the same tap
+        page.click('#moreBtn')
+        tag = page.locator('#layer .hs').first
+        box = tag.bounding_box()
+        page.mouse.click(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+        self.assertFalse(page.is_visible('#moreMenu'), label)
+        page.wait_for_timeout(300)
+        self.assertFalse(page.evaluate("document.getElementById('panel').classList.contains('open')"), label + ': the tap went through')
+        page.mouse.click(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)   # the next tap opens it as before
+        page.wait_for_function("() => document.getElementById('panel').classList.contains('open')")
+        page.evaluate("closePanel()")
+        # the browser's Back closes the menu and stays on the page; Escape leaves no history entry behind
+        url = page.url
+        page.click('#moreBtn')
+        page.go_back()
+        page.wait_for_function("() => document.getElementById('moreMenu').hidden")
+        self.assertEqual(page.url, url)
+        self.assertTrue(page.evaluate("typeof cur !== 'undefined' && !!cur"))
+        self.assertEqual(page.get_attribute('#moreBtn', 'aria-expanded'), 'false')
+        page.click('#moreBtn')
+        page.keyboard.press('Escape')
+        page.wait_for_function("() => !history.state || !history.state.kksMenu")
+        # the floor: chosen in the menu, it stays in view beside More, which opens the menu on it
+        self.assertFalse(page.is_visible('#floorChip'))
+        page.evaluate("document.getElementById('floorSel').append(Object.assign(document.createElement('option'), {value: '2', textContent: 'Floor 2'}))")
+        page.click('#moreBtn')
+        page.select_option('#floorSel', '2')
+        self.assertTrue(page.is_visible('#floorChip'), label)
+        self.assertEqual(page.text_content('#floorChip'), 'Floor 2')
+        self.assertEqual(page.get_attribute('#floorChip', 'aria-label'), 'Showing Floor 2: choose another floor')
+        x, y, bw, bh = page.evaluate(BOX, 'floorChip')
+        self.assertGreaterEqual(min(bw, bh), 48, label)
+        page.keyboard.press('Escape')
+        page.screenshot(path=os.path.join(SHOTS, f'phone-header-{label}-floor.png'))
+        page.click('#floorChip')
+        self.assertTrue(page.is_visible('#moreMenu'))
+        self.assertEqual(page.evaluate(FOCUSED), 'floorSel')
+        page.select_option('#floorSel', '')
+        self.assertFalse(page.is_visible('#floorChip'))
+        page.keyboard.press('Escape')
+        # the account's row says what it is
+        self.assertTrue(page.text_content('#manageBtn').startswith('Account ·'), page.text_content('#manageBtn'))
         # Android's Back (K.back) closes the menu first
         page.click('#moreBtn')
         self.assertTrue(page.evaluate("K.back()"))
@@ -182,6 +229,42 @@ class WebPhoneHeader(tws.WebSystems):
         self.assertEqual(page.get_attribute('#moreBtn', 'aria-label'), 'More')
         self.assertFalse(page.is_visible('#moreBtn .count'), label)
 
+    def evidence(self, page, label, w):
+        """for the reviewers: the accessibility tree; offline with changes queued; long and Arabic names, hostile text,
+        large counts; each still fitting (nothing wider than the window, the controls 48 px)"""
+        aria = []
+        for what in ('closed', 'open'):
+            if what == 'open': page.click('#moreBtn')
+            aria.append(f'--- menu {what}\n' + page.locator('header').aria_snapshot())
+        page.keyboard.press('Escape')
+        page.evaluate("STATE.queue = 3; updateQueueBadge()")
+        aria.append('--- 3 waiting for approval\n' + page.locator('header').aria_snapshot())
+        with open(os.path.join(SHOTS, f'phone-header-{label}-aria.txt'), 'w') as f: f.write('\n'.join(aria) + '\n')
+        # offline, three changes queued (the line wraps, the controls stay)
+        page.evaluate("""K.online = false; K.flushSoon = () => {}; K.outbox = K.outbox.concat([{kind: 'equipment', payload: {}},
+            {kind: 'equipment', payload: {}}, {kind: 'equipment', payload: {}}]); K.renderStatus()""")
+        page.wait_for_function("() => /Offline.*3 queued/.test(document.getElementById('syncStatus').textContent)")
+        page.screenshot(path=os.path.join(SHOTS, f'phone-header-{label}-offline.png'))
+        # long names, an Arabic name with a code in it, hostile text, large counts
+        page.evaluate("""(() => {
+            document.querySelector('#sheetSel option:checked').textContent = 'Feedwater and condensate, train north, pumps 1 to 4, discharge to 14.5 m (sheet 3 of 7)';
+            document.getElementById('who').replaceChildren(K.userText('تالا المهندسة 11LAB70AA500 <b>x</b>\u202e reversed\u202c 🙂 ' + 'W'.repeat(40)));
+            document.getElementById('revCount').textContent = '1234';
+            STATE.queue = 128; updateQueueBadge() })()""")
+        for i in ('q', 'sheetSel', 'revBtn', 'moreBtn'):
+            x, y, bw, bh = page.evaluate(BOX, i)
+            self.assertGreaterEqual(min(bw, bh), 48, f'{label}: {i} with long text')
+            self.assertLessEqual(x + bw, w + 0.5, f'{label}: {i} with long text')
+        wide = page.evaluate("w => [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > w + 0.5 && !e.closest('#layer,#stage,#stage2')).map(e => (e.id || e.className || e.tagName) + ':' + Math.round(e.getBoundingClientRect().right) + '/' + e.scrollWidth).concat([document.body.scrollWidth, document.querySelector('header').scrollWidth, document.getElementById('app').scrollWidth])", w)
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), w, f'{label}: long text widened the page: {wide}')
+        page.screenshot(path=os.path.join(SHOTS, f'phone-header-{label}-long.png'))
+        page.click('#moreBtn')
+        mx, my, mw, mh = page.evaluate(BOX, 'moreMenu')
+        self.assertLessEqual(mx + mw, w + 0.5, label + ': the menu with a long name')
+        self.assertIn('<b>x</b>', page.text_content('#manageBtn'))   # shown as text
+        page.screenshot(path=os.path.join(SHOTS, f'phone-header-{label}-long-menu.png'))
+        page.keyboard.press('Escape')
+
     def run_engine(self, name):
         with sync_playwright() as p:
             browser = getattr(p, name).launch()
@@ -198,13 +281,20 @@ class WebPhoneHeader(tws.WebSystems):
             for label, w, h, scale in SIZES:
                 ctx, page, errors = self.page_at(browser, w, h, scale, True)
                 self.check_size(page, f'{label}-{name}', w, h)
+                if label in ('320', 'landscape'):
+                    self.evidence(page, f'{label}-{name}', w)
                 if label == '412':
                     self.keyboard(page, f'{label}-{name}')
                     self.queue_count(page, f'{label}-{name}')
-                    # turned to a wide window: the desktop's header, each control back in its place; and back again
+                    # turned to a wide window with the menu open on Procedures: the desktop's header, each control
+                    # back in its place, the focus still on Procedures; and back again
+                    page.click('#moreBtn')
+                    page.focus('#procBtn')
                     page.set_viewport_size({'width': 1200, 'height': 800})
                     page.wait_for_function("() => !document.querySelector('header').classList.contains('phonehead')")
                     self.assertEqual(page.evaluate(ORDER), DESKTOP, name)
+                    self.assertEqual(page.evaluate(FOCUSED), 'procBtn', name)
+                    self.assertFalse(page.is_visible('.inmenu'), name)
                     page.set_viewport_size({'width': 412, 'height': 846})
                     page.wait_for_function("() => document.querySelector('header').classList.contains('phonehead')")
                     self.check_size(page, f'{label}-again-{name}', 412, 846)
@@ -213,11 +303,28 @@ class WebPhoneHeader(tws.WebSystems):
                     page.wait_for_function("() => typeof cur !== 'undefined' && cur", timeout=30000)
                     self.assertEqual(page.locator('#moreBtn').count(), 1, name)
                     self.assertEqual(page.evaluate("location.search"), '')
+                    page.goto(self.base + '/?ux=phone-header,something-else')
+                    page.wait_for_function("() => typeof cur !== 'undefined' && cur", timeout=30000)
+                    self.assertEqual(page.evaluate("localStorage.getItem('kks-ux')"), 'phone-header', 'only known switches are kept')
                     page.goto(self.base + '/?ux=')
                     page.wait_for_function("() => typeof cur !== 'undefined' && cur", timeout=30000)
                     self.assertEqual(page.locator('#moreBtn').count(), 0, name)
                 ctx.close()
                 self.assertEqual(errors, [], f'{label}-{name}')
+            # layout shift while the page loads (Chromium measures it): main's phone page already shifts by about
+            # 0.3 (the header filling in after the scripts run, a pre-existing fail with its own issue); switched on it
+            # must not shift more than switched off
+            if name == 'chromium':
+                got = {}
+                for sw in (False, True):
+                    ctx, page, errors = self.page_at(browser, 412, 846, 2.625, sw, cls=True)
+                    page.wait_for_timeout(1500)
+                    got[sw] = (page.evaluate("window.__cls"), page.evaluate("JSON.stringify(window.__shifts || [])"))
+                    ctx.close()
+                with open(os.path.join(SHOTS, 'phone-header-cls.txt'), 'w') as f:
+                    for sw, (v, shifts) in got.items():
+                        f.write(f'412 x 846, Chromium, switch {"on" if sw else "off"}: CLS {v:.4f}; shifts {shifts}\n')
+                self.assertLessEqual(got[True][0], got[False][0] + 0.001, 'the phone header shifts more than main')
             # switched on, a desktop window: main's header
             ctx, page, errors = self.page_at(browser, 1200, 800, 1, True)
             self.assertEqual(page.evaluate(ORDER), DESKTOP, name)

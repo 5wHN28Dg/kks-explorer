@@ -192,20 +192,24 @@ dialog.multi label.radio input{width:20px;height:20px;margin:0}
 .app .app-hide{display:none}
 /* the phone header (#367; behind the 'phone-header' switch until the owner's check): at phone sizes index.js sets
    header.phonehead and moves the less used controls into More's menu; search, the sheet, Review and More stay, 48 px */
-header.phonehead{position:relative;gap:6px}
+header.phonehead{position:relative;gap:8px;overflow-x:clip}
 header.phonehead .brand{display:none}
 header.phonehead .search{flex:1 1 240px}
 header.phonehead #q,header.phonehead select{min-height:48px;font-size:16px}
-header.phonehead #sheetSel{flex:1 1 140px;min-width:0;max-width:100%}
+header.phonehead #sheetSel{flex:1 1 140px;width:140px;min-width:0;max-width:100%}
+#moreMenu>select{max-width:100%;width:100%;min-width:0}
 header.phonehead>.btn{min-height:48px;min-width:48px;display:inline-flex;align-items:center;justify-content:center}
-header.phonehead .sync{white-space:normal;flex:1 1 auto;min-width:0}
+header.phonehead .sync{white-space:normal;flex:1 1 auto;min-width:0;min-height:1.45em}
 @media (max-width:720px){header.phonehead .search,header.phonehead .sync{flex-basis:100%}}
-#moreBtn{font-size:22px;line-height:1;padding:0 10px}
-#moreMenu{position:absolute;right:8px;top:calc(100% + 4px);z-index:60;display:flex;flex-direction:column;gap:2px;width:max-content;min-width:min(220px,calc(100vw - 16px));max-width:calc(100vw - 16px);overflow:auto;overscroll-behavior:contain;background:var(--chrome2);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.5);padding:6px}
+#moreBtn{font-size:22px;line-height:1;padding:0 12px}
+#floorChip{max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;line-height:46px}
+.inmenu{display:none}
+#moreMenu{position:absolute;right:8px;top:calc(100% + 4px);z-index:60;display:flex;flex-direction:column;gap:4px;width:max-content;min-width:min(220px,calc(100vw - 16px));max-width:calc(100vw - 16px);overflow:auto;overscroll-behavior:contain;background:var(--chrome2);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5);padding:8px}
 #moreMenu[hidden]{display:none}
-#moreMenu>.btn,#moreMenu>select{display:flex;align-items:center;gap:6px;width:100%;min-height:48px;margin:0;border-radius:6px;padding:0 14px;text-align:left;font-size:16px}
+#moreMenu>.btn,#moreMenu>select{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;margin:0;border-radius:8px;padding:0 16px;text-align:left;font-size:16px}
 #moreMenu>.btn{border-color:transparent;background:none}
 #moreMenu>.btn:hover{background:var(--chrome3)}
+#moreMenu .inmenu{display:inline}
 #moreMenu>:focus-visible{outline:3px solid #fff;outline-offset:-3px}
 .app #moreMenu>.app-hide{display:none}
 .lk{display:flex;gap:6px;align-items:flex-start}.lk>input,.lk>textarea{flex:1;min-width:0}

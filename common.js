@@ -9,13 +9,15 @@ const K = {me: null, online: true, reauth: false, outbox: [], listeners: []};
 // hand POST bodies to the app); replies arrive via K.nativeReply. Everything else is the same as in a browser.
 // ---------- switches for changes waiting for the owner's check (the UI and UX policy's tier 2, its section 8.5) ----------
 // A switched change stays off until a release lists it in K.UX_ON. To try one before that, open any page once with
-// ?ux=NAME (several: ?ux=a,b); this browser keeps it until a page is opened with ?ux= and nothing after it.
+// ?ux=NAME (several: ?ux=a,b); this browser keeps it until a page is opened with ?ux= and nothing after it. Only the
+// names in K.UX_KNOWN are kept (a link can't switch on anything else).
 K.UX_ON = [];
+K.UX_KNOWN = ['phone-header'];
 K.ux = name => {
   try {
     const q = new URLSearchParams(location.search);
     if (q.has('ux')) {
-      localStorage.setItem('kks-ux', q.get('ux'));
+      localStorage.setItem('kks-ux', q.get('ux').split(',').filter(n => K.UX_KNOWN.includes(n)).join(','));
       q.delete('ux'); const rest = q.toString();
       history.replaceState(history.state, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
     }
