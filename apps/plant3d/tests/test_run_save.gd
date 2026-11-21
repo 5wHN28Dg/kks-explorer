@@ -1245,11 +1245,20 @@ func _kept_list(tree: SceneTree, p: Array) -> void:
 	var path: String = Autosave.default_path
 	var dir := path.get_base_dir()
 	var fx := FileAccess.get_file_as_bytes("res://tests/fixtures/run-0.3.0.save")
-	var names := ["tests-run-kept-0.3.0-2026-11-20.save", "tests-run-kept-damaged-2026-11-21.save"]
+	var names := ["tests-run-kept-0.3.0-2026-11-20.save", "tests-run-kept-damaged-2026-11-21.save",
+			"tests-run-kept-older-2026-11-22.save"]
 	for n in names:
 		FileAccess.open(dir.path_join(n), FileAccess.WRITE).store_buffer(fx)
 	RunSave.remove(path)
+	# the live run's files and look-alikes beside them: never listed, never deleted
+	var live := ["tests-run.save", "tests-run.save.tmp.1", "tests-run.save.prev", "tests-run-kept-x.save.tmp",
+			"run-second.save"]
 	var main := App.start(tree)
+	var before := {}                              # (a file the tests before made, e.g. .prev, put back after)
+	for n in live:                                # (put there once the app runs: nothing offered at its start)
+		if FileAccess.file_exists(dir.path_join(n)):
+			before[n] = FileAccess.get_file_as_bytes(dir.path_join(n))
+		FileAccess.open(dir.path_join(n), FileAccess.WRITE).store_buffer(fx)
 	main.hud.show_settings(true)
 	await tree.process_frame
 	var sec = main.hud.settings_box.find_child("kept_saves", true, false)
@@ -1261,9 +1270,12 @@ func _kept_list(tree: SceneTree, p: Array) -> void:
 		for n in names:
 			if not txt.contains(n):
 				p.append("the kept list does not show %s: %s" % [n, txt.left(300)])
+		for n in live:
+			if sec.find_child("kept_" + n.validate_node_name(), true, false) != null:
+				p.append("the kept list shows the live file %s" % n)
 		if App.find_button(sec, "Show folder") == null:
 			p.append("the kept list has no Show folder on a desktop")
-		var rid: String = "kept_" + names[0].validate_node_name()
+		var rid: String = "kept_" + names[1].validate_node_name()      # the middle one of three
 		var row = sec.find_child(rid, true, false)
 		var del := App.find_button(row, "Delete") if row != null else null
 		# laid out: the file's line as wide as the list (not wrapped to a letter a line), its buttons their own size
@@ -1278,17 +1290,35 @@ func _kept_list(tree: SceneTree, p: Array) -> void:
 			await tree.process_frame
 			var fo = tree.root.gui_get_focus_owner()
 			var sure := App.find_button(row, "Delete for good")
+			var sb = sure.get_theme_stylebox("normal") if sure != null else null
+			var keep_sb = fo.get_theme_stylebox("normal") if fo is Button else null
+			# styled destructive: a red fill, and the layer's own padding (built from its style, not the engine's)
 			if not App.texts(row).contains("can't be undone") or fo == null or fo.text != "Keep" or sure == null \
-					or not sure.has_theme_stylebox_override("normal"):
+					or not sb is StyleBoxFlat or sb.bg_color.r < 2.0 * sb.bg_color.g \
+					or keep_sb == null or absf(sb.content_margin_left - keep_sb.content_margin_left) > 0.5:
 				p.append("Delete did not ask first with Keep focused and a confirming button styled as destructive: %s"
 						% App.texts(row))
 			App.find_button(row, "Keep").pressed.emit()
 			await tree.process_frame
 			await tree.process_frame
 			fo = tree.root.gui_get_focus_owner()
-			if not FileAccess.file_exists(dir.path_join(names[0])) or App.find_button(row, "Delete") == null \
+			if not FileAccess.file_exists(dir.path_join(names[1])) or App.find_button(row, "Delete") == null \
 					or fo == null or fo.text != "Delete" or not row.is_ancestor_of(fo):
 				p.append("Keep did not leave the kept save as it was, with the focus back on its Delete (%s)" % str(fo))
+			# the folder read-only: Delete fails, says so in words, the file stays
+			var gdir := ProjectSettings.globalize_path(dir)
+			OS.execute("chmod", ["555", gdir])
+			App.find_button(row, "Delete").pressed.emit()
+			await tree.process_frame
+			App.find_button(row, "Delete for good").pressed.emit()
+			await tree.process_frame
+			OS.execute("chmod", ["755", gdir])
+			txt = App.texts(sec)
+			if not FileAccess.file_exists(dir.path_join(names[1])) or not txt.contains("could not be deleted") \
+					or not txt.contains("try again"):
+				p.append("a Delete that failed was not said so, or the file went: %s" % txt.left(300))
+			# Delete for good: that file only; the focus to the row now in its place (the next one); said beside it
+			row = sec.find_child(rid, true, false)
 			App.find_button(row, "Delete").pressed.emit()
 			await tree.process_frame
 			App.find_button(row, "Delete for good").pressed.emit()
@@ -1296,29 +1326,58 @@ func _kept_list(tree: SceneTree, p: Array) -> void:
 			await tree.process_frame
 			fo = tree.root.gui_get_focus_owner()
 			txt = App.texts(sec)
-			if FileAccess.file_exists(dir.path_join(names[0])) or not FileAccess.file_exists(dir.path_join(names[1])) \
-					or sec.find_child(rid, true, false) != null \
-					or sec.find_child("kept_" + names[1].validate_node_name(), true, false) == null:
+			var next_row = sec.find_child("kept_" + names[2].validate_node_name(), true, false)
+			if FileAccess.file_exists(dir.path_join(names[1])) or not FileAccess.file_exists(dir.path_join(names[0])) \
+					or not FileAccess.file_exists(dir.path_join(names[2])) or sec.find_child(rid, true, false) != null:
 				p.append("Delete did not remove that kept save only: %s" % txt.left(300))
-			if not txt.contains("%s deleted." % names[0]):
+			for n in live:
+				if not FileAccess.file_exists(dir.path_join(n)):
+					p.append("a Delete in the kept list removed the live file %s" % n)
+			if not txt.contains(names[1]) or not txt.contains("deleted."):
 				p.append("the list did not say what Delete did: %s" % txt.left(300))
-			if fo == null or not sec.is_ancestor_of(fo):
-				p.append("after Delete the focus left the list (%s)" % str(fo))
+			if fo == null or next_row == null or not next_row.is_ancestor_of(fo):
+				p.append("after Delete the focus did not go to the next row (%s)" % str(fo))
 			# a file already gone (removed with Show folder while Settings was open): said so, the list made again
-			var row2 = sec.find_child("kept_" + names[1].validate_node_name(), true, false)
+			var row2 = sec.find_child("kept_" + names[0].validate_node_name(), true, false)
 			App.find_button(row2, "Delete").pressed.emit()
 			await tree.process_frame
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(dir.path_join(names[1])))
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(dir.path_join(names[0])))
 			App.find_button(row2, "Delete for good").pressed.emit()
 			await tree.process_frame
+			if not App.texts(sec).contains("was already gone"):
+				p.append("a file already gone was not said so: %s" % App.texts(sec).left(300))
+			# the last one: the empty list, the focus kept (Show folder here)
+			var row3 = sec.find_child("kept_" + names[2].validate_node_name(), true, false)
+			App.find_button(row3, "Delete").pressed.emit()
+			await tree.process_frame
+			App.find_button(row3, "Delete for good").pressed.emit()
+			await tree.process_frame
+			await tree.process_frame
+			fo = tree.root.gui_get_focus_owner()
+			if not App.texts(sec).contains("None.") or fo == null:
+				p.append("after the last Delete the empty list was not shown or the focus was lost (%s)" % str(fo))
+			# made again each time Settings is shown: a file kept aside meanwhile appears
+			main.hud.show_settings(false)
+			FileAccess.open(dir.path_join(names[0]), FileAccess.WRITE).store_buffer(fx)
+			main.hud.show_settings(true)
+			await tree.process_frame
+			if not App.texts(sec).contains(names[0]):
+				p.append("the kept list was not made again when Settings was shown again")
+			# a name put in the folder by hand (a bidi override, a newline): shown apart, its controls replaced
+			var odd := "tests-run-kept-a\u202eb\nrun.save"
+			FileAccess.open(dir.path_join(odd), FileAccess.WRITE).store_buffer(fx)
+			main.hud.show_settings(false)
+			main.hud.show_settings(true)
 			await tree.process_frame
 			txt = App.texts(sec)
-			fo = tree.root.gui_get_focus_owner()
-			if not txt.contains("was already gone") or not txt.contains("None."):
-				p.append("a file already gone was not said so, or the empty list not shown: %s" % txt.left(300))
-			if fo == null:
-				p.append("after the last Delete the focus was lost")
+			if txt.contains("\u202e") or not txt.contains("tests-run-kept-a?b?run.save"):
+				p.append("a name put in by hand was shown with its controls: %s" % txt.left(300).c_escape())
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(dir.path_join(odd)))
 		main.free()
+	for n in live:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(dir.path_join(n)))
+		if before.has(n):
+			FileAccess.open(dir.path_join(n), FileAccess.WRITE).store_buffer(before[n])
 	# a second window (another one saves to run.save): its list is still run.save's kept runs
 	FileAccess.open(dir.path_join(names[0]), FileAccess.WRITE).store_buffer(fx)
 	var other := OS.create_process("sleep", ["60"])

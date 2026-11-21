@@ -81,7 +81,7 @@ func _run() -> void:
 	await shot("kept_delete_asks")
 	_button(row, "Delete for good").pressed.emit()
 	await _show(sec)
-	await shot("kept_after_delete")
+	await shot("kept_after_delete", 20)
 	row = sec.find_child("kept_" + names[0].validate_node_name(), true, false)
 	_button(row, "Delete").pressed.emit()
 	await process_frame

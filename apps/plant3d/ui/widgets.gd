@@ -179,7 +179,7 @@ const DESTRUCTIVE := Color(0.62, 0.16, 0.14)   # the outline and fill tint (on t
 static func destructive(b: Button) -> void:
 	for st in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
 		b.add_theme_color_override(st, Color(1.0, 0.82, 0.8))
-	for k in ["normal", "hover", "pressed"]:
+	for k in ["normal", "hover", "pressed", "hover_pressed"]:
 		var base = b.get_theme_stylebox(k)
 		var sb: StyleBoxFlat = base.duplicate() if base is StyleBoxFlat else StyleBoxFlat.new()
 		sb.bg_color = DESTRUCTIVE.lerp(Color(0.2, 0.08, 0.08), 0.0 if k == "normal" else (0.3 if k == "hover" else 0.5))

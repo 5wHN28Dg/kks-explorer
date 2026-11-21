@@ -293,7 +293,7 @@ static func kept_name(path: String, label: String) -> String:
 	return name
 
 
-## The saves kept aside beside path (kept_name's names), newest first: [[name, modified unix time, bytes], …].
+## The saves kept aside beside path (kept_name's names), newest first: [[name, modified unix time, bytes or -1], …].
 static func kept_files(path: String) -> Array:
 	var dir := path.get_base_dir()
 	var pre := path.get_file().get_basename() + "-kept-"
@@ -302,7 +302,7 @@ static func kept_files(path: String) -> Array:
 		if f.begins_with(pre) and f.ends_with(".save"):
 			var p := dir.path_join(f)
 			var fa := FileAccess.open(p, FileAccess.READ)
-			out.append([f, FileAccess.get_modified_time(p), fa.get_length() if fa != null else 0])
+			out.append([f, FileAccess.get_modified_time(p), fa.get_length() if fa != null else -1])   # (-1: unknown)
 	out.sort_custom(func(a, b): return a[1] > b[1] or a[1] == b[1] and a[0] < b[0])
 	return out
 

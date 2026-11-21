@@ -869,74 +869,123 @@ func _kept_saves(box: VBoxContainer) -> void:
 			_kept_fill(v, ""))
 
 
-## The list made again; `said`: what the last Delete did, shown in the list (a toast would cover the focus).
-func _kept_fill(v: VBoxContainer, said: String) -> void:
+## The list made again; `said`: what the last action did, shown beside the row that then has the focus (index `at` among
+## the rows, -1 for Show folder) so it is in view (a toast would cover the focus), and read out (a live line).
+func _kept_fill(v: VBoxContainer, said: String, at := 0) -> void:
 	W.clear(v)
 	v.add_child(W.label("Saved runs kept aside", 22))
 	var main_path: String = Autosave.default_path     # (a second window saves apart; the kept ones are run.save's)
 	var dir := main_path.get_base_dir()
-	if said != "":
-		var l := W.label(said, 18)
-		l.name = "kept_said"
-		v.add_child(l)
 	var files: Array = RunSave.kept_files(main_path)
+	var rows: Array = []
+	var said_label: Label = null
+	if said != "":
+		said_label = W.label(said, 18)
+		said_label.name = "kept_said"
+		if "accessibility_live" in said_label:
+			said_label.set("accessibility_live", 1)     # polite: said when it changes (AccessKit)
 	if files.is_empty():
+		if said_label != null:
+			v.add_child(said_label)
 		v.add_child(W.label("None. A saved run this version can't continue is kept here.", 18, W.DIM))
-	for f in files:
+	var target := clampi(at, 0, files.size() - 1) if at >= 0 and not files.is_empty() else -1
+	for i in files.size():
+		if i == target and said_label != null:
+			v.add_child(said_label)          # just above the row that gets the focus
+		var f: Array = files[i]
 		var row := VBoxContainer.new()      # the words wrap in the panel's width, the buttons under them
 		row.name = "kept_" + f[0].validate_node_name()
 		v.add_child(row)
-		_kept_row(row, v, dir, f)
+		_kept_row(row, v, dir, f, i)
+		rows.append(row)
 	if OS.get_name() != "Android":
 		var bar := HBoxContainer.new()
+		bar.name = "kept_folder"
+		if said_label != null and target == -1 and not files.is_empty():
+			v.add_child(said_label)
 		v.add_child(bar)
 		var folder := ProjectSettings.globalize_path(dir)
 		bar.add_child(W.button("Show folder", func():
 			if OS.shell_show_in_file_manager(folder, true) != OK:
-				_kept_fill(v, "The folder could not be opened. It is %s." % folder)))
+				_kept_fill(v, "The folder could not be opened. It is %s." % _shown_name(folder), -1)
+				_kept_focus(v.get_node_or_null("kept_folder"), v)))
+	elif said_label != null and target == -1 and not files.is_empty():
+		v.add_child(said_label)
+	if said_label != null:
+		# after the focus has moved and the panel has followed it (a frame or two): the line scrolled into view too
+		get_tree().create_timer(0.1).timeout.connect(func(): _keep_in_view(said_label))
 
 
-func _kept_row(row: VBoxContainer, v: VBoxContainer, dir: String, f: Array) -> void:
+## A name from the folder as shown: control characters and bidi controls replaced (a file put there by hand), and the
+## whole kept apart from the words around it (first-strong isolate).
+static func _shown_name(n: String) -> String:
+	var out := ""
+	for ch in n:
+		var c := ch.unicode_at(0)
+		if c < 0x20 or c == 0x7f or (c >= 0x202a and c <= 0x202e) or (c >= 0x2066 and c <= 0x2069) or c == 0x200e \
+				or c == 0x200f or c == 0x61c:
+			out += "?"
+		else:
+			out += ch
+	return "\u2068" + out + "\u2069"
+
+
+func _keep_in_view(c: Control) -> void:
+	if not is_instance_valid(c) or not c.is_inside_tree():
+		return
+	var sc = c.get_parent()
+	while sc != null and not sc is ScrollContainer:
+		sc = sc.get_parent()
+	if sc != null:
+		sc.ensure_control_visible(c)
+
+
+func _kept_row(row: VBoxContainer, v: VBoxContainer, dir: String, f: Array, i: int) -> void:
 	W.clear(row)
 	var when := Time.get_datetime_string_from_unix_time(int(f[1]) + Autosave._tz_offset(), true)
-	row.add_child(W.label("%s  (%s, %d KB)" % [f[0], when, int(ceil(f[2] / 1024.0))], 18))
+	var size := "size unknown" if int(f[2]) < 0 else "%d KB" % int(ceil(f[2] / 1024.0))
+	var name := _shown_name(f[0])
+	row.add_child(W.label("%s  (%s, %s)" % [name, when, size], 18))
 	var bar := HBoxContainer.new()
 	row.add_child(bar)
 	var ask := W.button("Delete", func():
 		W.clear(row)
-		row.add_child(W.label("Delete %s? It can't be undone." % f[0], 18))
+		row.add_child(W.label("Delete %s? It can't be undone." % name, 18))
 		var bar2 := HBoxContainer.new()
 		bar2.add_theme_constant_override("separation", int(24 * W.scale))   # room between Keep and the one that deletes
 		row.add_child(bar2)
 		var keep := W.button("Keep", func():
-			_kept_row(row, v, dir, f)
-			_kept_focus(row))
+			_kept_row(row, v, dir, f, i)
+			_kept_focus(row, v))
 		bar2.add_child(keep)
 		var del := W.button("Delete for good", func():
 			var p := ProjectSettings.globalize_path(dir.path_join(f[0]))
 			var said := ""
 			if not FileAccess.file_exists(p):
-				said = "%s was already gone." % f[0]
+				said = "%s was already gone." % name
 			elif DirAccess.remove_absolute(p) != OK:
-				said = ("%s could not be deleted (its folder may not be writable). It is still kept; try again, or "
-						+ "%s.") % [f[0], "remove it with Show folder" if OS.get_name() != "Android" else "restart the app first"]
+				said = ("%s could not be deleted (the file or its folder may be read-only). It is still kept; try "
+						+ "again, or %s.") % [name, "remove it with Show folder" if OS.get_name() != "Android" else "restart the app first"]
 			else:
-				said = "%s deleted." % f[0]
-			_kept_fill(v, said)
-			_kept_focus(v))
-		W.destructive(del)
+				said = "%s deleted." % name
+			_kept_fill(v, said, i)           # the focus to the row now in this one's place (the next), else the last
+			var rows := v.get_children().filter(func(c): return c.name.begins_with("kept_") and c is VBoxContainer)
+			_kept_focus(rows[mini(i, rows.size() - 1)] if not rows.is_empty() else v.get_node_or_null("kept_folder"), v))
 		bar2.add_child(del)
+		W.destructive(del)                   # (in the tree: it starts from the layer's own button style)
 		keep.grab_focus.call_deferred())
 	ask.name = "kept_delete"
 	bar.add_child(ask)
 
 
-## The focus to the first button under `n` (the row's Delete after Keep; the list's next Delete or Show folder after a
-## delete), else the settings' Close: never lost.
-func _kept_focus(n: Node) -> void:
-	for b in n.find_children("*", "Button", true, false):
-		b.grab_focus.call_deferred()
-		return
+## The focus to the first button under `n` (the row's Delete after Keep, the next row's after a delete, Show folder),
+## else the list's first button, else the settings' Close: never lost.
+func _kept_focus(n, v: Node) -> void:
+	for where in [n, v]:
+		if where != null:
+			for b in where.find_children("*", "Button", true, false):
+				b.grab_focus.call_deferred()
+				return
 	if main != null and main.hud != null and main.hud.close_btn != null:
 		main.hud.close_btn.grab_focus.call_deferred()
 
