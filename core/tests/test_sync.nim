@@ -412,17 +412,46 @@ suite "changes waiting to be sent (§15c, #372)":
     discard sync(phone, server)
     check phone.waiting == 0
 
-  test "a stranger's vv, a fork's and an unknown seq acknowledge nothing":
+  test "a stranger's vv and an unknown seq acknowledge nothing; another entry at the seq (a fork, a restored peer) lowers":
     discard phone.append("person", personBody(P.newPersonId(), "six", "Person six", "user"), tick())
     let before = phone.waiting
     check before == 1
     let (last, id) = (int64(phone.vv()[phone.device][0].i), phone.vv()[phone.device][1].s)
     var stranger = newNode(P, newMemStore(), P.p256Generate())
-    phone.noteAcked(stranger.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]))
+    phone.noteAcked(stranger.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]), fromBye = true)
     check phone.waiting == before
-    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr("another entry")]))]))
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last + 5), newStr(id)]))]), fromBye = true)
     check phone.waiting == before
-    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last + 5), newStr(id)]))]))
-    check phone.waiting == before
-    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]))
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]), fromBye = false)
+    check phone.waiting == before    # a hello never raises
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]), fromBye = true)
     check phone.waiting == 0
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr("another entry")]))]), fromBye = true)
+    check phone.waiting > 1          # that peer holds another entry there: nothing of this log is counted as held
+
+  test "a peer restored to less (a backup): its hello lowers the count back":
+    discard sync(phone, server)
+    check phone.waiting == 0
+    let all = phone.waiting
+    discard phone.append("person", personBody(P.newPersonId(), "seven", "Person seven", "user"), tick())
+    discard sync(phone, server)
+    check phone.waiting == all
+    # the server comes back from a backup made before the last entry: its hello names the entry before
+    let c = int64(phone.vv()[phone.device][0].i)
+    let prevId = phone.entriesFor(newObj(@[(phone.device, newArr(@[newInt(c - 2), newStr("")]))]))
+    var older = ""
+    for e in prevId:
+      if e["peer"].s == phone.device and e["seq"].i == c - 1: older = P.entryId(e)
+    check older.len > 0
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(c - 1), newStr(older)]))]), fromBye = false)
+    check phone.waiting == 1
+
+  test "a removed device's acknowledgement counts for nothing":
+    let mate = newNode(P, newMemStore(), P.p256Generate())
+    discard phone.append("device_cert", deviceCertBody(mate.device, mgr, "second phone"), tick())
+    discard sync(mate, phone, adopt = rootStr)          # the second phone holds everything (its bye says so)
+    discard phone.append("person", personBody(P.newPersonId(), "eight", "Person eight", "user"), tick())
+    discard sync(mate, phone)
+    check phone.waiting == 0
+    discard phone.append("revoke", revokeBody(mate.device, 0), tick())
+    check phone.waiting > 0          # the server never got them; the removed phone doesn't count

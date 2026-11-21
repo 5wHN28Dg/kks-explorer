@@ -152,8 +152,6 @@ proc statusText(w: Win): string =
     of "relay": result.add ", last sync through the relay"
     else: discard
 
-const WaitingShownAfter = 15_000   ## ms a change waits while online before the banner shows it (a sync follows an edit)
-
 proc showSyncState(w: Win) =
   ## the sidebar's subtitle, and the banners over the sheets and over the drawing (#372): "Offline", with the changes
   ## waiting to be sent; online, the changes that have waited a while. Read out when what they say changes.
@@ -161,13 +159,9 @@ proc showSyncState(w: Win) =
   adw_window_title_set_subtitle(w.status, w.statusText().cstring)
   if w.offlineBanners.len == 0: return
   let snap = w.a.snapshot
-  let wt = waitingWords(waitingOf(snap))
   let offline = isOffline(snap, nowMs() div 1000)
-  if wt.len == 0: w.waitingSince = 0
-  elif w.waitingSince == 0: w.waitingSince = nowMs()
-  let say = if offline: OfflineWord & (if wt.len > 0: " · " & wt else: "")
-            elif wt.len > 0 and nowMs() - w.waitingSince >= WaitingShownAfter: wt
-            else: ""
+  let wt = waitingWords(shownWaiting(snap, offline, w.waitingSince, nowMs()))
+  let say = if offline: OfflineWord & (if wt.len > 0: " · " & wt else: "") else: wt
   # the drawing's banner always; the sheets' only when the window is too narrow to show both pages (one says it)
   let narrow = w.split != nil and adw_navigation_split_view_get_collapsed(w.split) != 0
   for i, b in w.offlineBanners:
@@ -181,7 +175,7 @@ proc showSyncState(w: Win) =
   let was = w.bannerSaid
   w.bannerSaid = say
   let words = if say.len > 0: say elif was.startsWith(OfflineWord): "Back online" else: "All changes sent"
-  gtk_accessible_announce(w.offlineBanners[^1], words.cstring, 1)
+  gtk_accessible_announce(w.window, words.cstring, 1)   # (from the window: a banner just hidden can't say it)
 
 proc tagGone(w: Win) =
   ## the tag whose panel is open is no longer there: the panel closes, and says why

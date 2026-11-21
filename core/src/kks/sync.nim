@@ -216,6 +216,7 @@ proc takeHello(s: Session, m: JNode) =
   elif theirs.len > 0 and theirs != s.n.root:
     fail("the other device belongs to a different plant")
   s.theirVv = if m.get("vv") != nil and m["vv"].kind == jObj: m["vv"] else: newObj()
+  s.n.noteAcked(s.remote, s.theirVv, fromBye = false)   # §15c: a hello can only lower what it acknowledged
 
 proc takeEntries(s: Session, m: JNode) =
   let es = if m.get("entries") != nil and m["entries"].kind == jArr: m["entries"].elems else: @[]
@@ -283,7 +284,7 @@ proc receive*(s: Session, m: JNode) =
     else: fail("expected blob, got " & t)
   of sBye:
     if t != "bye": fail("expected bye, got " & t)
-    s.n.noteAcked(s.remote, m.get("vv"))   # §15c: it took our entries and blobs in (an older device sends no vv)
+    s.n.noteAcked(s.remote, m.get("vv"), fromBye = true)   # §15c: it took our entries and blobs in (an older device sends no vv)
     if not s.initiator: s.send s.bye()
     s.done = true
     s.stage = sDone

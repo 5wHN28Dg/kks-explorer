@@ -15,6 +15,7 @@ import kks.explorer.sync.Sync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.repeatOnLifecycle
 
 /** Switched changes waiting for the owner's check (the UI and UX policy's tier 2, its 8.5): off unless a release lists
  *  them in ON, a build for the check sets -PkksUx=name, or (debug builds) the DEBUG_UX broadcast turns them on. */
@@ -33,7 +34,8 @@ object SyncWords {
     const val ONLINE = "Online"
     const val LOOKING = "Looking for the plant's devices…"
     const val OFFLINE_HELP = "Changes are kept on this device and sent when it reaches another device of the plant."
-    fun waiting(n: Int): String = if (n <= 0) "" else if (n == 1) "1 change waiting to be sent" else "$n changes waiting to be sent"
+    const val WAITING_SHOWN_AFTER = 15_000L   // ms a change waits while online before it is shown (and read out)
+    fun waiting(n: Int): String = if (n <= 0) "" else if (n == 1) "1 change waiting to be sent" else "${"%,d".format(java.util.Locale.ENGLISH, n)} changes waiting to be sent"
     /** null before the first round has finished (still looking). Offline: the last finished round reached no device,
      *  and none synced with this one for 5 minutes (after a pause the state waits for a round that fails) */
     fun offline(nowMs: Long = System.currentTimeMillis()): Boolean? {
@@ -56,19 +58,30 @@ object SyncWords {
 fun SyncStateLine(modifier: Modifier = Modifier, indent: androidx.compose.ui.unit.Dp = 16.dp) {
     var waiting by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            waiting = withContext(Dispatchers.IO) {
-                try { Core.api("GET", "/native/waiting").json.optInt("waiting", 0) } catch (e: Exception) { 0 }
+    var since by remember { mutableLongStateOf(0L) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        // only while the screen is on view (no polling in the background)
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while (true) {
+                waiting = withContext(Dispatchers.IO) {
+                    try { Core.api("GET", "/native/waiting").json.optInt("waiting", 0) } catch (e: Exception) { 0 }
+                }
+                tick++
+                delay(2000)
             }
-            tick++
-            delay(2000)
         }
     }
     val offline = remember(tick) { SyncWords.offline() }
-    val text = SyncWords.line(waiting, offline)   // (not "Syncing…": the line is read out when it changes)
+    // online, a change is shown once it has waited 15 s (each edit is sent within seconds: neither shown nor read out)
+    val now = System.currentTimeMillis()
+    if (waiting <= 0) since = 0L else if (since == 0L) since = now
+    val shown = if (offline == true || (waiting > 0 && now - since >= SyncWords.WAITING_SHOWN_AFTER)) waiting else 0
+    val text = SyncWords.line(shown, offline)   // (not "Syncing…": the line is read out when it changes)
+    // two lines kept at a large font size: the count coming or going never moves the drawing under the finger
+    val big = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
     Row(modifier.fillMaxWidth().padding(horizontal = indent, vertical = 4.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
-        Text(text, style = MaterialTheme.typography.bodyMedium,
+        Text(text, minLines = if (big) 2 else 1, style = MaterialTheme.typography.bodyMedium,
             color = if (offline == true) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

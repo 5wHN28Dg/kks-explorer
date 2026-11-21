@@ -30,6 +30,7 @@ proc showMain()
 proc syncLine(): string
 var syncSaid = ""              ## the offline state and the changes waiting, as the status line says them now (#372)
 var syncSaidChanged = false
+var waitingSince = 0'i64      ## when changes began to wait (syncwords.shownWaiting)
 
 var statusRow = 0       # the bottom row's height at the last layout
 
@@ -163,8 +164,9 @@ proc syncLine(): string =
   let snap = w.a.snapshot
   var state = ""
   if uxOn("offline-state"):    # #372: offline and the changes waiting, first in the line (also while a round tries)
-    let wt = waitingWords(waitingOf(snap))
-    if isOffline(snap, int64(epochTime())): state = OfflineWord & (if wt.len > 0: " · " & wt else: "") & " · "
+    let offline = isOffline(snap, int64(epochTime()))
+    let wt = waitingWords(shownWaiting(snap, offline, waitingSince, nowMs()))
+    if offline: state = OfflineWord & (if wt.len > 0: " · " & wt else: "") & " · "
     elif wt.len > 0: state = wt & " · "
     if state != syncSaid:   # read out by Narrator when the state changes (the status line is a live region)
       syncSaid = state
