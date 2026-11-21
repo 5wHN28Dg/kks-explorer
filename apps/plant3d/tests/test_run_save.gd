@@ -25,6 +25,7 @@ const RunSave = preload("res://ui/run_save.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const App = preload("res://tests/ui_app.gd")
 const SimClock = preload("res://ui/sim_clock.gd")
+const W = preload("res://ui/widgets.gd")
 
 const DIR := "user://test-run-save"
 
@@ -880,6 +881,7 @@ func _app(tree: SceneTree, p: Array) -> void:
 		main.free()
 	await _other_build(tree, pl, p)
 	await _old_release(tree, p)
+	await _kept_list(tree, p)
 	_remap(p)
 	Autosave.switch_override = -1
 	await _deviation(tree, p)
@@ -1234,3 +1236,74 @@ func _remap(p: Array) -> void:
 	d = Migrate.diff_events([[12, "op", "\u202e" + "x".repeat(20), "start", "done", []]], [])
 	if d.size() != 1 or d[0].contains("\u202e") or not d[0].contains("unknown start"):
 		p.append("text from the file reached the words as it is: %s" % str(d))
+
+
+## Settings' "Kept saves" (the owner, 2026-11-21, #474): with the switch on, the kept files by name and date, newest
+## first; Delete asks in the row (Keep focused; Keep leaves the file), and Delete again removes that file only, the
+## focus staying in the list; Show folder on the desktops. With the switch off, no such section.
+func _kept_list(tree: SceneTree, p: Array) -> void:
+	var path: String = Autosave.default_path
+	var dir := path.get_base_dir()
+	var fx := FileAccess.get_file_as_bytes("res://tests/fixtures/run-0.3.0.save")
+	var names := ["tests-run-kept-0.3.0-2026-11-20.save", "tests-run-kept-damaged-2026-11-21.save"]
+	for n in names:
+		FileAccess.open(dir.path_join(n), FileAccess.WRITE).store_buffer(fx)
+	RunSave.remove(path)
+	var main := App.start(tree)
+	main.hud.show_settings(true)
+	await tree.process_frame
+	var sec = main.hud.settings_box.find_child("kept_saves", true, false)
+	if sec == null:
+		p.append("with the switch on, the settings have no \"Kept saves\"")
+		main.free()
+	else:
+		var txt := App.texts(sec)
+		for n in names:
+			if not txt.contains(n):
+				p.append("\"Kept saves\" does not list %s: %s" % [n, txt.left(300)])
+		if App.find_button(sec, "Show folder") == null:
+			p.append("\"Kept saves\" has no Show folder on a desktop")
+		var row = sec.find_child("kept_" + names[0].validate_node_name(), true, false)
+		var del := App.find_button(row, "Delete") if row != null else null
+		# laid out: the file's line as wide as the list (not wrapped to a letter a line), its buttons their own size
+		if row != null and (row.get_child(0).size.x < sec.size.x * 0.8 or del != null and del.size.y > 120.0 * W.scale):
+			p.append("a kept save's row is squeezed: its words %.0f px wide in %.0f, Delete %.0f px tall" % [
+					row.get_child(0).size.x, sec.size.x, del.size.y if del != null else 0.0])
+		if del == null:
+			p.append("a kept save has no Delete")
+		else:
+			del.pressed.emit()
+			await tree.process_frame
+			await tree.process_frame
+			var fo = tree.root.gui_get_focus_owner()
+			if not App.texts(row).contains("can't be undone") or fo == null or fo.text != "Keep":
+				p.append("Delete did not ask first with Keep focused: %s" % App.texts(row))
+			App.find_button(row, "Keep").pressed.emit()
+			await tree.process_frame
+			if not FileAccess.file_exists(dir.path_join(names[0])) or App.find_button(row, "Delete") == null:
+				p.append("Keep did not leave the kept save as it was")
+			App.find_button(row, "Delete").pressed.emit()
+			await tree.process_frame
+			App.find_button(row, "Delete").pressed.emit()        # the confirming Delete
+			await tree.process_frame
+			await tree.process_frame
+			fo = tree.root.gui_get_focus_owner()
+			txt = App.texts(sec)
+			if FileAccess.file_exists(dir.path_join(names[0])) or not FileAccess.file_exists(dir.path_join(names[1])) \
+					or txt.contains(names[0]) or not txt.contains(names[1]):
+				p.append("Delete did not remove that kept save only: %s" % txt.left(300))
+			if fo == null or not sec.is_ancestor_of(fo):
+				p.append("after Delete the focus left the list (%s)" % str(fo))
+		main.free()
+	# switched off: no list
+	Autosave.switch_override = 0
+	main = App.start(tree)
+	main.hud.show_settings(true)
+	await tree.process_frame
+	if main.hud.settings_box.find_child("kept_saves", true, false) != null:
+		p.append("with the switch off, the settings show \"Kept saves\"")
+	main.free()
+	Autosave.switch_override = 1
+	for n in names:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(dir.path_join(n)))
+	RunSave.remove(path)

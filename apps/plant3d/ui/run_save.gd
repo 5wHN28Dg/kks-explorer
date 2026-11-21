@@ -293,6 +293,20 @@ static func kept_name(path: String, label: String) -> String:
 	return name
 
 
+## The saves kept aside beside path (kept_name's names), newest first: [[name, modified unix time, bytes], …].
+static func kept_files(path: String) -> Array:
+	var dir := path.get_base_dir()
+	var pre := path.get_file().get_basename() + "-kept-"
+	var out: Array = []
+	for f in DirAccess.get_files_at(dir):
+		if f.begins_with(pre) and f.ends_with(".save"):
+			var p := dir.path_join(f)
+			var fa := FileAccess.open(p, FileAccess.READ)
+			out.append([f, FileAccess.get_modified_time(p), fa.get_length() if fa != null else 0])
+	out.sort_custom(func(a, b): return a[1] > b[1] or a[1] == b[1] and a[0] < b[0])
+	return out
+
+
 ## Keeps the save that was read from `file` (path or a .tmp beside it) under `name` beside path, by a copy of its bytes,
 ## and then (with remove_rest) removes path and its .tmp files. OK only when the kept copy was written whole.
 static func keep_aside(path: String, file: String, name: String, remove_rest := true) -> Error:

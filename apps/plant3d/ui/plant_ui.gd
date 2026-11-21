@@ -785,6 +785,8 @@ func add_settings(box: VBoxContainer) -> void:
 			_setting(row[0], v))
 		box.add_child(cb)
 	_workshop_settings(box)
+	if Autosave.carries():          # (with the saves kept aside: the switch of issue #447, off until the owner's check)
+		_kept_saves(box)
 
 
 # ------------------------------------------------------------------ the Workshop (docs/plant3d/WORKSHOP.md §2)
@@ -823,6 +825,64 @@ func open_failed_part(r: Dictionary) -> bool:
 
 
 ## The settings' Workshop row: a button per part kind the Workshop has.
+## "Kept saves" (the owner, 2026-11-21, #474): the saved runs kept aside (ui/autosave.gd, issue #447) listed by name
+## and date, each with Delete, which asks first in the row itself (Keep has the focus; Delete removes the file for
+## good); on the desktops also Show folder. Made again each time the settings are shown.
+func _kept_saves(box: VBoxContainer) -> void:
+	var v := VBoxContainer.new()
+	v.name = "kept_saves"
+	box.add_child(v)
+	_kept_fill(v)
+	box.visibility_changed.connect(func():
+		if box.is_visible_in_tree():
+			_kept_fill(v))
+
+
+func _kept_fill(v: VBoxContainer) -> void:
+	W.clear(v)
+	v.add_child(W.label("Kept saves", 22))
+	var dir: String = autosave.path.get_base_dir()
+	var files: Array = RunSave.kept_files(autosave.path)
+	if files.is_empty():
+		v.add_child(W.label("No saved run is kept aside. A save this version can't continue is kept here.", 18, W.DIM))
+	for f in files:
+		var row := VBoxContainer.new()      # the words wrap in the panel's width, the buttons under them
+		row.name = "kept_" + f[0].validate_node_name()
+		v.add_child(row)
+		_kept_row(row, v, dir, f)
+	if OS.get_name() != "Android":
+		var bar := HBoxContainer.new()
+		v.add_child(bar)
+		bar.add_child(W.button("Show folder", func(): OS.shell_show_in_file_manager(ProjectSettings.globalize_path(dir), true)))
+
+
+func _kept_row(row: VBoxContainer, v: VBoxContainer, dir: String, f: Array) -> void:
+	W.clear(row)
+	var when := Time.get_datetime_string_from_unix_time(int(f[1]) + Autosave._tz_offset(), true)
+	row.add_child(W.label("%s  (%s, %d KB)" % [f[0], when, int(ceil(f[2] / 1024.0))], 18, Color.WHITE))
+	var bar := HBoxContainer.new()
+	row.add_child(bar)
+	bar.add_child(W.button("Delete", func():
+		W.clear(row)
+		row.add_child(W.label("Delete %s? It can't be undone." % f[0], 18, Color.WHITE))
+		var bar2 := HBoxContainer.new()
+		row.add_child(bar2)
+		var keep := W.button("Keep", func(): _kept_row(row, v, dir, f))
+		bar2.add_child(keep)
+		bar2.add_child(W.button("Delete", func():
+			var err := DirAccess.remove_absolute(ProjectSettings.globalize_path(dir.path_join(f[0])))
+			if err != OK:
+				toast("%s could not be deleted: it stays." % f[0], 6.0)
+			else:
+				toast("%s deleted." % f[0])
+			_kept_fill(v)
+			# the focus to the list's first button that is left (another Delete, or Show folder): never lost
+			for b in v.find_children("*", "Button", true, false):
+				b.grab_focus.call_deferred()
+				break))
+		keep.grab_focus.call_deferred()))
+
+
 func _workshop_settings(box: VBoxContainer) -> void:
 	var kinds: Array = main.workshop.kinds() if main.workshop != null else load("res://workshop/workshop.gd").kinds()
 	if kinds.is_empty():
