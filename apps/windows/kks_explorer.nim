@@ -4,7 +4,7 @@
 import std/[asyncdispatch, os, osproc, strutils, tables, sets, times, math, sequtils]
 import kks/[json, api, pathstore, views, applink]
 import kks/model
-import appstate
+import appstate, syncwords
 import kksl/dbstore
 import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi, photos, links, about]
 
@@ -151,8 +151,13 @@ proc doSelectTag(id: string, center: bool) =
 
 proc syncLine(): string =
   let snap = w.a.snapshot
-  if w.a.syncing: return "Syncing…"
-  result = if snap["last_ok"].kind == jInt: "Last sync " & fromUnix(snap["last_ok"].i).local.format("HH:mm") else: "Not synced yet"
+  var state = ""
+  if uxOn("offline-state"):    # #372: offline and the changes waiting, first in the line
+    let wt = waitingWords(waitingOf(snap))
+    if not w.a.syncing and isOffline(snap, int64(epochTime())): state = OfflineWord & (if wt.len > 0: " · " & wt else: "") & " · "
+    elif wt.len > 0: state = wt & " · "
+  if w.a.syncing: return state & "Syncing…"
+  result = state & (if snap["last_ok"].kind == jInt: "Last sync " & fromUnix(snap["last_ok"].i).local.format("HH:mm") else: "Not synced yet")
   if snap["relay"].s == "online":
     let n = snap["relay_online"].i
     result.add " · internet: " & (if n == 1: "1 device" else: $n & " devices") & " online"

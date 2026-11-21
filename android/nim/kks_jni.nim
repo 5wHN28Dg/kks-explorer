@@ -124,6 +124,9 @@ proc native(c: Inst, meth, path: string, body: JNode, q: JNode): JNode =
     cfg["admin"] = newBool(ok and me.isAdmin)
     cfg["role"] = newStr(if ok: me.role else: "")
     O(("status", newInt(200)), ("json", cfg))
+  of "/native/waiting":
+    # PROTOCOL-v2 §15c (#372): this phone's own changes no other device has said it holds
+    return view(O(("waiting", newInt(c.n.waiting))))
   of "/native/save-state":
     # PROTOCOL-v2 §15b: the replayed state kept for the next start (when it changed)
     c.n.saveState()

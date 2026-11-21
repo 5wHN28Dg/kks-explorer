@@ -583,7 +583,8 @@ proc snapshot*(a: App): JNode =
     devs[d] = newObj(@[("host", newStr(p.host)), ("last_ok", newInt(p.lastOk div 1000)),
                        ("error", if p.lastError.len > 0: newStr(p.lastError) else: newNull())])
   newObj(@[("devices", devs), ("last_ok", if lastOk > 0: newInt(lastOk div 1000) else: newNull()),
-           ("syncing", newBool(a.syncing)),
+           ("syncing", newBool(a.syncing)), ("rounds", newBool(a.lastRound > 0)),
+           ("waiting", newInt(if a.n != nil: a.n.waiting else: 0)),   # §15c: own changes no other device holds yet
            ("relay", newStr(if a.internet != nil: a.internet.state else: "off")),
            ("relay_online", newInt(if a.internet != nil: a.internet.online.len else: 0)),
            ("relay_how", newStr(if a.internet != nil: a.internet.lastHow else: "")), ("port", if a.listener != nil: newInt(a.listener.port) else: newNull())])

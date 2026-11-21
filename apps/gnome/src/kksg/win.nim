@@ -19,6 +19,7 @@ type Win* = ref object
   split*, sheetList*, searchEntry*, resultList*, sheetTitle*, panelSplit*, panelBox*, markBtn*, status*: W
   resultsShown*: string     ## what the search results show (kks_explorer resultsKey): rebuilt only when it changes
   sideNav*, banner*: W
+  offlineBanner*: W      ## the sidebar's "Offline · N changes waiting to be sent" (#372, switch offline-state)
   coverBtn*: W                 ## the drawing's "Colour tags by photos" toggle
   queueBar*, queueLabel*: W    ## the photo queue's status (photos.nim), under the drawing
   picking*: bool               ## "Select tags" mode: one photo, place or note for several codes (multi.nim)

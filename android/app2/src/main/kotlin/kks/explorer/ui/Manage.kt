@@ -636,6 +636,7 @@ private fun Account(rev: Int, say: (String) -> Unit) {
                 val last = Sync.peers.values.maxOfOrNull { it.lastOk } ?: 0L
                 Text("This phone: ${Sync.device().take(16)}… · sync port ${if (Sync.port > 0) Sync.port else "off"}")
                 Dim(if (Sync.syncing) "Syncing…" else if (last > 0) "Last sync ${whenText(last / 1000)}" else "Not synced yet")
+                if (Ux.on(ctx, "offline-state")) SyncStateLine(indent = 0.dp)   // #372
                 val st = kks.explorer.sync.Internet.state
                 val on = kks.explorer.sync.Internet.online.size
                 val how = when (kks.explorer.sync.Internet.lastHow) { "direct" -> " · last sync direct"; "relay" -> " · last sync through the relay"; else -> "" }

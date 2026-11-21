@@ -1,0 +1,70 @@
+package kks.explorer.ui
+
+import android.content.Context
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import kks.explorer.BuildConfig
+import kks.explorer.core.Core
+import kks.explorer.sync.Sync
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+
+/** Switched changes waiting for the owner's check (the UI and UX policy's tier 2, its 8.5): off unless a release lists
+ *  them in ON, a build for the check sets -PkksUx=name, or (debug builds) the DEBUG_UX broadcast turns them on. */
+object Ux {
+    val ON: List<String> = emptyList()
+    fun on(ctx: Context, name: String): Boolean = name in ON || name in BuildConfig.KKS_UX.split(',') ||
+        name in (ctx.getSharedPreferences("ux", Context.MODE_PRIVATE).getString("on", "") ?: "").split(',')
+}
+
+/** The offline state and the changes waiting to be sent (#372, PROTOCOL-v2 §15c): the same words as the desktop apps
+ *  (apps/common/syncwords.nim; tests/test_sync_words.py keeps them equal). */
+object SyncWords {
+    const val OFFLINE_AFTER = 300L     // s without a successful sync with any device: offline
+    const val OFFLINE = "Offline"
+    const val ONLINE = "Online"
+    const val LOOKING = "Looking for the plant's devices…"
+    const val OFFLINE_HELP = "Changes are kept on this device and sent when it reaches another device of the plant."
+    fun waiting(n: Int): String = if (n <= 0) "" else if (n == 1) "1 change waiting to be sent" else "$n changes waiting to be sent"
+    /** null before the first round has finished (still looking) */
+    fun offline(nowMs: Long = System.currentTimeMillis()): Boolean? {
+        if (Sync.lastRound == 0L) return null
+        val last = Sync.peers.values.maxOfOrNull { it.lastOk } ?: 0L
+        return last == 0L || nowMs - last >= OFFLINE_AFTER * 1000
+    }
+    fun line(waiting: Int, offline: Boolean?): String {
+        val w = waiting(waiting)
+        val state = when { offline == null -> LOOKING; offline -> OFFLINE; else -> ONLINE }
+        return if (w.isEmpty()) state else "$state · $w"
+    }
+}
+
+/** One line under the top bar: online or offline, and how many changes wait to be sent; always there (nothing moves
+ *  under the finger when it changes), read out when it changes. Offline in the text colour, online in the dimmer one. */
+@Composable
+fun SyncStateLine(modifier: Modifier = Modifier, indent: androidx.compose.ui.unit.Dp = 16.dp) {
+    var waiting by remember { mutableIntStateOf(0) }
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            waiting = withContext(Dispatchers.IO) {
+                try { Core.api("GET", "/native/waiting").json.optInt("waiting", 0) } catch (e: Exception) { 0 }
+            }
+            tick++
+            delay(2000)
+        }
+    }
+    val offline = remember(tick) { SyncWords.offline() }
+    val text = SyncWords.line(waiting, offline)   // (not "Syncing…": the line is read out when it changes)
+    Row(modifier.fillMaxWidth().padding(horizontal = indent, vertical = 4.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
+        Text(text, style = MaterialTheme.typography.bodyMedium,
+            color = if (offline == true) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}

@@ -2802,6 +2802,63 @@ class Gnome(Plant):
             self.assertEqual([ln for ln in f if 'markup' in ln], [], 'GTK could not read a markup string')
 
 
+class OfflineState(Plant):
+    """#372 (switch offline-state, KKS_UX): on a server of its own, which the test stops (SIGSTOP) and lets go on"""
+
+    def subtitle(self, a):
+        """the sidebar's subtitle (the line under "Walkdown")"""
+        for n in atspi.find_all(a, 'label', contains='Test plant'):
+            if n.get_name() != 'Test plant':
+                return n.get_name()
+        return ''
+
+    def wait_subtitle(self, a, test, what, timeout=60):
+        for _ in range(timeout * 2):
+            t = self.subtitle(a)
+            if test(t):
+                return t
+            time.sleep(0.5)
+        self.fail(f'{what}: the subtitle stayed {self.subtitle(a)!r}')
+
+    def test_offline_state(self):
+        """online, nothing waits; the server stops answering: "Offline" in a banner and first in the subtitle; an
+        edit made offline adds one to the changes waiting to be sent; the server back: synced, nothing waits, online"""
+        a = self.start_app('offline', KKS_UX='offline-state', KKS_OFFLINE_AFTER='4', KKS_SYNC_EVERY='2000')
+        self.join(a)
+        t = self.wait_subtitle(a, lambda t: 'device reachable' in t, 'online')
+        self.assertNotIn('waiting to be sent', t)
+        self.assertNotIn('Offline', t)
+        self.evidence(a, 'offline-state-online')
+        os.kill(self.server.pid, signal.SIGSTOP)
+        try:
+            # (the app may have written something of its own since the last sync: its course progress key, a report)
+            t = self.wait_subtitle(a, lambda t: t.startswith('Offline · '), 'offline')
+            m = re.match(r'Offline · (\d+) changes? waiting to be sent · Test plant', t)
+            before = int(m.group(1)) if m else 0
+            self.assertTrue(m or t.startswith('Offline · Test plant'), t)
+            words = lambda n: '1 change waiting to be sent' if n == 1 else f'{n} changes waiting to be sent'
+            atspi.find(a, 'label', name='Offline' + (' · ' + words(before) if before else ''), timeout=10)   # the banner
+            self.evidence(a, 'offline-state-offline')
+            q = atspi.find(a, 'entry', contains='Search equipment')
+            atspi.set_text(q, 'LAB70AA500')
+            time.sleep(1)
+            atspi.click(atspi.find(a, 'button', name='11LAB70AA500', timeout=10))
+            self.press(a, 'Edit', ('text', 'Notes'))
+            atspi.set_text(atspi.find(a, 'text', name='Notes'), 'written offline')
+            atspi.click(atspi.find(a, 'button', name='Save'))
+            want = 'Offline · ' + words(before + 1)
+            t = self.wait_subtitle(a, lambda t: t.startswith(want + ' · Test plant'), 'offline, the edit waiting')
+            atspi.find(a, 'label', name=want, timeout=10)   # the banner too
+            self.evidence(a, 'offline-state-waiting')
+        finally:
+            os.kill(self.server.pid, signal.SIGCONT)
+        t = self.wait_subtitle(a, lambda t: 'device reachable' in t and 'waiting' not in t and 'Offline' not in t, 'back online', timeout=90)
+        st = self.boss.req('GET', '/api/state')
+        self.assertEqual(st['equipment'].get('11LAB70AA500', {}).get('notes'), 'written offline', 'the edit made offline never arrived')
+        self.evidence(a, 'offline-state-back')
+        self.assertEqual(self.criticals('offline'), [])
+
+
 class Coverage(Plant):
     """Coverage counts every code, tag, place and photo of the plant: on a server of its own, so the totals are the
     test plant's whatever ran before (on the shared one they changed with the tags test_multi and test_systems add)"""
