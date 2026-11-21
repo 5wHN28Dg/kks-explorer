@@ -5,7 +5,7 @@ Automation core (uiadrive.exe, what Narrator uses) inside the VM's desktop sessi
 KKS_TESTS=test_a,test_b runs only those; KKS_LAPTOP=1 and KKS_VM_KEY for a real laptop (below).
 The VM: OpenSSH with the test key (~/.ssh/kks_vm), auto-logon user kks, reachable from here; the host is 192.168.122.1
 from its side (libvirt's default network). See apps/windows/README.md."""
-import base64, json, os, re, shutil, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
+import base64, json, os, re, shutil, signal, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
@@ -272,6 +272,27 @@ class Windows(unittest.TestCase):
                                    'set\tPassword\ta long password', 'click\tJoin',
                                    "wait\t~Couldn't reach the server at 127.0.0.1:1.\t60", 'sleep\t2031', 'gone\t~refused the network connection'], keep=False,
                    during=[('sleep\t2031', lambda: self.screenshot('win-join-unreachable'))])
+
+    def test_offline_state(self):
+        """#372 (switch offline-state, KKS_UX): online, nothing waits; the server stops answering (SIGSTOP): the status
+        line starts with "Offline"; an edit made then is counted as waiting to be sent; the server back: it arrives,
+        nothing waits, no Offline"""
+        env = {'KKS_UX': 'offline-state', 'KKS_OFFLINE_AFTER': '6'}
+        self.join('off0.uia', sync_every=2000, env=env)
+        self.check('off1.uia', ['wait\t~Last sync \t60', 'gone\t~Offline\t5', 'sleep\t1001'],
+                   during=[('sleep\t1001', lambda: self.screenshot('win-offline-online'))])
+        self.server.send_signal(signal.SIGSTOP)
+        self.addCleanup(self.server.send_signal, signal.SIGCONT)
+        note = 'written offline (Windows %s)' % time.strftime('%H:%M:%S')
+        self.check('off2.uia', ['wait\t~Offline · \t90',
+                                'set\tSearch equipment by KKS code or description\tLAB70AA500', 'select\t~11LAB70AA500',
+                                'click\tShow on the drawing', 'click\tEdit', 'set\tNotes\t' + note, 'click\tSave',
+                                'wait\t~waiting to be sent · \t30', 'sleep\t1002'],
+                   during=[('sleep\t1002', lambda: self.screenshot('win-offline-waiting'))])
+        self.server.send_signal(signal.SIGCONT)
+        self.assertEqual(self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes'),
+                                          'the edit made offline never arrived', tries=240), note)
+        self.check('off3.uia', ['gone\t~waiting to be sent\t90', 'gone\t~Offline\t60', 'wait\t~Last sync \t30'])
 
     def test_status_wraps(self):
         """#371 (UI audit after fixes, N-1): a plain-words error in the main window's status line (Sync now to an address

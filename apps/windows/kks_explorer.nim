@@ -152,11 +152,13 @@ proc doSelectTag(id: string, center: bool) =
 proc syncLine(): string =
   let snap = w.a.snapshot
   var state = ""
-  if uxOn("offline-state"):    # #372: offline and the changes waiting, first in the line
+  var offline = false
+  if uxOn("offline-state"):    # #372: offline and the changes waiting, first in the line (also while a round tries)
     let wt = waitingWords(waitingOf(snap))
-    if not w.a.syncing and isOffline(snap, int64(epochTime())): state = OfflineWord & (if wt.len > 0: " · " & wt else: "") & " · "
+    offline = isOffline(snap, int64(epochTime()))
+    if offline: state = OfflineWord & (if wt.len > 0: " · " & wt else: "") & " · "
     elif wt.len > 0: state = wt & " · "
-  if w.a.syncing: return state & "Syncing…"
+  if w.a.syncing and not offline: return state & "Syncing…"
   result = state & (if snap["last_ok"].kind == jInt: "Last sync " & fromUnix(snap["last_ok"].i).local.format("HH:mm") else: "Not synced yet")
   if snap["relay"].s == "online":
     let n = snap["relay_online"].i
