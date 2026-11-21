@@ -5,6 +5,23 @@
 'use strict';
 const K = {me: null, online: true, reauth: false, outbox: [], listeners: []};
 
+// ---------- switches for changes waiting for the owner's check (the UI and UX policy's tier 2, its section 8.5) ----------
+// A switched change stays off until a release lists it in K.UX_ON. To try one before that, open any page once with
+// ?ux=NAME (several: ?ux=a,b); this browser keeps it until a page is opened with ?ux= and nothing after it. Only the
+// names in K.UX_KNOWN are kept (a link can't switch on anything else).
+K.UX_ON = [];
+K.UX_KNOWN = ['phone-header'];
+K.ux = name => {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.has('ux')) {
+      localStorage.setItem('kks-ux', q.get('ux').split(',').filter(n => K.UX_KNOWN.includes(n)).join(','));
+      q.delete('ux'); const rest = q.toString();
+      history.replaceState(history.state, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+    }
+    return K.UX_ON.includes(name) || (localStorage.getItem('kks-ux') || '').split(',').includes(name);
+  } catch { return K.UX_ON.includes(name) }
+};
 // Inside the Android app (window.KKSNative): API calls go to the app's own node through the bridge (the WebView can't
 // hand POST bodies to the app); replies arrive via K.nativeReply. Everything else is the same as in a browser.
 K.native = window.KKSNative || null;

@@ -198,7 +198,7 @@ async function send(kind,payload,what,note,quiet){
   if(r.status!=='queued') await refreshState(); else updatePending();
   return r;
 }
-function updateQueueBadge(){ const n=STATE.queue||0, b=$('#queueCount'); b.textContent=n; b.style.display=n?'':'none'; b.title=n+' change(s) waiting for approval' }
+function updateQueueBadge(){ const n=STATE.queue||0, b=$('#queueCount'); b.textContent=n; b.style.display=n?'':'none'; b.title=n+' change(s) waiting for approval'; phoneHeader?.label() }
 // your own submissions that aren't live yet (server-side pending/conflict + offline outbox), shown in the panel
 function myPendingEq(k,queued=true){ // your not-yet-approved equipment edits for k, oldest first (`queued` false: without the outbox's)
   const L=[...(STATE.mine||[]).filter(s=>s.kind==='equipment').map(s=>s.payload),...(queued?K.outbox:[]).filter(i=>i.kind==='equipment').map(i=>i.payload)];
@@ -734,6 +734,7 @@ function unlockCustom(){ const c=$('#cfs'); c.closest('.field').classList.add('e
 function closePanel(){ $('#panel').classList.remove('open'); selId=null; selTag=null; drawTags() }
 // The phone's Back button (Android app): close what is open first, one thing at a time; false = nothing left to close.
 K.back = () => {
+  if (phoneHeader?.isOpen()) { phoneHeader.close(true); return true }
   if (K.lightbox.isOpen?.()) { K.lightbox.close(); return true }
   if ($('#panel').classList.contains('open')) { closePanel(); return true }
   const d = document.querySelector('.drawer.open');
@@ -1327,9 +1328,11 @@ function renderLinks(){
 const DRAWER_BTN={sysDrawer:'#sysBtn',covDrawer:'#covBtn'};   // buttons that say whether their drawer is open
 function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id));
   for(const d in DRAWER_BTN) $(DRAWER_BTN[d]).setAttribute('aria-expanded',String(id===d)) }
-// focus: back to the drawer's button (when it has one)
+// focus: back to the drawer's button (when it has one; to More when the button is in More's closed menu)
 function closeDrawer(d,focus){ d.classList.remove('open'); const b=DRAWER_BTN[d.id]&&$(DRAWER_BTN[d.id]);
-  if(b){ b.setAttribute('aria-expanded','false'); if(focus) b.focus() } if(d.id==='procDrawer'){ activeProc=null; drawTags() } }
+  if(b){ b.setAttribute('aria-expanded','false'); if(focus) (phoneHeader?.inMenu(b)?phoneHeader.btn:b).focus() }
+  else if(focus&&phoneHeader?.on()) (d.id==='revDrawer'?$('#revBtn'):phoneHeader.btn).focus()   // (opened from More's menu: its button is hidden there)
+  if(d.id==='procDrawer'){ activeProc=null; drawTags() } }
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeDrawer($('#'+b.dataset.close),true));
 $('#aboutBtn').onclick=()=>K.about();
 $('#procBtn').onclick=()=>{ if($('#procDrawer').classList.contains('open')){$('#procDrawer').classList.remove('open');activeProc=null;drawTags()} else {openDrawer('procDrawer'); activeProc?renderProcDetail(activeProc):renderProcs()} };
@@ -1342,4 +1345,90 @@ $('#linksBtn').onclick=()=>{ if($('#linksDrawer').classList.contains('open'))$('
 $('#notesBtn').onclick=()=>{ if($('#notesDrawer').classList.contains('open'))$('#notesDrawer').classList.remove('open'); else openDrawer('notesDrawer') };
 $('#sheetSel').onchange=e=>{ closePanel(); openSheet(e.target.value) };
 addEventListener('resize',()=>{});
+
+// ---------- the phone header (#367; the switch 'phone-header' until the owner's check, UI and UX policy 8.5) ----------
+// At a phone's width (or a phone turned sideways, or 200 % zoom) the header keeps search, the sheet, Review and More at
+// 48 px (gloves); the rest go into More's menu, in the same order. The menu is a disclosure: More says whether it is
+// open, Tab and the arrow keys move through it, Escape, the browser's Back or a tap outside close it, and the focus
+// goes back to More. A floor chosen in the menu stays in view as a button beside More, which opens the menu on it.
+const phoneHeader=(()=>{
+  if(!K.ux('phone-header')) return null;
+  const PHONE=matchMedia('(max-width:720px),(max-height:500px)'), hdr=document.querySelector('header');
+  const items=['sysBtn','covBtn','floorSel','procBtn','linksBtn','notesBtn','learnBtn','aboutBtn','manageBtn'].map(id=>document.getElementById(id));
+  const marks=items.map(el=>{ const m=document.createComment(el.id); el.before(m); return m });
+  // in the menu, the account's row says what it is before whose it is
+  $('#manageBtn').prepend(h('span',{class:'inmenu'},'Account ·'));
+  const count=h('span',{class:'count',style:'display:none'});
+  const btn=h('button',{type:'button',class:'btn',id:'moreBtn','aria-expanded':'false','aria-controls':'moreMenu',
+    title:'More: Systems, Coverage, floors, Procedures, Connectors, Sheet notes, Learning, About, Account'},h('span',{'aria-hidden':'true'},'⋮'),count);
+  const chipText=h('span');
+  const chip=h('button',{type:'button',class:'btn',id:'floorChip',style:'display:none',onclick:()=>{ open(); $('#floorSel').focus() }},chipText);
+  const menu=h('div',{id:'moreMenu',role:'group','aria-label':'More',hidden:true});
+  const shown=()=>items.filter(el=>el.parentNode===menu&&el.offsetParent!==null);
+  const isOpen=()=>!menu.hidden;
+  function label(){ const n=+($('#queueCount').textContent||0), q=$('#queueCount').style.display!=='none'&&n>0;
+    count.textContent=q?n:''; count.style.display=q?'':'none';
+    btn.setAttribute('aria-label',q?`More, ${n} waiting for approval`:'More');
+    const f=$('#floorSel'), on=!!f.value; chip.style.display=on?'':'none';
+    chipText.textContent=on?f.selectedOptions[0]?.textContent||f.value:''; chip.setAttribute('aria-label',on?`Showing ${chipText.textContent}: choose another floor`:'') }
+  // the browser's Back closes the menu (an entry of its own while it is open; taken away again when the menu closes
+  // otherwise, `backs` counting the steps back still on their way)
+  let entry=false, backs=0;
+  const fit=()=>{ menu.style.maxHeight=Math.max(120,innerHeight-hdr.getBoundingClientRect().bottom-12)+'px' };
+  function open(){ if(isOpen()) return; menu.hidden=false; btn.setAttribute('aria-expanded','true'); fit();
+    $('#results').style.display='none'; $('#q').setAttribute('aria-expanded','false');   // (not under the menu)
+    try{ history.pushState({kksMenu:1},''); entry=true }catch{}
+    shown()[0]?.focus() }
+  function close(focus){ if(!isOpen()) return; menu.hidden=true; btn.setAttribute('aria-expanded','false');
+    if(entry){ entry=false; if(history.state?.kksMenu){ backs++; history.back() } }
+    if(focus) btn.focus() }
+  let startStep=false;   // the step off a menu entry at start (below): its own flag, given up if it never arrives
+  addEventListener('popstate',()=>{ if(startStep){ startStep=false; return } if(backs){ backs--; return } if(entry){ entry=false; const f=menu.contains(document.activeElement); close(f) }
+    else if(history.state?.kksMenu) history.replaceState(null,'') });   // (Forward into a menu's old entry)
+  if(history.state?.kksMenu){   // a reload with the menu open: off its entry, so Back leaves
+    startStep=true; setTimeout(()=>{ startStep=false },1000); history.back() }
+  addEventListener('resize',()=>{ if(isOpen()) fit() });   // a phone turned with the menu open
+  btn.onclick=()=>isOpen()?close(true):open();
+  btn.addEventListener('keydown',e=>{ if(e.key==='Escape'&&isOpen()){ e.preventDefault(); e.stopPropagation(); close(true) }
+    else if(e.key==='ArrowDown'&&!isOpen()){ e.preventDefault(); open() } });
+  menu.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); close(true); return }
+    // (the arrows, Home and End move on past the floor select too: it opens with Space, Enter or Alt+Down)
+    if(e.target.localName==='select'&&(e.altKey||!['ArrowDown','ArrowUp','Home','End'].includes(e.key))) return;
+    const L=shown(), i=L.indexOf(document.activeElement);
+    const to={ArrowDown:i+1,ArrowUp:i-1,Home:0,End:L.length-1}[e.key];
+    if(to===undefined||!L.length) return;
+    e.preventDefault(); L[(to+L.length)%L.length].focus() });
+  // a choice closes the menu; when it didn't move the focus somewhere of its own, the focus goes back to More
+  menu.addEventListener('click',e=>{ const t=e.target.closest('button,a'); if(!t) return;
+    // a link that leaves the page: the menu's entry goes first, so Back from the next page comes straight here
+    if(t.localName==='a'&&entry&&e.button===0&&!(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)&&history.state?.kksMenu){
+      e.preventDefault(); const go=t.href; entry=false; menu.hidden=true; btn.setAttribute('aria-expanded','false');
+      backs++; addEventListener('popstate',()=>{ location.href=K.safeUrl(go) },{once:true}); history.back(); return }
+    setTimeout(()=>{ const f=document.activeElement, lost=!f||f===document.body||menu.contains(f); close(false); if(lost) btn.focus() }) });
+  // a floor: the chip shows it; picked on a touch screen (its own list), the menu closes. Picked with the keyboard (the
+  // select's own list) the menu stays until Escape or Tab.
+  let touched=false;
+  $('#floorSel').addEventListener('pointerdown',()=>{ touched=true });
+  $('#floorSel').addEventListener('keydown',()=>{ touched=false });
+  $('#floorSel').addEventListener('blur',()=>{ touched=false });
+  $('#floorSel').addEventListener('change',()=>{ label(); if(touched&&isOpen()){ touched=false; close(true) } });
+  // a tap outside closes the menu and does nothing else (not a tag opened under it by the same tap)
+  // (only the click of that same tap: one that ends somewhere else, a pan, is not a tap)
+  let swallow=null;
+  document.addEventListener('pointerdown',e=>{ if(isOpen()&&!menu.contains(e.target)&&!btn.contains(e.target)){ close(false); swallow={t:Date.now(),x:e.clientX,y:e.clientY} } },true);
+  document.addEventListener('click',e=>{ const w=swallow; swallow=null;
+    if(w&&Date.now()-w.t<1000&&Math.hypot(e.clientX-w.x,e.clientY-w.y)<12&&!btn.contains(e.target)){ e.preventDefault(); e.stopPropagation() } },true);
+  // the focus leaving both the menu and More closes it (Tab out of the menu, Shift+Tab past More)
+  const away=e=>{ const t=e.relatedTarget; if(t&&!menu.contains(t)&&t!==btn) close(false) };
+  menu.addEventListener('focusout',away); btn.addEventListener('focusout',away);
+  function apply(){
+    const on=PHONE.matches, f=document.activeElement, keep=f&&items.includes(f); hdr.classList.toggle('phonehead',on);
+    if(on){ menu.append(...items); $('#revBtn').after(chip); chip.after(btn); hdr.append(menu); label() }
+    else { close(false); items.forEach((el,i)=>marks[i].after(el)); btn.remove(); chip.remove(); menu.remove() }
+    if(keep&&document.activeElement!==f) (on&&menu.hidden?btn:f).focus()   // a turned phone keeps the keyboard's place
+  }
+  PHONE.addEventListener('change',apply); apply();
+  return {label,btn,isOpen,close,on:()=>PHONE.matches,inMenu:el=>!!el&&el.parentNode===menu&&menu.hidden};
+})();
 load();
