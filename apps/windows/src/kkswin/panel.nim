@@ -145,6 +145,19 @@ proc equipmentSection(w: Win, p: Page, t: Tag) =
       editing = ""
       w.rebuildPanelKeeping(form)),
     ("Cancel", proc () =
+      # with something typed it asks first (#436), as the other clients do; Keep editing leaves it all as it was
+      var typed = note != nil and note.text.strip.len > 0
+      for (f, e) in entries:
+        if e.text.replace("\r\n", "\n").strip != s(live, f).strip: typed = true
+      var cs, was: seq[(string, string)]
+      for (ek, ev) in custom:
+        if ek.text.strip.len > 0 or ev.text.strip.len > 0: cs.add((ek.text.strip, ev.text.strip))
+      if live.get("custom") != nil:
+        for c in live["custom"].elems:
+          if s(c, "k").strip.len > 0 or s(c, "v").strip.len > 0: was.add((s(c, "k").strip, s(c, "v").strip))
+      if cs != was: typed = true
+      if typed and not ask(w.hwnd, "Discard your edits?", "What you typed in Location and notes has not been saved.",
+                           "Discard", "Keep editing"): return
       editing = ""
       w.rebuildPanelKeeping(form)))
 
@@ -196,6 +209,9 @@ proc descriptionSection(w: Win, p: Page, t: Tag) =
         w.loadModel()
         w.rebuildPanelKeeping([e])),
       ("Cancel", proc () =
+        # with something typed it asks first (#436); Keep editing leaves it as it was
+        if e.text.replace("\r\n", "\n").strip != s(d, "text").strip and
+           not ask(w.hwnd, "Discard your edits?", "The description you typed has not been saved.", "Discard", "Keep editing"): return
         editingDesc = ""
         w.rebuildPanelKeeping([e])))
     return

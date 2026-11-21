@@ -557,10 +557,17 @@ async function confirmDesc(t){ const d=descriptionOf(t); if(d?.status!=='draft')
   if(await send(d.confirm.kind,d.confirm.payload,full(t)+': description confirmed')) reselect() }
 // the open panel again, at the same scroll position (after a change made from it: focus is still in it)
 function reselect(){ const P=$('#panel'); if(!selTag||!P.classList.contains('open')) return; const sc=P.scrollTop; select(eff(TAGS.find(x=>x.id===selTag.id)||selTag)); P.scrollTop=sc }
+// A panel form's Cancel with something typed in it asks first (#436; the apps' question): Discard drops that form,
+// Keep editing leaves it as it was. `typed` says whether anything was typed (a field differs from what it opened with).
+const typedIn=el=>!!el&&[...el.querySelectorAll('input,textarea')].some(x=>!x.readOnly&&x.value.trim()!==x.defaultValue.trim());
+async function cancelForm(form,typed,what,go){
+  if(typed&&!await K.confirm('Discard your edits?',what+' has not been saved.','Discard',{keep:'Keep editing'})) return;
+  if(form.isConnected) go();      // (the form gone meanwhile: nothing left to drop)
+}
 function editDesc(t,text){
   const ta=h('textarea',{id:'descEdit',rows:4,maxlength:2000,style:'width:100%'},text);
   put($('#descSec'),h('h3',null,'Description'),h('div',{class:'field'},h('label',{for:'descEdit'},'What this equipment does'),ta),
-    h('button',{class:'primary',onclick:()=>saveDesc(t,ta.value.trim())},'Save'),' ',h('button',{class:'ghost',onclick:()=>$('#descSec').replaceWith(descSec(t))},'Cancel'));
+    h('button',{class:'primary',onclick:()=>saveDesc(t,ta.value.trim())},'Save'),' ',h('button',{class:'ghost',onclick:()=>{ const sec=$('#descSec'); cancelForm(sec,typedIn(sec),'The description you typed',()=>sec.replaceWith(descSec(t))) }},'Cancel'));
   $('#descSec').classList.add('editing'); ta.focus();
 }
 async function saveDesc(t,text){
@@ -658,7 +665,11 @@ function select(t){
           h('button',{class:'ghost',id:'cfAdd',style:'display:none',onclick:()=>$('#cfs').append(cfRow('',''))},'+ Custom field')),
         h('div',{id:'eqSave',style:'margin-top:10px;display:none'},
           canApprove()?null:h('input',{id:'f_rnote',maxlength:500,placeholder:'Note for the approver (optional)',style:'width:100%;margin-bottom:8px'}),
-          h('button',{class:'primary',onclick:()=>saveEq(k)},'Save'),' ',h('button',{class:'ghost',onclick:()=>select(eff(selTag))},'Cancel'))),
+          h('button',{class:'primary',onclick:()=>saveEq(k)},'Save'),' ',h('button',{class:'ghost',onclick:()=>{ const f=$('#eqSave');
+            // (what Save would send, against what the panel showed or the last Save sent: a field removed counts, an
+            // empty row added doesn't; a note for the approver counts too)
+            const typed=Object.keys(eqDiff(k,eqNow()).changes).length>0||!!document.getElementById('f_rnote')?.value.trim();
+            cancelForm(f,typed,'What you typed in Location and notes',()=>{ if(selTag) select(eff(selTag)) }) }},'Cancel'))),
       h('div',{class:'sec'},h('h3',null,'Photos'),
         h('div',{class:'photos'},photos.map(p=>h('figure',null,h('img',{src:'photos/'+encodeURIComponent(p.file),alt:p.caption||'Photo',onclick:ev=>lightbox(ev.currentTarget.src)}),
           h('button',{onclick:()=>delPhoto(p.id,t.id),'aria-label':'Delete this photo'},'✕'),
@@ -701,7 +712,7 @@ function valveSec(t,vt){
     const sendBtn=h('button',{class:'primary',onclick:submit},'Send');   // (the section's buttons wait while it sends)
     const form=h('div',{class:'field editing'},h('label',{for:'vtValue'},'Valve type (as it really is)'),inp,
       h('div',{style:'margin-top:8px'},sendBtn,' ',
-        h('button',{class:'ghost',onclick:()=>{ form.remove(); btns.style.display='' }},'Cancel')));
+        h('button',{class:'ghost',onclick:()=>cancelForm(form,typedIn(form),'The valve type you typed',()=>{ form.remove(); btns.style.display='' })},'Cancel')));
     btns.style.display='none'; sec.append(form); inp.focus(); inp.select();
   }
   return sec;
@@ -741,18 +752,28 @@ new MutationObserver(()=>document.querySelectorAll('.crop[data-sheet]:not([data-
   if(S?.levels) cropUrl(S.id).then(u=>{ el.style.backgroundImage=`url("${u}")` }).catch(e=>console.warn('crop',e)) }))
   .observe(document.body,{childList:true,subtree:true});
 const P0=k=>panelEq?.k===k?panelEq.shown:{...eq(k),...myPendingEq(k)};
-async function saveEq(k){
+// what Location and notes holds now, and how it differs from what the panel showed (your pending values included; after
+// a Save, what was saved): only these fields are sent, each with the live value you saw
+function eqNow(){
   const v=id=>document.getElementById(id).value.trim();
   const custom=[...document.querySelectorAll('#cfs .cf')].map(r=>({k:r.children[0].value.trim(),v:r.children[1].value.trim()})).filter(c=>c.k||c.v);
-  const now={area:v('f_area'),floor:v('f_floor'),elev:v('f_elev'),near:v('f_near'),loc:v('f_loc'),notes:v('f_notes'),custom};
+  return {area:v('f_area'),floor:v('f_floor'),elev:v('f_elev'),near:v('f_near'),loc:v('f_loc'),notes:v('f_notes'),custom};
+}
+function eqDiff(k,now){
+  const P=panelEq?.k===k?panelEq:{live:eq(k),shown:{...eq(k),...myPendingEq(k)}}, def=f=>f==='custom'?[]:'', changes={}, was={};
+  for(const f in now) if(JSON.stringify(now[f])!==JSON.stringify(P.shown[f]??def(f))){ changes[f]=now[f]; was[f]=P.live[f]??def(f) }
+  return {P,changes,was};
+}
+async function saveEq(k){
+  const now=eqNow();
   if(now.floor!==(P0(k).floor||'')&&!/^(\d|10)$/.test(now.floor)&&now.floor!==''){ toast('Floor: a whole number from 0 to 10 (the height goes in Elevation)'); return }
   // send only fields changed in the form (which shows your own pending values), each with the live value you saw,
   // so the server can merge edits to different fields and flag real clashes
-  const P=panelEq?.k===k?panelEq:{live:eq(k),shown:{...eq(k),...myPendingEq(k)}}, def=f=>f==='custom'?[]:'', changes={}, was={};
-  for(const f in now) if(JSON.stringify(now[f])!==JSON.stringify(P.shown[f]??def(f))){ changes[f]=now[f]; was[f]=P.live[f]??def(f) }
+  const {P,changes,was}=eqDiff(k,now);
   if(!Object.keys(changes).length){ toast('Nothing changed'); return }
-  const r=await send('equipment',{kks:k,changes,base:was},k,document.getElementById('f_rnote')?.value.trim());
-  if(r) panelEq={k,live:r.status==='approved'?{...P.live,...changes}:P.live,shown:{...P.shown,...changes}};
+  const note=document.getElementById('f_rnote');
+  const r=await send('equipment',{kks:k,changes,base:was},k,note?.value.trim());
+  if(r){ panelEq={k,live:r.status==='approved'?{...P.live,...changes}:P.live,shown:{...P.shown,...changes}}; if(note) note.value='' }   // (the note went with it)
 }
 async function review(id,status){
   const kv=($('#rvK')?.value||'').trim().toUpperCase().replace(/\s/g,''), iv=($('#rvI')?.value||'').trim().toUpperCase();

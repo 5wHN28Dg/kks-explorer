@@ -81,7 +81,7 @@ private object PanelSize { var dp = -1f }
 /** what is typed and not sent in the open tag's panel, by form ("form", "desc", "review"): Back, Close, another tag or
  *  another sheet ask before it goes (#366, D3). `reset` empties them all (their saved state is keyed by it). */
 /** the tag panel's own forms (the question names the panel when only they hold text) */
-val PANEL_DRAFTS = setOf("form", "review", "desc")
+val PANEL_DRAFTS = setOf("form", "review", "desc", "valve")
 
 object PanelDrafts {
     val dirty = mutableStateMapOf<String, Boolean>()
@@ -144,6 +144,12 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
             PanelDrafts.drop(); then()
         }, { discarding = null }, no = "Keep editing")
     }
+    // this form's Cancel asks only about this form, and Discard drops only it (#436): a valve type or description
+    // being typed in another form of the panel stays (the panel's Close and Back above drop them all)
+    var discardingForm by remember(id) { mutableStateOf(false) }
+    val dropForm = { editing = false; note = "" }
+    if (discardingForm) Confirm("Discard your edits?", "What you typed in Location and notes has not been saved.", "Discard",
+        dropForm, { discardingForm = false }, no = "Keep editing")
     // The keyboard (UI/UX audit of #363, R3): while the panel is open the window is not panned up under the status bar
     // (the system's default, which put the heading, Copy and Close under it in landscape); the panel rises above the
     // keyboard and shrinks to what is left (imePadding before height: the height is held within it), the grip giving
@@ -247,7 +253,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                             scope.launch { snack.showSnackbar(m) }
                             if (ok) editing = false
                         }) { Text("Save") }
-                        OutlinedButton(onClick = { leaveForm {} }) { Text("Cancel") }
+                        OutlinedButton(onClick = { if (changed) discardingForm = true else dropForm() }) { Text("Cancel") }
                     }
                 }
                 val where = t.optJSONArray("appears_on") ?: JSONArray()
@@ -379,7 +385,12 @@ private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snac
     var opened by rememberSaveable(code, PanelDrafts.reset) { mutableStateOf(d.str("text")) }
     var text by rememberSaveable(code, PanelDrafts.reset) { mutableStateOf(d.str("text")) }
     LaunchedEffect(d.str("text"), editing) { if (!editing) { opened = d.str("text"); text = opened } }
-    DraftFlag("desc", editing && text.trim() != opened.trim())
+    val typed = editing && text.trim() != opened.trim()
+    DraftFlag("desc", typed)
+    // Cancel with something typed asks first, as the panel's Close and Back do (#436; D3): Discard drops only this form
+    var discarding by remember(code) { mutableStateOf(false) }
+    if (discarding) Confirm("Discard your edits?", "The description you typed has not been saved.", "Discard",
+        { editing = false; text = d.str("text") }, { discarding = false }, no = "Keep editing")
     val draft = d.str("status") == "draft"
     Heading("Description")
     Surface(color = if (draft) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -409,7 +420,7 @@ private fun DescriptionSection(code: String, d: JSONObject, eq: JSONObject, snac
                         scope.launch { snack.showSnackbar(m) }
                         if (ok) editing = false
                     }) { Text("Save description") }
-                    OutlinedButton(onClick = { editing = false; text = d.str("text") }) { Text("Cancel") }
+                    OutlinedButton(onClick = { if (typed) discarding = true else { editing = false; text = d.str("text") } }) { Text("Cancel") }
                 }
             } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val confirm = d.optJSONObject("confirm")
@@ -435,10 +446,20 @@ private fun ValveSection(vt: JSONObject, rev: Int, snack: SnackbarHostState) {
     val scope = rememberCoroutineScope()
     val confirm = vt.optJSONObject("confirm")
     val k = confirm?.optJSONObject("payload")?.str("kks").orEmpty()
-    var correcting by remember(k) { mutableStateOf(false) }
-    var value by remember(k, vt.str("text")) { mutableStateOf(vt.str("text")) }
+    // (saved, like the panel's other forms: a type that arrives by sync, a turn of the phone or Android stopping the
+    // app leaves what is typed; the panel's Discard starts it again)
+    var correcting by rememberSaveable(k, PanelDrafts.reset) { mutableStateOf(false) }
+    var opened by rememberSaveable(k, PanelDrafts.reset) { mutableStateOf(vt.str("text")) }
+    var value by rememberSaveable(k, PanelDrafts.reset) { mutableStateOf(vt.str("text")) }
     var busy by remember(k, rev) { mutableStateOf(false) }      // one proposal per press: a second tap waits
     if (correcting) HoldLinks()
+    // (only while the form is on screen: a type confirmed meanwhile on another device takes the form away)
+    val typed = correcting && confirm != null && vt.str("status") != "confirmed" && value.trim() != opened.trim()
+    DraftFlag("valve", typed)       // Close, Back and the bottom tabs ask before it goes (D3)
+    // Cancel with something typed asks first (#436): Discard drops only this form
+    var discarding by remember(k) { mutableStateOf(false) }
+    if (discarding) Confirm("Discard your edits?", "The valve type you typed has not been saved.", "Discard",
+        { correcting = false }, { discarding = false }, no = "Keep editing")
     Heading("Valve type")
     Surface(color = if (vt.str("status") == "confirmed") MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.tertiaryContainer,
         shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
@@ -466,7 +487,7 @@ private fun ValveSection(vt: JSONObject, rev: Int, snack: SnackbarHostState) {
                 else if (mine.isNotEmpty()) Dim("Your valve type “$mine” is waiting for approval.")
                 else if (!correcting) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { send(vt.str("text")) }, enabled = !busy) { Text("Confirm type") }
-                    OutlinedButton(onClick = { correcting = true; value = vt.str("text") }, enabled = !busy) { Text("Correct type") }
+                    OutlinedButton(onClick = { correcting = true; value = vt.str("text"); opened = value }, enabled = !busy) { Text("Correct type") }
                 } else {
                     OutlinedTextField(value, { value = it }, label = { Text("Valve type (as it really is)") }, singleLine = true, modifier = Modifier.fillMaxWidth().inViewAboveKeyboard())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -478,7 +499,7 @@ private fun ValveSection(vt: JSONObject, rev: Int, snack: SnackbarHostState) {
                                 else -> send(v)
                             }
                         }, enabled = !busy) { Text("Send") }
-                        OutlinedButton(onClick = { correcting = false }) { Text("Cancel") }
+                        OutlinedButton(onClick = { if (typed) discarding = true else correcting = false }) { Text("Cancel") }
                     }
                 }
             }

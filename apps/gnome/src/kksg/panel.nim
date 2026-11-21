@@ -97,6 +97,21 @@ proc formDone(w: Win) =
   # focus is the dialog's then.)
   if w.panelEdit != nil and not w.asking: discard gtk_widget_grab_focus(w.panelEdit)
 
+proc cancelForm(w: Win, what: string) =
+  ## An Edit form's Cancel (#436): with something typed in it, it asks first, as leaving the panel does (win.nim
+  ## `leaving`); Discard drops this form only (formDone: what is typed in the review form stays), Keep editing leaves
+  ## everything as it was. With nothing typed it closes at once. `what` says what would be lost.
+  if w.asking: return
+  if w.formChanged == nil or not w.formChanged():
+    w.formDone()
+    return
+  w.asking = true
+  let sel = w.selected
+  ask(w.window, "Discard your edits?", what & " has not been saved.", "Discard", "Keep editing", proc (yes: bool) =
+    w.asking = false
+    # (the same form still open: nothing else can close it while the question is on screen, but check)
+    if yes and w.panelEditing and w.selected == sel: w.formDone())
+
 proc reviewSection(w: Win, t: Tag): W =
   let sug = t.suggestion
   let sugNote = s(sug, "note")
@@ -248,7 +263,7 @@ proc equipmentSection(w: Win, t: Tag): W =
         return
       if w.submit("equipment", newObj(@[("kks", newStr(k)), ("changes", changes), ("base", base)]), k, text(note)).len > 0:
         w.formDone())
-    btns.add button("Cancel", "", proc () = w.formDone())
+    btns.add button("Cancel", "", proc () = w.cancelForm("What you typed in Location and notes"))
     adw_preferences_group_add(g, btns))
 
 proc valveSection(w: Win, t: Tag, vt: JNode): W =
@@ -312,7 +327,7 @@ proc valveSection(w: Win, t: Tag, vt: JNode): W =
       for x in p["changes"]["custom"].elems:
         if x.kind == jObj and s(x, "k") == ValveTypeKey: x["v"] = newStr(v)
       if w.submit(c["kind"].s, p, k & " valve type: " & v).len > 0: w.formDone())
-    row2.add send, button("Cancel", "", proc () = w.formDone())
+    row2.add send, button("Cancel", "", proc () = w.cancelForm("The valve type you typed"))
     adw_preferences_group_add(g, row2)
     discard gtk_widget_grab_focus(e))
 
@@ -378,7 +393,7 @@ proc descriptionSection(w: Win, t: Tag): W =
       if w.submit("equipment", newObj(@[("kks", newStr(k)), ("changes", newObj(@[("custom", cs)])),
                                         ("base", newObj(@[("custom", base)]))]), "description of " & k).len > 0:
         w.formDone())
-    b2.add button("Cancel", "", proc () = w.formDone())
+    b2.add button("Cancel", "", proc () = w.cancelForm("The description you typed"))
     adw_preferences_group_add(g, b2))
 
 proc linkNow(w: Win): string =

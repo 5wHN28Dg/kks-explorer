@@ -153,6 +153,19 @@ class Plant(unittest.TestCase):
         with open(f'/tmp/kks-gnome-e2e-{name}.log', errors='replace') as f:
             return [ln.strip() for ln in f if '-CRITICAL' in ln or 'error in a UI callback' in ln]
 
+    def discard_question(self, a, button, says=None):
+        """#436: an Edit form's Cancel with something typed asks "Discard your edits?" (saying `says`); answer it with
+        `button` ("Keep editing" or "Discard") and wait until it has gone"""
+        d = atspi.find(a, 'alert', name='Discard your edits?', timeout=10)
+        if says:
+            atspi.find(d, None, contains=says, timeout=5)
+        atspi.click(atspi.find(d, 'button', name=button, timeout=5))
+        for _ in range(40):
+            if not atspi.find_all(a, 'alert', name='Discard your edits?'):
+                return
+            time.sleep(0.25)
+        self.fail(f'the question stayed after {button}')
+
     def press(self, a, button, then):
         """press a button until what it leads to is there (a press within GTK's 250 ms before a reload is lost)"""
         for _ in range(5):
@@ -1053,8 +1066,22 @@ class Gnome(Plant):
         time.sleep(1.5)
         self.assertTrue(atspi.find_all(a, 'text', contains='Notes'), 'Confirm type rebuilt the panel under the Edit form')
         self.assertIsNone(self.boss.req('GET', '/api/state')['equipment'].get('11LBA10AA102', {}).get('custom'))
-        cancel_edit()
+        # #436: Cancel with something typed asks first; Keep editing keeps it, Discard drops it
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        atspi.find(a, 'alert', name='Discard your edits?', timeout=10)
+        self.evidence(a, 'cancel-asks-location')
+        self.discard_question(a, 'Keep editing', 'What you typed in Location and notes has not been saved.')
+        self.assertEqual(self.typed(a, 'Notes'), 'half typed', 'Keep editing lost what was typed')
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        self.discard_question(a, 'Discard')
+        atspi.find(a, 'button', name='Edit', timeout=10)
+        self.assertIsNone(self.typed(a, 'Notes'), 'Discard left the form open')
         press('Correct type', ('text', 'Valve type'))
+        # the same for the valve type's own form
+        atspi.set_text(atspi.find(a, 'text', name='Valve type'), 'typed then cancelled')
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        self.discard_question(a, 'Keep editing', 'The valve type you typed has not been saved.')
+        self.assertEqual(self.typed(a, 'Valve type'), 'typed then cancelled', 'Keep editing lost the typed valve type')
         # the sync rounds (every 2 s here) bring the confirmed gate valve back from the server: the open form stays
         time.sleep(5)
         self.assertTrue(atspi.find_all(a, 'text', contains='Valve type'), 'a sync rebuilt the panel under the form')
@@ -1454,6 +1481,22 @@ class Gnome(Plant):
         atspi.find(a, None, contains='33 m · grid K16 F08', timeout=10)
         atspi.find(a, None, contains='Source: Maker list, page 5', timeout=10)
         atspi.find(a, None, contains='14 m (location list)', timeout=10)
+        # #436: the description's Cancel with something typed asks first; Keep editing keeps it, Discard drops it
+        self.press(a, 'Edit description', ('text', 'Description'))
+        atspi.click(atspi.find(a, 'button', name='Cancel'))                # nothing typed: no question
+        atspi.find(a, 'button', name='Confirm description', timeout=10)
+        self.assertFalse(atspi.find_all(a, 'alert', name='Discard your edits?'), 'asked about text nobody typed')
+        self.press(a, 'Edit description', ('text', 'Description'))
+        atspi.set_text(atspi.find(a, 'text', name='Description'), 'typed description')
+        time.sleep(0.5)
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        atspi.find(a, 'alert', name='Discard your edits?', timeout=10)
+        self.evidence(a, 'cancel-asks-description')
+        self.discard_question(a, 'Keep editing', 'The description you typed has not been saved.')
+        self.assertEqual(self.typed(a, 'Description'), 'typed description', 'Keep editing lost the typed description')
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        self.discard_question(a, 'Discard')
+        atspi.find(a, 'button', name='Confirm description', timeout=10)
         atspi.click(atspi.find(a, 'button', name='Confirm description'))
         atspi.find(a, None, contains='Confirmed by The Manager', timeout=15)
         for _ in range(40):
@@ -2136,7 +2179,9 @@ class Gnome(Plant):
         atspi.click(atspi.find(a, 'button', name='Done'))
         gone('button', link, 'Done left the panel\'s Link button (a form is open)')
         self.assertEqual(self.typed(a, 'Notes'), 'typed before link mode', 'link mode ended: the panel was rebuilt under the open form')
-        self.press(a, 'Cancel', ('button', 'Edit'))
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        self.discard_question(a, 'Discard')                       # (#436: something typed)
+        atspi.find(a, 'button', name='Edit', timeout=10)
         # "Select tags" takes the banner down: link mode is over (it stayed on, with no Done to press)
         self.press(a, '+ Link equipment', ('button', link))
         mode = atspi.find(a, 'toggle button', name='Select tags')
@@ -2346,7 +2391,9 @@ class Gnome(Plant):
         self.assertIsNone(reviewed(), 'Confirm sent the review with the Edit form open')
         # the other way: the review form typed in while the Edit form is open, then Cancel (it rebuilds the panel)
         atspi.set_text(atspi.find(a, 'text', name='KKS (with suffix)', timeout=10), '11LAE31AP001')
-        self.press(a, 'Cancel', ('button', 'Edit'))
+        atspi.click(atspi.find(a, 'button', name='Cancel'))
+        self.discard_question(a, 'Discard')                       # (#436: Notes holds something typed)
+        atspi.find(a, 'button', name='Edit', timeout=10)
         self.assertEqual(self.typed(a, 'KKS (with suffix)'), '11LAE31AP001', 'the Edit form\'s Cancel put the reader\'s text back in the review form')
         # what is typed in the review form stays through a sync round that brought a change (the reader's text came back)
         round_arrives()

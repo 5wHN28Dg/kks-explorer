@@ -809,7 +809,12 @@ class Windows(unittest.TestCase):
         self.check('kreview.uia', ['set\t%s\tLAB70AA792' % search, 'select\t~11LAB70AA792   ', 'click\tShow on the drawing',
                                    'wait\tCheck this tag\t20', 'set\tKKS (with suffix)\t11LAB70AA797', 'click\tEdit',
                                    'wait\tSave\t10', 'value\tKKS (with suffix)\t11LAB70AA797', 'set\tNotes\tdropped',
-                                   'click\tCancel', 'gone\tSave', 'value\tKKS (with suffix)\t11LAB70AA797', 'click\tClose'])
+                                   # #436: Cancel with something typed asks first; Keep editing keeps it, Discard drops it
+                                   'click\tCancel', 'wait\tDiscard your edits?\t10',
+                                   'wait\t~What you typed in Location and notes has not been saved.\t5', 'click\tKeep editing',
+                                   'gone\tDiscard your edits?', 'value\tNotes\tdropped',
+                                   'click\tCancel', 'wait\tDiscard your edits?\t10', 'click\tDiscard',
+                                   'gone\tSave', 'value\tKKS (with suffix)\t11LAB70AA797', 'click\tClose'])
         self.leave()
 
     def test_valve_type(self):
@@ -1031,7 +1036,9 @@ class Windows(unittest.TestCase):
         self.check('applinkf0.uia', ['click\tEdit', 'set\tNotes\ttyped, not saved yet'])
         self.check('applinkf1.uia', ['wait\t~A link from another app opens once the form is saved or cancelled\t20',
                                      'value\tNotes\ttyped, not saved yet', 'sleep\t2500', 'value\tNotes\ttyped, not saved yet',
-                                     'click\tCancel', 'wait\t11LAB70AA602\t20'], link='walkdown://kks/11LAB70AA602')
+                                     # (typed text: Cancel asks first since #436; Discard)
+                                     'click\tCancel', 'wait\tDiscard your edits?\t10', 'click\tDiscard',
+                                     'wait\t11LAB70AA602\t20'], link='walkdown://kks/11LAB70AA602')
         # malformed links do nothing: each would open something if it were read loosely
         self.check('applink5.uia', ['close\tThe control loop in one picture', 'gone\tThe control loop in one picture'])
         self.check('applink6.uia', ['sleep\t2000', 'gone\t~Instrumentation and control — '], link='walkdown://course/inc/loop?x=1')
@@ -1239,7 +1246,16 @@ class Windows(unittest.TestCase):
             'click\tConfirm description', 'wait\t~Saved: description of 11LAB70AA888\t20',
             'wait\t~Confirmed by The Manager\t20', 'gone\tConfirm description'])
         self.check('desc1.uia', self.show('11LAB70AA889') + [
-            'wait\tFeed water vent valve\t20', 'click\tEdit description', 'focus\tDescription', 'set\tDescription\tFeed water vent valve, DN25',
+            'wait\tFeed water vent valve\t20',
+            # #436: Cancel with nothing typed closes the form; with something typed it asks first (Keep editing keeps
+            # it, Discard drops it)
+            'click\tEdit description', 'wait\tSend description\t10', 'click\tCancel', 'gone\tSend description',
+            'gone\tDiscard your edits?',
+            'click\tEdit description', 'set\tDescription\ttyped, then cancelled', 'click\tCancel',
+            'wait\tDiscard your edits?\t10', 'wait\t~The description you typed has not been saved.\t5', 'click\tKeep editing',
+            'gone\tDiscard your edits?', 'value\tDescription\ttyped, then cancelled',
+            'click\tCancel', 'wait\tDiscard your edits?\t10', 'click\tDiscard', 'gone\tSend description',
+            'click\tEdit description', 'focus\tDescription', 'set\tDescription\tFeed water vent valve, DN25',
             'click\tSend description', 'wait\t~Saved: description of 11LAB70AA889\t20', 'wait\t~Confirmed by The Manager\t20',
             'wait\tFeed water vent valve, DN25\t10'])
         def descs():

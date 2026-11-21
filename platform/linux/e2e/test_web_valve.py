@@ -38,6 +38,27 @@ for n, e in enumerate(ENGINES):
 
 
 class WebValve(unittest.TestCase):
+    def ask_keep(self, page, text, shot):
+        """the in-page question "Discard your edits?" (#436) with `text`; Keep editing (its default) answers it (a
+        screenshot of the question named after `shot` first)"""
+        ask = page.locator('dialog.kconfirm')
+        ask.wait_for(state='visible', timeout=10000)
+        self.assertEqual(ask.locator('h2').text_content(), 'Discard your edits?')
+        self.assertIn(text, ask.text_content())
+        self.assertEqual(ask.locator('.kq-yes').text_content(), 'Discard')
+        self.assertEqual(page.evaluate('document.activeElement.className'), 'kq-keep')
+        os.makedirs(SHOTS, exist_ok=True)
+        page.screenshot(path=os.path.join(SHOTS, 'discard-question-%s-%s.png' % (shot, page.context.browser.browser_type.name)))
+        ask.locator('.kq-keep').click()
+        ask.wait_for(state='detached', timeout=10000)
+
+    def ask_discard(self, page):
+        ask = page.locator('dialog.kconfirm')
+        ask.wait_for(state='visible', timeout=10000)
+        self.assertEqual(ask.locator('h2').text_content(), 'Discard your edits?')
+        ask.locator('.kq-yes').click()
+        ask.wait_for(state='detached', timeout=10000)
+
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp(prefix='kks-web-valve-')
@@ -120,8 +141,24 @@ class WebValve(unittest.TestCase):
             self.assertEqual(live.inner_text(), 'Save or cancel your edits first')
             self.assertEqual(page.input_value('#f_notes'), 'half typed')
             self.assertIsNone(self.custom(gate))
+            # #436: Cancel with something typed asks first; Keep editing keeps it, Discard drops it
             page.click('#eqSave button:text-is("Cancel")')
+            self.ask_keep(page, 'What you typed in Location and notes has not been saved.', 'location')
+            self.assertEqual(page.input_value('#f_notes'), 'half typed')
+            page.click('#eqSave button:text-is("Cancel")')
+            self.ask_discard(page)
             page.wait_for_selector('#layer .vsym')
+            self.assertEqual(page.input_value('#f_notes'), '')
+            # Save, then Cancel: what was saved is not "typed" any more (no question), the form closes
+            page.click('button[aria-label="Edit Notes"]')
+            page.fill('#f_notes', 'saved note')
+            page.click('#eqSave button:text-is("Save")')
+            page.wait_for_function("() => (document.getElementById('toast')?.textContent || '').startsWith('Saved')", timeout=15000)
+            page.click('#eqSave button:text-is("Cancel")')
+            page.wait_for_timeout(500)
+            self.assertEqual(page.locator('dialog.kconfirm').count(), 0, 'asked about text that was saved')
+            page.wait_for_selector('#layer .vsym')
+            self.assertEqual(page.input_value('#f_notes'), 'saved note')
             # Confirm: sent as it is
             page.click('#valveSec button:text-is("Confirm type")')
             page.wait_for_function("() => document.getElementById('vtLine')?.textContent === 'Valve type: gate valve, motor-operated (confirmed)'",
@@ -136,9 +173,21 @@ class WebValve(unittest.TestCase):
             page.click('#valveSec button:text-is("Correct type")')
             self.assertEqual(page.input_value('#vtValue'), 'globe valve, normally closed')
             self.assertEqual(page.evaluate("document.activeElement.id"), 'vtValue')
-            # Cancel goes back to the two buttons; an empty value is refused
+            # Cancel goes back to the two buttons (nothing typed: no question); an empty value is refused
             page.click('#valveSec button:text-is("Cancel")')
             self.assertEqual(page.locator('#vtValue').count(), 0)
+            self.assertEqual(page.locator('dialog.kconfirm').count(), 0)
+            # #436: with something typed, Cancel asks first; Keep editing keeps it, Discard drops it
+            page.click('#valveSec button:text-is("Correct type")')
+            page.fill('#vtValue', 'typed valve')
+            page.click('#valveSec button:text-is("Cancel")')
+            self.ask_keep(page, 'The valve type you typed has not been saved.', 'valve')
+            self.assertEqual(page.input_value('#vtValue'), 'typed valve')
+            page.screenshot(path=os.path.join(SHOTS, f'valve-cancel-kept-{name}.png'))
+            page.click('#valveSec button:text-is("Cancel")')
+            self.ask_discard(page)
+            self.assertEqual(page.locator('#vtValue').count(), 0)
+            self.assertIsNone(self.custom(globe))
             page.click('#valveSec button:text-is("Correct type")')
             page.fill('#vtValue', '   ')
             page.click('#valveSec button:text-is("Send")')
@@ -165,6 +214,17 @@ class WebValve(unittest.TestCase):
             self.assertEqual(page.text_content('#descSec .desc bdi[dir=ltr]'), gate)
             self.assertEqual(rtl('#cfs .cf input'), [['auto', False]] + [['auto', True]] * 3)   # (Description, its text; ملاحظة, its text)
             self.assertIn('by The Manager', page.text_content('#descSec .by'))
+            # #436: a custom field removed is something typed, even with an empty row added after it (the same count)
+            page.click('button[aria-label="Edit custom fields"]')
+            page.locator('#cfs .cf').nth(1).locator('.x').click()
+            page.click('#cfAdd')
+            self.assertEqual(page.locator('#cfs .cf').count(), 2)
+            page.click('#eqSave button:text-is("Cancel")')
+            self.ask_keep(page, 'What you typed in Location and notes has not been saved.', 'custom-field')
+            page.click('#eqSave button:text-is("Cancel")')
+            self.ask_discard(page)
+            page.wait_for_function("() => document.querySelectorAll('#cfs .cf').length === 2 && !document.querySelector('#cfs .cf:not([style*=none]) input:not([readonly])')")
+            self.assertEqual(rtl('#cfs .cf input'), [['auto', False]] + [['auto', True]] * 3)   # the field is back
             self.assertEqual(page.text_content('#descSec .by bdi[dir=auto]'), 'The Manager')
             # a member: Confirm sends a proposal; the panel says it waits, and offers no second one
             mctx = browser.new_context(viewport={'width': 1200, 'height': 800})
