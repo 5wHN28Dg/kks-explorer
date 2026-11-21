@@ -8,8 +8,12 @@
 ## - the atomic write: a crash while writing (half a .tmp) leaves the previous save; a missing save with a complete
 ##   .tmp (a rename that could not replace, Windows) loads the .tmp; a failed write leaves the old file;
 ## - the app: Continue at start puts the plant, the procedure's progress, the operations' results, the alarms' times
-##   and the trainee back, and the run goes on as the saved one did; New run replaces the save; a save of other
-##   content or a damaged one is refused with its reason and a new run starts.
+##   and the trainee back, and the run goes on as the saved one did; New run replaces the save; a run with a deviation
+##   is continued;
+## - another build's save (#447): one of other code or content, and the release before's (tests/fixtures/run-0.3.0.save),
+##   are made again in this build from their inputs, the file as saved kept aside; a save this build can't continue (a
+##   newer version's or format's, damaged, a state that doesn't fit, a scenario this plant hasn't) is refused with its
+##   reason and kept aside under the name the offer gives, and a new run starts (the switch on; off, as plant-v0.3.0).
 extends RefCounted
 
 const PlantModel = preload("res://sim/plant_model.gd")
@@ -43,6 +47,7 @@ func run(tree: SceneTree) -> Array:
 	_file(m, p)
 	_atomic(m, p)
 	await _app(tree, p)
+	Autosave.switch_override = -1
 	for f in DirAccess.get_files_at(DIR):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(DIR.path_join(f)))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(DIR))
@@ -799,6 +804,9 @@ func _app(tree: SceneTree, p: Array) -> void:
 	# a save of other content, then a damaged one: refused with the reason, a new run starts
 	var pl: Dictionary = ui.autosave.payload()
 	main.free()
+	# switched off (ui/autosave.gd carries(), until the owner's check): as plant-v0.3.0, a save of another build, of
+	# other content or a damaged one is refused with its reason and a new run starts
+	Autosave.switch_override = 0
 	for c in [["content", "content has changed"], ["app", "another version of the app"],
 			["contents", "a machine in a state it doesn't have"], ["damaged", "cut short"]]:
 		if c[0] == "contents":
@@ -829,6 +837,52 @@ func _app(tree: SceneTree, p: Array) -> void:
 			if not ui.autosave.armed or ui.clock.engine.step_no != 0:
 				p.append("after a refused save the new run did not start")
 		main.free()
+	Autosave.switch_override = 1
+	# a save this build can't continue: refused with the reason, kept aside under the name the offer gives (#447), a new
+	# run starts
+	for c in [["newer", "newer version of the app (99.0.0)"],
+			["contents", "a machine in a state it doesn't have"], ["damaged", "cut short"],
+			["format", "save format 7"]]:
+		if c[0] == "contents":
+			var q := pl.duplicate(true)
+			q["engine"]["mstate"][0] = 99         # under a matching hash
+			RunSave.write(path, RunSave.encode(q))
+		elif c[0] == "newer":
+			var q := pl.duplicate(true)
+			q["app"] = "99.0.0+0123456789abcdef"
+			RunSave.write(path, RunSave.encode(q))
+		elif c[0] == "format":
+			var b := RunSave.encode(pl)
+			b.encode_u32(8, 7)
+			RunSave.write(path, b)
+		else:
+			var b := FileAccess.get_file_as_bytes(path)
+			FileAccess.open(path, FileAccess.WRITE).store_buffer(b.slice(0, b.size() - 3))
+		var as_saved := FileAccess.get_file_as_bytes(path)
+		main = App.start(tree)
+		ui = main.ui
+		var txt := App.texts(ui)
+		var kept: String = ui.autosave.kept
+		if App.find_button(ui, "Continue") != null or not txt.contains("can't be continued") or not txt.contains(c[1]) \
+				or kept == "" or not txt.contains("kept on this device as %s" % kept):
+			p.append("a save (%s) was not refused with its reason and the name it is kept under: %s" % [c[0], txt.left(400)])
+		var nb2 := App.find_button(ui, "New run")
+		if nb2 == null:
+			p.append("a refused save offers no New run")
+		else:
+			nb2.pressed.emit()
+			if not ui.autosave.armed or ui.clock.engine.step_no != 0:
+				p.append("after a refused save the new run did not start")
+			var kp := path.get_base_dir().path_join(kept)
+			if kept == "" or FileAccess.get_file_as_bytes(kp) != as_saved:
+				p.append("a refused save (%s) was not kept aside as it was (%s)" % [c[0], kept])
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
+		main.free()
+	await _other_build(tree, pl, p)
+	await _old_release(tree, p)
+	_remap(p)
+	Autosave.switch_override = -1
+	await _deviation(tree, p)
 	if not FileAccess.file_exists(path + ".prev"):
 		p.append("New run did not keep the run it replaced")
 	# a second window while another one saves to the run: it offers nothing and saves apart
@@ -847,3 +901,336 @@ func _app(tree: SceneTree, p: Array) -> void:
 	RunSave.remove(path)
 	RunSave.remove(path.get_base_dir().path_join("run-second.save"))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path + ".prev"))
+
+
+## A save of another build of this release (an update with other code or content, #447): offered, and Continue makes
+## it again in this build; the file as saved is kept aside.
+func _other_build(tree: SceneTree, pl: Dictionary, p: Array) -> void:
+	var path: String = Autosave.default_path
+	for c in [["app", "0.0.1+0123456789abcdef"], ["content", "0".repeat(64)]]:
+		var q := pl.duplicate(true)
+		q[c[0]] = c[1]
+		RunSave.write(path, RunSave.encode(q))
+		var as_saved := FileAccess.get_file_as_bytes(path)
+		var main := App.start(tree)
+		var ui = main.ui
+		var cont := App.find_button(ui, "Continue")
+		var kept: String = ui.autosave.kept
+		if cont == null or kept == "" or not App.texts(ui).contains("kept as %s" % kept):
+			p.append("a save of another build (%s) was not offered with the name it is kept under: %s" % [c[0], App.texts(ui).left(400)])
+			main.free()
+			continue
+		cont.pressed.emit()
+		for i in 600:
+			if ui.autosave.offer_panel == null:
+				break
+			await tree.process_frame
+		var r := RunSave.read(path)
+		var kp := path.get_base_dir().path_join(kept)
+		if ui.autosave.offer_panel != null or not ui.autosave.armed or not r["ok"] \
+				or r["payload"]["app"] != RunSave.app_version() or r["payload"]["content"] != ui.autosave.content:
+			p.append("a save of another build (%s) was not continued in this one: %s" % [c[0], App.texts(ui).left(300)])
+		if FileAccess.get_file_as_bytes(kp) != as_saved:
+			p.append("a save of another build (%s) was not kept aside as it was" % c[0])
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
+		main.free()
+	RunSave.remove(path)
+
+
+## The save of the release before (tests/fixtures/run-0.3.0.save, written by plant-v0.3.0's own autosave:
+## tools/plant3d/old_saves/): Continue makes the run again in this build (the plant at the saved step with the same
+## inputs, the procedure's progress and its deviation, the operation still pending, the trainee where they were) and
+## the file as saved is kept aside; the run goes on and is saved as this build's. Then the same save with a scenario
+## this plant hasn't: kept aside with its reason, a new run.
+func _old_release(tree: SceneTree, p: Array) -> void:
+	var path: String = Autosave.default_path
+	RunSave.remove(path)
+	var fx := FileAccess.get_file_as_bytes("res://tests/fixtures/run-0.3.0.save")
+	var d := RunSave.decode(fx)
+	if not d["ok"]:
+		p.append("the 0.3.0 fixture does not decode: %s" % d.get("text", ""))
+		return
+	var op: Dictionary = d["payload"]
+	if RunSave.version_of(op["app"]) != "0.3.0" or op["engine"]["inputs"].size() != 4 \
+			or op["tracker"]["deviations"].size() != 1:
+		p.append("the 0.3.0 fixture is not the one described (%s)" % op["app"])
+		return
+	RunSave.write(path, fx)
+	var main := App.start(tree)
+	var ui = main.ui
+	var txt := App.texts(ui)
+	var cont := App.find_button(ui, "Continue")
+	var kept: String = ui.autosave.kept
+	for i in 3:
+		await tree.process_frame
+	var vh: float = ui.root.get_viewport_rect().size.y
+	if ui.autosave.offer_panel.size.y > vh - 32.0 or ui.autosave.offer_panel.get_global_rect().end.y > vh:
+		p.append("the offer is not as tall as its words, or goes past the screen: %s in a window %s high"
+				% [str(ui.autosave.offer_panel.get_global_rect()), vh])
+	if cont == null or not txt.contains("saved by version 0.3.0") or not txt.contains("kept as %s" % kept) \
+			or not kept.contains("0.3.0"):
+		p.append("the 0.3.0 save was not offered to continue: %s" % txt.left(400))
+		main.free()
+		RunSave.remove(path)
+		return
+	# made again slowly (a small slice a frame): the offer says how far it is and Back takes the focus Continue had;
+	# Back gives the offer again as it was, and Continue then makes it again
+	Autosave.migrate_budget_us = 1
+	cont.grab_focus()
+	cont.pressed.emit()
+	await tree.process_frame
+	var fo = ui.root.get_viewport().gui_get_focus_owner()
+	if not App.texts(ui.autosave.offer_panel).contains("Making the run again in this version") \
+			or fo == null or not fo is Button or fo.text != "Back" or App.find_button(ui, "New run") == null:
+		p.append("while the 0.3.0 run is made again, the offer shows no progress, or Back lacks the focus: %s, focus %s"
+				% [App.texts(ui.autosave.offer_panel).left(200), str(fo)])
+	if fo is Button and fo.text == "Back":
+		fo.pressed.emit()
+		await tree.process_frame
+		cont = App.find_button(ui, "Continue")
+		if cont == null or ui.autosave.migrating != null or ui.autosave.kept != kept:
+			p.append("Back did not give the offer again as it was: %s" % App.texts(ui).left(300))
+		else:
+			cont.pressed.emit()
+	Autosave.migrate_budget_us = 20000
+	for i in 1200:
+		if ui.autosave.offer_panel == null:
+			break
+		await tree.process_frame
+	var e = ui.clock.engine
+	if ui.autosave.offer_panel != null or not ui.autosave.armed:
+		p.append("the 0.3.0 save was not made again: %s" % (App.texts(ui.autosave.offer_panel) if ui.autosave.offer_panel != null else "").left(400))
+		main.free()
+		RunSave.remove(path)
+		return
+	if e.step_no != op["engine"]["step_no"] or var_to_bytes(e.inputs) != var_to_bytes(op["engine"]["inputs"]):
+		p.append("the 0.3.0 run made again is at step %d with %d inputs, not %d with %d" % [e.step_no, e.inputs.size(),
+				op["engine"]["step_no"], op["engine"]["inputs"].size()])
+	var t = ui.tracker
+	if t == null or t.proc.get("id") != "cold_start":
+		p.append("the 0.3.0 run's procedure did not come back")
+	else:
+		if t.index != op["tracker"]["index"] or t.log != op["tracker"]["log"]:
+			p.append("the 0.3.0 run's procedure is at step %d, not %d" % [t.index, op["tracker"]["index"]])
+		var dv: Array = t.deviations
+		if dv.size() != 1 or dv[0][1] != op["tracker"]["deviations"][0][1] or dv[0][2] < 0 or dv[0][2] >= e.events.size() \
+				or e.events[dv[0][2]][1] != "op" or e.events[dv[0][2]][2] != "30PAR10AA001":
+			p.append("the 0.3.0 run's deviation does not point at its operation: %s" % str(dv))
+	if ui.player.global_position.distance_to(Vector3(12.0, 9.0, -7.0)) > 0.01 or ui.player.mode != ui.player.Mode.FLY:
+		p.append("the 0.3.0 run did not put the trainee back: %s" % str(ui.player.global_position))
+	var kp := path.get_base_dir().path_join(kept)
+	if FileAccess.get_file_as_bytes(kp) != fx:
+		p.append("the 0.3.0 save was not kept aside as it was (%s)" % kept)
+	var r := RunSave.read(path)
+	if not r["ok"] or r["payload"]["app"] != RunSave.app_version() or ui.autosave.check(r["payload"]) != "":
+		p.append("the 0.3.0 run made again was not saved as this build's: %s" % (ui.autosave.check(r["payload"]) if r["ok"] else r["text"]))
+	# it goes on: the operation sent before the save is made at the next step
+	var n0: int = e.events.size()
+	ui.clock.run_steps(5)
+	var pending_done := false
+	for i in range(n0, e.events.size()):
+		if e.events[i].size() > 2 and e.events[i][1] == "op" and e.events[i][2] == "00PGC10AP002":
+			pending_done = true
+	if not pending_done:
+		p.append("the 0.3.0 run's pending operation was not made after it was continued")
+	main.free()
+	# started again: an ordinary save of this build
+	main = App.start(tree)
+	ui = main.ui
+	if App.find_button(ui, "Continue") == null or ui.autosave.kept != "":
+		p.append("the 0.3.0 run made again is not offered as this build's save: %s" % App.texts(ui).left(300))
+	main.free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
+	# the same save in a scenario this plant hasn't: it can't be made again; kept aside, a new run
+	var q := op.duplicate(true)
+	q["scenario"] = "no_such_scenario"
+	var bad := RunSave.encode(q)
+	RunSave.write(path, bad)
+	main = App.start(tree)
+	ui = main.ui
+	txt = App.texts(ui)
+	kept = ui.autosave.kept
+	if App.find_button(ui, "Continue") != null or not txt.contains("can't be continued") \
+			or not txt.contains("scenario is not in this version's plant") or not txt.contains("kept on this device as %s" % kept):
+		p.append("a 0.3.0 save that can't be made again was not refused with its reason and name: %s" % txt.left(400))
+	var nb := App.find_button(ui, "New run")
+	if nb != null:
+		nb.pressed.emit()
+	kp = path.get_base_dir().path_join(kept)
+	r = RunSave.read(path)
+	if nb == null or FileAccess.get_file_as_bytes(kp) != bad or not r["ok"] or r["payload"]["engine"]["step_no"] != 0:
+		p.append("a 0.3.0 save that can't be made again was not kept aside, or no new run started")
+	main.free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
+	# saves an offer could not show (it stopped half-built, the plant paused, nothing saved again): a procedure this
+	# plant hasn't, a step past its procedure, an event of one item; each refused with its reason and kept aside
+	for c in [["procedure", "procedure is not in this version's plant"], ["index", "step is not in this version's procedure"],
+			["event", "record of events is damaged"], ["run", "debrief's procedure is not in this version's plant"],
+			["kind", "an action this version doesn't know (unknown)"]]:
+		q = op.duplicate(true)
+		if c[0] == "procedure":
+			q["procedure"] = "no_such_procedure"
+		elif c[0] == "index":
+			q["tracker"]["index"] = 999
+		elif c[0] == "event":
+			q["engine"]["events"].append([q["engine"]["step_no"]])
+		elif c[0] == "kind":     # a kind from the file, 5,000 letters long: never shown as it is
+			q["engine"]["inputs"].append([q["engine"]["step_no"] + 1, "\u202e" + "x".repeat(5000)])
+		else:
+			q["run"] = {"procedure": "no_such_procedure", "same": false, "tracker": {}}
+		RunSave.write(path, RunSave.encode(q))
+		main = App.start(tree)
+		ui = main.ui
+		txt = App.texts(ui)
+		if ui.autosave.offer_panel == null or App.find_button(ui, "New run") == null or not txt.contains(c[1]) \
+				or not txt.contains("kept on this device as") or txt.contains("xxxxxxxxxx"):
+			p.append("a 0.3.0 save with %s that doesn't fit was not refused with its reason: %s" % [c[0], txt.left(300)])
+		main.free()
+	# a save whose panels' record is damaged: refused before the wait of making it again
+	q = op.duplicate(true)
+	q["ui"]["results"] = {"00PGC10AP001": 5}
+	RunSave.write(path, RunSave.encode(q))
+	main = App.start(tree)
+	ui = main.ui
+	txt = App.texts(ui)
+	if App.find_button(ui, "Continue") != null or not txt.contains("panels' state is damaged"):
+		p.append("a 0.3.0 save with a damaged panel record was not refused before it was made again: %s" % txt.left(300))
+	main.free()
+	# an action that comes out otherwise in this version (its code is not in this plant: "unknown", where the saved run
+	# has it done): said after the replay, before anything is replaced, Continue anyway focused; it goes on, the file
+	# as saved kept aside
+	q = op.duplicate(true)
+	for x in q["engine"]["inputs"]:
+		if x[1] == "op" and x[2] == "00QFA10AN001":
+			x[2] = "00XXA00AA000"
+	bad = RunSave.encode(q)
+	RunSave.write(path, bad)
+	main = App.start(tree)
+	ui = main.ui
+	kept = ui.autosave.kept
+	cont = App.find_button(ui, "Continue")
+	if cont == null:
+		p.append("a 0.3.0 save with an action this plant hasn't was not offered: %s" % App.texts(ui).left(300))
+	else:
+		cont.grab_focus()
+		cont.pressed.emit()
+		for i in 600:
+			if ui.autosave.migrating == null:
+				break
+			await tree.process_frame
+		await tree.process_frame
+		txt = App.texts(ui.autosave.offer_panel) if ui.autosave.offer_panel != null else ""
+		fo = ui.root.get_viewport().gui_get_focus_owner()
+		if not txt.contains("came out differently") or not txt.contains("00QFA10AN001 start at 0:00:00 of plant time") \
+				or not txt.contains("done in the saved run, not made now") or ui.autosave.armed \
+				or FileAccess.get_file_as_bytes(path) != bad or fo == null or not fo is Button or fo.text != "Continue anyway":
+			p.append("an action that came out otherwise was not said before anything was replaced: %s, focus %s"
+					% [txt.left(400), str(fo)])
+		if fo is Button and fo.text == "Continue anyway":
+			fo.pressed.emit()
+			await tree.process_frame
+		kp = path.get_base_dir().path_join(kept)
+		var r2 := RunSave.read(path)
+		if FileAccess.get_file_as_bytes(kp) != bad or not ui.autosave.armed or ui.autosave.offer_panel != null \
+				or not r2["ok"] or r2["payload"]["app"] != RunSave.app_version() \
+				or ui.clock.engine.step_no != op["engine"]["step_no"]:
+			p.append("Continue anyway did not go on with the run made again, the file as saved kept aside")
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
+	main.free()
+	# the copy aside fails (a folder stands where the kept file would go): nothing replaced, said in words, Replace it
+	# focused; Replace it starts a new run and keeps the save as run.save.prev
+	q = op.duplicate(true)
+	q["scenario"] = "no_such_scenario"
+	bad = RunSave.encode(q)
+	RunSave.write(path, bad)
+	main = App.start(tree)
+	ui = main.ui
+	kept = ui.autosave.kept
+	kp = path.get_base_dir().path_join(kept)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(kp))
+	nb = App.find_button(ui, "New run")
+	if nb != null:
+		nb.pressed.emit()
+	await tree.process_frame
+	txt = App.texts(ui.autosave.offer_panel) if ui.autosave.offer_panel != null else ""
+	fo = ui.root.get_viewport().gui_get_focus_owner()
+	if not txt.contains("could not be kept aside") or not txt.contains("Nothing was replaced") or ui.autosave.armed \
+			or FileAccess.get_file_as_bytes(path) != bad or fo == null or not fo is Button or fo.text != "Replace it":
+		p.append("a failed copy aside was not said, or something was replaced: %s, focus %s" % [txt.left(300), str(fo)])
+	if fo is Button and fo.text == "Replace it":
+		fo.pressed.emit()
+		r = RunSave.read(path)
+		if not ui.autosave.armed or not r["ok"] or r["payload"]["engine"]["step_no"] != 0 \
+				or FileAccess.get_file_as_bytes(path + ".prev") != bad:
+			p.append("Replace it did not start a new run keeping the save as run.save.prev")
+	main.free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
+	RunSave.remove(path)
+
+
+## A run with a deviation in its procedure is saved and offered to continue (it was refused: the check expected a
+## deviation of two items, the tracker writes five).
+func _deviation(tree: SceneTree, p: Array) -> void:
+	var path: String = Autosave.default_path
+	RunSave.remove(path)
+	var main := App.start(tree)
+	var ui = main.ui
+	ui.start_procedure("cold_start", null, false)
+	ui.go_control_room()
+	ui.do_op({"kks": "00PGC10AP001", "do": "start"}, null)    # step 2's, at step 1: a deviation
+	ui.clock.run_steps(5)
+	var devs: Array = ui.tracker.deviations.duplicate(true)
+	if devs.is_empty():
+		p.append("the deviation test made no deviation")
+	ui.autosave.save_now()
+	var r := RunSave.read(path)
+	var why: String = ui.autosave.check(r["payload"]) if r["ok"] else r["text"]
+	if why != "":
+		p.append("a run with a deviation is refused: %s" % why)
+	main.free()
+	main = App.start(tree)
+	ui = main.ui
+	var cont := App.find_button(ui, "Continue")
+	if cont == null:
+		p.append("a run with a deviation was not offered: %s" % App.texts(ui).left(300))
+	else:
+		cont.pressed.emit()
+		await tree.process_frame
+		if ui.tracker == null or ui.tracker.deviations != devs:
+			p.append("a run with a deviation did not come back with it")
+	main.free()
+	RunSave.remove(path)
+
+
+## The event positions a procedure's progress holds, moved to a run made again (ui/run_migrate.gd): by their place
+## among their model step's events, a deviation's operation by its rank among the step's operations.
+func _remap(p: Array) -> void:
+	var Migrate = load("res://ui/run_migrate.gd")
+	var old_ev := [[5, "op", "A"], [5, "op", "B"], [6, "x"]]
+	var new_ev := [[4, "y"], [5, "alarm"], [5, "op", "A"], [5, "op", "B"], [6, "x"]]
+	var t: Dictionary = Migrate.remap_tracker({"_seen": 2, "ev_from": 1, "ev_to": 3, "deviations": [[5, "t", 1, 0, 0]]},
+			old_ev, new_ev, 6)
+	if t["_seen"] != 4 or t["ev_from"] != 3 or t["ev_to"] != 5 or t["deviations"][0][2] != 3:
+		p.append("the procedure's event positions were not moved by their place in their step: %s" % str(t))
+	# ended at step 100, saved later with no events after it; the run made again has an alarm at 300: not the procedure's
+	t = Migrate.remap_tracker({"_seen": 1, "ev_from": 0, "begin_step": 100, "ev_to": 1, "end_step": 100, "deviations": []},
+			[[100, "op", "A"]], [[100, "op", "A"], [300, "alarm"]], 500)
+	if t["ev_from"] != 0 or t["ev_to"] != 1 or t["_seen"] != 2:
+		p.append("a procedure's end was not moved by its step: %s" % str(t))
+	# the outcomes compared after a replay: a permit's "done" (its action is "done" too) refused now; the plant's own
+	# events and the new run's extra ones are not the trainee's; one event more earlier shifts nothing; text from the
+	# file is shown only as short plain words
+	var d: Array = Migrate.diff_events(
+			[[10, "permit", "W1", "done", "P", "done", []], [12, "op", "A1", "start", "done", []],
+				[13, "permit", "W2", "auto", null, "done", []]],
+			[[9, "op", "X9", "stop", "done", []], [10, "permit", "W1", "done", "P", "refused", ["authority"]],
+				[12, "op", "A1", "start", "done", []]])
+	if d.size() != 1 or not d[0].contains("W1 done P at 0:00:01 of plant time: done in the saved run, refused now"):
+		p.append("a permit refused after the replay was not found, or other events were: %s" % str(d))
+	d = Migrate.diff_events([[20, "drive", "P2", "V1", "auto", "gate", "done", []]],
+			[[20, "drive", "P2", "V1", "auto", "gate", "refused", ["no_wheel"]]])
+	if d.size() != 1 or not d[0].contains("done in the saved run, refused now"):
+		p.append("a trainee's drive \"auto\" refused after the replay was not found: %s" % str(d))
+	d = Migrate.diff_events([[12, "op", "\u202e" + "x".repeat(20), "start", "done", []]], [])
+	if d.size() != 1 or d[0].contains("\u202e") or not d[0].contains("unknown start"):
+		p.append("text from the file reached the words as it is: %s" % str(d))
