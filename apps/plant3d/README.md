@@ -323,7 +323,11 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
   and says which version saved it. Continue makes the run again in this build (`ui/run_migrate.gd`): the engine is
   deterministic and every change a run makes to the plant is an input in its log, so a fresh engine of this build is
   fed every saved input at its step up to the saved step, a slice of 20 ms per frame while the offer shows how far it
-  is (New run keeps the keyboard's and gamepad's focus meanwhile). The procedure's progress, the panels' records and the trainee's place are kept as saved; the event positions
+  is; Back (which takes the keyboard's and gamepad's focus) gives the offer again, New run gives the run up. Before
+  that wait, every part the offer and the run made again use is checked (`why_not`, `parts_why`). An action whose
+  outcome comes out otherwise (an operation done in the saved run and refused or unknown in this plant, say: the
+  engine decides an input at its step, so the outcomes in the event list are compared, not the input logs) is listed
+  before anything is replaced, with Continue anyway or New run. The procedure's progress, the panels' records and the trainee's place are kept as saved; the event positions
   the procedure's progress holds (its deviations' operations among them) are moved to the same plant steps in the new
   event list; fields a newer build added get their fresh values. Where the model has changed, the plant can come out
   a little differently from the saved run: the trainee's actions are the same. The file as saved is first kept aside

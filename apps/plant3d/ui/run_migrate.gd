@@ -15,6 +15,7 @@ const PlantEngine = preload("res://sim/engine.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const Tracker = preload("res://ui/procedure_tracker.gd")
 const Inputs = preload("res://ui/inputs.gd")
+const W = preload("res://ui/widgets.gd")
 
 ## Every input kind the engine takes (sim/engine.gd apply_input) and the lengths of its item (without the step).
 const INPUT_SIZES := {"op": [5, 7], "ack": [2], "shelve": [3], "unshelve": [2], "fault": [2, 3], "repair": [2, 4],
@@ -49,7 +50,8 @@ static func why_not(model, sp: Dictionary) -> String:
 			return "its record of actions is damaged"
 		last = x[0]
 		if not INPUT_SIZES.has(x[1]):
-			return "it holds an action this version doesn't know (%s): it was saved by a newer version" % x[1]
+			return "it holds an action this version doesn't know (%s): it was saved by a newer version" \
+					% RunSave.version_of(x[1])   # (from the file: a short plain word, else "unknown")
 		if not (x.size() - 1) in INPUT_SIZES[x[1]]:
 			return "its record of actions is damaged"
 	if typeof(en.get("events")) != TYPE_ARRAY:
@@ -141,6 +143,54 @@ func made_again() -> String:
 	return ""
 
 
+## The actions whose outcome came out otherwise in the run made again (an operation done in the saved run and refused
+## or unknown in this version's plant, or the other way round), in words, at most `most`; [] when every one came out
+## the same. The engine logs an input when it is queued and decides it at its step, so the input logs alone can't tell.
+func differences(most := 3) -> Array:
+	var a := outcomes(p["engine"]["events"])
+	var b := outcomes(e.events)
+	var out: Array = []
+	var n := 0
+	for i in maxi(a.size(), b.size()):
+		var x = a[i] if i < a.size() else null
+		var y = b[i] if i < b.size() else null
+		if x == y:
+			continue
+		n += 1
+		if out.size() < most:
+			var w = x if x != null else y
+			out.append("%s at %s of plant time: %s in the saved run, %s now" % [_words(w), W.model_time(w[0]),
+					_outcome(x), _outcome(y)])
+	if n > out.size():
+		out.append("and %d more" % (n - out.size()))
+	return out
+
+
+## Each decided input's event, up to its outcome: [step, kind, …, "done" | "refused" | "unknown"], in order.
+static func outcomes(events: Array) -> Array:
+	var out: Array = []
+	for ev in events:
+		if ev.size() < 3 or typeof(ev[1]) != TYPE_STRING or not INPUT_SIZES.has(ev[1]):
+			continue
+		for k in range(2, ev.size()):
+			if typeof(ev[k]) == TYPE_STRING and ev[k] in ["done", "refused", "unknown"]:
+				out.append(ev.slice(0, k + 1))
+				break
+	return out
+
+
+static func _words(w: Array) -> String:
+	var parts: Array = []
+	for k in range(2 if w[1] == "op" else 1, w.size() - 1):
+		if typeof(w[k]) == TYPE_STRING:
+			parts.append(RunSave.version_of(w[k]) if w[k].length() > 24 else w[k])
+	return " ".join(parts)
+
+
+static func _outcome(w) -> String:
+	return "not made" if w == null else str(w[-1])
+
+
 func fraction() -> float:
 	return 1.0 if target == 0 else clampf(float(e.step_no) / float(target), 0.0, 1.0)
 
@@ -177,9 +227,16 @@ static func _filled(t: Dictionary) -> Dictionary:
 ## new event at step s or later; the end of the old list the end of the new.
 static func remap_tracker(t: Dictionary, old_ev: Array, new_ev: Array, last_step: int) -> Dictionary:
 	var out := t.duplicate(true)
-	for k in ["_seen", "ev_from", "ev_to"]:
+	# where the procedure began and ended: by its steps (begin_step, end_step), at the same place among that step's
+	# events; what it has read: the same place in the list
+	for kv in [["ev_from", "begin_step"], ["ev_to", "end_step"], ["_seen", ""]]:
+		var k: String = kv[0]
 		if out.has(k) and typeof(out[k]) == TYPE_INT and out[k] >= 0:
-			out[k] = _pos(out[k], old_ev, new_ev, last_step)
+			var at_step = out.get(kv[1]) if kv[1] != "" else null
+			if typeof(at_step) == TYPE_INT and at_step >= 0:
+				out[k] = _pos_in_step(out[k], at_step, old_ev, new_ev)
+			else:
+				out[k] = _pos(out[k], old_ev, new_ev, last_step)
 	if out.has("deviations"):
 		for d in out["deviations"]:
 			if typeof(d) == TYPE_ARRAY and d.size() > 2 and typeof(d[2]) == TYPE_INT and d[2] >= 0:
@@ -195,12 +252,18 @@ static func _pos(pos: int, old_ev: Array, new_ev: Array, last_step: int) -> int:
 	var s: int = old_ev[pos][0]
 	if s > last_step:
 		return new_ev.size()
-	var rank := pos - _first_at(old_ev, s)
+	return _pos_in_step(pos, s, old_ev, new_ev)
+
+
+## A position in the old list, read as a place among model step s's events (its rank there; at or past the step's
+## last event, after the new step's last), moved to the new list.
+static func _pos_in_step(pos: int, s: int, old_ev: Array, new_ev: Array) -> int:
+	var first_old := _first_at(old_ev, s)
+	var n_old := _first_at(old_ev, s + 1) - first_old
 	var first := _first_at(new_ev, s)
-	var n := 0
-	while first + n < new_ev.size() and new_ev[first + n][0] == s:
-		n += 1
-	return first + mini(rank, n)
+	var n := _first_at(new_ev, s + 1) - first
+	var rank := clampi(pos - first_old, 0, n_old)
+	return first + (n if rank >= n_old else mini(rank, n))
 
 
 ## A deviation's op event moved to the new list: the op event of the same rank among its step's op events (-1 when

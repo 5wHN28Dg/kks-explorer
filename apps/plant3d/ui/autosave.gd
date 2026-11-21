@@ -48,6 +48,7 @@ var migrating = null            # ui/run_migrate.gd while a save of another buil
 var _read_file := ""            # the file the offered save was read from (run.save, or a .tmp beside it)
 var _offer_text: Label
 var _offer_title: Label
+var _differences_seen := false  # the run made again's different outcomes were shown (Continue anyway then goes on)
 var _offer_row: HBoxContainer
 var saves := 0                  # saves written (tests)
 var capture_us := 0             # the main thread's part of the last periodic save
@@ -106,6 +107,12 @@ func begin(offer := true) -> void:
 				"Version %s or later can continue it." % theirs)
 		return
 	var why := Migrate.why_not(ui.model, p)
+	if why == "":
+		# the parts check() refuses after the replay, refused before its wait (an older save has no task record)
+		var probe := {"clock": p["clock"], "ui": p["ui"].duplicate(), "player": p["player"]}
+		if typeof(probe["ui"]) == TYPE_DICTIONARY and not probe["ui"].has("task_given"):
+			probe["ui"]["task_given"] = {}
+		why = parts_why(probe)
 	if why != "":
 		_show_kept(why, theirs, "")
 		return
@@ -189,11 +196,9 @@ func check(p: Dictionary) -> String:
 		bad = _engine_contents(fresh, p["engine"])
 	if bad != "":
 		return "the plant's state does not fit this version: " + bad
-	var c: Dictionary = p["clock"]
-	if c.size() != 3 or typeof(c.get("speed")) != TYPE_INT or not c["speed"] in [0, 1, 2] \
-			or typeof(c.get("ff_want")) != TYPE_FLOAT or not (c["ff_want"] >= 1.0 and c["ff_want"] <= SimClock.FF_MAX) \
-			or typeof(c.get("pause_on_hold")) != TYPE_BOOL:
-		return "its clock is damaged"
+	var why_parts := parts_why(p)
+	if why_parts != "":
+		return why_parts
 	if p["procedure"] != "":
 		if not ui.model.procedures.has(p["procedure"]):
 			return "its procedure is not in this plant"
@@ -220,6 +225,20 @@ func check(p: Dictionary) -> String:
 			if bad != "" or not _tracker_contents(run["tracker"], p["engine"]) \
 					or run["tracker"]["index"] >= ui.model.procedures[run["procedure"]].get("steps", []).size():
 				return "its debrief's procedure is damaged"
+	return ""
+
+
+## The clock's, the panels' and the trainee's parts of a saved run: why they don't fit, or "" (check(), and before a save
+## of another build is made again: its wait is not spent on a save these refuse).
+static func parts_why(p: Dictionary) -> String:
+	if typeof(p.get("clock")) != TYPE_DICTIONARY or typeof(p.get("ui")) != TYPE_DICTIONARY \
+			or typeof(p.get("player")) != TYPE_DICTIONARY:
+		return "its panels' state is damaged"
+	var c: Dictionary = p["clock"]
+	if c.size() != 3 or typeof(c.get("speed")) != TYPE_INT or not c["speed"] in [0, 1, 2] \
+			or typeof(c.get("ff_want")) != TYPE_FLOAT or not (c["ff_want"] >= 1.0 and c["ff_want"] <= SimClock.FF_MAX) \
+			or typeof(c.get("pause_on_hold")) != TYPE_BOOL:
+		return "its clock is damaged"
 	var u: Dictionary = p["ui"]
 	# (a save before the driver steered, §21.16, has no drive_log)
 	if not (u.size() == 3 or u.size() == 4 and typeof(u.get("drive_log")) == TYPE_ARRAY) \
@@ -1026,8 +1045,9 @@ func withdraw_offer() -> void:
 	ui.player.scripted = false
 
 
-func _choose(p: Dictionary) -> void:
-	if not p.is_empty() and kept != "" and migrating == null:
+## made: p is a run made again in this version (ui/run_migrate.gd), put back as it is.
+func _choose(p: Dictionary, made := false) -> void:
+	if not p.is_empty() and kept != "" and not made:
 		_begin_migration(p)                     # another build's save: made again first, the offer shows how far
 		return
 	migrating = null
@@ -1089,14 +1109,43 @@ func _aside_failed(q := {}) -> void:
 ## the file as saved kept aside first; a run that can't be made again is said so and kept aside.
 func _begin_migration(p: Dictionary) -> void:
 	migrating = Migrate.new(ui.model, p)
+	_differences_seen = false
 	var had_focus := false
 	for c in _offer_row.get_children():
-		if c.text == "Continue":
-			had_focus = c.has_focus()
-			_offer_row.remove_child(c)
-			c.queue_free()
-	_focus_new_run(had_focus)
+		if c is Button and c.has_focus():
+			had_focus = true
+	_set_buttons([["Back", func(): _back_to_offer(p)], ["New run", func(): _choose({})]], 0 if had_focus else -1)
+	_offer_title.text = "Making the run again"
 	_offer_text.text = "Making the run again in this version: 0 %"
+
+
+## Back from the replay: the offer as it was (nothing was changed while the run was made again).
+func _back_to_offer(p: Dictionary) -> void:
+	var k := kept
+	migrating = null
+	ui.root.get_viewport().size_changed.disconnect(_place_offer)
+	_offer_layer.queue_free()
+	_offer_layer = null
+	offer_panel = null
+	kept = k
+	_show_offer(p, "")
+
+
+## The offer's buttons replaced by these ([text, callable]…); the one at `focus` takes the focus (-1: the first, when
+## the app wants a focus).
+func _set_buttons(list: Array, focus: int) -> void:
+	for c in _offer_row.get_children():
+		_offer_row.remove_child(c)
+		c.queue_free()
+	var made: Array = []
+	for b in list:
+		var bt := W.button(b[0], b[1], 200)
+		_offer_row.add_child(bt)
+		made.append(bt)
+	if focus >= 0:
+		made[focus].grab_focus()
+	elif ui.wants_focus() and not made.is_empty():
+		made[0].grab_focus()
 
 
 ## The offer's New run takes the keyboard's and the gamepad's focus (when the button that had it went, or the app
@@ -1117,8 +1166,20 @@ func _migrate_frame() -> void:
 	if why == "":
 		q = m.payload(RunSave.app_version(), content)
 		why = check(q)
-	if why == "" and RunSave.keep_aside(path, _read_file, kept, false) != OK:
-		_aside_failed(q)
+	if why == "" and not _differences_seen:
+		var diff: Array = m.differences()
+		if not diff.is_empty():
+			# some actions came out otherwise (the plant changed under them): said before anything is replaced
+			_differences_seen = true
+			migrating = null
+			_offer_title.text = "Some actions came out differently"
+			_offer_text.text = ("The run was made again in this version, but some of your actions came out "
+					+ "differently: %s. Your procedure's progress is kept as it was saved. Continue anyway goes on "
+					+ "with the run as it is now; the file as saved is kept as %s either way.") % ["; ".join(diff), kept]
+			_set_buttons([["Continue anyway", func(): _carry_on(q)], ["New run", func(): _choose({})]], 0)
+			return
+	if why == "":
+		_carry_on(q)
 		return
 	if why != "":
 		migrating = null
@@ -1128,7 +1189,16 @@ func _migrate_frame() -> void:
 				+ "lost. Choose New run to start afresh.") % [why, kept]
 		last_error = why
 		return
-	_choose(q)
+
+
+## The run made again goes on: the file as saved kept aside first (if that fails, nothing is replaced and it says so).
+func _carry_on(q: Dictionary) -> void:
+	_differences_seen = false
+	migrating = null
+	if RunSave.keep_aside(path, _read_file, kept, false) != OK:
+		_aside_failed(q)
+		return
+	_choose(q, true)
 
 
 # ------------------------------------------------------------------ saving

@@ -302,6 +302,8 @@ static func keep_aside(path: String, file: String, name: String, remove_rest := 
 	# copied in pieces (a damaged file can be of any size), then compared by length and SHA-256
 	var err := DirAccess.copy_absolute(ProjectSettings.globalize_path(file), ProjectSettings.globalize_path(dest))
 	if err != OK:
+		if FileAccess.file_exists(dest):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(dest))   # (a part copy: never left as "kept")
 		return err
 	var a := FileAccess.open(file, FileAccess.READ)
 	var b := FileAccess.open(dest, FileAccess.READ)
@@ -309,6 +311,7 @@ static func keep_aside(path: String, file: String, name: String, remove_rest := 
 	a = null
 	b = null
 	if not same or FileAccess.get_sha256(file) != FileAccess.get_sha256(dest):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(dest))
 		return ERR_FILE_CANT_WRITE
 	if remove_rest:
 		remove(path)

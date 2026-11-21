@@ -5,7 +5,8 @@
 ## (--phone, --density, --ui-size as tests/ui_size_shots.gd). The saves are the synthetic fixture the release before
 ## wrote (tests/fixtures/run-0.3.0.save) and this build's own run; they go to a file of the shots' own, never the
 ## trainee's run. With the switch on (`walkdown/carry_saves_over`): the release before's save offered; after Continue;
-## the same save in a scenario this plant hasn't (kept aside); this build's own save (New run's line); a damaged one.
+## the same save in a scenario this plant hasn't (kept aside); an action that came out otherwise; a failed copy aside;
+## this build's own save (New run's line); a damaged one.
 ## With it off: the release before's save as plant-v0.3.0 refuses it (the baseline).
 extends SceneTree
 
@@ -116,9 +117,11 @@ func _run() -> void:
 	await shot("on-cannot-continue")
 	kept_files.append(main.ui.autosave.kept)
 	await _stop()
-	# a run made again whose state this build refuses: said after Continue, New run focused
+	# an action that comes out otherwise in this version (a code this plant hasn't): said after the replay
 	q = old.duplicate(true)
-	q["ui"]["results"] = {"00PGC10AP001": 5}
+	for x in q["engine"]["inputs"]:
+		if x[1] == "op" and x[2] == "00QFA10AN001":
+			x[2] = "00XXA00AA000"
 	RunSave.remove(path)
 	RunSave.write(path, RunSave.encode(q))
 	await _start()
@@ -128,7 +131,7 @@ func _run() -> void:
 		if main.ui.autosave.migrating == null:
 			break
 		await process_frame
-	await shot("on-made-again-refused")
+	await shot("on-came-out-differently")
 	await _stop()
 	# the copy aside fails (a folder where the kept file goes): nothing replaced, Replace it
 	q = old.duplicate(true)

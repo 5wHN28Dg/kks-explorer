@@ -973,16 +973,25 @@ func _old_release(tree: SceneTree, p: Array) -> void:
 		main.free()
 		RunSave.remove(path)
 		return
-	# made again slowly (a small slice a frame): the offer says how far it is and New run keeps the focus Continue had
+	# made again slowly (a small slice a frame): the offer says how far it is and Back takes the focus Continue had;
+	# Back gives the offer again as it was, and Continue then makes it again
 	Autosave.migrate_budget_us = 1
 	cont.grab_focus()
 	cont.pressed.emit()
 	await tree.process_frame
 	var fo = ui.root.get_viewport().gui_get_focus_owner()
 	if not App.texts(ui.autosave.offer_panel).contains("Making the run again in this version") \
-			or fo == null or not fo is Button or fo.text != "New run":
-		p.append("while the 0.3.0 run is made again, the offer shows no progress or New run lacks the focus: %s, focus %s"
+			or fo == null or not fo is Button or fo.text != "Back" or App.find_button(ui, "New run") == null:
+		p.append("while the 0.3.0 run is made again, the offer shows no progress, or Back lacks the focus: %s, focus %s"
 				% [App.texts(ui.autosave.offer_panel).left(200), str(fo)])
+	if fo is Button and fo.text == "Back":
+		fo.pressed.emit()
+		await tree.process_frame
+		cont = App.find_button(ui, "Continue")
+		if cont == null or ui.autosave.migrating != null or ui.autosave.kept != kept:
+			p.append("Back did not give the offer again as it was: %s" % App.texts(ui).left(300))
+		else:
+			cont.pressed.emit()
 	Autosave.migrate_budget_us = 20000
 	for i in 1200:
 		if ui.autosave.offer_panel == null:
@@ -1056,7 +1065,8 @@ func _old_release(tree: SceneTree, p: Array) -> void:
 	# saves an offer could not show (it stopped half-built, the plant paused, nothing saved again): a procedure this
 	# plant hasn't, a step past its procedure, an event of one item; each refused with its reason and kept aside
 	for c in [["procedure", "procedure is not in this version's plant"], ["index", "step is not in this version's procedure"],
-			["event", "record of events is damaged"], ["run", "debrief's procedure is not in this version's plant"]]:
+			["event", "record of events is damaged"], ["run", "debrief's procedure is not in this version's plant"],
+			["kind", "an action this version doesn't know (unknown)"]]:
 		q = op.duplicate(true)
 		if c[0] == "procedure":
 			q["procedure"] = "no_such_procedure"
@@ -1064,6 +1074,8 @@ func _old_release(tree: SceneTree, p: Array) -> void:
 			q["tracker"]["index"] = 999
 		elif c[0] == "event":
 			q["engine"]["events"].append([q["engine"]["step_no"]])
+		elif c[0] == "kind":     # a kind from the file, 5,000 letters long: never shown as it is
+			q["engine"]["inputs"].append([q["engine"]["step_no"] + 1, "\u202e" + "x".repeat(5000)])
 		else:
 			q["run"] = {"procedure": "no_such_procedure", "same": false, "tracker": {}}
 		RunSave.write(path, RunSave.encode(q))
@@ -1071,13 +1083,26 @@ func _old_release(tree: SceneTree, p: Array) -> void:
 		ui = main.ui
 		txt = App.texts(ui)
 		if ui.autosave.offer_panel == null or App.find_button(ui, "New run") == null or not txt.contains(c[1]) \
-				or not txt.contains("kept on this device as"):
+				or not txt.contains("kept on this device as") or txt.contains("xxxxxxxxxx"):
 			p.append("a 0.3.0 save with %s that doesn't fit was not refused with its reason: %s" % [c[0], txt.left(300)])
 		main.free()
-	# a run made again whose state this build refuses (its panels' record damaged): said after Continue, New run focused,
-	# the save kept aside at New run
+	# a save whose panels' record is damaged: refused before the wait of making it again
 	q = op.duplicate(true)
 	q["ui"]["results"] = {"00PGC10AP001": 5}
+	RunSave.write(path, RunSave.encode(q))
+	main = App.start(tree)
+	ui = main.ui
+	txt = App.texts(ui)
+	if App.find_button(ui, "Continue") != null or not txt.contains("panels' state is damaged"):
+		p.append("a 0.3.0 save with a damaged panel record was not refused before it was made again: %s" % txt.left(300))
+	main.free()
+	# an action that comes out otherwise in this version (its code is not in this plant: "unknown", where the saved run
+	# has it done): said after the replay, before anything is replaced, Continue anyway focused; it goes on, the file
+	# as saved kept aside
+	q = op.duplicate(true)
+	for x in q["engine"]["inputs"]:
+		if x[1] == "op" and x[2] == "00QFA10AN001":
+			x[2] = "00XXA00AA000"
 	bad = RunSave.encode(q)
 	RunSave.write(path, bad)
 	main = App.start(tree)
@@ -1085,7 +1110,7 @@ func _old_release(tree: SceneTree, p: Array) -> void:
 	kept = ui.autosave.kept
 	cont = App.find_button(ui, "Continue")
 	if cont == null:
-		p.append("a 0.3.0 save with a damaged panel record was not offered: %s" % App.texts(ui).left(300))
+		p.append("a 0.3.0 save with an action this plant hasn't was not offered: %s" % App.texts(ui).left(300))
 	else:
 		cont.grab_focus()
 		cont.pressed.emit()
@@ -1096,15 +1121,20 @@ func _old_release(tree: SceneTree, p: Array) -> void:
 		await tree.process_frame
 		txt = App.texts(ui.autosave.offer_panel) if ui.autosave.offer_panel != null else ""
 		fo = ui.root.get_viewport().gui_get_focus_owner()
-		if not txt.contains("can't be continued") or not txt.contains("panels' state is damaged") \
-				or fo == null or not fo is Button or fo.text != "New run":
-			p.append("a 0.3.0 run that can't be put back after it was made again was not said so with New run focused: %s, focus %s"
-					% [txt.left(300), str(fo)])
-		if fo is Button:
+		if not txt.contains("came out differently") or not txt.contains("00QFA10AN001 start at 0:00:00 of plant time") \
+				or not txt.contains("done in the saved run, unknown now") or ui.autosave.armed \
+				or FileAccess.get_file_as_bytes(path) != bad or fo == null or not fo is Button or fo.text != "Continue anyway":
+			p.append("an action that came out otherwise was not said before anything was replaced: %s, focus %s"
+					% [txt.left(400), str(fo)])
+		if fo is Button and fo.text == "Continue anyway":
 			fo.pressed.emit()
+			await tree.process_frame
 		kp = path.get_base_dir().path_join(kept)
-		if FileAccess.get_file_as_bytes(kp) != bad or not ui.autosave.armed:
-			p.append("a 0.3.0 run that can't be put back was not kept aside at New run")
+		var r2 := RunSave.read(path)
+		if FileAccess.get_file_as_bytes(kp) != bad or not ui.autosave.armed or ui.autosave.offer_panel != null \
+				or not r2["ok"] or r2["payload"]["app"] != RunSave.app_version() \
+				or ui.clock.engine.step_no != op["engine"]["step_no"]:
+			p.append("Continue anyway did not go on with the run made again, the file as saved kept aside")
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(kp))
 	main.free()
 	# the copy aside fails (a folder stands where the kept file would go): nothing replaced, said in words, Replace it
@@ -1182,3 +1212,8 @@ func _remap(p: Array) -> void:
 			old_ev, new_ev, 6)
 	if t["_seen"] != 4 or t["ev_from"] != 2 or t["ev_to"] != 5 or t["deviations"][0][2] != 3:
 		p.append("the procedure's event positions were not moved by their place in their step: %s" % str(t))
+	# ended at step 100, saved later with no events after it; the run made again has an alarm at 300: not the procedure's
+	t = Migrate.remap_tracker({"_seen": 1, "ev_from": 0, "begin_step": 100, "ev_to": 1, "end_step": 100, "deviations": []},
+			[[100, "op", "A"]], [[100, "op", "A"], [300, "alarm"]], 500)
+	if t["ev_from"] != 0 or t["ev_to"] != 1 or t["_seen"] != 2:
+		p.append("a procedure's end was not moved by its step: %s" % str(t))
