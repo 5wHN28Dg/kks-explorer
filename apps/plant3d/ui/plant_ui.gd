@@ -768,8 +768,10 @@ func add_settings(box: VBoxContainer) -> void:
 	if clock == null:
 		return
 	var cf: ConfigFile = main.cf
+	var rows := {}
 	for row in [["instructor", "Instructor mode: scenarios and trainer faults", false],
 			["reduced_motion", "Reduced motion: no camera shake or head bob, Go there without flying, lightning without flashes", false],
+			["no_flashes", NO_FLASHES, false],
 			["mute", "Mute the plant's sounds", false]]:
 		var cb := CheckBox.new()
 		cb.text = row[1]
@@ -780,11 +782,29 @@ func add_settings(box: VBoxContainer) -> void:
 		cb.button_pressed = on
 		_setting(row[0], on)
 		cb.toggled.connect(func(v):
+			if row[0] == "no_flashes" and bindings.reduced_motion:
+				return                  # (shown on while Reduced motion is: its own value is kept as it was)
 			cf.set_value("ui", row[0], v)
 			Quality.save(cf)
-			_setting(row[0], v))
+			_setting(row[0], v)
+			if row[0] == "reduced_motion":
+				_flashes_row(rows["no_flashes"], cf))
+		cb.name = "setting_" + row[0]
+		rows[row[0]] = cb
 		box.add_child(cb)
+	_flashes_row(rows["no_flashes"], cf)
 	_workshop_settings(box)
+
+
+const NO_FLASHES := "No lightning flashes: the lightning glows softly instead"
+
+## "No lightning flashes" is on whenever Reduced motion is (shown ticked, not changeable, and saying why); with Reduced
+## motion off it shows and is its own setting again (the owner, 2026-11-21, #443).
+func _flashes_row(cb: CheckBox, cf: ConfigFile) -> void:
+	var rm: bool = bindings.reduced_motion
+	cb.set_pressed_no_signal(rm or bool(cf.get_value("ui", "no_flashes", false)))
+	cb.disabled = rm
+	cb.text = NO_FLASHES + (" (on with Reduced motion)" if rm else "")
 
 
 # ------------------------------------------------------------------ the Workshop (docs/plant3d/WORKSHOP.md §2)
@@ -846,6 +866,8 @@ func _setting(key: String, on: bool) -> void:
 		"reduced_motion":
 			bindings.reduced_motion = on
 			player.bob = not on
+		"no_flashes":
+			bindings.no_flashes = on
 		"mute":
 			sounds.muted = on
 			horn_changed.emit(0)

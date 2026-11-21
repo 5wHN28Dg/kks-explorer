@@ -246,7 +246,7 @@ func _process(delta: float) -> void:
 	# about tau behind it (else the sun would dip at every dawn while the model's solar catches up)
 	look = look_of(drawn, table_at(_clear_solar, fposmod(hour - _solar_tau / 60.0, 24.0)))
 	if ui.get("bindings") != null:
-		soft = bool(ui.bindings.reduced_motion)   # the settings' Reduced motion
+		soft = wants_soft()
 	_flash(e, delta)
 	_apply(look)
 	if in_workshop:   # the Workshop's bench is indoors: its materials (the same shader) stay dry and clean
@@ -343,6 +343,11 @@ static func _apply_globals(l: Dictionary) -> void:
 		var x := float(l.get(kv[1], 0.0))
 		globals[kv[0]] = x
 		RenderingServer.global_shader_parameter_set(kv[0], x)
+
+## The lightning only glows: the settings' Reduced motion, or "No lightning flashes" on its own (the owner, #443).
+func wants_soft() -> bool:
+	var b = ui.get("bindings") if ui != null else null
+	return b != null and (bool(b.reduced_motion) or bool(b.get("no_flashes")))
 
 ## The light of the flashes after a frame of `delta` real seconds in which `due` of the model's flashes came: one is
 ## lit when FLASH_GAP real seconds have passed since the last lit one began (a flash then, or the soft glow with
