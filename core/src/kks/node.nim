@@ -281,30 +281,40 @@ proc ackedOf*(n: Node): Table[string, int64] =
   except JsonError: discard
 
 proc noteAcked*(n: Node, peer: string, theirVv: JNode) =
-  ## §15c: `peer`'s vv (its hello, or its bye after taking our entries in) says how much of this device's own log it
+  ## §15c: `peer`'s vv in its `bye` (after taking our entries and blobs in) says how much of this device's own log it
   ## holds. Kept only from a device of the plant (mayRead), and only when it names the very entry this device holds
-  ## at that seq (not a fork).
-  if theirVv == nil or theirVv.kind != jObj or peer == n.device or not n.mayRead(peer): return
-  let have = theirVv.get(n.device)
-  if have == nil or have.kind != jArr or have.len != 2 or have[0].kind != jInt or have[1].kind != jStr: return
-  let c = n.chains.getOrDefault(n.device)
-  let seq = have[0].i
-  if seq < 1 or seq > int64(c.len) or c[seq - 1] != have[1].s: return
-  var acked = n.ackedOf
-  if acked.getOrDefault(peer, 0) >= seq: return
-  acked[peer] = seq
-  var ds: seq[string]
-  for d, _ in acked: ds.add d
-  ds.sort(system.cmp)
-  var o = newObj()
-  for d in ds: o.fields.add((d, newInt(acked[d])))
-  n.store.setMeta(AckedKey, toText(o))
+  ## at that seq (not a fork). Never raises: a failed write only leaves the count higher (the sync it ends stays good).
+  try:
+    if theirVv == nil or theirVv.kind != jObj or peer == n.device or not n.mayRead(peer): return
+    if n.root.len == 0 or n.store.getMeta("root") != n.root: return   # a store wiped under this node (§15)
+    let have = theirVv.get(n.device)
+    if have == nil or have.kind != jArr or have.len != 2 or have[0].kind != jInt or have[1].kind != jStr: return
+    let c = n.chains.getOrDefault(n.device)
+    let seq = have[0].i
+    if seq < 1 or seq > int64(c.len) or c[seq - 1] != have[1].s: return
+    var acked = n.ackedOf
+    if acked.getOrDefault(peer, 0) >= seq: return
+    acked[peer] = seq
+    var ds: seq[string]
+    for d, _ in acked: ds.add d
+    ds.sort(system.cmp)
+    var o = newObj()
+    for d in ds: o.fields.add((d, newInt(acked[d])))
+    n.store.setMeta(AckedKey, toText(o))
+  except CatchableError: discard
+
+const NotChanges* = ["report", "private", "box_key", "secret_share", "pair_reveal", "pair_commit"]
+  ## §15c: entry types the app writes by itself (diagnostics reports, course progress and its pairing), or whose
+  ## content no one else can read: not counted as a person's changes waiting to be sent
 
 proc waiting*(n: Node): int =
-  ## §15c: how many of this device's own entries no other device has said it holds (changes waiting to be sent)
+  ## §15c: this device's own changes no other device has said it holds (changes waiting to be sent)
   var most = 0'i64
   for _, s in n.ackedOf: most = max(most, s)
-  max(0, n.chains.getOrDefault(n.device).len - int(most))
+  let c = n.chains.getOrDefault(n.device)
+  for i in int(most) ..< c.len:
+    let e = n.entries.getOrDefault(c[i])
+    if e == nil or e.get("type") == nil or e["type"].kind != jStr or e["type"].s notin NotChanges: inc result
 
 proc entriesFor*(n: Node, theirVv: JNode): seq[JNode] =
   ## What the other side lacks: entries above its vv; a device's whole chain when its entry at their last seq differs

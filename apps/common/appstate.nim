@@ -43,6 +43,7 @@ type
     internet*: Internet                   ## presence on the plant's relay (§18)
     peers*: Table[string, PeerSeen]       ## device → where it was seen
     lastRound*: int64
+    lastRoundOk*: bool                    ## the last finished round synced with a device (#372: offline)
     syncing*: bool
     nextRound: int64
     onChange*: seq[proc (why: string)]    ## the UI refreshes on these
@@ -522,6 +523,7 @@ proc syncAll*(a: App): Future[int] {.async.} =
   a.syncing = true
   defer:
     a.syncing = false
+    a.lastRoundOk = result > 0
     a.lastRound = nowMs()
   var done: HashSet[string]
   var targets: seq[(string, int, string)]
@@ -583,7 +585,7 @@ proc snapshot*(a: App): JNode =
     devs[d] = newObj(@[("host", newStr(p.host)), ("last_ok", newInt(p.lastOk div 1000)),
                        ("error", if p.lastError.len > 0: newStr(p.lastError) else: newNull())])
   newObj(@[("devices", devs), ("last_ok", if lastOk > 0: newInt(lastOk div 1000) else: newNull()),
-           ("syncing", newBool(a.syncing)), ("rounds", newBool(a.lastRound > 0)),
+           ("syncing", newBool(a.syncing)), ("rounds", newBool(a.lastRound > 0)), ("last_round_ok", newBool(a.lastRoundOk)),
            ("waiting", newInt(if a.n != nil: a.n.waiting else: 0)),   # §15c: own changes no other device holds yet
            ("relay", newStr(if a.internet != nil: a.internet.state else: "off")),
            ("relay_online", newInt(if a.internet != nil: a.internet.online.len else: 0)),

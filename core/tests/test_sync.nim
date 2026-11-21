@@ -351,31 +351,69 @@ suite "changes waiting to be sent (§15c, #372)":
     discard again.append("person", personBody(P.newPersonId(), "three", "Person three", "user"), tick())
     check again.waiting == 1
 
-  test "an older device's bye without vv: the count falls at its next hello":
+  test "an older device's bye without vv acknowledges nothing; hello never does (it comes before the blobs)":
     discard phone.append("person", personBody(P.newPersonId(), "four", "Person four", "user"), tick())
+    check phone.waiting == 1
+    for round in 0 .. 1:          # twice: the second session's hello holds the entry, and still counts for nothing
+      let s1 = newSession(phone, true, server.device)
+      let s2 = newSession(server, false, phone.device)
+      s1.wall = tick(); s2.wall = s1.wall
+      var da, db: Deframer
+      var guard = 0
+      while not (s1.done and s2.done) and guard < 100:
+        inc guard
+        while s1.sending:
+          for m in s1.take():
+            for x in db.feed(frame(m)): s2.receive(x)
+        while s2.sending:
+          for m in s2.take():
+            var m2 = m
+            if m2["t"].s == "bye": m2 = newObj(@[("t", newStr("bye"))])   # as a device before 2026-11-21 sends it
+            for x in da.feed(frame(m2)): s1.receive(x)
+      check s1.done and s2.done
+      check phone.waiting == 1          # sent, but not acknowledged
+    discard sync(phone, server)         # a device that sends vv in bye
+    check phone.waiting == 0
+
+  test "a photo whose blob didn't arrive is still waiting (the session cut before bye)":
+    let pic = "\xff\x0afake jxl bytes of a waiting photo"
+    let sha = phone.keepBlob(pic)
+    discard phone.append("photo", newObj(@[("photo", newStr(P.newPersonId())), ("kks", newStr("11LAB70AA500")),
+                                           ("blob", newStr(sha)), ("caption", newStr("cut"))]), tick())
     check phone.waiting == 1
     let s1 = newSession(phone, true, server.device)
     let s2 = newSession(server, false, phone.device)
     s1.wall = tick(); s2.wall = s1.wall
     var da, db: Deframer
-    var guard = 0
-    while not (s1.done and s2.done) and guard < 100:
-      inc guard
+    var cut = false
+    for _ in 0 .. 20:                   # until the photo's bytes would go: the connection drops there
       while s1.sending:
         for m in s1.take():
-          for x in db.feed(frame(m)): s2.receive(x)
+          if m["t"].s == "blob": cut = true
+          if not cut:
+            for x in db.feed(frame(m)): s2.receive(x)
+      if cut: break
       while s2.sending:
         for m in s2.take():
-          var m2 = m
-          if m2["t"].s == "bye": m2 = newObj(@[("t", newStr("bye"))])   # as a device before 2026-11-21 sends it
-          for x in da.feed(frame(m2)): s1.receive(x)
-    check s1.done and s2.done
-    check phone.waiting == 1          # sent, but not acknowledged
-    discard sync(phone, server)       # its hello now holds it
+          for x in da.feed(frame(m)): s1.receive(x)
+    check cut
+    check not server.store.blobHas(sha)
+    check phone.waiting == 1            # the entry is there, its photo isn't: still waiting
+    discard sync(phone, server)         # (its hello says it holds the entry; only the bye after the blobs counts)
+    check server.store.blobGet(sha) == pic
+    check phone.waiting == 0
+
+  test "what the app writes by itself is not a change waiting":
+    discard phone.append("box_key", newObj(@[("key", newStr("not a real key"))]), tick())
+    discard phone.append("report", newObj(@[("sealed", newStr("x"))]), tick())
+    check phone.waiting == 0
+    discard phone.append("person", personBody(P.newPersonId(), "five", "Person five", "user"), tick())
+    check phone.waiting == 1
+    discard sync(phone, server)
     check phone.waiting == 0
 
   test "a stranger's vv, a fork's and an unknown seq acknowledge nothing":
-    discard phone.append("person", personBody(P.newPersonId(), "five", "Person five", "user"), tick())
+    discard phone.append("person", personBody(P.newPersonId(), "six", "Person six", "user"), tick())
     let before = phone.waiting
     check before == 1
     let (last, id) = (int64(phone.vv()[phone.device][0].i), phone.vv()[phone.device][1].s)

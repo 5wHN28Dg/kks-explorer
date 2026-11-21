@@ -460,7 +460,7 @@ responder answers. `{"t":"error","why":...}` may be sent instead of any message,
    - Nothing unless the other side may read.
    - A receiver accepts a blob only if its log references that hash and the bytes hash to it.
 6. **`bye`** both ways: `{"t":"bye", "vv": <as in hello>}`. `vv` (added 2026-11-21) is what the sender holds now
-   that it has taken the other side's entries in; a receiver uses it only as §15c says. A `bye` without `vv` (devices
+   that it has taken the other side's entries and blobs in; a receiver uses it only as §15c says. A `bye` without `vv` (devices
    before 2026-11-21) is still valid.
 
 Relaying is automatic: a device sends every entry it holds, not only its own.
@@ -507,17 +507,19 @@ A write never happens inside a §15 store transaction. A state not written only 
 Local to one device, like §15b; nothing new is sent but `bye`'s `vv`. A device shows how many of its own entries no
 other device has said it holds, so that a person working offline sees what has not left the device yet.
 
-- **Acknowledged:** a `vv` received from a device of the plant (one the receiver may serve: `mayRead`) in its `hello`
-  or its `bye`. If it names this device's own log at seq `s` with the ID of the entry this device holds at `s`, that
-  device holds this device's entries 1 to `s` (chains are continuous, §4). A device keeps, per other device, the
-  highest such `s`, in its store, across restarts. A `vv` that names another entry at that seq (a fork), a seq this
-  device doesn't hold, or that comes from a stranger, changes nothing.
-- **Waiting:** the length of this device's own chain minus the highest `s` any other device acknowledged (0 at least).
-  Any device counts, not only a server: relaying is automatic (§15), so an entry another device holds reaches the
-  rest from there.
-- A `hello`'s `vv` is the state before the exchange; the `bye`'s is the state after it, so a completed sync with a
-  device that sends `vv` in `bye` leaves nothing waiting that was sent in it. With an older device the count falls at
-  its next `hello`.
+- **Acknowledged:** a `vv` received in a `bye` from a device of the plant (one the receiver may serve: `mayRead`).
+  If it names this device's own log at seq `s` with the ID of the entry this device holds at `s`, that device holds
+  this device's entries 1 to `s` (chains are continuous, §4), and their blobs: a `bye` comes after both sides' blobs
+  (steps 4 and 5). A device keeps, per other device, the highest such `s`, in its store, across restarts. A `vv` that
+  names another entry at that seq (a fork), a seq this device doesn't hold, or that comes from a stranger, changes
+  nothing. A `hello`'s `vv` acknowledges nothing: it comes before the blobs, so an entry it names may still lack its
+  photo on the other side.
+- **Waiting:** this device's own entries above the highest `s` any other device acknowledged, not counting the types
+  the device writes by itself or whose content no one else reads: `report`, `private`, `box_key`, `secret_share`,
+  `pair_reveal`, `pair_commit`. Any device counts, not only a server: relaying is automatic (§15), so an entry another
+  device holds reaches the rest from there.
+- A device that sends no `vv` in `bye` (before 2026-11-21) acknowledges nothing; the count falls at the next
+  completed sync with one that does.
 
 ## 16. Join by invite (QR code)
 

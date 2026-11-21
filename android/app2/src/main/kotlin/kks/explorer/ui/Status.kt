@@ -34,9 +34,11 @@ object SyncWords {
     const val LOOKING = "Looking for the plant's devices…"
     const val OFFLINE_HELP = "Changes are kept on this device and sent when it reaches another device of the plant."
     fun waiting(n: Int): String = if (n <= 0) "" else if (n == 1) "1 change waiting to be sent" else "$n changes waiting to be sent"
-    /** null before the first round has finished (still looking) */
+    /** null before the first round has finished (still looking). Offline: the last finished round reached no device,
+     *  and none synced with this one for 5 minutes (after a pause the state waits for a round that fails) */
     fun offline(nowMs: Long = System.currentTimeMillis()): Boolean? {
         if (Sync.lastRound == 0L) return null
+        if (Sync.lastRoundReached) return false
         val last = Sync.peers.values.maxOfOrNull { it.lastOk } ?: 0L
         val after = if (offlineAfterForTest > 0) offlineAfterForTest else OFFLINE_AFTER
         return last == 0L || nowMs - last >= after * 1000

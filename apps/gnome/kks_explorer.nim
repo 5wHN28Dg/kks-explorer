@@ -140,9 +140,8 @@ proc statusText(w: Win): string =
       last = max(last, d["last_ok"].i)
       if now - d["last_ok"].i < 300 and d["error"].isNull: inc reachable
   result = w.a.plantName
-  let ux = uxOn("offline-state")
-  let offline = ux and isOffline(snap, now)
-  if not offline:     # (offline: the banner says it, and the line starts with it)
+  # (offline, the banner says so: the line keeps the plant and when it last synced, #372)
+  if not (uxOn("offline-state") and isOffline(snap, now)):
     result.add " · " & (if reachable == 0: "no device reachable" elif reachable == 1: "1 device reachable" else: $reachable & " devices reachable")
   if last > 0: result.add " · synced " & fromUnix(last).local.format("HH:mm")
   if snap["relay"].s == "online":
@@ -152,22 +151,37 @@ proc statusText(w: Win): string =
     of "direct": result.add ", last sync direct"
     of "relay": result.add ", last sync through the relay"
     else: discard
-  if ux:    # #372: the state first, where the ellipsis can't cut it
-    let wt = waitingWords(waitingOf(snap))
-    result = (if offline: OfflineWord & (if wt.len > 0: " · " & wt else: "") & " · " elif wt.len > 0: wt & " · " else: "") & result
+
+const WaitingShownAfter = 15_000   ## ms a change waits while online before the banner shows it (a sync follows an edit)
 
 proc showSyncState(w: Win) =
-  ## the sidebar's subtitle, and while offline its banner (#372)
+  ## the sidebar's subtitle, and the banners over the sheets and over the drawing (#372): "Offline", with the changes
+  ## waiting to be sent; online, the changes that have waited a while. Read out when what they say changes.
   if w.status == nil: return
   adw_window_title_set_subtitle(w.status, w.statusText().cstring)
-  if w.offlineBanner == nil: return
+  if w.offlineBanners.len == 0: return
   let snap = w.a.snapshot
-  if isOffline(snap, nowMs() div 1000):
-    let wt = waitingWords(waitingOf(snap))
-    adw_banner_set_title(w.offlineBanner, (OfflineWord & (if wt.len > 0: " · " & wt else: "")).cstring)
-    gtk_widget_set_tooltip_text(w.offlineBanner, OfflineHelp.cstring)
-    adw_banner_set_revealed(w.offlineBanner, 1)
-  else: adw_banner_set_revealed(w.offlineBanner, 0)
+  let wt = waitingWords(waitingOf(snap))
+  let offline = isOffline(snap, nowMs() div 1000)
+  if wt.len == 0: w.waitingSince = 0
+  elif w.waitingSince == 0: w.waitingSince = nowMs()
+  let say = if offline: OfflineWord & (if wt.len > 0: " · " & wt else: "")
+            elif wt.len > 0 and nowMs() - w.waitingSince >= WaitingShownAfter: wt
+            else: ""
+  # the drawing's banner always; the sheets' only when the window is too narrow to show both pages (one says it)
+  let narrow = w.split != nil and adw_navigation_split_view_get_collapsed(w.split) != 0
+  for i, b in w.offlineBanners:
+    let on = say.len > 0 and (i == 1 or narrow or w.offlineBanners.len == 1)
+    if say != w.bannerSaid:
+      adw_banner_set_title(b, say.cstring)       # (empty while hidden: nothing stale for a screen reader)
+      gtk_widget_set_tooltip_text(b, (if offline: OfflineHelp else: "").cstring)
+    gtk_widget_set_visible(b, cint(on))
+    adw_banner_set_revealed(b, cint(on))
+  if say == w.bannerSaid: return
+  let was = w.bannerSaid
+  w.bannerSaid = say
+  let words = if say.len > 0: say elif was.startsWith(OfflineWord): "Back online" else: "All changes sent"
+  gtk_accessible_announce(w.offlineBanners[^1], words.cstring, 1)
 
 proc tagGone(w: Win) =
   ## the tag whose panel is open is no longer there: the panel closes, and says why
@@ -268,9 +282,11 @@ proc sideRoot(w: Win): W =
       w.toast(if n > 0: "Synced with " & $n & " device" & (if n == 1: "" else: "s") else: "No other device reached")
     asyncCheck go()))
   result = toolbarView(sideHeader, side)
-  if uxOn("offline-state"):    # #372: offline is a state of its own, above the sheets
-    w.offlineBanner = adw_banner_new("")
-    adw_toolbar_view_add_top_bar(result, w.offlineBanner)
+  if uxOn("offline-state"):    # #372: offline is a state of its own, above the sheets (and over the drawing, below)
+    let b = adw_banner_new("")
+    gtk_widget_set_visible(b, 0)
+    w.offlineBanners.add b
+    adw_toolbar_view_add_top_bar(result, b)
 
 proc mainScreen(w: Win): W =
   w.loadModel()
@@ -439,6 +455,11 @@ proc mainScreen(w: Win): W =
   let contentView = toolbarView(contentHeader, w.panelSplit)
   adw_toolbar_view_add_bottom_bar(contentView, w.pickBar())
   adw_toolbar_view_add_top_bar(contentView, w.banner)
+  if uxOn("offline-state"):    # #372: the drawing's page too (a narrow window shows it without the sheets)
+    let ob = adw_banner_new("")
+    gtk_widget_set_visible(ob, 0)
+    w.offlineBanners.add ob
+    adw_toolbar_view_add_top_bar(contentView, ob)
   w.queueBar = hbox(8)
   margins(w.queueBar, 6)
   w.queueBar.add adw_spinner_new()

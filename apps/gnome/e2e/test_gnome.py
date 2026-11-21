@@ -2812,32 +2812,42 @@ class OfflineState(Plant):
                 return n.get_name()
         return ''
 
-    def wait_subtitle(self, a, test, what, timeout=60):
+    @staticmethod
+    def banners(a):
+        """what the offline banners say on screen (over the sheets and over the drawing); hidden ones left out"""
+        out = []
+        for n in atspi.find_all(a, 'label', contains='waiting to be sent') + atspi.find_all(a, 'label', name='Offline'):
+            try:
+                if n.get_state_set().contains(Atspi.StateType.SHOWING):
+                    out.append(n.get_name())
+            except Exception:
+                continue
+        return sorted(set(out))
+
+    def wait_for(self, what, get, test, timeout=60):
         for _ in range(timeout * 2):
-            t = self.subtitle(a)
-            if test(t):
-                return t
+            v = get()
+            if test(v):
+                return v
             time.sleep(0.5)
-        self.fail(f'{what}: the subtitle stayed {self.subtitle(a)!r}')
+        self.fail(f'{what}: stayed {get()!r}')
 
     def test_offline_state(self):
-        """online, nothing waits; the server stops answering: "Offline" in a banner and first in the subtitle; an
-        edit made offline adds one to the changes waiting to be sent; the server back: synced, nothing waits, online"""
+        """online, nothing waits, no banner; the server stops answering: "Offline" in a banner over the sheets and over
+        the drawing, the subtitle keeps the plant and the last sync; an edit made offline is counted; the server back:
+        it arrives, the banner goes, nothing waits"""
         a = self.start_app('offline', KKS_UX='offline-state', KKS_OFFLINE_AFTER='4', KKS_SYNC_EVERY='2000')
         self.join(a)
-        t = self.wait_subtitle(a, lambda t: 'device reachable' in t, 'online')
-        self.assertNotIn('waiting to be sent', t)
-        self.assertNotIn('Offline', t)
+        self.wait_for('online', lambda: self.subtitle(a), lambda t: 'device reachable' in t)
+        self.assertEqual(self.banners(a), [])
         self.evidence(a, 'offline-state-online')
         os.kill(self.server.pid, signal.SIGSTOP)
         try:
-            # (the app may have written something of its own since the last sync: its course progress key, a report)
-            t = self.wait_subtitle(a, lambda t: t.startswith('Offline · '), 'offline')
-            m = re.match(r'Offline · (\d+) changes? waiting to be sent · Test plant', t)
-            before = int(m.group(1)) if m else 0
-            self.assertTrue(m or t.startswith('Offline · Test plant'), t)
-            words = lambda n: '1 change waiting to be sent' if n == 1 else f'{n} changes waiting to be sent'
-            atspi.find(a, 'label', name='Offline' + (' · ' + words(before) if before else ''), timeout=10)   # the banner
+            # (a round has to fail first: 20 s for the stopped server's connection to time out)
+            got = self.wait_for('offline', lambda: self.banners(a), lambda b: b and b[0].startswith('Offline'), timeout=90)
+            self.assertEqual(got, ['Offline'], 'nothing the person did is waiting yet (what the app writes itself is not counted)')
+            t = self.subtitle(a)
+            self.assertTrue(t.startswith('Test plant · synced '), t)   # the plant and when it last synced, not cut by the state
             self.evidence(a, 'offline-state-offline')
             q = atspi.find(a, 'entry', contains='Search equipment')
             atspi.set_text(q, 'LAB70AA500')
@@ -2846,17 +2856,26 @@ class OfflineState(Plant):
             self.press(a, 'Edit', ('text', 'Notes'))
             atspi.set_text(atspi.find(a, 'text', name='Notes'), 'written offline')
             atspi.click(atspi.find(a, 'button', name='Save'))
-            want = 'Offline · ' + words(before + 1)
-            t = self.wait_subtitle(a, lambda t: t.startswith(want + ' · Test plant'), 'offline, the edit waiting')
-            atspi.find(a, 'label', name=want, timeout=10)   # the banner too
+            self.wait_for('offline, the edit waiting', lambda: self.banners(a),
+                          lambda b: b == ['Offline · 1 change waiting to be sent'], timeout=20)
             self.evidence(a, 'offline-state-waiting')
         finally:
             os.kill(self.server.pid, signal.SIGCONT)
-        t = self.wait_subtitle(a, lambda t: 'device reachable' in t and 'waiting' not in t and 'Offline' not in t, 'back online', timeout=90)
-        st = self.boss.req('GET', '/api/state')
-        self.assertEqual(st['equipment'].get('11LAB70AA500', {}).get('notes'), 'written offline', 'the edit made offline never arrived')
+        st = self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes'),
+                              'the edit made offline never arrived', tries=240)
+        self.assertEqual(st, 'written offline')
+        self.wait_for('back online', lambda: self.banners(a), lambda b: b == [], timeout=60)
+        self.wait_for('back online', lambda: self.subtitle(a), lambda t: 'device reachable' in t)
         self.evidence(a, 'offline-state-back')
         self.assertEqual(self.criticals('offline'), [])
+
+    def wait_server(self, cond, what, tries=40):
+        for _ in range(tries):
+            v = cond()
+            if v:
+                return v
+            time.sleep(0.5)
+        self.fail(what)
 
 
 class Coverage(Plant):

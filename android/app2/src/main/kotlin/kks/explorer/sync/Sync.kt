@@ -29,6 +29,7 @@ object Sync {
     @Volatile private var started = false
     @Volatile var syncing = false
     @Volatile var lastRound = 0L
+    @Volatile var lastRoundReached = false   // the last finished round synced with a device (#372: offline)
     private var auto: ScheduledFuture<*>? = null
     private var soon: ScheduledFuture<*>? = null
     const val INTERVAL = 120L          // s between automatic rounds while on screen
@@ -221,6 +222,7 @@ object Sync {
                     }
                 }
             }
+            lastRoundReached = n > 0
             lastRound = System.currentTimeMillis()
             // gone quiet: no successful sync with anyone for a day although there were devices to try
             val lastOk = peers.values.maxOfOrNull { it.lastOk } ?: 0L

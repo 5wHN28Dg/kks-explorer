@@ -204,6 +204,7 @@ proc adw_navigation_split_view_set_sidebar*(v, page: W) {.importc, header: HA.}
 proc adw_navigation_split_view_set_content*(v, page: W) {.importc, header: HA.}
 proc adw_navigation_split_view_set_show_content*(v: W, s: cint) {.importc, header: HA.}
 proc adw_navigation_split_view_set_collapsed*(v: W, s: cint) {.importc, header: HA.}
+proc adw_navigation_split_view_get_collapsed*(v: W): cint {.importc, header: HA.}
 proc adw_navigation_split_view_set_min_sidebar_width*(v: W, w: cdouble) {.importc, header: HA.}
 proc adw_navigation_split_view_set_max_sidebar_width*(v: W, w: cdouble) {.importc, header: HA.}
 proc adw_overlay_split_view_new*(): W {.importc, header: HA.}

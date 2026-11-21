@@ -19,10 +19,12 @@ proc waitingWords*(n: int64): string =
   if n <= 0: "" elif n == 1: "1 change waiting to be sent" else: $n & " changes waiting to be sent"
 
 proc isOffline*(snap: JNode, nowS: int64): bool =
-  ## no successful sync with any device in the last OfflineAfter seconds, once the first round has finished (until
-  ## then the device is still looking)
+  ## the last finished round reached no device, and no device synced with this one in the last OfflineAfter seconds
+  ## (before the first round the device is still looking; after a pause or a suspend it waits for a round that fails)
   let rounds = snap.get("rounds")
   if rounds == nil or rounds.kind != jBool or not rounds.b: return false
+  let ok = snap.get("last_round_ok")
+  if ok != nil and ok.kind == jBool and ok.b: return false
   let last = snap.get("last_ok")
   let after = try: parseInt(getEnv("KKS_OFFLINE_AFTER", $OfflineAfter)) except ValueError: OfflineAfter   # (tests)
   last == nil or last.kind != jInt or nowS - last.i >= after

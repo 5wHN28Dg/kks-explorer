@@ -28,6 +28,8 @@ var
 
 proc showMain()
 proc syncLine(): string
+var syncSaid = ""              ## the offline state and the changes waiting, as the status line says them now (#372)
+var syncSaidChanged = false
 
 var statusRow = 0       # the bottom row's height at the last layout
 
@@ -88,9 +90,17 @@ proc statusFits() =
   GetClientRect(w.hwnd, addr r)
   if bottomRow(int(r.right)).st != statusRow: layoutMain()
 
+proc kksLiveRegion(h: HWND): cint {.importc: "kks_live_region", cdecl.}
+proc kksLiveChanged(h: HWND) {.importc: "kks_live_changed", cdecl.}
+var liveSet = false
+
 proc setStatus() =
   w.status.setText(statusText())
   statusFits()
+  if uxOn("offline-state") and not liveSet: liveSet = kksLiveRegion(w.status) == 1
+  if syncSaidChanged:
+    syncSaidChanged = false
+    kksLiveChanged(w.status)
 
 proc doShowSheet(id: string) =
   let (ok, si) = w.m.sheetById(id)
@@ -152,13 +162,14 @@ proc doSelectTag(id: string, center: bool) =
 proc syncLine(): string =
   let snap = w.a.snapshot
   var state = ""
-  var offline = false
   if uxOn("offline-state"):    # #372: offline and the changes waiting, first in the line (also while a round tries)
     let wt = waitingWords(waitingOf(snap))
-    offline = isOffline(snap, int64(epochTime()))
-    if offline: state = OfflineWord & (if wt.len > 0: " · " & wt else: "") & " · "
+    if isOffline(snap, int64(epochTime())): state = OfflineWord & (if wt.len > 0: " · " & wt else: "") & " · "
     elif wt.len > 0: state = wt & " · "
-  if w.a.syncing and not offline: return state & "Syncing…"
+    if state != syncSaid:   # read out by Narrator when the state changes (the status line is a live region)
+      syncSaid = state
+      syncSaidChanged = true
+  if w.a.syncing: return state & "Syncing…"
   result = state & (if snap["last_ok"].kind == jInt: "Last sync " & fromUnix(snap["last_ok"].i).local.format("HH:mm") else: "Not synced yet")
   if snap["relay"].s == "online":
     let n = snap["relay_online"].i

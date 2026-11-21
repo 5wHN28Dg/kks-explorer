@@ -166,3 +166,25 @@ extern "C" void kks_uia_changed(void *root) {
 }
 
 extern "C" void kks_uia_invoke(void *root, int i) { Root *r = (Root *)root; r->h.invoke(r->h.ud, i); }
+
+// A window whose text changes are read out by Narrator (#372: the status line's offline state and the changes waiting
+// to be sent): its LiveSetting is Polite (through IAccPropServices, as a Win32 control has no UIA provider of ours),
+// and kks_live_changed tells the screen reader that the text changed. The GUIDs are written out (MinGW's libraries
+// may lack them): LiveSetting_Property_GUID, CLSID_AccPropServices, IID_IAccPropServices.
+#include <oleacc.h>
+static const GUID kLiveSetting = {0xc12bcd8e, 0x2a8e, 0x4950, {0x8a, 0xe7, 0x36, 0x25, 0x11, 0x1d, 0x58, 0xeb}};
+static const GUID kAccPropClsid = {0xb5f8350b, 0x0548, 0x48b1, {0xa6, 0xee, 0x88, 0xbd, 0x00, 0xb4, 0xa5, 0xe7}};
+static const GUID kAccPropIid = {0x6e26e776, 0x04f0, 0x495d, {0x80, 0xe4, 0x33, 0x30, 0x35, 0x2e, 0x31, 0x69}};
+
+extern "C" int kks_live_region(HWND h) {
+    IAccPropServices *s = nullptr;
+    if (FAILED(CoCreateInstance(kAccPropClsid, nullptr, CLSCTX_INPROC_SERVER, kAccPropIid, (void **)&s)) || !s) return 0;
+    VARIANT v; VariantInit(&v); v.vt = VT_I4; v.lVal = 1;   // LiveSetting Polite
+    HRESULT hr = s->SetHwndProp(h, (DWORD)OBJID_CLIENT, CHILDID_SELF, kLiveSetting, v);
+    s->Release();
+    return SUCCEEDED(hr) ? 1 : 0;
+}
+
+extern "C" void kks_live_changed(HWND h) {
+    NotifyWinEvent(0x8019 /* EVENT_OBJECT_LIVEREGIONCHANGED */, h, OBJID_CLIENT, CHILDID_SELF);
+}
