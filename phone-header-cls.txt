@@ -1,0 +1,2 @@
+412 x 846, Chromium, switch off: CLS 0.2980; shifts [[0.002,["learnBtn","manageBtn","aboutBtn"]],[0.295,["MAIN","manageBtn","stage"]],[0.001,["floorSel"]]]
+412 x 846, Chromium, switch on: CLS 0.1808; shifts [[0.181,["viewer","sheetSel",null]]]

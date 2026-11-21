@@ -1,0 +1,40 @@
+--- menu closed
+- banner:
+  - combobox "Search equipment by KKS code or description"
+  - combobox "Drawing":
+    - option "Sheet A" [selected]
+    - option "Sheet B"
+  - button "Review 0"
+  - button "More"
+  - text: ● Online
+--- menu open
+- banner:
+  - combobox "Search equipment by KKS code or description"
+  - combobox "Drawing":
+    - option "Sheet A" [selected]
+    - option "Sheet B"
+  - button "Review 0"
+  - button "More" [expanded]
+  - text: ● Online
+  - group "More":
+    - button "Systems"
+    - button "Coverage"
+    - combobox "Show equipment on a floor":
+      - option "All floors" [selected]
+    - button "Procedures"
+    - button "Connectors"
+    - button "Sheet notes"
+    - link "Learning":
+      - /url: learning.html
+    - button "About"
+    - link "Account · The Manager":
+      - /url: admin.html
+--- 3 waiting for approval
+- banner:
+  - combobox "Search equipment by KKS code or description"
+  - combobox "Drawing":
+    - option "Sheet A" [selected]
+    - option "Sheet B"
+  - button "Review 0"
+  - button "More, 3 waiting for approval": "3"
+  - text: ● Online
