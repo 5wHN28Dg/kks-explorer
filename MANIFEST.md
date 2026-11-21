@@ -1,0 +1,18 @@
+# UX evidence: Settings' Kept saves (#474)
+
+Synthetic (Walkdown Plant's invented plant; the kept files hold the synthetic 0.3.0 fixture), commit b122ef66131b39c52e2b48e7fb22e5235df41764, `apps/plant3d/tests/kept_saves_shots.gd` under offscreen.sh, the switch forced on. desk_uidefault (1600x900 window, 100 %), desk_ui2 (1366x768, UI size 200 %), phone_uidefault (2220x1080 phone layout; Show folder is left out on Android itself). States: kept_list, kept_delete_asks (Keep focused), kept_after_delete, kept_empty.
+
+```
+3ef541b76842b0c9f6abd210dd4a8b46d34cc1a60dc41d89af77b9d075ba841e  desk_ui2_kept_after_delete.png
+d42e3a2a7f47b07958bca72effd8c0114f6c3f27400c4db632b5d5322031c265  desk_ui2_kept_delete_asks.png
+88906496fe9bf8ba304a6892cce9fe8fe9834bdebc0ef4f77b4e51a801410be5  desk_ui2_kept_empty.png
+7b6afbf1bd4f256e27075c0abfa345d5d6a88819faff904d4932035a0d788a4c  desk_ui2_kept_list.png
+acfe9a0c45be112ea3d843c0f427cbdf867b87ffc1df41ba159edd4ae877f445  desk_uidefault_kept_after_delete.png
+2afe3117054a146d67163cb0c7be5baa53ed22030412953c7090b0d865971cc5  desk_uidefault_kept_delete_asks.png
+8a1fc3a553ab67996246937e4730cf220760169d0b43ed70a4d435569d58f307  desk_uidefault_kept_empty.png
+d68f2347445cb7fc879f5fcb0a802babdcdb1724144921ecc4b025efdac5077b  desk_uidefault_kept_list.png
+95059648adbda8b7e5919cebfb74e0eb114fc5a6aed54859257855d3d46b4e77  phone_uidefault_kept_after_delete.png
+5486cb3ecfd0eb1d79b91f5883deb63a25e9e021f6fa4e03470594a4c022d648  phone_uidefault_kept_delete_asks.png
+22afabf37f434385011fdeddf9d7c63ed8926e2a2a3798230da2ad4966094a79  phone_uidefault_kept_empty.png
+b4bf215cacbe22d40f548dfc0b8e6c47819d8a649d77e21443f8bb85c43b3e07  phone_uidefault_kept_list.png
+```
