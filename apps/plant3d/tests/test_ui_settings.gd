@@ -352,8 +352,26 @@ func _no_flashes(tree: SceneTree) -> Array:
 	rm.button_pressed = false           # its own value (off) again
 	if nf.button_pressed or nf.disabled or main.weather.wants_soft():
 		p.append("with Reduced motion off again, the flashes row did not go back to its own value (off)")
-	# a later start applies the saved row
+	# saved on, then Reduced motion on and off: the row comes back ticked, as saved (the lightning still glows)
 	nf.button_pressed = true
+	rm.button_pressed = true
+	rm.button_pressed = false
+	if not nf.button_pressed or nf.disabled or not ui.bindings.no_flashes or not main.weather.wants_soft():
+		p.append("with the row saved on, Reduced motion on and off left it unticked or the lightning flashing")
+	# ticked by the keyboard itself (focus on it, Space), not set by code
+	nf.button_pressed = false
+	nf.grab_focus()
+	await tree.process_frame
+	for down in [true, false]:
+		var ev := InputEventKey.new()
+		ev.keycode = KEY_SPACE
+		ev.physical_keycode = KEY_SPACE
+		ev.pressed = down
+		tree.root.push_input(ev)
+	await tree.process_frame
+	if not nf.button_pressed or not ui.bindings.no_flashes:
+		p.append("Space on the focused row did not tick it")
+	# a later start applies the saved row; and one with Reduced motion saved on shows the row ticked, fixed, saying why
 	hud.show_settings(false)
 	main.free()
 	main = _start(tree, "")
@@ -362,6 +380,32 @@ func _no_flashes(tree: SceneTree) -> Array:
 	if not main.ui.bindings.no_flashes or not main.weather.wants_soft():
 		p.append("\"No lightning flashes\" was not kept for the next start")
 	main.cf.set_value("ui", "no_flashes", false)
+	main.cf.set_value("ui", "reduced_motion", true)
+	Quality.save(main.cf)
+	main.free()
+	main = _start(tree, "")
+	for i in 10:
+		await tree.process_frame
+	nf = main.hud.settings_box.find_child("setting_no_flashes", true, false)
+	if nf == null or not nf.button_pressed or not nf.disabled or not nf.text.contains("Reduced motion"):
+		p.append("started with Reduced motion saved on, the flashes row is not shown on and fixed")
+	# a settings file edited by hand ("yes", a list): every row still built, the defaults applied, the panel whole
+	main.cf.set_value("ui", "reduced_motion", false)
+	main.cf.set_value("ui", "no_flashes", "yes")
+	main.cf.set_value("ui", "mute", [1])
+	Quality.save(main.cf)
+	main.free()
+	main = _start(tree, "")
+	for i in 10:
+		await tree.process_frame
+	for k in ["no_flashes", "mute"]:
+		if main.hud.settings_box.find_child("setting_" + k, true, false) == null:
+			p.append("with %s edited by hand, its settings row was not built" % k)
+	if main.ui.bindings.no_flashes or main.hud.settings_box.find_child("workshop_kinds", true, false) == null \
+			and main.workshop != null and not main.workshop.kinds().is_empty():
+		p.append("with values edited by hand, the defaults were not applied or the panel stopped early")
+	main.cf.set_value("ui", "no_flashes", false)
+	main.cf.set_value("ui", "mute", false)
 	Quality.save(main.cf)               # (the tests' settings file: off again for the files after this one)
 	main.free()
 	return p
