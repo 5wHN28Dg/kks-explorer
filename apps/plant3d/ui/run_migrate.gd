@@ -185,11 +185,13 @@ static func diff_events(old_events: Array, new_events: Array, most := 3) -> Arra
 
 
 ## Each decided action's event as [what it was, its outcome]: what it was is the event up to its outcome, which is the
-## last "done", "refused" or "unknown" in it ("done" is also a permit's action); the plant's own ("auto") are left out.
+## last "done", "refused" or "unknown" in it ("done" is also a permit's action); the plant's own (a permit's or work
+## order's "auto" action) are left out, never a trainee's (a drive's "auto" is one).
 static func outcomes(events: Array) -> Array:
 	var out: Array = []
 	for ev in events:
-		if ev.size() < 3 or typeof(ev[1]) != TYPE_STRING or not INPUT_SIZES.has(ev[1]) or "auto" in ev:
+		if ev.size() < 3 or typeof(ev[1]) != TYPE_STRING or not INPUT_SIZES.has(ev[1]) \
+				or ev[1] in ["permit", "wo"] and ev.size() > 3 and ev[3] == "auto":   # (as ui/permits.gd, wo_panel.gd)
 			continue
 		for k in range(ev.size() - 1, 1, -1):
 			if typeof(ev[k]) == TYPE_STRING and ev[k] in ["done", "refused", "unknown"]:

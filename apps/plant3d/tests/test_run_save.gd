@@ -1227,6 +1227,10 @@ func _remap(p: Array) -> void:
 				[12, "op", "A1", "start", "done", []]])
 	if d.size() != 1 or not d[0].contains("W1 done P at 0:00:01 of plant time: done in the saved run, refused now"):
 		p.append("a permit refused after the replay was not found, or other events were: %s" % str(d))
+	d = Migrate.diff_events([[20, "drive", "P2", "V1", "auto", "gate", "done", []]],
+			[[20, "drive", "P2", "V1", "auto", "gate", "refused", ["no_wheel"]]])
+	if d.size() != 1 or not d[0].contains("done in the saved run, refused now"):
+		p.append("a trainee's drive \"auto\" refused after the replay was not found: %s" % str(d))
 	d = Migrate.diff_events([[12, "op", "\u202e" + "x".repeat(20), "start", "done", []]], [])
 	if d.size() != 1 or d[0].contains("\u202e") or not d[0].contains("unknown start"):
 		p.append("text from the file reached the words as it is: %s" % str(d))
