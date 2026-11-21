@@ -5,8 +5,6 @@
 'use strict';
 const K = {me: null, online: true, reauth: false, outbox: [], listeners: []};
 
-// Inside the Android app (window.KKSNative): API calls go to the app's own node through the bridge (the WebView can't
-// hand POST bodies to the app); replies arrive via K.nativeReply. Everything else is the same as in a browser.
 // ---------- switches for changes waiting for the owner's check (the UI and UX policy's tier 2, its section 8.5) ----------
 // A switched change stays off until a release lists it in K.UX_ON. To try one before that, open any page once with
 // ?ux=NAME (several: ?ux=a,b); this browser keeps it until a page is opened with ?ux= and nothing after it. Only the
@@ -24,6 +22,8 @@ K.ux = name => {
     return K.UX_ON.includes(name) || (localStorage.getItem('kks-ux') || '').split(',').includes(name);
   } catch { return K.UX_ON.includes(name) }
 };
+// Inside the Android app (window.KKSNative): API calls go to the app's own node through the bridge (the WebView can't
+// hand POST bodies to the app); replies arrive via K.nativeReply. Everything else is the same as in a browser.
 K.native = window.KKSNative || null;
 K.nativeCalls = new Map(); K.nativeSeq = 0;
 K.nativeReply = (id, status, text) => { const f = K.nativeCalls.get(id); K.nativeCalls.delete(id); if (f) f([status, text]) };

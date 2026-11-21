@@ -1361,7 +1361,8 @@ const phoneHeader=(()=>{
   const count=h('span',{class:'count',style:'display:none'});
   const btn=h('button',{type:'button',class:'btn',id:'moreBtn','aria-expanded':'false','aria-controls':'moreMenu',
     title:'More: Systems, Coverage, floors, Procedures, Connectors, Sheet notes, Learning, About, Account'},h('span',{'aria-hidden':'true'},'⋮'),count);
-  const chip=h('button',{type:'button',class:'btn',id:'floorChip',style:'display:none',onclick:()=>{ open(); $('#floorSel').focus() }});
+  const chipText=h('span');
+  const chip=h('button',{type:'button',class:'btn',id:'floorChip',style:'display:none',onclick:()=>{ open(); $('#floorSel').focus() }},chipText);
   const menu=h('div',{id:'moreMenu',role:'group','aria-label':'More',hidden:true});
   const shown=()=>items.filter(el=>el.parentNode===menu&&el.offsetParent!==null);
   const isOpen=()=>!menu.hidden;
@@ -1369,40 +1370,54 @@ const phoneHeader=(()=>{
     count.textContent=q?n:''; count.style.display=q?'':'none';
     btn.setAttribute('aria-label',q?`More, ${n} waiting for approval`:'More');
     const f=$('#floorSel'), on=!!f.value; chip.style.display=on?'':'none';
-    chip.textContent=on?f.selectedOptions[0]?.textContent||f.value:''; chip.setAttribute('aria-label',on?`Showing ${chip.textContent}: choose another floor`:'') }
-  // the browser's Back closes the menu (an entry of its own while it is open)
-  let entry=false;
-  function open(){ if(isOpen()) return; menu.hidden=false; btn.setAttribute('aria-expanded','true');
-    menu.style.maxHeight=Math.max(120,innerHeight-hdr.getBoundingClientRect().bottom-12)+'px';
+    chipText.textContent=on?f.selectedOptions[0]?.textContent||f.value:''; chip.setAttribute('aria-label',on?`Showing ${chipText.textContent}: choose another floor`:'') }
+  // the browser's Back closes the menu (an entry of its own while it is open; taken away again when the menu closes
+  // otherwise, `backs` counting the steps back still on their way)
+  let entry=false, backs=0;
+  const fit=()=>{ menu.style.maxHeight=Math.max(120,innerHeight-hdr.getBoundingClientRect().bottom-12)+'px' };
+  function open(){ if(isOpen()) return; menu.hidden=false; btn.setAttribute('aria-expanded','true'); fit();
+    $('#results').style.display='none'; $('#q').setAttribute('aria-expanded','false');   // (not under the menu)
     try{ history.pushState({kksMenu:1},''); entry=true }catch{}
     shown()[0]?.focus() }
-  function close(focus,leaving){ if(!isOpen()) return; menu.hidden=true; btn.setAttribute('aria-expanded','false');
-    if(entry){ entry=false; if(!leaving&&history.state?.kksMenu) history.back() }
+  function close(focus){ if(!isOpen()) return; menu.hidden=true; btn.setAttribute('aria-expanded','false');
+    if(entry){ entry=false; if(history.state?.kksMenu){ backs++; history.back() } }
     if(focus) btn.focus() }
-  addEventListener('popstate',()=>{ if(entry){ entry=false; const f=menu.contains(document.activeElement); close(f) } });
+  addEventListener('popstate',()=>{ if(backs){ backs--; return } if(entry){ entry=false; const f=menu.contains(document.activeElement); close(f) } });
+  addEventListener('resize',()=>{ if(isOpen()) fit() });   // a phone turned with the menu open
   btn.onclick=()=>isOpen()?close(true):open();
   btn.addEventListener('keydown',e=>{ if(e.key==='Escape'&&isOpen()){ e.preventDefault(); e.stopPropagation(); close(true) }
     else if(e.key==='ArrowDown'&&!isOpen()){ e.preventDefault(); open() } });
   menu.addEventListener('keydown',e=>{
     if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); close(true); return }
-    if(e.target.localName==='select') return;   // the arrow keys choose the floor there
+    // (the up and down arrows move on past the floor select too: it opens with Space, Enter or Alt+Down)
+    if(e.target.localName==='select'&&(e.altKey||!['ArrowDown','ArrowUp'].includes(e.key))) return;
     const L=shown(), i=L.indexOf(document.activeElement);
     const to={ArrowDown:i+1,ArrowUp:i-1,Home:0,End:L.length-1}[e.key];
     if(to===undefined||!L.length) return;
     e.preventDefault(); L[(to+L.length)%L.length].focus() });
   // a choice closes the menu; when it didn't move the focus somewhere of its own, the focus goes back to More
-  menu.addEventListener('click',e=>{ const t=e.target.closest('button,a'); if(!t) return; const away=t.localName==='a';
-    setTimeout(()=>{ const f=document.activeElement, lost=!f||f===document.body||menu.contains(f); close(false,away); if(lost) btn.focus() }) });
+  menu.addEventListener('click',e=>{ const t=e.target.closest('button,a'); if(!t) return;
+    // a link that leaves the page: the menu's entry goes first, so Back from the next page comes straight here
+    if(t.localName==='a'&&entry&&e.button===0&&!(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)&&history.state?.kksMenu){
+      e.preventDefault(); const go=t.href; entry=false; menu.hidden=true; btn.setAttribute('aria-expanded','false');
+      backs++; addEventListener('popstate',()=>{ location.href=go },{once:true}); history.back(); return }
+    setTimeout(()=>{ const f=document.activeElement, lost=!f||f===document.body||menu.contains(f); close(false); if(lost) btn.focus() }) });
   // a floor: the chip shows it; picked on a touch screen (its own list), the menu closes. With the keyboard the arrows
   // change the floor one by one, so the menu stays until Escape or Tab.
   let touched=false;
   $('#floorSel').addEventListener('pointerdown',()=>{ touched=true });
+  $('#floorSel').addEventListener('keydown',()=>{ touched=false });
+  $('#floorSel').addEventListener('blur',()=>{ touched=false });
   $('#floorSel').addEventListener('change',()=>{ label(); if(touched&&isOpen()){ touched=false; close(true) } });
   // a tap outside closes the menu and does nothing else (not a tag opened under it by the same tap)
-  let swallow=0;
-  document.addEventListener('pointerdown',e=>{ if(isOpen()&&!menu.contains(e.target)&&!btn.contains(e.target)){ close(false); swallow=Date.now() } },true);
-  document.addEventListener('click',e=>{ if(swallow&&Date.now()-swallow<1000&&!btn.contains(e.target)){ swallow=0; e.preventDefault(); e.stopPropagation() } else swallow=0 },true);
-  menu.addEventListener('focusout',e=>{ const t=e.relatedTarget; if(t&&!menu.contains(t)&&t!==btn) close(false) });
+  // (only the click of that same tap: one that ends somewhere else, a pan, is not a tap)
+  let swallow=null;
+  document.addEventListener('pointerdown',e=>{ if(isOpen()&&!menu.contains(e.target)&&!btn.contains(e.target)){ close(false); swallow={t:Date.now(),x:e.clientX,y:e.clientY} } },true);
+  document.addEventListener('click',e=>{ const w=swallow; swallow=null;
+    if(w&&Date.now()-w.t<1000&&Math.hypot(e.clientX-w.x,e.clientY-w.y)<12&&!btn.contains(e.target)){ e.preventDefault(); e.stopPropagation() } },true);
+  // the focus leaving both the menu and More closes it (Tab out of the menu, Shift+Tab past More)
+  const away=e=>{ const t=e.relatedTarget; if(t&&!menu.contains(t)&&t!==btn) close(false) };
+  menu.addEventListener('focusout',away); btn.addEventListener('focusout',away);
   function apply(){
     const on=PHONE.matches, f=document.activeElement, keep=f&&items.includes(f); hdr.classList.toggle('phonehead',on);
     if(on){ menu.append(...items); $('#revBtn').after(btn); btn.after(chip); hdr.append(menu); label() }
