@@ -198,6 +198,11 @@ header.phonehead .search{flex:1 1 240px}
 header.phonehead #q,header.phonehead select{min-height:48px;font-size:16px}
 header.phonehead #sheetSel{flex:1 1 140px;width:140px;min-width:0;max-width:100%}
 #moreMenu>select{max-width:100%;width:100%;min-width:0}
+/* the phone header's selects drawn by the page (WebKit drew them light with the page's light text), the arrow from
+   two gradients (no image file) */
+header.phonehead select{-webkit-appearance:none;appearance:none;color:var(--ink);padding-right:36px;
+  background:linear-gradient(45deg,transparent 50%,var(--ink) 50%) right 20px center/8px 8px no-repeat,
+    linear-gradient(135deg,var(--ink) 50%,transparent 50%) right 12px center/8px 8px no-repeat,var(--chrome)}
 header.phonehead>.btn{min-height:48px;min-width:48px;display:inline-flex;align-items:center;justify-content:center}
 header.phonehead .sync{white-space:normal;flex:1 1 auto;min-width:0;min-height:1.45em}
 @media (max-width:720px){header.phonehead .search,header.phonehead .sync{flex-basis:100%}}
