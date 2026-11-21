@@ -937,7 +937,7 @@ func _old_release(tree: SceneTree, p: Array) -> void:
 		await tree.process_frame
 	var e = ui.clock.engine
 	if ui.autosave.offer_panel != null or not ui.autosave.armed:
-		p.append("the 0.3.0 save was not made again: %s" % App.texts(ui).left(300))
+		p.append("the 0.3.0 save was not made again: %s" % (App.texts(ui.autosave.offer_panel) if ui.autosave.offer_panel != null else "").left(400))
 		main.free()
 		RunSave.remove(path)
 		return

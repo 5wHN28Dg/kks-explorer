@@ -13,6 +13,7 @@ extends RefCounted
 
 const PlantEngine = preload("res://sim/engine.gd")
 const RunSave = preload("res://ui/run_save.gd")
+const Tracker = preload("res://ui/procedure_tracker.gd")
 
 ## Every input kind the engine takes (sim/engine.gd apply_input) and the lengths of its item (without the step).
 const INPUT_SIZES := {"op": [5, 7], "ack": [2], "shelve": [3], "unshelve": [2], "fault": [2, 3], "repair": [2, 4],
@@ -112,9 +113,21 @@ func payload(app: String, content: String) -> Dictionary:
 	out["engine"] = RunSave.capture(e, RunSave.engine_fields(e))
 	var old_ev: Array = p["engine"].get("events", [])
 	if not out["tracker"].is_empty():
-		out["tracker"] = remap_tracker(out["tracker"], old_ev, e.events, target)
+		out["tracker"] = remap_tracker(_filled(out["tracker"]), old_ev, e.events, target)
 	if not out["run"].is_empty() and not out["run"]["same"]:
-		out["run"]["tracker"] = remap_tracker(out["run"]["tracker"], old_ev, e.events, target)
+		out["run"]["tracker"] = remap_tracker(_filled(out["run"]["tracker"]), old_ev, e.events, target)
+	# what the panels record that an older build didn't: the tasks given (the debrief's role tab), empty
+	if typeof(out["ui"]) == TYPE_DICTIONARY and not out["ui"].has("task_given"):
+		out["ui"]["task_given"] = {}
+	return out
+
+
+## A saved tracker with the fields an older build didn't have, at a fresh tracker's values (the rest as saved; a field
+## this build doesn't know stays, and the check refuses it).
+static func _filled(t: Dictionary) -> Dictionary:
+	var fresh = Tracker.new()
+	var out := RunSave.capture(fresh, RunSave.tracker_fields(fresh))
+	out.merge(t, true)
 	return out
 
 

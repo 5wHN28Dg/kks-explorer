@@ -40,6 +40,7 @@ var kept := ""                  # the name the offered save is (or will be) kept
 var migrating = null            # ui/run_migrate.gd while a save of another build is made again
 var _read_file := ""            # the file the offered save was read from (run.save, or a .tmp beside it)
 var _offer_text: Label
+var _offer_title: Label
 var _offer_row: HBoxContainer
 var saves := 0                  # saves written (tests)
 var capture_us := 0             # the main thread's part of the last periodic save
@@ -913,7 +914,8 @@ func _show_offer(p: Dictionary, why: String) -> void:
 	var row := HBoxContainer.new()
 	_offer_row = row
 	if why == "":
-		v.add_child(W.label("Continue the saved run?", 26))
+		_offer_title = W.label("Continue the saved run?", 26)
+		v.add_child(_offer_title)
 		var sc: Dictionary = ui.model.scenarios[p["scenario"]]
 		var lines := ["%s, at %s of plant time." % [sc.get("title", p["scenario"]), W.model_time(p["engine"]["step_no"])]]
 		if p["procedure"] != "":
@@ -1070,7 +1072,8 @@ func _migrate_frame() -> void:
 		why = "the file as saved could not be kept aside"
 	if why != "":
 		migrating = null
-		_offer_text.text = ("The saved run can't be continued: %s. It is kept on this device as %s; nothing of it is "
+		_offer_title.text = "The saved run can't be continued"
+		_offer_text.text = ("Because %s. It is kept on this device as %s; nothing of it is "
 				+ "lost. A new run starts.") % [why, kept]
 		last_error = why
 		return

@@ -312,9 +312,26 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
 - **At start**, a saved run is offered: Continue (the plant, the procedure, the trainee where they were; the run
   then goes on bit for bit as it would have) or New run (a new run in the default scenario, which replaces the save).
   The plant waits, paused, behind the offer (nothing can be walked or worked) and nothing is saved until the trainee
-  chooses. A save that can't be continued says why and offers only a new run. A start the command line asks for
+  chooses. A start the command line asks for
   (`walk`, `shot`, `scenario`, `procedure`, `speed`) offers nothing and saves to `user://run-options.save`, never
-  over a trainee's run. New run keeps the run it replaces as `run.save.prev` (one step back, by hand).
+  over a trainee's run. New run keeps the run it replaces as `run.save.prev` (one step back, by hand), and the offer
+  says so.
+- **After an update** (issue #447): a save of another build (another app version or other content) is offered too,
+  and says which version saved it. Continue makes the run again in this build (`ui/run_migrate.gd`): the engine is
+  deterministic and every change a run makes to the plant is an input in its log, so a fresh engine of this build is
+  fed every saved input at its step up to the saved step, a slice of 20 ms per frame while the offer shows how far it
+  is. The procedure's progress, the panels' records and the trainee's place are kept as saved; the event positions
+  the procedure's progress holds (its deviations' operations among them) are moved to the same plant steps in the new
+  event list; fields a newer build added get their fresh values. Where the model has changed, the plant can come out
+  a little differently from the saved run: the trainee's actions are the same. The file as saved is first kept aside
+  as `run-kept-<version>-<date>.save` beside `run.save` (`-2`, `-3`… when taken), and the offer names it.
+- **A save that can't be continued** (a newer version's or save format, damaged, a state that doesn't fit, a scenario
+  this plant hasn't, a shared session's run, an action this build doesn't know) says why, names the file it is kept
+  under (`run-kept-<version, "newer" or "damaged">-<date>.save`) and offers only a new run; choosing it copies the
+  save there before anything replaces it (if the copy fails, the save stays and the new run saves to
+  `run-new.save`). Nothing deletes a kept file: it can be opened again by the version that made it, by copying it
+  back as `run.save`. `tests/test_run_save.gd` loads the save the release before wrote
+  (`tests/fixtures/run-0.3.0.save`, made by plant-v0.3.0's own autosave with `tools/plant3d/old_saves/`).
 - **A second window** (a link opened on a desktop while the app runs starts one): `run.save.lock` holds the pid of
   the window that saves to `run.save`, renewed every 5 s; while that window runs, another one offers nothing and saves
   to `run-second.save`. Each process writes its own `.tmp` (`run.save.tmp.<pid>`). Not on Android (one instance).
@@ -332,8 +349,8 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
 The payload's parts, each required, no others: `app` (the app's version: `application/config/version`, `+`, the first 16 hex digits of `built/code.sha256`,
 which `build.sh` makes from `sim/*.gd` and the scripts whose state is saved or read back: `ui/run_save.gd`,
 `ui/autosave.gd`, `ui/procedure_tracker.gd`, `ui/plant_ui.gd`, `ui/sim_clock.gd`, `app/player.gd`; an export keeps
-scripts only compiled, so the app can't hash its code itself. A new build therefore refuses the saves of the one
-before), `content`
+scripts only compiled, so the app can't hash its code itself. A save of any other build is made again from its
+inputs, not put back as it is), `content`
 (SHA-256 over every file of `built/content`, by sorted path, with its length), `scenario`, `saved_unix`, `engine`
 (field → value), `clock` (`speed` 0 paused, 1 1×, 2 fast-forward; `ff_want`; `pause_on_hold`), `procedure` (an id,
 or `""`), `tracker` (field → value, `{}` without a procedure), `run` (`{}`, or `procedure`, `same`, `tracker`:
@@ -349,12 +366,13 @@ then says so and starts a new run.
 
 **Loaded strictly:** a file over 64 MiB, a wrong magic, a length that is not the file's, a hash that does not match,
 a payload that is not a Dictionary of exactly those parts of those types is refused as damaged; another save format,
-another app version or other content is refused as such; so is engine or tracker state whose fields are not this
+another app version or other content is made again from its inputs (above), and the result is checked as any save
+is; engine or tracker state whose fields are not this
 version's, of other types (where the field is typed: an untyped field takes any value but an object), or (an array the fresh engine holds non-empty, sized by the model) of another length, a
 procedure or scenario the plant doesn't have, a step index outside the procedure, a clock, panel record or place
 that is not of its kind or not finite; and contents the app indexes with (a machine state or alarm state that
 doesn't exist, malformed inputs, events, operations' records or procedure log, a tracker position past the logs)
-even under a matching hash. Nothing of a refused save is applied. A save over 64 MiB is not written.
+even under a matching hash, are refused. Nothing of a refused save is applied, and the save is kept aside (above). A save over 64 MiB is not written.
 
 **Cost:** measured by `tests/bench_save.gd` at the end of the cold start (76 events, 37 KB): on this laptop the
 copy on the main thread takes 0.11–0.15 ms, encoding 0.5 ms and writing 0.15–0.23 ms. The Note 9 runs the model
