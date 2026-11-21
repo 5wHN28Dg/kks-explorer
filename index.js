@@ -559,6 +559,8 @@ async function confirmDesc(t){ const d=descriptionOf(t); if(d?.status!=='draft')
 function reselect(){ const P=$('#panel'); if(!selTag||!P.classList.contains('open')) return; const sc=P.scrollTop; select(eff(TAGS.find(x=>x.id===selTag.id)||selTag)); P.scrollTop=sc }
 // A panel form's Cancel with something typed in it asks first (#436; the apps' question): Discard drops that form,
 // Keep editing leaves it as it was. `typed` says whether anything was typed (a field differs from what it opened with).
+// the custom fields as saveEq would send them (trimmed, empty rows left out), to compare what the form holds with what it opened with
+const cfPairs=list=>JSON.stringify(list.map(c=>[(c.k??'').trim(),(c.v??'').trim()]).filter(([k,v])=>k||v));
 const typedIn=el=>!!el&&[...el.querySelectorAll('input,textarea')].some(x=>!x.readOnly&&x.value.trim()!==x.defaultValue.trim());
 async function cancelForm(form,typed,what,go){
   if(typed&&!await K.confirm('Discard your edits?',what+' has not been saved.','Discard',{keep:'Keep editing'})) return;
@@ -667,7 +669,7 @@ function select(t){
           canApprove()?null:h('input',{id:'f_rnote',maxlength:500,placeholder:'Note for the approver (optional)',style:'width:100%;margin-bottom:8px'}),
           h('button',{class:'primary',onclick:()=>saveEq(k)},'Save'),' ',h('button',{class:'ghost',onclick:()=>{ const f=$('#eqSave'), cfs=$('#cfs');
             const typed=['f_area','f_floor','f_elev','f_near','f_loc','f_notes','f_rnote'].some(id=>typedIn(document.getElementById(id)?.parentNode))
-              ||typedIn(cfs)||cfs.querySelectorAll('.cf').length!==cf.length;
+              ||cfPairs([...cfs.querySelectorAll('.cf')].map(r=>({k:r.children[0].value,v:r.children[1].value})))!==cfPairs(cf);   // (a field removed counts, an empty row added doesn't: as saveEq sends them)
             cancelForm(f,typed,'What you typed in Location and notes',()=>{ if(selTag) select(eff(selTag)) }) }},'Cancel'))),
       h('div',{class:'sec'},h('h3',null,'Photos'),
         h('div',{class:'photos'},photos.map(p=>h('figure',null,h('img',{src:'photos/'+encodeURIComponent(p.file),alt:p.caption||'Photo',onclick:ev=>lightbox(ev.currentTarget.src)}),

@@ -81,7 +81,7 @@ private object PanelSize { var dp = -1f }
 /** what is typed and not sent in the open tag's panel, by form ("form", "desc", "review"): Back, Close, another tag or
  *  another sheet ask before it goes (#366, D3). `reset` empties them all (their saved state is keyed by it). */
 /** the tag panel's own forms (the question names the panel when only they hold text) */
-val PANEL_DRAFTS = setOf("form", "review", "desc")
+val PANEL_DRAFTS = setOf("form", "review", "desc", "valve")
 
 object PanelDrafts {
     val dirty = mutableStateMapOf<String, Boolean>()
@@ -144,6 +144,12 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
             PanelDrafts.drop(); then()
         }, { discarding = null }, no = "Keep editing")
     }
+    // this form's Cancel asks only about this form, and Discard drops only it (#436): a valve type or description
+    // being typed in another form of the panel stays (the panel's Close and Back above drop them all)
+    var discardingForm by remember(id) { mutableStateOf(false) }
+    val dropForm = { editing = false; note = "" }
+    if (discardingForm) Confirm("Discard your edits?", "What you typed in Location and notes has not been saved.", "Discard",
+        dropForm, { discardingForm = false }, no = "Keep editing")
     // The keyboard (UI/UX audit of #363, R3): while the panel is open the window is not panned up under the status bar
     // (the system's default, which put the heading, Copy and Close under it in landscape); the panel rises above the
     // keyboard and shrinks to what is left (imePadding before height: the height is held within it), the grip giving
@@ -247,7 +253,7 @@ fun TagPanel(id: String, rev: Int, onClose: () -> Unit, onGo: (String, String, L
                             scope.launch { snack.showSnackbar(m) }
                             if (ok) editing = false
                         }) { Text("Save") }
-                        OutlinedButton(onClick = { leaveForm {} }) { Text("Cancel") }
+                        OutlinedButton(onClick = { if (changed) discardingForm = true else dropForm() }) { Text("Cancel") }
                     }
                 }
                 val where = t.optJSONArray("appears_on") ?: JSONArray()
