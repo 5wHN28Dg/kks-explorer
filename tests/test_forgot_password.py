@@ -52,6 +52,16 @@ class ForgotPassword(unittest.TestCase):
         self.assertIn('ForgotPassword', body(self.win, 'of "Join through a server":', 'of "Join with a code":'))
         self.assertIn('FORGOT_PASSWORD', body(self.kt, 'private fun ServerJoin(', '\n}\n'))
 
+    def test_command_can_be_copied(self):
+        """the line names a command to run: on Android and GNOME it can be selected and copied (the web's is plain text,
+        selectable anyway; Windows' static text can't be, tracked as an issue)"""
+        self.assertIn('SelectionContainer { Dim(FORGOT_PASSWORD) }', body(self.kt, 'private fun ServerJoin(', '\n}\n'))
+        self.assertIn('label(ForgotPassword, "dim-label", selectable = true)', body(self.gnome, 'proc setupScreen(', '# a new plant'))
+
+    def test_not_before_setup(self):
+        """before the server has a manager there is nobody to ask: the web's sign-in screen leaves the line out"""
+        self.assertIn("cfg?.setup_needed ? null : K.h('p', {id: 'forgotPw'}", body(self.web, 'K.signIn = ', 'K.signUp = '))
+
     def test_what_it_says_is_true(self):
         s = literal(self.nim, r'const ForgotPassword\* = ')
         self.assertIn('password link', s)
@@ -64,6 +74,11 @@ class ForgotPassword(unittest.TestCase):
         self.assertIn('makeToken("reset", uid, 3 * 86400)', web)
         # ... but not for the manager's own account: that one comes from the server's command line
         self.assertIn('if role == "manager"', web)
+        # ... and an admin's own only from the manager: so the line sends people to the manager first, and to an
+        # admin only for a member
+        self.assertIn('(role == "admin" and me.role != "manager")', web)
+        self.assertIn("Ask your plant's manager for a password link (an admin can also make one for a member)", s)
+        self.assertNotIn('manager or an admin', s)
         cmd = body(server, 'of "reset-password":', 'of "web-sign-in":')
         self.assertIn('usage: kks-server reset-password --user NAME', cmd)
         self.assertIn('makeToken("reset", u["id"].i, 3 * 86400)', cmd)

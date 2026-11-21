@@ -281,15 +281,15 @@ K.watchLease = () => {
 };
 
 // The way back in after a forgotten password (#449; the same words on every client's sign-in form, tests/test_forgot_password.py):
-// a manager or admin makes a one-time password link (admin.html → Users → Password link, /api/users/N/reset); the
+// the manager (or an admin, for a member) makes a one-time password link (admin.html → Users → Password link, /api/users/N/reset); the
 // manager's own comes from the server's command line (kks-server reset-password, reset-manager).
-K.forgotPassword = "Forgot your password? Ask your plant's manager or an admin for a password link, and open it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME.";
+K.forgotPassword = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and open it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME.";
 // The sign-in screen. Where the manager has set a sign-up code (/api/config: signup), it also leads to "Request an
 // account": the request waits for an admin (Manage → Users); until then signing in says so.
 K.signIn = cfg => K.form(cfg?.plant_name || 'Walkdown', cfg?.setup_needed ? 'No manager account exists yet: use the setup link printed on the server console.' : 'Sign in to see plant data.',
   [{name: 'username', label: 'Username', ac: 'username', plain: true}, {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Sign in',
   async v => { await K.api('/api/login', v); location.reload() }, null,
-  [K.h('p', {id: 'forgotPw'}, K.forgotPassword),
+  [cfg?.setup_needed ? null : K.h('p', {id: 'forgotPw'}, K.forgotPassword),   // (no manager yet: nobody to ask)
    cfg?.signup ? K.h('button', {type: 'button', class: 'back', id: 'signup', onclick: () => K.signUp(cfg)}, 'No account yet? Request one') : null,
    K.h('button', {type: 'button', class: 'back', id: 'signinAbout', onclick: () => K.about()}, 'About Walkdown')]);
 K.signUp = cfg => K.form('Request an account', 'You need the sign-up code your manager gives the team. An admin then approves the request before the account works.',

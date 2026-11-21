@@ -463,7 +463,7 @@ proc setupScreen(w: Win): W =
     asyncCheck run())
   for r in [url, user, pw]: adw_preferences_group_add(g1, r)
   adw_preferences_group_add(g1, go)
-  let forgot = label(ForgotPassword, "dim-label")   # the way back in (#449)
+  let forgot = label(ForgotPassword, "dim-label", selectable = true)   # the way back in (#449)
   gtk_widget_set_margin_top(forgot, 12)
   adw_preferences_group_add(g1, forgot)
   # a new plant

@@ -267,7 +267,7 @@ class Windows(unittest.TestCase):
         """#371 (F2): joining a server that isn't there says so in plain words, with the address, not Windows' socket
         error text"""
         self.check('unreach.uia', ['click\tJoin through a server',
-                                   "wait\t~Forgot your password? Ask your plant's manager or an admin\t10",   # the way back in (#449)
+                                   "wait\t~Forgot your password? Ask your plant's manager for a password link\t10",   # the way back in (#449)
                                    'set\tServer address\t127.0.0.1:1', 'set\tUsername\tboss',
                                    'set\tPassword\ta long password', 'click\tJoin',
                                    "wait\t~Couldn't reach the server at 127.0.0.1:1.\t60", 'sleep\t2031', 'gone\t~refused the network connection'], keep=False,
