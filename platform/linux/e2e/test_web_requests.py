@@ -131,6 +131,11 @@ class WebRequests(unittest.TestCase):
         sid = tom.req('POST', '/api/submit', {'kind': 'photo', 'payload': {'kks': code, 'dataUrl': self.jxl}})['id']
         self.assertEqual(boss.req('POST', f'/api/submissions/{sid}/approve', {}).get('ok', True), True)
         browser, ctx, page, errors = self.context(p, name, 'tom')
+        # #490: file choosers are intercepted from the start. Playwright turns Chromium's interception on only when the
+        # first "filechooser" listener is added, and does it alongside the next action: under load the Enter below
+        # reached the page first, its chooser went to the (headless, invisible) system dialog and no event came.
+        # With a listener held from here, expect_file_chooser only adds another one; what the test checks is unchanged.
+        page.on('filechooser', lambda fc: None)
         page.route('**/data/descriptions.json', lambda r: r.fulfill(status=200, content_type='application/json', body=json.dumps(
             {code: {'text': 'Feed water pump inlet valve', 'basis': 'P&ID note'}, plain: 'Drain valve'})))
         self.open_panel(page, code)
