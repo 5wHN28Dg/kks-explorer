@@ -14,6 +14,7 @@ extends RefCounted
 const PlantEngine = preload("res://sim/engine.gd")
 const RunSave = preload("res://ui/run_save.gd")
 const Tracker = preload("res://ui/procedure_tracker.gd")
+const Inputs = preload("res://ui/inputs.gd")
 
 ## Every input kind the engine takes (sim/engine.gd apply_input) and the lengths of its item (without the step).
 const INPUT_SIZES := {"op": [5, 7], "ack": [2], "shelve": [3], "unshelve": [2], "fault": [2, 3], "repair": [2, 4],
@@ -55,9 +56,49 @@ static func why_not(model, sp: Dictionary) -> String:
 		return "its record of events is missing"
 	last = 0
 	for x in en["events"]:
-		if typeof(x) != TYPE_ARRAY or x.is_empty() or typeof(x[0]) != TYPE_INT or x[0] < last:
+		if typeof(x) != TYPE_ARRAY or x.size() < 2 or typeof(x[0]) != TYPE_INT or x[0] < last \
+				or typeof(x[1]) != TYPE_STRING:
 			return "its record of events is damaged"
 		last = x[0]
+	# what the offer shows and the made-again run keeps: the procedure, its progress, the debrief's procedure
+	if typeof(sp.get("procedure")) != TYPE_STRING or typeof(sp.get("tracker")) != TYPE_DICTIONARY \
+			or typeof(sp.get("run")) != TYPE_DICTIONARY or typeof(sp.get("ui")) != TYPE_DICTIONARY:
+		return "its procedure's progress is damaged"
+	if sp["procedure"] != "":
+		if not model.procedures.has(sp["procedure"]):
+			return "its procedure is not in this version's plant"
+		var why := _tracker_why(model, sp["procedure"], sp["tracker"], en["events"].size())
+		if why != "":
+			return why
+	elif not sp["tracker"].is_empty():
+		return "its procedure's progress is damaged"
+	var run: Dictionary = sp["run"]
+	if not run.is_empty():
+		if typeof(run.get("procedure")) != TYPE_STRING or typeof(run.get("same")) != TYPE_BOOL \
+				or typeof(run.get("tracker")) != TYPE_DICTIONARY:
+			return "its debrief's procedure is damaged"
+		if not model.procedures.has(run["procedure"]):
+			return "its debrief's procedure is not in this version's plant"
+		if not run["same"]:
+			var why := _tracker_why(model, run["procedure"], run["tracker"], en["events"].size())
+			if why != "":
+				return "its debrief's procedure is damaged"
+	return ""
+
+
+## Why a saved tracker of procedure `pid` can't be carried over (its step, its event positions, its deviations), or "".
+static func _tracker_why(model, pid: String, t: Dictionary, nev: int) -> String:
+	var nsteps: int = model.procedures[pid].get("steps", []).size()
+	if typeof(t.get("index")) != TYPE_INT or t["index"] < -1 or t["index"] >= nsteps:
+		return "its procedure's step is not in this version's procedure"
+	for k in ["_seen", "ev_from", "ev_to"]:
+		if t.has(k) and (typeof(t[k]) != TYPE_INT or t[k] < -1 or t[k] > nev):
+			return "its procedure's progress is damaged"
+	if typeof(t.get("deviations", [])) != TYPE_ARRAY:
+		return "its procedure's progress is damaged"
+	for d in t.get("deviations", []):
+		if typeof(d) != TYPE_ARRAY or d.size() < 3 or typeof(d[2]) != TYPE_INT or d[2] < -1 or d[2] >= nev:
+			return "its procedure's progress is damaged"
 	return ""
 
 
@@ -89,7 +130,7 @@ func _feed(s: int) -> void:
 	if not _by_step.has(s):
 		return
 	for x in _by_step[s]:
-		e.apply_input(x.duplicate(true))
+		Inputs.replay(e, x)       # (the app's inputs go one way: ui/inputs.gd)
 	_by_step.erase(s)
 
 
@@ -142,31 +183,53 @@ static func remap_tracker(t: Dictionary, old_ev: Array, new_ev: Array, last_step
 	if out.has("deviations"):
 		for d in out["deviations"]:
 			if typeof(d) == TYPE_ARRAY and d.size() > 2 and typeof(d[2]) == TYPE_INT and d[2] >= 0:
-				# the deviation's own op event: the first new op event at its step, else none
-				var s: int = old_ev[d[2]][0] if d[2] < old_ev.size() else last_step + 1
-				var at := -1
-				for i in range(_pos(d[2], old_ev, new_ev, last_step), new_ev.size()):
-					if new_ev[i][0] != s:
-						break
-					if new_ev[i].size() > 1 and new_ev[i][1] == "op":
-						at = i
-						break
-				d[2] = at
+				d[2] = _op_at(d[2], old_ev, new_ev)
 	return out
 
 
+## A position in the old event list moved to the new: the same place among the events of its model step (its rank
+## there, at most the new step's count), so a procedure begun in the middle of a step still begins there.
 static func _pos(pos: int, old_ev: Array, new_ev: Array, last_step: int) -> int:
 	if pos >= old_ev.size():
 		return new_ev.size()
 	var s: int = old_ev[pos][0]
 	if s > last_step:
 		return new_ev.size()
-	# the first new event at step s or later (events are in step order)
+	var rank := pos - _first_at(old_ev, s)
+	var first := _first_at(new_ev, s)
+	var n := 0
+	while first + n < new_ev.size() and new_ev[first + n][0] == s:
+		n += 1
+	return first + mini(rank, n)
+
+
+## A deviation's op event moved to the new list: the op event of the same rank among its step's op events (-1 when
+## the new step has fewer).
+static func _op_at(pos: int, old_ev: Array, new_ev: Array) -> int:
+	if pos >= old_ev.size():
+		return -1
+	var s: int = old_ev[pos][0]
+	var rank := 0
+	for i in range(_first_at(old_ev, s), pos):
+		if old_ev[i][1] == "op":
+			rank += 1
+	var i := _first_at(new_ev, s)
+	while i < new_ev.size() and new_ev[i][0] == s:
+		if new_ev[i][1] == "op":
+			if rank == 0:
+				return i
+			rank -= 1
+		i += 1
+	return -1
+
+
+## The first event at model step s or later (events are in step order).
+static func _first_at(ev: Array, s: int) -> int:
 	var lo := 0
-	var hi := new_ev.size()
+	var hi := ev.size()
 	while lo < hi:
 		var mid := (lo + hi) >> 1
-		if new_ev[mid][0] < s:
+		if ev[mid][0] < s:
 			lo = mid + 1
 		else:
 			hi = mid

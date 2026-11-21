@@ -25,7 +25,7 @@ const Hse = preload("res://sim/hse.gd")
 const Disc = preload("res://sim/discuss.gd")    # the discussions' state (REALISM.md §6.3.1)
 
 const INTERVAL := 5.0           # seconds of real time between saves while the run changes
-const MIGRATE_BUDGET_US := 20000  # a save of another build is made again in pieces of this much time a frame
+static var migrate_budget_us := 20000   # a save of another build is made again in pieces of this much time a frame
 
 static var default_path := "user://run.save"   # tests/run_tests.gd points it elsewhere
 
@@ -89,7 +89,7 @@ func begin(offer := true) -> void:
 		if r["why"] == "format" and r.get("format", 0) > RunSave.FORMAT:
 			_show_kept(r["text"], "newer", "A newer version of the app can continue it.")
 		else:
-			_show_kept(r["text"], "damaged", "")
+			_show_kept(r["text"], "older" if r["why"] == "format" else "damaged", "")
 		return
 	var p: Dictionary = r["payload"]
 	var theirs := RunSave.version_of(p["app"])
@@ -943,10 +943,10 @@ func _show_offer(p: Dictionary, why: String) -> void:
 		lines.append("Saved %s." % Time.get_datetime_string_from_unix_time(p["saved_unix"] + _tz_offset(), true))
 		if kept != "":
 			var n: int = p["engine"]["inputs"].size()
-			lines.append(("It was saved by version %s. Continuing makes the run again in this version: your %d "
-					+ "action%s at the same plant times (where the plant has changed, it may come out a little "
-					+ "differently). The file as saved is kept as %s.") % [RunSave.version_of(p["app"]), n,
-					"" if n == 1 else "s", kept])
+			lines.append("It was saved by version %s." % RunSave.version_of(p["app"]))
+			lines.append(("Continue makes your run again in this version: your %d action%s at the same plant times "
+					+ "(where the plant has changed, it may come out a little differently). The file as saved is kept "
+					+ "as %s.") % [n, "" if n == 1 else "s", kept])
 			lines.append("New run starts afresh; the saved run is kept as that file too.")
 		elif carries():
 			lines.append("New run starts afresh and puts this run aside: it is kept as a backup until the next new run.")
@@ -960,7 +960,8 @@ func _show_offer(p: Dictionary, why: String) -> void:
 			go.grab_focus.call_deferred()
 	else:
 		last_error = why
-		v.add_child(W.label("The saved run can't be continued", 26))
+		_offer_title = W.label("The saved run can't be continued", 26)
+		v.add_child(_offer_title)
 		_offer_text = W.label(why if carries() else "Because %s. A new run starts; the saved one will be replaced." % why,
 				20, W.DIM)
 		v.add_child(_offer_text)
@@ -991,7 +992,7 @@ func _show_offer(p: Dictionary, why: String) -> void:
 ## Nothing is moved until the trainee chooses New run (a join link withdrawing the offer leaves the save as it is).
 func _show_kept(why: String, label: String, can: String) -> void:
 	kept = RunSave.kept_name(path, label)
-	_show_offer({}, ("Because %s. It is kept on this device as %s; nothing of it is lost. %sA new run starts.")
+	_show_offer({}, ("Because %s. It is kept on this device as %s; nothing of it is lost. %sChoose New run to start afresh.")
 			% [why, kept, (can + " ") if can != "" else ""])
 	last_error = why
 
@@ -1030,6 +1031,13 @@ func _choose(p: Dictionary) -> void:
 		_begin_migration(p)                     # another build's save: made again first, the offer shows how far
 		return
 	migrating = null
+	var kept_aside := false
+	if p.is_empty() and kept != "":
+		# a save this version doesn't continue: kept aside under its own name before anything replaces it
+		if RunSave.keep_aside(path, _read_file, kept) != OK:
+			_aside_failed()
+			return
+		kept_aside = true
 	if offer_panel != null:
 		ui.root.get_viewport().size_changed.disconnect(_place_offer)
 		_offer_layer.queue_free()
@@ -1037,14 +1045,7 @@ func _choose(p: Dictionary) -> void:
 		offer_panel = null
 		ui.player.scripted = false
 	if p.is_empty():
-		if kept != "":
-			# a save this version doesn't continue: kept aside under its own name, never replaced
-			var err := RunSave.keep_aside(path, _read_file, kept)
-			if err != OK:
-				# not kept: the save stays where it is and this run saves apart, so nothing is lost
-				path = path.get_base_dir().path_join("run-new.save")
-				ui.toast("The saved run could not be kept aside (error %d): it stays as it was, and this run is saved apart." % err, 8.0)
-		else:
+		if not kept_aside:
 			RunSave.keep_previous(path)         # the run given up stays as run.save.prev until the next one
 		ui.restart(ui.clock.scenario, true)     # afresh (the plant waited at step 0: this is the same start)
 		ui.clock.set_speed(SimClock.Speed.NORMAL)
@@ -1059,19 +1060,55 @@ func _choose(p: Dictionary) -> void:
 	save_now()
 
 
+## The save could not be copied aside (storage full or not writable): nothing was replaced, and the offer says so. The
+## trainee can free space and start the app again, or replace it, as New run always did before (it stays as
+## run.save.prev until the next new run).
+## q: the run made again in this version (Continue was chosen): then the choice is to continue without the copy.
+func _aside_failed(q := {}) -> void:
+	migrating = null
+	_offer_title.text = "The saved run could not be kept aside"
+	_offer_text.text = ("Nothing was replaced. This device's storage may be full or not writable: free some space and "
+			+ "start the app again to keep the file as saved, or choose %s (the file as saved is then kept as a "
+			+ "backup only until the next new run).") % ("Continue anyway to go on with the run made again in this version"
+			if not q.is_empty() else "Replace it to start a new run in its place")
+	last_error = "the saved run could not be kept aside"
+	for c in _offer_row.get_children():
+		_offer_row.remove_child(c)
+		c.queue_free()
+	var rb := W.button("Continue anyway" if not q.is_empty() else "Replace it", func():
+		kept = ""
+		if not q.is_empty():
+			RunSave.keep_previous(path)
+		_choose(q), 200)
+	_offer_row.add_child(rb)
+	rb.grab_focus()
+
+
 ## Continue on another build's save: the run is made again (ui/run_migrate.gd) a piece per frame while the offer says
 ## how far it is; New run stays possible meanwhile. Done, the made-again run is checked as any save is and put back,
 ## the file as saved kept aside first; a run that can't be made again is said so and kept aside.
 func _begin_migration(p: Dictionary) -> void:
 	migrating = Migrate.new(ui.model, p)
+	var had_focus := false
 	for c in _offer_row.get_children():
 		if c.text == "Continue":
+			had_focus = c.has_focus()
+			_offer_row.remove_child(c)
 			c.queue_free()
+	_focus_new_run(had_focus)
 	_offer_text.text = "Making the run again in this version: 0 %"
 
 
+## The offer's New run takes the keyboard's and the gamepad's focus (when the button that had it went, or the app
+## wants a focus anyway): it is never left without one.
+func _focus_new_run(had_focus: bool) -> void:
+	for c in _offer_row.get_children():
+		if c is Button and c.text in ["New run", "Replace it", "Continue anyway"] and (had_focus or ui.wants_focus()):
+			c.grab_focus()
+
+
 func _migrate_frame() -> void:
-	if not migrating.advance(MIGRATE_BUDGET_US):
+	if not migrating.advance(migrate_budget_us):
 		_offer_text.text = "Making the run again in this version: %d %%" % int(migrating.fraction() * 100.0)
 		return
 	var m = migrating
@@ -1081,12 +1118,14 @@ func _migrate_frame() -> void:
 		q = m.payload(RunSave.app_version(), content)
 		why = check(q)
 	if why == "" and RunSave.keep_aside(path, _read_file, kept, false) != OK:
-		why = "the file as saved could not be kept aside"
+		_aside_failed(q)
+		return
 	if why != "":
 		migrating = null
 		_offer_title.text = "The saved run can't be continued"
+		_focus_new_run(true)
 		_offer_text.text = ("Because %s. It is kept on this device as %s; nothing of it is "
-				+ "lost. A new run starts.") % [why, kept]
+				+ "lost. Choose New run to start afresh.") % [why, kept]
 		last_error = why
 		return
 	_choose(q)

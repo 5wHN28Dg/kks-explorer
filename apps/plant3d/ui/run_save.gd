@@ -39,9 +39,16 @@ static func app_version() -> String:
 	return "%s+%s" % [str(ProjectSettings.get_setting("application/config/version", "")), code.left(16)]
 
 
-## The release part of an app version ("0.3.0" of "0.3.0+0123456789abcdef").
+## The release part of an app version ("0.3.0" of "0.3.0+0123456789abcdef"); "unknown" for anything that is not a
+## short run of digits, letters, dots and dashes (it comes from the file, and goes into words on screen and a file name).
 static func version_of(app: String) -> String:
-	return app.get_slice("+", 0)
+	var v := app.get_slice("+", 0)
+	if v.is_empty() or v.length() > 24:
+		return "unknown"
+	for ch in v:
+		if not (ch >= "0" and ch <= "9" or ch >= "a" and ch <= "z" or ch >= "A" and ch <= "Z" or ch == "." or ch == "-"):
+			return "unknown"
+	return v
 
 
 ## -1, 0 or 1 as release a is before, the same as or after b (dotted whole numbers; a missing part counts 0; a part
@@ -289,18 +296,19 @@ static func kept_name(path: String, label: String) -> String:
 ## Keeps the save that was read from `file` (path or a .tmp beside it) under `name` beside path, by a copy of its bytes,
 ## and then (with remove_rest) removes path and its .tmp files. OK only when the kept copy was written whole.
 static func keep_aside(path: String, file: String, name: String, remove_rest := true) -> Error:
-	var b := FileAccess.get_file_as_bytes(file)
-	if b.is_empty() and FileAccess.get_open_error() != OK:
-		return FileAccess.get_open_error()
+	if not FileAccess.file_exists(file):
+		return ERR_FILE_NOT_FOUND
 	var dest := path.get_base_dir().path_join(name)
-	var f := FileAccess.open(dest, FileAccess.WRITE)
-	if f == null:
-		return FileAccess.get_open_error()
-	f.store_buffer(b)
-	f.flush()
-	var err := f.get_error()
-	f.close()
-	if err != OK or FileAccess.get_file_as_bytes(dest) != b:
+	# copied in pieces (a damaged file can be of any size), then compared by length and SHA-256
+	var err := DirAccess.copy_absolute(ProjectSettings.globalize_path(file), ProjectSettings.globalize_path(dest))
+	if err != OK:
+		return err
+	var a := FileAccess.open(file, FileAccess.READ)
+	var b := FileAccess.open(dest, FileAccess.READ)
+	var same := a != null and b != null and a.get_length() == b.get_length()
+	a = null
+	b = null
+	if not same or FileAccess.get_sha256(file) != FileAccess.get_sha256(dest):
 		return ERR_FILE_CANT_WRITE
 	if remove_rest:
 		remove(path)

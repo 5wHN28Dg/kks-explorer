@@ -323,7 +323,7 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
   and says which version saved it. Continue makes the run again in this build (`ui/run_migrate.gd`): the engine is
   deterministic and every change a run makes to the plant is an input in its log, so a fresh engine of this build is
   fed every saved input at its step up to the saved step, a slice of 20 ms per frame while the offer shows how far it
-  is. The procedure's progress, the panels' records and the trainee's place are kept as saved; the event positions
+  is (New run keeps the keyboard's and gamepad's focus meanwhile). The procedure's progress, the panels' records and the trainee's place are kept as saved; the event positions
   the procedure's progress holds (its deviations' operations among them) are moved to the same plant steps in the new
   event list; fields a newer build added get their fresh values. Where the model has changed, the plant can come out
   a little differently from the saved run: the trainee's actions are the same. The file as saved is first kept aside
@@ -331,9 +331,12 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
 - **A save that can't be continued** (switched on: a newer version's or save format, damaged, a state that doesn't fit, a scenario
   this plant hasn't, a shared session's run, an action this build doesn't know) says why, names the file it is kept
   under (`run-kept-<version, "newer" or "damaged">-<date>.save`) and offers only a new run; choosing it copies the
-  save there before anything replaces it (if the copy fails, the save stays and the new run saves to
-  `run-new.save`). Nothing deletes a kept file: it can be opened again by the version that made it, by copying it
-  back as `run.save`. `tests/test_run_save.gd` loads the save the release before wrote
+  save there before anything replaces it. If the copy fails (storage full or not writable), nothing is replaced and
+  the offer says so: the trainee can free space and start again, or choose Replace it (Continue anyway after a run
+  made again), which keeps the save as `run.save.prev` until the next new run, as New run always did. Nothing deletes
+  a kept file. On the desktops it can be opened again by the version that made it, by copying it back as `run.save`
+  in the app's data folder; on Android the app's folder is private, so a kept file stays there unused until the app
+  is uninstalled (a way to list, open or remove kept files in the app is not built). `tests/test_run_save.gd` loads the save the release before wrote
   (`tests/fixtures/run-0.3.0.save`, made by plant-v0.3.0's own autosave with `tools/plant3d/old_saves/`).
 - **A second window** (a link opened on a desktop while the app runs starts one): `run.save.lock` holds the pid of
   the window that saves to `run.save`, renewed every 5 s; while that window runs, another one offers nothing and saves

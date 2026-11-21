@@ -95,7 +95,11 @@ func _run() -> void:
 	await _start()
 	await shot("on-old-release-offer")
 	kept_files.append(main.ui.autosave.kept)
+	Autosave.migrate_budget_us = 1          # slowly: the progress line, New run with the focus Continue had
+	_button("Continue").grab_focus()
 	_button("Continue").pressed.emit()
+	await shot("on-old-release-making-again", 3)
+	Autosave.migrate_budget_us = 20000
 	for i in 600:
 		if main.ui.autosave.offer_panel == null:
 			break
@@ -112,6 +116,32 @@ func _run() -> void:
 	await shot("on-cannot-continue")
 	kept_files.append(main.ui.autosave.kept)
 	await _stop()
+	# a run made again whose state this build refuses: said after Continue, New run focused
+	q = old.duplicate(true)
+	q["ui"]["results"] = {"00PGC10AP001": 5}
+	RunSave.remove(path)
+	RunSave.write(path, RunSave.encode(q))
+	await _start()
+	_button("Continue").grab_focus()
+	_button("Continue").pressed.emit()
+	for i in 600:
+		if main.ui.autosave.migrating == null:
+			break
+		await process_frame
+	await shot("on-made-again-refused")
+	await _stop()
+	# the copy aside fails (a folder where the kept file goes): nothing replaced, Replace it
+	q = old.duplicate(true)
+	q["scenario"] = "no_such_scenario"
+	RunSave.remove(path)
+	RunSave.write(path, RunSave.encode(q))
+	await _start()
+	var kd: String = ProjectSettings.globalize_path(dir.path_join(main.ui.autosave.kept))
+	DirAccess.make_dir_recursive_absolute(kd)
+	_button("New run").pressed.emit()
+	await shot("on-copy-aside-failed")
+	await _stop()
+	DirAccess.remove_absolute(kd)
 	# this build's own save: the offer as before, with New run's line
 	RunSave.remove(path)
 	RunSave.write(path, RunSave.encode(own))
