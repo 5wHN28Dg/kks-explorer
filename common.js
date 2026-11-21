@@ -180,8 +180,10 @@ K.emit = async () => {
   K.renderStatus(); K.listeners.forEach(f => f()) };
 
 // ---------- overlay screens (login, setup, password link, offline lock) ----------
-K.css = `#kov{position:fixed;inset:0;z-index:200;background:var(--chrome,#1c2730);color:var(--ink,#e9eef2);display:flex;align-items:center;justify-content:center;font:14px/1.45 system-ui,sans-serif;padding:16px}
-#kov form,#kov .box{background:var(--chrome2,#243440);border:1px solid var(--line,#3a5061);border-radius:10px;padding:20px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}
+// (The form is centred by its margin, not by the flex box: a form taller than the window, at 200 % zoom on a phone,
+// then scrolls from its top instead of losing its title and first fields above the window, #449.)
+K.css = `#kov{position:fixed;inset:0;z-index:200;background:var(--chrome,#1c2730);color:var(--ink,#e9eef2);display:flex;overflow-y:auto;font:14px/1.45 system-ui,sans-serif;padding:16px}
+#kov form,#kov .box{margin:auto;background:var(--chrome2,#243440);border:1px solid var(--line,#3a5061);border-radius:10px;padding:20px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}
 #kov h1{font-size:18px;margin:0}#kov p{margin:0;color:var(--muted,#94a6b4)}#kov input{padding:9px 10px;border-radius:6px;border:1px solid var(--line,#3a5061);background:var(--chrome,#1c2730);color:inherit;font:inherit}
 #kov button{background:var(--accent,#ff7a1a);color:#1c2730;border:0;border-radius:6px;padding:9px;font-weight:650;cursor:pointer;font:inherit}#kov button.back{background:none;border:1px solid var(--line,#3a5061);color:inherit;font-weight:400}#kov .err{color:var(--bad,#ff5a5a);min-height:1em}`;
 // The overlay screen, holding these nodes (K.h).
@@ -231,7 +233,8 @@ K.start = async () => {
       samePw(v); await K.api('/api/setup', {token: h.get('setup'), username: v.username, password: v.password, full_name: v.full_name, position: v.position}); done() }));
   if (h.get('reset')) {
     const info = await K.api(`/api/token-info?kind=reset&token=${encodeURIComponent(h.get('reset'))}`).catch(e => ({error: e.message}));
-    if (info.error) { K.box('Link not valid', `${info.error} Ask an admin for a new one.`); return new Promise(() => {}) }
+    // (who can make a new one, as the sign-in screen's line says; and the way back to sign in, #462)
+    if (info.error) { K.box('Link not valid', `${info.error} Ask your plant's manager for a new one (an admin can also make one for a member).`, 'Back to sign in', done); return new Promise(() => {}) }
     return new Promise(() => K.form('Set your password', '', [{name: 'u', label: '', value: info.username, ac: 'username'}, ...pwFields], 'Save password', async v => {
       samePw(v); await K.api('/api/password-reset', {token: h.get('reset'), password: v.password}); done() }));
   }
@@ -278,12 +281,17 @@ K.watchLease = () => {
   }, 20000);
 };
 
+// The way back in after a forgotten password (#449; the same words on every client's sign-in form, tests/test_forgot_password.py):
+// the manager (or an admin, for a member) makes a one-time password link (admin.html → Users → Password link, /api/users/N/reset); the
+// manager's own comes from the server's command line (kks-server reset-password, reset-manager).
+K.forgotPassword = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and use it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME.";
 // The sign-in screen. Where the manager has set a sign-up code (/api/config: signup), it also leads to "Request an
 // account": the request waits for an admin (Manage → Users); until then signing in says so.
 K.signIn = cfg => K.form(cfg?.plant_name || 'Walkdown', cfg?.setup_needed ? 'No manager account exists yet: use the setup link printed on the server console.' : 'Sign in to see plant data.',
   [{name: 'username', label: 'Username', ac: 'username', plain: true}, {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Sign in',
   async v => { await K.api('/api/login', v); location.reload() }, null,
-  [cfg?.signup ? K.h('button', {type: 'button', class: 'back', id: 'signup', onclick: () => K.signUp(cfg)}, 'No account yet? Request one') : null,
+  [cfg?.setup_needed ? null : K.h('p', {id: 'forgotPw'}, K.forgotPassword),   // (no manager yet: nobody to ask)
+   cfg?.signup ? K.h('button', {type: 'button', class: 'back', id: 'signup', onclick: () => K.signUp(cfg)}, 'No account yet? Request one') : null,
    K.h('button', {type: 'button', class: 'back', id: 'signinAbout', onclick: () => K.about()}, 'About Walkdown')]);
 K.signUp = cfg => K.form('Request an account', 'You need the sign-up code your manager gives the team. An admin then approves the request before the account works.',
   [{name: 'code', label: 'Sign-up code', plain: true}, {name: 'full_name', label: 'Your full name', ac: 'name'},

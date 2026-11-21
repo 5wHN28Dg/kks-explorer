@@ -192,6 +192,7 @@ class Phone(unittest.TestCase):
     # ---- helpers for the 2026-10-08 requests' tests
     def join(self, user='boss', pw='a long password'):
         ui.tap('Join through a server', exact=True)
+        ui.find("Forgot your password? Ask your plant's manager for a password link")   # the way back in (#449)
         ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
         ui.type_into('Username', user)
         ui.type_into('Password', pw)
