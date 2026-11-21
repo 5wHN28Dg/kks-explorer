@@ -768,23 +768,54 @@ func add_settings(box: VBoxContainer) -> void:
 	if clock == null:
 		return
 	var cf: ConfigFile = main.cf
+	var rows := {}
 	for row in [["instructor", "Instructor mode: scenarios and trainer faults", false],
 			["reduced_motion", "Reduced motion: no camera shake or head bob, Go there without flying, lightning without flashes", false],
+			["no_flashes", NO_FLASHES, false],
 			["mute", "Mute the plant's sounds", false]]:
 		var cb := CheckBox.new()
 		cb.text = row[1]
 		cb.focus_mode = Control.FOCUS_ALL
 		cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # wraps in the settings panel's width
 		cb.custom_minimum_size.y = 52 * W.scale            # as tall as the layer's buttons (48 dp on a phone, T1)
-		var on: bool = cf.get_value("ui", row[0], row[2])
+		var on := _flag(cf, row[0], row[2])
 		cb.button_pressed = on
 		_setting(row[0], on)
 		cb.toggled.connect(func(v):
+			if row[0] == "no_flashes" and bindings.reduced_motion:
+				return                  # (shown on while Reduced motion is: its own value is kept as it was)
 			cf.set_value("ui", row[0], v)
 			Quality.save(cf)
-			_setting(row[0], v))
+			_setting(row[0], v)
+			if row[0] == "reduced_motion":
+				_flashes_row(rows["no_flashes"], cf))
+		cb.name = "setting_" + row[0]
+		rows[row[0]] = cb
 		box.add_child(cb)
+	_flashes_row(rows["no_flashes"], cf)
 	_workshop_settings(box)
+
+
+## A settings row's value from settings.cfg: a bool as it is, a number as true when not 0; anything else (a file
+## edited by hand: "yes", a list) the row's default, so one odd value never stops the panel being built.
+static func _flag(cf: ConfigFile, key: String, fallback: bool) -> bool:
+	var v = cf.get_value("ui", key, fallback)
+	if v is bool:
+		return v
+	if v is int or v is float:
+		return v != 0
+	return fallback
+
+
+const NO_FLASHES := "No lightning flashes: the lightning glows softly instead"
+
+## "No lightning flashes" is on whenever Reduced motion is (shown ticked, not changeable, and saying why); with Reduced
+## motion off it shows and is its own setting again (the owner, 2026-11-21, #443).
+func _flashes_row(cb: CheckBox, cf: ConfigFile) -> void:
+	var rm: bool = bindings.reduced_motion
+	cb.set_pressed_no_signal(rm or _flag(cf, "no_flashes", false))
+	cb.disabled = rm
+	cb.text = NO_FLASHES + (" (on with Reduced motion)" if rm else "")
 
 
 # ------------------------------------------------------------------ the Workshop (docs/plant3d/WORKSHOP.md §2)
@@ -846,6 +877,8 @@ func _setting(key: String, on: bool) -> void:
 		"reduced_motion":
 			bindings.reduced_motion = on
 			player.bob = not on
+		"no_flashes":
+			bindings.no_flashes = on
 		"mute":
 			sounds.muted = on
 			horn_changed.emit(0)

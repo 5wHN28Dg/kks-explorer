@@ -541,6 +541,11 @@ come 0.1 to 1.9 s apart), and which flashes are lit depends on this device's fra
 different ones.
 `tests/reduced_motion_shots.gd` (`--phone`, `--ui-size=X`) shows the settings' Reduced motion row and ticks it with the
 keyboard.
+**No lightning flashes** (the owner, 2026-11-21, #443) is a settings row of its own: the lightning glows softly
+instead of flashing (`weather_view.gd` `wants_soft`), the same as with Reduced motion, without the rest of Reduced
+motion. It is on whenever Reduced motion is (shown ticked, not changeable, saying so) and its own setting otherwise,
+kept in `settings.cfg` (`no_flashes`). With both off, the flashes keep the 2 s cap that IRIS passed (`test_flash_rate`).
+`tests/no_flashes_shots.gd` shows the row, ticks it by the keyboard and shows it with Reduced motion on.
 `tests/workshop_shots.gd` (same arguments, `--phone` for the Note 9's screen and scale, `--ui-size=X`, `--kinds=a,b`)
 saves each Workshop kind with its panels, and with its guided steps started.
 - `test_workshop_layout`: the Workshop's panels on a desktop and on the Note 9, each at the UI size's 100 % and 150 %
