@@ -279,20 +279,25 @@ class Windows(unittest.TestCase):
         nothing waits, no Offline"""
         env = {'KKS_UX': 'offline-state', 'KKS_OFFLINE_AFTER': '6'}
         self.join('off0.uia', sync_every=2000, env=env)
-        self.check('off1.uia', ['wait\t~Last sync \t60', 'gone\t~Offline\t5', 'sleep\t1001'],
+        self.check('off1.uia', ['resize\tDrawings\t1100\t700', 'wait\t~Last sync \t60', 'gone\t~Offline\t5', 'sleep\t1001'],
                    during=[('sleep\t1001', lambda: self.screenshot('win-offline-online'))])
         self.server.send_signal(signal.SIGSTOP)
         self.addCleanup(self.server.send_signal, signal.SIGCONT)
         note = 'written offline (Windows %s)' % time.strftime('%H:%M:%S')
-        self.check('off2.uia', ['wait\t~Offline · \t90',
+        self.check('off2.uia', ['wait\t~Offline · \t90', 'resize\tDrawings\t1100\t700', 'sleep\t1003',
                                 'set\tSearch equipment by KKS code or description\tLAB70AA500', 'select\t~11LAB70AA500',
                                 'click\tShow on the drawing', 'click\tEdit', 'set\tNotes\t' + note, 'click\tSave',
-                                'wait\t~waiting to be sent · \t30', 'sleep\t1002'],
-                   during=[('sleep\t1002', lambda: self.screenshot('win-offline-waiting'))])
+                                'wait\t~waiting to be sent · \t30', 'resize\tDrawings\t1100\t700', 'sleep\t1002'],
+                   during=[('sleep\t1003', lambda: self.screenshot('win-offline-offline')),
+                           ('sleep\t1002', lambda: self.screenshot('win-offline-waiting'))])
         self.server.send_signal(signal.SIGCONT)
         self.assertEqual(self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes'),
                                           'the edit made offline never arrived', tries=240), note)
         self.check('off3.uia', ['gone\t~waiting to be sent\t90', 'gone\t~Offline\t60', 'wait\t~Last sync \t30'])
+        # (the shared server's notes back as they were: test_flow waits for its own)
+        r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'notes': ''},
+                                                                                    'base': {'notes': note}}})
+        self.assertEqual(r.get('status'), 'approved', r)
 
     def test_status_wraps(self):
         """#371 (UI audit after fixes, N-1): a plain-words error in the main window's status line (Sync now to an address
