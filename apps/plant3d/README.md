@@ -502,6 +502,17 @@ a night thunderstorm (`offscreen.sh godot --path apps/plant3d --script res://tes
 flashes in them per second of real time. Measured 2026-11-19 on this laptop (60 s each, 29 to 44 fps): before the
 real-time limit, at 60x up to 4 flashes in a second (86 in all, a fail); after it, at 60x at most 1 (25 in all) and
 at 1x 1; with Reduced motion none (the mean luminance moves by 5 % at most); never a red flash.
+That analyser is a model of the rule; the analysis itself is EA's IRIS (decision 0077), on Godot Movie Maker videos
+of the same storm (`flash_capture.gd --movie`, each frame 1/60 s of the player's time): `IRIS_APP=… tools/plant3d/flash_iris.sh
+OUT_DIR`. Measured 2026-11-21 (960 x 540, IRIS's default settings): before the real-time limit, at 60x, **Fail** (up
+to 8 luminance transitions in a second, 35 flash-fail and 38 extended-fail frames); after it, **Pass** at 60x (60 s:
+at most 2 transitions, one flash, in any second; no warning frame), at 1x (120 s) and with Reduced motion at 60x and
+1x (one transition in all: the app's first frame, the sky to the plant); never a red transition or a pattern. At 1x
+a flash less than 2 s after the last lit one is heard, not seen (a flash falls anywhere in its 2 s slot, so two can
+come 0.1 to 1.9 s apart), and which flashes are lit depends on this device's frames, so peers in a session can see
+different ones.
+`tests/reduced_motion_shots.gd` (`--phone`, `--ui-size=X`) shows the settings' Reduced motion row and ticks it with the
+keyboard.
 `tests/workshop_shots.gd` (same arguments, `--phone` for the Note 9's screen and scale, `--ui-size=X`, `--kinds=a,b`)
 saves each Workshop kind with its panels, and with its guided steps started.
 - `test_workshop_layout`: the Workshop's panels on a desktop and on the Note 9, each at the UI size's 100 % and 150 %

@@ -22,8 +22,13 @@ without anything installed system-wide?
 
 - **IRIS**, at commit d96978ac, built in user space under `~/kks-work/tools/` (not in the repository, not in any
   product's dependencies): vcpkg cloned there at the baseline IRIS names (0affe871), its manifest without OpenCV's
-  `contrib` feature (unused by the code), release build, `-j 2` under the machine's memory limits. Nothing is
-  installed system-wide; if it needed that, we would stop and ask.
+  `contrib` feature (unused by the code) and as `opencv4` without its default features (they pull in GTK, unused),
+  a release-only triplet, one compile at a time (a `ninja` wrapper that drops `-j`: harfbuzz's -O3 compiles were
+  OOM-killed at 3 GiB with several), `CMAKE_POLICY_VERSION_MINIMUM=3.5` and `-Wno-error` (CMake 4 and GCC 15 against
+  2024 ports). FFmpeg's port needs `nasm`: Debian's own package, fetched with `apt download` (apt's signed index
+  checks it) and unpacked with `dpkg -x` under `~/kks-work/tools/`, not installed. Nothing is installed system-wide;
+  if it needed that, we would stop and ask. Verified 2026-11-21: it builds and runs here (`tools/plant3d/flash_iris.sh`),
+  and it fails the lightning as it was on main (60x: up to 8 luminance transitions a second) and passes it after #443.
 - Its default `config/appsettings.json`, unchanged. Input: Godot's Movie Maker (`--write-movie`, `--fixed-fps`), so
   each frame is one fixed step of real time and the video's time is the game's real time.
 - PEAT is ruled out by its own terms (no gaming material) and its platform; Harding FPA costs money (a choice for the
