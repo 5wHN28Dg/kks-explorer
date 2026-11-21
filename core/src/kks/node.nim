@@ -267,6 +267,45 @@ proc mayRead*(n: Node, peer: string): bool =
   if n.run == nil or peer notin n.run.devices or peer in n.run.cuts: return false
   n.run.devices[peer]["person"].s in n.run.persons
 
+const AckedKey* = "acked"   ## the store's meta key of what other devices said they hold of this one's log (§15c)
+
+proc ackedOf*(n: Node): Table[string, int64] =
+  ## device → the highest seq of this device's own log it said it holds (§15c)
+  let raw = n.store.getMeta(AckedKey)
+  if raw.len == 0: return
+  try:
+    let j = parseStrict(raw)
+    if j.kind == jObj:
+      for (d, v) in j.fields:
+        if v.kind == jInt: result[d] = v.i
+  except JsonError: discard
+
+proc noteAcked*(n: Node, peer: string, theirVv: JNode) =
+  ## §15c: `peer`'s vv (its hello, or its bye after taking our entries in) says how much of this device's own log it
+  ## holds. Kept only from a device of the plant (mayRead), and only when it names the very entry this device holds
+  ## at that seq (not a fork).
+  if theirVv == nil or theirVv.kind != jObj or peer == n.device or not n.mayRead(peer): return
+  let have = theirVv.get(n.device)
+  if have == nil or have.kind != jArr or have.len != 2 or have[0].kind != jInt or have[1].kind != jStr: return
+  let c = n.chains.getOrDefault(n.device)
+  let seq = have[0].i
+  if seq < 1 or seq > int64(c.len) or c[seq - 1] != have[1].s: return
+  var acked = n.ackedOf
+  if acked.getOrDefault(peer, 0) >= seq: return
+  acked[peer] = seq
+  var ds: seq[string]
+  for d, _ in acked: ds.add d
+  ds.sort(system.cmp)
+  var o = newObj()
+  for d in ds: o.fields.add((d, newInt(acked[d])))
+  n.store.setMeta(AckedKey, toText(o))
+
+proc waiting*(n: Node): int =
+  ## §15c: how many of this device's own entries no other device has said it holds (changes waiting to be sent)
+  var most = 0'i64
+  for _, s in n.ackedOf: most = max(most, s)
+  max(0, n.chains.getOrDefault(n.device).len - int(most))
+
 proc entriesFor*(n: Node, theirVv: JNode): seq[JNode] =
   ## What the other side lacks: entries above its vv; a device's whole chain when its entry at their last seq differs
   ## from ours; all fork evidence.

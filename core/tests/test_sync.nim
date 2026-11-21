@@ -311,3 +311,80 @@ suite "sync state machine":
     let t0 = epochTime()
     check mgrPhone.ingest(junk, tick()) == 0
     check epochTime() - t0 < 2.0                    # the search per entry took about 14 s here
+
+suite "changes waiting to be sent (§15c, #372)":
+  let rootKey = P.p256Generate()
+  let rootStr = keyString(rootKey.pub)
+  var phone = newNode(P, newMemStore(), P.p256Generate())
+  let mgr = P.newPersonId()
+  discard phone.append("genesis", P.genesisBody(rootKey, "Test plant", phone.device, mgr, "boss", "The Manager"), tick())
+  phone.adopt(rootStr)
+  let serverStore = newMemStore()
+  var server = newNode(P, serverStore, P.p256Generate())
+  discard phone.append("device_cert", deviceCertBody(server.device, mgr, "server"), tick())
+
+  test "nothing acknowledged yet: every own entry waits":
+    check phone.waiting == 2
+
+  test "a completed sync leaves nothing waiting; new entries wait until the next":
+    discard sync(server, phone, adopt = rootStr)       # the server's hello knew nothing; its bye, everything
+    check phone.waiting == 0
+    discard phone.append("person", personBody(P.newPersonId(), "one", "Person one", "user"), tick())
+    discard phone.append("person", personBody(P.newPersonId(), "two", "Person two", "user"), tick())
+    check phone.waiting == 2
+    discard sync(phone, server)                         # the phone starts this time: the server's bye acknowledges
+    check phone.waiting == 0
+    check server.waiting == 0                           # (the server's own log is empty)
+
+  test "kept across a restart (the store's meta)":
+    let st = newMemStore()
+    let key = P.p256Generate()
+    var p2 = newNode(P, st, key)
+    discard p2.append("genesis", P.genesisBody(rootKey, "Test plant", p2.device, mgr, "boss", "The Manager"), tick())
+    p2.adopt(rootStr)
+    var srv2 = newNode(P, newMemStore(), P.p256Generate())
+    discard p2.append("device_cert", deviceCertBody(srv2.device, mgr, "server"), tick())
+    discard sync(srv2, p2, adopt = rootStr)
+    check p2.waiting == 0
+    let again = newNode(P, st, key)
+    check again.waiting == 0
+    discard again.append("person", personBody(P.newPersonId(), "three", "Person three", "user"), tick())
+    check again.waiting == 1
+
+  test "an older device's bye without vv: the count falls at its next hello":
+    discard phone.append("person", personBody(P.newPersonId(), "four", "Person four", "user"), tick())
+    check phone.waiting == 1
+    let s1 = newSession(phone, true, server.device)
+    let s2 = newSession(server, false, phone.device)
+    s1.wall = tick(); s2.wall = s1.wall
+    var da, db: Deframer
+    var guard = 0
+    while not (s1.done and s2.done) and guard < 100:
+      inc guard
+      while s1.sending:
+        for m in s1.take():
+          for x in db.feed(frame(m)): s2.receive(x)
+      while s2.sending:
+        for m in s2.take():
+          var m2 = m
+          if m2["t"].s == "bye": m2 = newObj(@[("t", newStr("bye"))])   # as a device before 2026-11-21 sends it
+          for x in da.feed(frame(m2)): s1.receive(x)
+    check s1.done and s2.done
+    check phone.waiting == 1          # sent, but not acknowledged
+    discard sync(phone, server)       # its hello now holds it
+    check phone.waiting == 0
+
+  test "a stranger's vv, a fork's and an unknown seq acknowledge nothing":
+    discard phone.append("person", personBody(P.newPersonId(), "five", "Person five", "user"), tick())
+    let before = phone.waiting
+    check before == 1
+    let (last, id) = (int64(phone.vv()[phone.device][0].i), phone.vv()[phone.device][1].s)
+    var stranger = newNode(P, newMemStore(), P.p256Generate())
+    phone.noteAcked(stranger.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]))
+    check phone.waiting == before
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr("another entry")]))]))
+    check phone.waiting == before
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last + 5), newStr(id)]))]))
+    check phone.waiting == before
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]))
+    check phone.waiting == 0
