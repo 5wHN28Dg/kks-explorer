@@ -1382,9 +1382,11 @@ const phoneHeader=(()=>{
   function close(focus){ if(!isOpen()) return; menu.hidden=true; btn.setAttribute('aria-expanded','false');
     if(entry){ entry=false; if(history.state?.kksMenu){ backs++; history.back() } }
     if(focus) btn.focus() }
-  addEventListener('popstate',()=>{ if(backs){ backs--; return } if(entry){ entry=false; const f=menu.contains(document.activeElement); close(f) }
+  let startStep=false;   // the step off a menu entry at start (below): its own flag, given up if it never arrives
+  addEventListener('popstate',()=>{ if(startStep){ startStep=false; return } if(backs){ backs--; return } if(entry){ entry=false; const f=menu.contains(document.activeElement); close(f) }
     else if(history.state?.kksMenu) history.replaceState(null,'') });   // (Forward into a menu's old entry)
-  if(history.state?.kksMenu){ backs++; history.back() }   // a reload with the menu open: off its entry, so Back leaves
+  if(history.state?.kksMenu){   // a reload with the menu open: off its entry, so Back leaves
+    startStep=true; setTimeout(()=>{ startStep=false },1000); history.back() }
   addEventListener('resize',()=>{ if(isOpen()) fit() });   // a phone turned with the menu open
   btn.onclick=()=>isOpen()?close(true):open();
   btn.addEventListener('keydown',e=>{ if(e.key==='Escape'&&isOpen()){ e.preventDefault(); e.stopPropagation(); close(true) }
