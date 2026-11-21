@@ -291,8 +291,8 @@ class Windows(unittest.TestCase):
                    during=[('sleep\t1003', lambda: self.screenshot('win-offline-offline')),
                            ('sleep\t1002', lambda: self.screenshot('win-offline-waiting'))])
         self.server.send_signal(signal.SIGCONT)
-        self.assertEqual(self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes'),
-                                          'the edit made offline never arrived', tries=240), note)
+        self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes') == note,
+                         'the edit made offline never arrived', tries=240)
         self.check('off3.uia', ['gone\t~waiting to be sent\t90', 'gone\t~Offline\t60', 'wait\t~Last sync \t30'])
         # (the shared server's notes back as they were: test_flow waits for its own)
         r = self.boss.req('POST', '/api/submit', {'kind': 'equipment', 'payload': {'kks': '11LAB70AA500', 'changes': {'notes': ''},
