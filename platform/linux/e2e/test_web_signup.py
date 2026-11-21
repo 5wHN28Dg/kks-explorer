@@ -65,6 +65,19 @@ class WebSignup(unittest.TestCase):
             u.goto(self.base + '/')
             expect(u.locator('#kov form input[name=username]')).to_be_visible()
             self.assertEqual(u.locator('#signup').count(), 0)
+            # the way back in after a forgotten password (#449), on the sign-in screen itself
+            expect(u.locator('#kov form #forgotPw')).to_be_visible()
+            expect(u.locator('#kov form #forgotPw')).to_contain_text("Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member)")
+            # at 200 % zoom on a small phone (320 x 400 CSS px) the taller form scrolls: its title and the line can both be
+            # brought into the window (a flex-centred overlay cut its top off, out of reach)
+            sctx = browser.new_context(viewport={'width': 320, 'height': 400}, device_scale_factor=2)
+            s = sctx.new_page()
+            s.goto(self.base + '/')
+            for sel in ('#kov form h1', '#kov form #forgotPw', '#kov form #signinAbout'):
+                s.locator(sel).scroll_into_view_if_needed()
+                box = s.locator(sel).bounding_box()
+                self.assertTrue(box['y'] >= -1 and box['y'] + box['height'] <= 401, (sel, box))   # (sub-pixel layout)
+            sctx.close()
             m.goto(self.base + '/admin.html#users')
             expect(m.locator('#signupState')).to_contain_text('Sign-up is off')
             expect(m.locator('#signups')).to_contain_text('Nobody is waiting, and sign-up is off.')
@@ -177,6 +190,41 @@ class WebSignup(unittest.TestCase):
     def test_chromium(self): self.engine('chromium')
     def test_firefox(self): self.engine('firefox')
     def test_webkit(self): self.engine('webkit')
+
+
+class WebSignInBeforeSetup(unittest.TestCase):
+    """before the plant's server has a manager (the setup link not used yet), the sign-in screen says so and does not
+    offer the forgotten-password line: there is nobody to ask yet (#449)"""
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix='kks-web-presetup-')
+        cfg = {'address': '127.0.0.1', 'sync_port': 0, 'plant_name': 'Test plant', 'web_dir': REPO,
+               'data_dir': os.path.join(REPO, 'data'), 'store': os.path.join(self.dir, 'server.db'),
+               'storage_key_file': os.path.join(self.dir, 'storage.key'), 'plant_dir': os.path.join(self.dir, 'plant-data'),
+               'backup_dir': os.path.join(self.dir, 'backups')}
+        self.server, _ = start_server(SERVER, self.dir, cfg)
+        self.base = 'http://127.0.0.1:%d' % cfg['port']
+
+    def tearDown(self):
+        self.server.terminate()
+        self.server.wait(5)
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_no_line_without_a_manager(self):
+        with sync_playwright() as p:
+            for name in ('chromium', 'firefox', 'webkit'):
+                browser = p[name].launch()
+                page = browser.new_page()
+                page.goto(self.base + '/')
+                expect(page.locator('#kov form')).to_contain_text('No manager account exists yet')
+                expect(page.locator('#kov form #signinAbout')).to_be_visible()
+                self.assertEqual(page.locator('#kov form #forgotPw').count(), 0, name)
+                # a password link that is not valid says who makes a new one and leads back to sign in (#462)
+                page.goto(self.base + '/#reset=not-a-token')
+                page.reload()                                          # (a new hash alone loads nothing)
+                expect(page.locator('#kov .box')).to_contain_text("Ask your plant's manager for a new one (an admin can also make one for a member).")
+                page.locator('#kov .box').get_by_role('button', name='Back to sign in').click()
+                expect(page.locator('#kov form #signinAbout')).to_be_visible()
+                browser.close()
 
 
 if __name__ == '__main__':
