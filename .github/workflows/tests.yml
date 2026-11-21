@@ -304,6 +304,9 @@ jobs:
       - name: Equipment by system in index.html (test_web_systems)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_systems.py -v -k ${{ matrix.engine }}
+      - name: The phone header and its More menu, switched on (test_web_phone_header, #367)
+        env: {KKS_SERVER: /tmp/kkslinux/kks_server}
+        run: .venv/bin/python platform/linux/e2e/test_web_phone_header.py -v -k ${{ matrix.engine }}
       - name: The Coverage drawer in index.html (test_web_coverage)
         env: {KKS_SERVER: /tmp/kkslinux/kks_server}
         run: .venv/bin/python platform/linux/e2e/test_web_coverage.py -v -k ${{ matrix.engine }}

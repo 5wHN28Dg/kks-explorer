@@ -198,7 +198,7 @@ async function send(kind,payload,what,note,quiet){
   if(r.status!=='queued') await refreshState(); else updatePending();
   return r;
 }
-function updateQueueBadge(){ const n=STATE.queue||0, b=$('#queueCount'); b.textContent=n; b.style.display=n?'':'none'; b.title=n+' change(s) waiting for approval' }
+function updateQueueBadge(){ const n=STATE.queue||0, b=$('#queueCount'); b.textContent=n; b.style.display=n?'':'none'; b.title=n+' change(s) waiting for approval'; phoneHeader?.label() }
 // your own submissions that aren't live yet (server-side pending/conflict + offline outbox), shown in the panel
 function myPendingEq(k,queued=true){ // your not-yet-approved equipment edits for k, oldest first (`queued` false: without the outbox's)
   const L=[...(STATE.mine||[]).filter(s=>s.kind==='equipment').map(s=>s.payload),...(queued?K.outbox:[]).filter(i=>i.kind==='equipment').map(i=>i.payload)];
@@ -734,6 +734,7 @@ function unlockCustom(){ const c=$('#cfs'); c.closest('.field').classList.add('e
 function closePanel(){ $('#panel').classList.remove('open'); selId=null; selTag=null; drawTags() }
 // The phone's Back button (Android app): close what is open first, one thing at a time; false = nothing left to close.
 K.back = () => {
+  if (phoneHeader?.isOpen()) { phoneHeader.close(true); return true }
   if (K.lightbox.isOpen?.()) { K.lightbox.close(); return true }
   if ($('#panel').classList.contains('open')) { closePanel(); return true }
   const d = document.querySelector('.drawer.open');
@@ -1327,9 +1328,9 @@ function renderLinks(){
 const DRAWER_BTN={sysDrawer:'#sysBtn',covDrawer:'#covBtn'};   // buttons that say whether their drawer is open
 function openDrawer(id){ document.querySelectorAll('.drawer').forEach(d=>d.classList.toggle('open',d.id===id));
   for(const d in DRAWER_BTN) $(DRAWER_BTN[d]).setAttribute('aria-expanded',String(id===d)) }
-// focus: back to the drawer's button (when it has one)
+// focus: back to the drawer's button (when it has one; to More when the button is in More's closed menu)
 function closeDrawer(d,focus){ d.classList.remove('open'); const b=DRAWER_BTN[d.id]&&$(DRAWER_BTN[d.id]);
-  if(b){ b.setAttribute('aria-expanded','false'); if(focus) b.focus() } if(d.id==='procDrawer'){ activeProc=null; drawTags() } }
+  if(b){ b.setAttribute('aria-expanded','false'); if(focus) (phoneHeader?.inMenu(b)?phoneHeader.btn:b).focus() } if(d.id==='procDrawer'){ activeProc=null; drawTags() } }
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeDrawer($('#'+b.dataset.close),true));
 $('#aboutBtn').onclick=()=>K.about();
 $('#procBtn').onclick=()=>{ if($('#procDrawer').classList.contains('open')){$('#procDrawer').classList.remove('open');activeProc=null;drawTags()} else {openDrawer('procDrawer'); activeProc?renderProcDetail(activeProc):renderProcs()} };
@@ -1342,4 +1343,49 @@ $('#linksBtn').onclick=()=>{ if($('#linksDrawer').classList.contains('open'))$('
 $('#notesBtn').onclick=()=>{ if($('#notesDrawer').classList.contains('open'))$('#notesDrawer').classList.remove('open'); else openDrawer('notesDrawer') };
 $('#sheetSel').onchange=e=>{ closePanel(); openSheet(e.target.value) };
 addEventListener('resize',()=>{});
+
+// ---------- the phone header (#367; the switch 'phone-header' until the owner's check, UI and UX policy 8.5) ----------
+// At a phone's width (or a phone turned sideways, or 200 % zoom) the header keeps search, the sheet, Review and More at
+// 48 px (gloves); the rest go into More's menu, in the same order. The menu is a disclosure: More says whether it is
+// open, Tab and the arrow keys move through it, Escape closes it and gives the focus back to More.
+const phoneHeader=(()=>{
+  if(!K.ux('phone-header')) return null;
+  const PHONE=matchMedia('(max-width:720px),(max-height:500px)'), hdr=document.querySelector('header');
+  const items=['sysBtn','covBtn','floorSel','procBtn','linksBtn','notesBtn','learnBtn','aboutBtn','manageBtn'].map(id=>document.getElementById(id));
+  const marks=items.map(el=>{ const m=document.createComment(el.id); el.before(m); return m });
+  const count=h('span',{class:'count',style:'display:none'});
+  const btn=h('button',{type:'button',class:'btn',id:'moreBtn','aria-expanded':'false','aria-controls':'moreMenu',
+    title:'More: Systems, Coverage, floors, Procedures, Connectors, Sheet notes, Learning, About, Account'},h('span',{'aria-hidden':'true'},'⋮'),count);
+  const menu=h('div',{id:'moreMenu',role:'group','aria-label':'More',hidden:true});
+  const shown=()=>items.filter(el=>el.parentNode===menu&&el.offsetParent!==null);
+  const isOpen=()=>!menu.hidden;
+  function label(){ const n=+($('#queueCount').textContent||0), q=$('#queueCount').style.display!=='none'&&n>0;
+    count.textContent=q?n:''; count.style.display=q?'':'none';
+    btn.setAttribute('aria-label',q?`More, ${n} waiting for approval`:'More') }
+  function open(){ menu.hidden=false; btn.setAttribute('aria-expanded','true');
+    menu.style.maxHeight=Math.max(120,innerHeight-hdr.getBoundingClientRect().bottom-12)+'px'; shown()[0]?.focus() }
+  function close(focus){ if(!isOpen()) return; menu.hidden=true; btn.setAttribute('aria-expanded','false'); if(focus) btn.focus() }
+  btn.onclick=()=>isOpen()?close(true):open();
+  btn.addEventListener('keydown',e=>{ if(e.key==='Escape'&&isOpen()){ e.preventDefault(); e.stopPropagation(); close(true) }
+    else if(e.key==='ArrowDown'&&!isOpen()){ e.preventDefault(); open() } });
+  menu.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); close(true); return }
+    if(e.target.localName==='select') return;   // the arrow keys choose the floor there
+    const L=shown(), i=L.indexOf(document.activeElement);
+    const to={ArrowDown:i+1,ArrowUp:i-1,Home:0,End:L.length-1}[e.key];
+    if(to===undefined||!L.length) return;
+    e.preventDefault(); L[(to+L.length)%L.length].focus() });
+  // a choice closes the menu; when it didn't move the focus somewhere of its own, the focus goes back to More
+  menu.addEventListener('click',e=>{ if(!e.target.closest('button,a')) return;
+    setTimeout(()=>{ const f=document.activeElement, lost=!f||f===document.body||menu.contains(f); close(false); if(lost) btn.focus() }) });
+  document.addEventListener('pointerdown',e=>{ if(isOpen()&&!menu.contains(e.target)&&!btn.contains(e.target)) close(false) },true);
+  menu.addEventListener('focusout',e=>{ const t=e.relatedTarget; if(t&&!menu.contains(t)&&t!==btn) close(false) });
+  function apply(){
+    const on=PHONE.matches; hdr.classList.toggle('phonehead',on);
+    if(on){ menu.append(...items); $('#revBtn').after(btn); hdr.append(menu); label() }
+    else { close(false); items.forEach((el,i)=>marks[i].after(el)); btn.remove(); menu.remove() }
+  }
+  PHONE.addEventListener('change',apply); apply();
+  return {label,btn,isOpen,close,inMenu:el=>!!el&&el.parentNode===menu&&menu.hidden};
+})();
 load();
