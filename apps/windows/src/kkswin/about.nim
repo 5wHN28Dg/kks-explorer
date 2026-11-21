@@ -2,7 +2,7 @@
 ## also on the setup screen) with what this build is (version, the commit it was built from, "with local changes" for a
 ## build that had some), what Walkdown is, its licence and links, the source of exactly this version (the AGPL's offer
 ## of the Corresponding Source), the free-software and no-warranty notice, the third-party parts of the Windows app
-## with each one's notice and full licence texts, and the course photos' credits. The content is the shared
+## with each one's notice and full licence texts, the course photos' credits, and the accessibility statement (#440). The content is the shared
 ## data/about.json, compiled in (kksl/buildinfo, aboutinfo.nim). Links open in the default browser, https links only.
 ## Everything is a native control, so UI Automation and the keyboard come with it; Esc closes the window.
 
@@ -87,6 +87,13 @@ proc openAbout*(owner: HWND) =
               copied.setText(if copyToClipboard(hw, supportDetails(windowsLine())):
                                "Copied the version, the commit and this Windows version, for a problem report."
                              else: "The clipboard is busy: try again.")))
+
+  if a.accessibility.len > 0:          # the accessibility statement (#440), in a field that scrolls and copies
+    p.space(8)
+    p.title("Accessibility")
+    p.multiField("Accessibility statement", a.accessibility, 200, readonly = true)
+    if isWebLink(a.accessibilityUrl):
+      p.buttons(("Open the accessibility statement in the README", proc () = openLink(hw, a.accessibilityUrl)))
 
   p.space(8)
   p.title("Third-party software")
