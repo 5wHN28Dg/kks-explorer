@@ -10,7 +10,7 @@ proc sample(): Model =
   result.baseTags = parseTags(j("""[
     {"id":"a:1","sheet":"a","kks":"11LAB70","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[100,100,140,120],"read":["11LAB70","AA500"]},
     {"id":"a:2","sheet":"a","kks":"11LAB70AA500","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[200,100,240,120],"read":["11LAB70","AA500"]},
-    {"id":"a:3","sheet":"a","kks":"11HAD70CT101","suffix":"R","isa":"TIAC","kind":"instrument","status":"auto","conf":1,"bbox":[300,100,330,160],"read":["TIAC","11HAD70CT101R"]},
+    {"id":"a:3","sheet":"a","kks":"11HAD70CT109","suffix":"R","isa":"TIAC","kind":"instrument","status":"auto","conf":1,"bbox":[300,100,330,160],"read":["TIAC","11HAD70CT109R"]},
     {"id":"a:4","sheet":"a","kks":null,"suffix":"","isa":null,"kind":"other","status":"review","conf":0.1,"bbox":[400,100,430,120],"read":["??","LAB7"]},
     {"id":"a:5","sheet":"a","kks":"11LAB70AA502","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":0.9,"bbox":[500,100,540,120],"read":["",""]}]"""))
   result.kksTables = j("""{"systems":{"LAB":"Feed water piping system","HAD":"HP drum"},"components":{"AA":"Valve","CT":"Temperature measurement"},
@@ -47,17 +47,17 @@ suite "model":
       check all.getOrDefault(k, "none") == c.photoCover(k)
     check c.photoCover("11LAB70AA502") == "plate"
     check c.photoCover("11LAB70AA504") == "equipment"
-    check c.photoCover("11HAD70CT101R") == "none"
+    check c.photoCover("11HAD70CT109R") == "none"
     check c.photoCover("") == "none"
     var seen: Table[string, string]
     for t in tagsView(c, "a").elems: seen[t["code"].s] = t["photos"].s
-    check seen["11LAB70AA500"] == "both" and seen["11HAD70CT101R"] == "none"
+    check seen["11LAB70AA500"] == "both" and seen["11HAD70CT109R"] == "none"
     # the search's results carry the same word (each client draws its photo mark from it)
     var found: Table[string, string]
     for r in searchView(c, "11LAB70AA50").elems: found[r["code"].s] = r["photos"].s
     check found.len >= 2 and found["11LAB70AA500"] == "both" and found["11LAB70AA504"] == "equipment"
     for k, v in found: check v == c.photoCover(k)
-    for r in searchView(c, "11HAD70CT101").elems: check r["photos"].s == "none"
+    for r in searchView(c, "11HAD70CT109").elems: check r["photos"].s == "none"
   test "the location list: one elevation when the rows agree":
     check m.refLoc("LAB70AA500").elev == "14.5 m"
     check m.refLoc("LAB70AA500").cabinet == "C1"
@@ -100,7 +100,7 @@ suite "model":
   test "search: exact codes first, without the unit, partial, by description":
     check m.search("11LAB70AA500")[0].id == "a:2"
     check m.search("LAB70AA500")[0].id == "a:2"
-    check m.search("HAD70CT101R")[0].id == "a:3"
+    check m.search("HAD70CT109R")[0].id == "a:3"
     check m.search("feed valve").len >= 1
 
 suite "views":
@@ -130,7 +130,7 @@ suite "views":
   test "descriptions: a draft until a person confirms it as the custom field Description":
     let c = sample()
     c.descriptions = parseDescriptions(j("""{"11LAB70AA500":{"text":" Isolates the feed water line ","basis":"P&ID 1"},
-      "11HAD70CT101":"Drum temperature","11LAB70AA502":{"text":""},"bad":3}"""))
+      "11HAD70CT109":"Drum temperature","11LAB70AA502":{"text":""},"bad":3}"""))
     check c.descriptions.len == 2
     let d = tagView(c, "a:2")["description"]
     check d["status"].s == "draft" and d["label"].s == "draft, unchecked"
@@ -164,7 +164,7 @@ suite "views":
     check loadDescriptions("""{"11LAB70AA500":"Stop valve"}""", nil)["11LAB70AA500"]["text"].s == "Stop valve"
   test "systems: block, system, subsystem, kind; each code once; search; undecoded codes apart":
     let v = systemsView(m)
-    # a:2 11LAB70AA500, a:3 11HAD70CT101R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected
+    # a:2 11LAB70AA500, a:3 11HAD70CT109R, a:4 → 11LAB70AA503, added 11LAB70AA504; a:1 11LAB70 doesn't decode; a:5 rejected
     check v["total"].i == 5
     check v["blocks"].elems.len == 1 and v["blocks"][0]["blk"].s == "11" and v["blocks"][0]["blk_name"].s == "Block 1"
     let systems = v["blocks"][0]["systems"]
@@ -191,7 +191,7 @@ suite "views":
     check lab["subsystems"][0]["kinds"][0]["items"][0]["count"].i == 2
   test "coverage: per sheet, per system, totals":
     let v = coverageView(m)
-    # tags left: a:1 11LAB70 (auto), a:2 AA500 (auto), a:3 CT101R (auto), a:4 → AA503 (confirmed), added AA504 (verified)
+    # tags left: a:1 11LAB70 (auto), a:2 AA500 (auto), a:3 CT109R (auto), a:4 → AA503 (confirmed), added AA504 (verified)
     let t = v["total"]
     check t["tags"].i == 5 and t["verified"].i == 2 and t["review"].i == 0 and t["marked"].i == 1
     check t["codes"].i == 5

@@ -131,6 +131,21 @@ suite "about":
     check t.photos == @["Photo: P ‹p@q.r›, x.org, CC https://p.org/a"]
     check t.photoLicences == @["CC https://creativecommons.org/x"]
 
+  test "Details: the summary, then the accessibility statement (#440), and its link":
+    let raw = parseStrict(AboutJson)["accessibility"]
+    let a = about()
+    let c = shown(comments(a))
+    check c.startsWith(a.summary & "\n\nAccessibility\n\n" & raw["intro"].elems[0].s & "\n\n")
+    check "\n\nKnown gaps:\n• " & raw["gaps"].elems[0].s & "\n" in c
+    for g in raw["gaps"].elems: check "\n• " & g.s in c
+    check c.endsWith("\n\n" & raw["report"].s)
+    check "Orca on Linux (GNOME)" in c and "#376" in c
+    check a.accessibilityUrl == "https://github.com/5wHN28Dg/kks-explorer#accessibility"
+    # none in about.json: Details is the summary alone
+    let t = aboutFrom("""{"name": "W", "summary": "s & t", "developer": "d", "links": {}, "licenses": {},
+      "platforms": {}, "components": [], "photos": []}""")
+    check comments(t) == "s &amp; t" and t.accessibilityUrl == ""
+
   test "the debugging information names the version and the toolkit":
     let info = debugInfo(nil)
     check info.startsWith(versionLine("Walkdown") & "\n")

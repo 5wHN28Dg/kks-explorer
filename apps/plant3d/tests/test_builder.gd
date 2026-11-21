@@ -172,9 +172,9 @@ func _plant(door_open: bool, pipe_open: bool, pipe_over_stair: bool) -> Builder:
 		openings.append({"kind": "pipe", "at": [20, 2, 3], "width": 1, "height": 1})
 	var pts := [[16, 2, 3], [25, 2, 3]] if not pipe_over_stair else [[16, 2, 3], [16, 33, 3], [16, 36.5, 3]]
 	var area := {"id": "a1", "bounds": [[0, 0], [40, 40]], "pack": "base",
-		"equipment": [{"kks": "10PAC10AP001", "part": "pump_horizontal", "at": [16, 5, 0], "yaw": 0, "params": {}},
+		"equipment": [{"kks": "10PAC10AP009", "part": "pump_horizontal", "at": [16, 5, 0], "yaw": 0, "params": {}},
 			{"kks": "10PAC20AP001", "part": "pump_horizontal", "at": [16, 38, 0], "yaw": 180, "params": {}}],
-		"pipes": [{"kks": "10PAC10BR001", "medium": "water", "dn": 100, "from": {"kks": "10PAC10AP001", "nozzle": "discharge"},
+		"pipes": [{"kks": "10PAC10BR001", "medium": "water", "dn": 100, "from": {"kks": "10PAC10AP009", "nozzle": "discharge"},
 			"points": pts, "to": {"at": [25, 2, 0]} if not pipe_over_stair else {"kks": "10PAC20AP001", "nozzle": "discharge"}}],
 		"structures": [
 			{"id": "b1", "part": "building", "at": [0, 0, 0], "params": {"outline": [[0, 0], [20, 0], [20, 20], [0, 20]], "height": 8, "openings": openings}},

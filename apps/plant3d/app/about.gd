@@ -1,5 +1,5 @@
 ## About Walkdown Plant (decision 0054 §7), opened from the settings panel (app/hud.gd): the app's version and the
-## commit it was built from, its licence and source, the third-party assets it carries (built/about.json, from
+## commit it was built from, its licence and source, its accessibility statement (#440), the third-party assets it carries (built/about.json, from
 ## apps/plant3d/about.json: tools/about.py --plant) and the Godot Engine's own notices (Engine.get_license_text(),
 ## get_copyright_info(), get_license_info()).
 ## It scrolls by touch (drag), mouse wheel, keyboard (arrows, W/S, Page Up/Down, Home/End) and gamepad (either
@@ -78,6 +78,9 @@ static func sections() -> Array:
 	out.append(["Walkdown Plant %s" % (v if v != "" else "(version unknown)"),
 		"%s\nA generic combined-cycle power plant to walk through and operate: an invented plant, not a real one.\n\nLicence: GNU Affero General Public License v3.0 or later. Source: %s\nMade with the Godot Engine %s." % [built, SOURCE, gv.get("string", "")]])
 	var a := about_data()
+	var acc := accessibility_text(a.get("accessibility", {}))
+	if acc != "":
+		out.append(["Accessibility", acc])
 	if a.is_empty():
 		out.append(["Assets", "The list of third-party assets is missing from this build (built/about.json)."])
 	else:
@@ -106,6 +109,27 @@ static func sections() -> Array:
 	for n in names:
 		out.append(["Licence: %s" % n, str(li[n])])
 	return out
+
+
+## The accessibility statement (the UI/UX policy's T11, #440; the README's "Accessibility of Walkdown Plant" says the
+## same) as plain text: what works, the known gaps one per line, how to report a barrier, the README's full statement;
+## "" when about.json has none.
+static func accessibility_text(a) -> String:
+	if not (a is Dictionary) or a.is_empty():
+		return ""
+	var paras := PackedStringArray()
+	for x in a.get("intro", []):
+		paras.append(str(x))
+	var gaps := PackedStringArray()
+	for g in a.get("gaps", []):
+		gaps.append("• " + str(g))
+	if not gaps.is_empty():
+		paras.append("Known gaps:\n" + "\n".join(gaps))
+	if str(a.get("report", "")) != "":
+		paras.append(str(a.report))
+	if str(a.get("url", "")) != "":
+		paras.append("The full statement: " + str(a.url))
+	return "\n\n".join(paras)
 
 
 ## {commit, changes} from built/build_info.json (build.sh writes it); an empty commit when there is none.

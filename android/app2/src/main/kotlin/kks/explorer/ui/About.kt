@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -205,6 +206,7 @@ private fun AboutMain(d: JSONObject, listState: androidx.compose.foundation.lazy
             LinkRow("Report a problem", links.str("issues"))
             LinkRow("Help", links.str("help"))
         }
+        d.optJSONObject("accessibility")?.let { accessibility(it) }
         item {
             Heading("Third-party software")
             Dim(d.optJSONObject("platforms")?.optJSONObject("android")?.str("note").orEmpty() +
@@ -238,6 +240,25 @@ private fun AboutMain(d: JSONObject, listState: androidx.compose.foundation.lazy
                 }
             }
         }
+    }
+}
+
+/** the accessibility statement (the UI/UX policy's T11, #440; the README's "Accessibility" says the same): what
+ *  works, the known gaps with their issues, how to report a barrier, and the README's full statement */
+private fun LazyListScope.accessibility(a: JSONObject) {
+    item { Heading("Accessibility") }
+    items(a.strings("intro")) { p -> Text(p, modifier = Modifier.padding(vertical = 4.dp)) }
+    item { Text("Known gaps:", modifier = Modifier.padding(top = 8.dp, bottom = 4.dp).semantics { heading() }) }
+    // (the bullet is drawn, not read: TalkBack says each gap without "bullet")
+    items(a.strings("gaps")) { g ->
+        Row(Modifier.padding(start = 8.dp, top = 2.dp, bottom = 2.dp)) {
+            Text("•", modifier = Modifier.clearAndSetSemantics { })
+            Text(g, modifier = Modifier.padding(start = 6.dp))
+        }
+    }
+    item {
+        Text(a.str("report"), modifier = Modifier.padding(vertical = 8.dp))
+        LinkRow("The accessibility statement in the README", a.str("url"))
     }
 }
 

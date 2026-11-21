@@ -38,6 +38,9 @@ enabled=PackedStringArray("res://addons/walkdown_plant_android/plugin.cfg", "res
 ; the minimum GPU's message (app/min_gpu.gd, decision 0076): off until the owner's check (UI-UX policy 8.5); an
 ; override.cfg beside the exe with `[walkdown]` `min_gpu_message=true` turns it on for that check
 min_gpu_message=false
+; saves of another build made again, saves that can't be continued kept aside (ui/autosave.gd, issue #447): off until
+; the owner's check (UI-UX policy 8.5); `carry_saves_over=true` in an override.cfg's `[walkdown]` turns it on for it
+carry_saves_over=false
 
 [physics]
 

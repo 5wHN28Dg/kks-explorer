@@ -173,6 +173,21 @@ static func button(text: String, f: Callable, min_w := 0) -> Button:
 	return b
 
 
+## A button that destroys something (S2: styled destructive, never the default): its words in the warning red and a
+## red outline, on the theme's own background, in every state (normal, hover, pressed, focus keeps the focus ring).
+const DESTRUCTIVE := Color(0.62, 0.16, 0.14)   # the outline and fill tint (on the dark panel: a dark red)
+static func destructive(b: Button) -> void:
+	for st in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
+		b.add_theme_color_override(st, Color(1.0, 0.82, 0.8))
+	for k in ["normal", "hover", "pressed", "hover_pressed"]:
+		var base = b.get_theme_stylebox(k)
+		var sb: StyleBoxFlat = base.duplicate() if base is StyleBoxFlat else StyleBoxFlat.new()
+		sb.bg_color = DESTRUCTIVE.lerp(Color(0.2, 0.08, 0.08), 0.0 if k == "normal" else (0.3 if k == "hover" else 0.5))
+		sb.border_color = Color(0.95, 0.35, 0.3)
+		sb.set_border_width_all(maxi(2, int(2 * scale)))
+		b.add_theme_stylebox_override(k, sb)
+
+
 ## "Copy CODE": on a narrow panel (a phone at a large UI size) "Copy" goes above the code, which stays whole on its
 ## line (UI-UX-POLICY S3), instead of the button making its row wider than the panel.
 static func copy_button(code: String, f: Callable) -> Button:

@@ -312,9 +312,39 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
 - **At start**, a saved run is offered: Continue (the plant, the procedure, the trainee where they were; the run
   then goes on bit for bit as it would have) or New run (a new run in the default scenario, which replaces the save).
   The plant waits, paused, behind the offer (nothing can be walked or worked) and nothing is saved until the trainee
-  chooses. A save that can't be continued says why and offers only a new run. A start the command line asks for
+  chooses. A start the command line asks for
   (`walk`, `shot`, `scenario`, `procedure`, `speed`) offers nothing and saves to `user://run-options.save`, never
-  over a trainee's run. New run keeps the run it replaces as `run.save.prev` (one step back, by hand).
+  over a trainee's run. New run keeps the run it replaces as `run.save.prev` (one step back, by hand), and the offer
+  says so.
+- **After an update** (issue #447; **switched off until the owner's check**, the UI and UX policy's tier 2, 8.5: the
+  project setting `walkdown/carry_saves_over`, which an `override.cfg` beside the exe with `[walkdown]` and
+  `carry_saves_over=true` turns on for the check; off, the offer is plant-v0.3.0's, which refuses a save of another
+  build and replaces it at New run; `tests/save_offer_shots.gd` makes the screenshots of both): a save of another build (another app version or other content) is offered too,
+  and says which version saved it. Continue makes the run again in this build (`ui/run_migrate.gd`): the engine is
+  deterministic and every change a run makes to the plant is an input in its log, so a fresh engine of this build is
+  fed every saved input at its step up to the saved step, a slice of 20 ms per frame while the offer shows how far it
+  is; Back (which takes the keyboard's and gamepad's focus) gives the offer again, New run gives the run up. Before
+  that wait, every part the offer and the run made again use is checked (`why_not`, `parts_why`). An action whose
+  outcome comes out otherwise (an operation done in the saved run and refused or unknown in this plant, say: the
+  engine decides an input at its step, so the outcomes in the event list are compared, not the input logs) is listed
+  before anything is replaced, with Continue anyway or New run. The procedure's progress, the panels' records and the trainee's place are kept as saved; the event positions
+  the procedure's progress holds (its deviations' operations among them) are moved to the same plant steps in the new
+  event list; fields a newer build added get their fresh values. Where the model has changed, the plant can come out
+  a little differently from the saved run: the trainee's actions are the same. The file as saved is first kept aside
+  as `run-kept-<version>-<date>.save` beside `run.save` (`-2`, `-3`… when taken), and the offer names it.
+- **A save that can't be continued** (switched on: a newer version's or save format, damaged, a state that doesn't fit, a scenario
+  this plant hasn't, a shared session's run, an action this build doesn't know) says why, names the file it is kept
+  under (`run-kept-<version, "newer" or "damaged">-<date>.save`) and offers only a new run; choosing it copies the
+  save there before anything replaces it. If the copy fails (storage full or not writable), nothing is replaced and
+  the offer says so: the trainee can free space and start again, or choose Replace it (Continue anyway after a run
+  made again), which keeps the save as `run.save.prev` until the next new run, as New run always did. Only the
+  trainee deletes a kept file: Settings' **Saved runs kept aside** (the owner, 2026-11-21, #474; with the same
+  switch) lists them by name, date and size, newest first (a second window lists `run.save`'s too), each with
+  Delete, which asks in its row first ("… can't be undone", Keep focused, then "Delete for good" in the destructive
+  style, `W.destructive`); what it did is said in the list. On the desktops it also has Show folder (the app's data folder in the file manager), where a kept
+  file can be opened again by the version that made it, by copying it back as `run.save`; on Android the folder is
+  private, so there a kept file can only be deleted. `tests/test_run_save.gd` loads the save the release before wrote
+  (`tests/fixtures/run-0.3.0.save`, made by plant-v0.3.0's own autosave with `tools/plant3d/old_saves/`).
 - **A second window** (a link opened on a desktop while the app runs starts one): `run.save.lock` holds the pid of
   the window that saves to `run.save`, renewed every 5 s; while that window runs, another one offers nothing and saves
   to `run-second.save`. Each process writes its own `.tmp` (`run.save.tmp.<pid>`). Not on Android (one instance).
@@ -332,8 +362,8 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
 The payload's parts, each required, no others: `app` (the app's version: `application/config/version`, `+`, the first 16 hex digits of `built/code.sha256`,
 which `build.sh` makes from `sim/*.gd` and the scripts whose state is saved or read back: `ui/run_save.gd`,
 `ui/autosave.gd`, `ui/procedure_tracker.gd`, `ui/plant_ui.gd`, `ui/sim_clock.gd`, `app/player.gd`; an export keeps
-scripts only compiled, so the app can't hash its code itself. A new build therefore refuses the saves of the one
-before), `content`
+scripts only compiled, so the app can't hash its code itself. A save of any other build is made again from its
+inputs, not put back as it is), `content`
 (SHA-256 over every file of `built/content`, by sorted path, with its length), `scenario`, `saved_unix`, `engine`
 (field → value), `clock` (`speed` 0 paused, 1 1×, 2 fast-forward; `ff_want`; `pause_on_hold`), `procedure` (an id,
 or `""`), `tracker` (field → value, `{}` without a procedure), `run` (`{}`, or `procedure`, `same`, `tracker`:
@@ -348,13 +378,14 @@ fsync (Godot has none): after a power cut right after a save, a file system may 
 then says so and starts a new run.
 
 **Loaded strictly:** a file over 64 MiB, a wrong magic, a length that is not the file's, a hash that does not match,
-a payload that is not a Dictionary of exactly those parts of those types is refused as damaged; another save format,
-another app version or other content is refused as such; so is engine or tracker state whose fields are not this
+a payload that is not a Dictionary of exactly those parts of those types is refused as damaged; another save format is refused as such;
+another app version or other content is made again from its inputs (above), and the result is checked as any save
+is; engine or tracker state whose fields are not this
 version's, of other types (where the field is typed: an untyped field takes any value but an object), or (an array the fresh engine holds non-empty, sized by the model) of another length, a
 procedure or scenario the plant doesn't have, a step index outside the procedure, a clock, panel record or place
 that is not of its kind or not finite; and contents the app indexes with (a machine state or alarm state that
 doesn't exist, malformed inputs, events, operations' records or procedure log, a tracker position past the logs)
-even under a matching hash. Nothing of a refused save is applied. A save over 64 MiB is not written.
+even under a matching hash, are refused. Nothing of a refused save is applied, and the save is kept aside (above). A save over 64 MiB is not written.
 
 **Cost:** measured by `tests/bench_save.gd` at the end of the cold start (76 events, 37 KB): on this laptop the
 copy on the main thread takes 0.11–0.15 ms, encoding 0.5 ms and writing 0.15–0.23 ms. The Note 9 runs the model
@@ -496,6 +527,28 @@ On the Note 9 (2026-10-19, debug build, `WALK_EXTRA="walk=screens\n" phone/frame
 16.7 ms, 99.95 % at 30 fps or more; the screens' pieces drew in 0.38 ms a frame on average, 71 of 5,969 frames over
 2 ms, 13 ms at most (a screen's first drawing when it is shown). That counts the pieces only: the tabs, the alarm
 banner and the flow lines are drawn besides, so the frame times above are the measure.
+The lightning's flash analysis (UI-UX-POLICY A10, issue #443): `tests/flash_capture.gd` records the rendered frames of
+a night thunderstorm (`offscreen.sh godot --path apps/plant3d --script res://tests/flash_capture.gd -- --out=FILE
+[--speed=60] [--seconds=60] [--soft]`) and `tools/plant3d/flash_analysis.py FILE` counts WCAG 2.3.1's general and red
+flashes in them per second of real time. Measured 2026-11-19 on this laptop (60 s each, 29 to 44 fps): before the
+real-time limit, at 60x up to 4 flashes in a second (86 in all, a fail); after it, at 60x at most 1 (25 in all) and
+at 1x 1; with Reduced motion none (the mean luminance moves by 5 % at most); never a red flash.
+That analyser is a model of the rule; the analysis itself is EA's IRIS (decision 0077), on Godot Movie Maker videos
+of the same storm (`flash_capture.gd --movie`, each frame 1/60 s of the player's time): `IRIS_APP=… tools/plant3d/flash_iris.sh
+OUT_DIR`. Measured 2026-11-21 (960 x 540, IRIS's default settings with its pattern detection turned on, which they leave off): before the real-time limit, at 60x, **Fail** (up
+to 8 luminance transitions in a second, 35 flash-fail and 38 extended-fail frames); after it, **Pass** at 60x (60 s:
+at most 2 transitions, one flash, in any second; no warning frame), at 1x (120 s) and with Reduced motion at 60x and
+1x (one transition in all: the app's first frame, the sky to the plant); never a red transition or a pattern. At 1x
+a flash less than 2 s after the last lit one is heard, not seen (a flash falls anywhere in its 2 s slot, so two can
+come 0.1 to 1.9 s apart), and which flashes are lit depends on this device's frames, so peers in a session can see
+different ones.
+`tests/reduced_motion_shots.gd` (`--phone`, `--ui-size=X`) shows the settings' Reduced motion row and ticks it with the
+keyboard.
+**No lightning flashes** (the owner, 2026-11-21, #443) is a settings row of its own: the lightning glows softly
+instead of flashing (`weather_view.gd` `wants_soft`), the same as with Reduced motion, without the rest of Reduced
+motion. It is on whenever Reduced motion is (shown ticked, not changeable, saying so) and its own setting otherwise,
+kept in `settings.cfg` (`no_flashes`). With both off, the flashes keep the 2 s cap that IRIS passed (`test_flash_rate`).
+`tests/no_flashes_shots.gd` shows the row, ticks it by the keyboard and shows it with Reduced motion on.
 `tests/workshop_shots.gd` (same arguments, `--phone` for the Note 9's screen and scale, `--ui-size=X`, `--kinds=a,b`)
 saves each Workshop kind with its panels, and with its guided steps started.
 - `test_workshop_layout`: the Workshop's panels on a desktop and on the Note 9, each at the UI size's 100 % and 150 %
@@ -523,6 +576,9 @@ saves each Workshop kind with its panels, and with its guided steps started.
   names drawn as a sign's text, black valves and grey actuators.
 - `test_realism`: lightmap UV2 and the bake scene, back faces of walls, the sky's sun, the weathered materials, the
   site, each tier's effects.
+- `test_flash_rate`: the lightning's flashes at every clock speed (paused, 1x, fast-forward to 60x, jumps) and frame
+  rate, through 120 s of real time each: never more than 3 flashes (pairs of opposing changes of 10 % of the light) in
+  any second, and none with Reduced motion on (UI-UX-POLICY A10, issue #443).
 - `test_bake_prep`: what `build.sh` does before the bake (CI cannot bake): the editor's script documentation cache.
 - `test_frame_probe`: `probe=1`'s frames.csv and `pipeline_save_mb`.
 

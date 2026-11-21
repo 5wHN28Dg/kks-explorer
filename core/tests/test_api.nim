@@ -918,9 +918,9 @@ suite "History lines (historySummary)":
       "linked 11LAB70AA500 · proc P1 step 2"
     check historySummary("link", newStr("[\"P1\",2,\"11LAB70AA500\"]"), newBool(true), newNull(), "") ==
       "unlinked 11LAB70AA500 · proc P1 step 2"
-    let tag = parseStrict("""{"kks":"11LAB70CT101","suffix":"R","isa":"TI","sheet":"lp"}""")
-    check historySummary("added_tag", newStr("t1"), newNull(), tag, "") == "tag marked TI 11LAB70CT101R on lp"
-    check historySummary("added_tag", newStr("t1"), tag, newNull(), "") == "marked tag removed TI 11LAB70CT101R on lp"
+    let tag = parseStrict("""{"kks":"11LAB70CT191","suffix":"R","isa":"TI","sheet":"lp"}""")
+    check historySummary("added_tag", newStr("t1"), newNull(), tag, "") == "tag marked TI 11LAB70CT191R on lp"
+    check historySummary("added_tag", newStr("t1"), tag, newNull(), "") == "marked tag removed TI 11LAB70CT191R on lp"
     let ph = parseStrict("""{"kks":"11LAB70AA500","file":"a.jxl","caption":""}""")
     check historySummary("photo", newStr("p1"), newNull(), ph, "") == "photo added 11LAB70AA500"
     check historySummary("photo", newStr("p1"), ph, newNull(), "") == "photo removed 11LAB70AA500"

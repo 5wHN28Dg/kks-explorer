@@ -768,23 +768,56 @@ func add_settings(box: VBoxContainer) -> void:
 	if clock == null:
 		return
 	var cf: ConfigFile = main.cf
+	var rows := {}
 	for row in [["instructor", "Instructor mode: scenarios and trainer faults", false],
-			["reduced_motion", "Reduced motion: no camera shake or head bob, Go there without flying", false],
+			["reduced_motion", "Reduced motion: no camera shake or head bob, Go there without flying, lightning without flashes", false],
+			["no_flashes", NO_FLASHES, false],
 			["mute", "Mute the plant's sounds", false]]:
 		var cb := CheckBox.new()
 		cb.text = row[1]
 		cb.focus_mode = Control.FOCUS_ALL
 		cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # wraps in the settings panel's width
 		cb.custom_minimum_size.y = 52 * W.scale            # as tall as the layer's buttons (48 dp on a phone, T1)
-		var on: bool = cf.get_value("ui", row[0], row[2])
+		var on := _flag(cf, row[0], row[2])
 		cb.button_pressed = on
 		_setting(row[0], on)
 		cb.toggled.connect(func(v):
+			if row[0] == "no_flashes" and bindings.reduced_motion:
+				return                  # (shown on while Reduced motion is: its own value is kept as it was)
 			cf.set_value("ui", row[0], v)
 			Quality.save(cf)
-			_setting(row[0], v))
+			_setting(row[0], v)
+			if row[0] == "reduced_motion":
+				_flashes_row(rows["no_flashes"], cf))
+		cb.name = "setting_" + row[0]
+		rows[row[0]] = cb
 		box.add_child(cb)
+	_flashes_row(rows["no_flashes"], cf)
 	_workshop_settings(box)
+	if Autosave.carries():          # (with the saves kept aside: the switch of issue #447, off until the owner's check)
+		_kept_saves(box)
+
+
+## A settings row's value from settings.cfg: a bool as it is, a number as true when not 0; anything else (a file
+## edited by hand: "yes", a list) the row's default, so one odd value never stops the panel being built.
+static func _flag(cf: ConfigFile, key: String, fallback: bool) -> bool:
+	var v = cf.get_value("ui", key, fallback)
+	if v is bool:
+		return v
+	if v is int or v is float:
+		return v != 0
+	return fallback
+
+
+const NO_FLASHES := "No lightning flashes: the lightning glows softly instead"
+
+## "No lightning flashes" is on whenever Reduced motion is (shown ticked, not changeable, and saying why); with Reduced
+## motion off it shows and is its own setting again (the owner, 2026-11-21, #443).
+func _flashes_row(cb: CheckBox, cf: ConfigFile) -> void:
+	var rm: bool = bindings.reduced_motion
+	cb.set_pressed_no_signal(rm or _flag(cf, "no_flashes", false))
+	cb.disabled = rm
+	cb.text = NO_FLASHES + (" (on with Reduced motion)" if rm else "")
 
 
 # ------------------------------------------------------------------ the Workshop (docs/plant3d/WORKSHOP.md §2)
@@ -822,6 +855,145 @@ func open_failed_part(r: Dictionary) -> bool:
 	return true
 
 
+## "Saved runs kept aside" (the owner, 2026-11-21, #474): the saved runs kept aside (ui/autosave.gd, issue #447),
+## listed by name, date and size, each with Delete, which asks first in the row itself (Keep has the focus, the
+## confirming Delete is marked as one that removes the file for good); on the desktops also Show folder. Made again
+## each time the settings are shown. The list is the trainee's run's (run.save's), in a second window too.
+func _kept_saves(box: VBoxContainer) -> void:
+	var v := VBoxContainer.new()
+	v.name = "kept_saves"
+	box.add_child(v)
+	_kept_fill(v, "")
+	box.visibility_changed.connect(func():
+		if box.is_visible_in_tree():
+			_kept_fill(v, ""))
+
+
+## The list made again; `said`: what the last action did, shown beside the row that then has the focus (index `at` among
+## the rows, -1 for Show folder) so it is in view (a toast would cover the focus), and read out (a live line).
+func _kept_fill(v: VBoxContainer, said: String, at := 0) -> void:
+	W.clear(v)
+	v.add_child(W.label("Saved runs kept aside", 22))
+	var main_path: String = Autosave.default_path     # (a second window saves apart; the kept ones are run.save's)
+	var dir := main_path.get_base_dir()
+	var files: Array = RunSave.kept_files(main_path)
+	var rows: Array = []
+	var said_label: Label = null
+	if said != "":
+		said_label = W.label(said, 18)
+		said_label.name = "kept_said"
+		if "accessibility_live" in said_label:
+			said_label.set("accessibility_live", 1)     # polite: said when it changes (AccessKit)
+	if files.is_empty():
+		if said_label != null:
+			v.add_child(said_label)
+		v.add_child(W.label("None. A saved run this version can't continue is kept here.", 18, W.DIM))
+	var target := clampi(at, 0, files.size() - 1) if at >= 0 and not files.is_empty() else -1
+	for i in files.size():
+		if i == target and said_label != null:
+			v.add_child(said_label)          # just above the row that gets the focus
+		var f: Array = files[i]
+		var row := VBoxContainer.new()      # the words wrap in the panel's width, the buttons under them
+		row.name = "kept_" + f[0].validate_node_name()
+		row.set_meta("kept_row", true)      # (two names from the folder can make the same node name)
+		v.add_child(row)
+		_kept_row(row, v, dir, f, i)
+		rows.append(row)
+	if OS.get_name() != "Android":
+		var bar := HBoxContainer.new()
+		bar.name = "kept_folder"
+		if said_label != null and target == -1 and not files.is_empty():
+			v.add_child(said_label)
+		v.add_child(bar)
+		var folder := ProjectSettings.globalize_path(dir)
+		bar.add_child(W.button("Show folder", func():
+			if OS.shell_show_in_file_manager(folder, true) != OK:
+				_kept_fill(v, "The folder could not be opened. It is %s." % _shown_name(folder), -1)
+				_kept_focus(v.get_node_or_null("kept_folder"), v)))
+	elif said_label != null and target == -1 and not files.is_empty():
+		v.add_child(said_label)
+	if said_label != null:
+		# after the focus has moved and the panel has followed it (a frame or two): the line scrolled into view too
+		get_tree().create_timer(0.1).timeout.connect(func(): _keep_in_view(said_label))
+
+
+## A name from the folder as shown: control characters and bidi controls replaced (a file put there by hand), and the
+## whole kept apart from the words around it (first-strong isolate).
+static func _shown_name(n: String) -> String:
+	var out := ""
+	for ch in n:
+		var c := ch.unicode_at(0)
+		if c < 0x20 or c == 0x7f or (c >= 0x202a and c <= 0x202e) or (c >= 0x2066 and c <= 0x2069) or c == 0x200e \
+				or c == 0x200f or c == 0x61c:
+			out += "?"
+		else:
+			out += ch
+	return "\u2068" + out + "\u2069"
+
+
+func _keep_in_view(c) -> void:
+	if not is_instance_valid(c) or not c.is_inside_tree():
+		return
+	var sc = c.get_parent()
+	while sc != null and not sc is ScrollContainer:
+		sc = sc.get_parent()
+	if sc != null:
+		sc.ensure_control_visible(c)
+
+
+func _kept_row(row: VBoxContainer, v: VBoxContainer, dir: String, f: Array, i: int) -> void:
+	W.clear(row)
+	var when := Time.get_datetime_string_from_unix_time(int(f[1]) + Autosave._tz_offset(), true)
+	var size := "size unknown" if int(f[2]) < 0 else "%d KB" % int(ceil(f[2] / 1024.0))
+	var name := _shown_name(f[0])
+	row.add_child(W.label("%s  (%s, %s)" % [name, when, size], 18))
+	var bar := HBoxContainer.new()
+	row.add_child(bar)
+	var ask := W.button("Delete", func():
+		W.clear(row)
+		var q := W.label("Delete %s? It can't be undone." % name, 18)
+		row.add_child(q)
+		var bar2 := HBoxContainer.new()
+		bar2.add_theme_constant_override("separation", int(24 * W.scale))   # room between Keep and the one that deletes
+		row.add_child(bar2)
+		var keep := W.button("Keep", func():
+			_kept_row(row, v, dir, f, i)
+			_kept_focus(row, v))
+		bar2.add_child(keep)
+		var del := W.button("Delete for good", func():
+			var p := ProjectSettings.globalize_path(dir.path_join(f[0]))
+			var said := ""
+			if not FileAccess.file_exists(p):
+				said = "%s was already gone." % name
+			elif DirAccess.remove_absolute(p) != OK:
+				said = ("%s could not be deleted (the file or its folder may be read-only). It is still kept; try "
+						+ "again, or %s.") % [name, "remove it with Show folder" if OS.get_name() != "Android" else "restart the app first"]
+			else:
+				said = "%s deleted." % name
+			_kept_fill(v, said, i)           # the focus to the row now in this one's place (the next), else the last
+			var rows := v.get_children().filter(func(c): return c.has_meta("kept_row"))
+			_kept_focus(rows[mini(i, rows.size() - 1)] if not rows.is_empty() else v.get_node_or_null("kept_folder"), v))
+		bar2.add_child(del)
+		W.destructive(del)                   # (in the tree: it starts from the layer's own button style)
+		keep.grab_focus.call_deferred()
+		# the question itself in view too, after the panel has followed the focus to Keep (S1: the file it names)
+		get_tree().create_timer(0.1).timeout.connect(func(): _keep_in_view(q)))
+	ask.name = "kept_delete"
+	bar.add_child(ask)
+
+
+## The focus to the first button under `n` (the row's Delete after Keep, the next row's after a delete, Show folder),
+## else the list's first button, else the settings' Close: never lost.
+func _kept_focus(n, v: Node) -> void:
+	for where in [n, v]:
+		if where != null:
+			for b in where.find_children("*", "Button", true, false):
+				b.grab_focus.call_deferred()
+				return
+	if main != null and main.hud != null and main.hud.close_btn != null:
+		main.hud.close_btn.grab_focus.call_deferred()
+
+
 ## The settings' Workshop row: a button per part kind the Workshop has.
 func _workshop_settings(box: VBoxContainer) -> void:
 	var kinds: Array = main.workshop.kinds() if main.workshop != null else load("res://workshop/workshop.gd").kinds()
@@ -846,6 +1018,8 @@ func _setting(key: String, on: bool) -> void:
 		"reduced_motion":
 			bindings.reduced_motion = on
 			player.bob = not on
+		"no_flashes":
+			bindings.no_flashes = on
 		"mute":
 			sounds.muted = on
 			horn_changed.emit(0)

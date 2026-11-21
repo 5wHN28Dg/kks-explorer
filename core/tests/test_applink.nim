@@ -71,28 +71,28 @@ suite "the tag a code link opens":
   m.sheets = parseSheets(j("""[{"id":"a","name":"A","w":100,"h":100,"scale":2.0,"levels":1,"rot":0},
                                {"id":"b","name":"B","w":100,"h":100,"scale":2.0,"levels":1,"rot":0}]"""))
   m.baseTags = parseTags(j("""[
-    {"id":"a:1","sheet":"a","kks":"11HAD70CT101","suffix":"R","isa":"TI","kind":"instrument","status":"auto","conf":1,
+    {"id":"a:1","sheet":"a","kks":"11HAD70CT109","suffix":"R","isa":"TI","kind":"instrument","status":"auto","conf":1,
      "bbox":[1,1,2,2],"read":["",""]},
     {"id":"a:2","sheet":"a","kks":"","suffix":"","isa":null,"kind":"equipment","status":"review","conf":0,
      "bbox":[3,3,4,4],"read":["",""]},
     {"id":"b:1","sheet":"b","kks":"11LAB70AA500","suffix":"","isa":null,"kind":"equipment","status":"auto","conf":1,
      "bbox":[1,1,2,2],"read":["",""]},
-    {"id":"b:2","sheet":"b","kks":"11HAD70CT101","suffix":"","isa":"TI","kind":"instrument","status":"auto","conf":1,
+    {"id":"b:2","sheet":"b","kks":"11HAD70CT109","suffix":"","isa":"TI","kind":"instrument","status":"auto","conf":1,
      "bbox":[3,3,4,4],"read":["",""]},
-    {"id":"b:3","sheet":"b","kks":"11HAD70CT101","suffix":"R","isa":"TI","kind":"instrument","status":"auto","conf":1,
+    {"id":"b:3","sheet":"b","kks":"11HAD70CT109","suffix":"R","isa":"TI","kind":"instrument","status":"auto","conf":1,
      "bbox":[5,5,6,6],"read":["",""]}]"""))
   m.state = j("""{"equipment":{}}""")
   m.merge()
 
   test "the full code first, in the drawings' order":
-    check m.findCode("11HAD70CT101R") == (true, m.tagById("a:1")[1])
+    check m.findCode("11HAD70CT109R") == (true, m.tagById("a:1")[1])
     check m.findCode("11LAB70AA500")[1].id == "b:1"
 
   test "a code without its suffix finds a tag whose full code it is, else the suffixed one":
-    check m.findCode("11HAD70CT101")[1].id == "b:2"
+    check m.findCode("11HAD70CT109")[1].id == "b:2"
     m.baseTags.delete(3)
     m.merge()
-    check m.findCode("11HAD70CT101")[1].id == "a:1"
+    check m.findCode("11HAD70CT109")[1].id == "a:1"
 
   test "codes on no drawing, and unread tags, find nothing":
     check not m.findCode("11LAB70AA502")[0]

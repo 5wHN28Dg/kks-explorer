@@ -25,6 +25,13 @@ func send(item: Array) -> int:
 	return n
 
 
+## A saved run's input, with its step as it was saved, given to `fresh`: an engine of its own that makes a saved run
+## again (ui/run_migrate.gd, a save of another build), never the run's engine (that one gets the run made again whole,
+## as a loaded save).
+static func replay(fresh, item: Array) -> void:
+	fresh.apply_input(item.duplicate(true))
+
+
 ## The person this player plays (§17.4), -1 in free mode or without staff.
 func person() -> int:
 	var e = clock.engine if clock != null else null

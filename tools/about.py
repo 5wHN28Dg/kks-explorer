@@ -12,7 +12,9 @@ Made from:
   found of the code it carries from other projects, for the record: it is not shown);
 - tools/about/licenses/*.txt (the standard licence texts) and tools/about/notices/*.txt (a part's own licence file,
   with its copyright lines, as its source ships it, and the Apache NOTICE files, *-NOTICE.txt, verbatim);
-- the course photos' credits (data/courses/*.json).
+- the course photos' credits (data/courses/*.json);
+- tools/about/accessibility.json: the accessibility statement of each product (the policy's T11; the README's
+  "Accessibility" sections say the same, tests/test_about.py checks it).
 The version is not in it: each program knows its own (VERSION at build time) and the commit it was built from.
 
   python3 tools/about.py --plant [--check]   the same for Walkdown Plant: apps/plant3d/about.json (format
@@ -22,7 +24,8 @@ The version is not in it: each program knows its own (VERSION at build time) and
                                              licence file with its copyright lines, put in verbatim)}],
                                              licenses: {<SPDX id>: {name, url, text}}} with each licence's full text
                                              (tools/about/licenses/; "files" names them when they are more than one,
-                                             as for an exception: Apache-2.0 WITH LLVM-exception). The plant's build
+                                             as for an exception: Apache-2.0 WITH LLVM-exception), and its
+                                             accessibility statement (accessibility, as below). The plant's build
                                              packs it (built/about.json).
 
 data/about.json (format "walkdown-about", version 1): an object with
@@ -44,6 +47,8 @@ data/about.json (format "walkdown-about", version 1): an object with
                                              where each component's notice carries its terms (BSD, MIT, ...)
   photos: [{file, text, links: [{text, url}]}]   the course pictures' credits (text: the credit as the course
                                              writes it; links: the links in it, in order)
+  accessibility: {intro: [paragraphs], gaps: [the known gaps, each with its issue], report: how to report a
+                 barrier, url: the README's full statement}   plain text; Walkdown Plant's about.json has its own
 """
 import argparse, json, os, re, sys
 import xml.etree.ElementTree as ET
@@ -146,6 +151,15 @@ def with_apache_notice(c, notice, read_notice):
     return notice.rstrip('\n') + '\n\n\n' + text if notice else text
 
 
+def accessibility(repo, product):
+    """the accessibility statement of `product` ('walkdown' or 'plant') from tools/about/accessibility.json"""
+    a = json.loads(read(repo, SRC, 'accessibility.json'))[product]
+    if set(a) != {'intro', 'gaps', 'report', 'url'} or not a['intro'] or not a['gaps'] or not a['report'] \
+            or not a['url'].startswith(REPOSITORY + '#'):
+        raise SystemExit(f'{SRC}/accessibility.json: {product}: needs intro, gaps, report and a url into the README')
+    return {'intro': a['intro'], 'gaps': a['gaps'], 'report': a['report'], 'url': a['url']}
+
+
 def build(repo=REPO):
     m = metainfo(repo)
     src = json.loads(read(repo, SRC, 'components.json'))
@@ -176,7 +190,8 @@ def build(repo=REPO):
             'links': {'homepage': m['homepage'], 'issues': REPOSITORY + '/issues', 'help': REPOSITORY + '/wiki'},
             'source': {'repository': REPOSITORY, 'commit_url': REPOSITORY + '/tree/{commit}'},
             'platforms': {p: src['platforms'][p] for p in PLATFORMS},
-            'components': comps, 'licenses': licenses, 'photos': photos(repo)}
+            'components': comps, 'licenses': licenses, 'photos': photos(repo),
+            'accessibility': accessibility(repo, 'walkdown')}
 
 
 def text(doc):
@@ -208,7 +223,7 @@ def build_plant(repo=REPO):
             a['notice'] = read(repo, SRC, 'notices', a['notice'] + '.txt')
         assets.append(a)
     return {'format': 'walkdown-plant-about', 'version': 1, 'note': src['note'], 'assets': assets,
-            'licenses': licenses}
+            'licenses': licenses, 'accessibility': accessibility(repo, 'plant')}
 
 
 def main(argv=None):

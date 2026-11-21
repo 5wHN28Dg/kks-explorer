@@ -24,6 +24,7 @@ var engine
 var index                       # ui/scene_index.gd
 var cam: Camera3D
 var reduced_motion := false
+var no_flashes := false         # the settings' "No lightning flashes" (on its own; Reduced motion includes it)
 var sounds                      # ui/sound_player.gd or null
 var clock                       # ui/sim_clock.gd: shafts turn with plant time (still while paused, faster at fast-forward)
 var _anims: Array = []          # [node, channel, slot, scale, base transform, group's kids, position, anim_kind]

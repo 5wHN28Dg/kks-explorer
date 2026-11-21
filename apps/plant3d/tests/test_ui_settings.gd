@@ -2,7 +2,8 @@
 ## with its Close always on screen, its body scrolls (the keyboard and gamepad help folded under "Controls", opened
 ## it overflows), and the keyboard's Tab and the gamepad's D-pad reach every control, each scrolled into view
 ## (UI-UX-POLICY R1, A1, L2; issue #381). And with Reduced motion on, "Go there" places the trainee at once instead of
-## flying the camera (A4; issue #380).
+## flying the camera (A4; issue #380). "No lightning flashes" (the owner, 2026-11-21, #443): a row of its own, on
+## whenever Reduced motion is (ticked, not changeable), its own setting otherwise, kept; the lightning glows softly.
 extends RefCounted
 
 const UiApp = preload("res://tests/ui_app.gd")
@@ -10,6 +11,7 @@ const SimClock = preload("res://ui/sim_clock.gd")
 const W = preload("res://ui/widgets.gd")
 const Autosave = preload("res://ui/autosave.gd")
 const RunSave = preload("res://ui/run_save.gd")
+const Quality = preload("res://app/quality.gd")
 
 
 func run(tree: SceneTree) -> Array:
@@ -23,6 +25,7 @@ func run(tree: SceneTree) -> Array:
 		p += await _settings(tree, w[1])
 	tree.root.size = size0
 	p += await _go_there(tree)
+	p += await _no_flashes(tree)
 	return p
 
 
@@ -314,3 +317,95 @@ func _press(tree: SceneTree, e: InputEvent) -> void:
 	var up: InputEvent = e.duplicate()
 	up.pressed = false
 	tree.root.push_input(up)
+
+
+## "No lightning flashes": its own row, saved and applied; on (ticked and disabled) while Reduced motion is on, and back
+## to its own value when that goes off; either one makes the lightning a soft glow (app/weather_view.gd `soft`).
+func _no_flashes(tree: SceneTree) -> Array:
+	var p: Array = []
+	var main := _start(tree, "")
+	for i in 10:
+		await tree.process_frame
+	var hud = main.hud
+	var ui = main.ui
+	hud.show_settings(true)
+	await tree.process_frame
+	var nf: CheckBox = hud.settings_box.find_child("setting_no_flashes", true, false)
+	var rm: CheckBox = hud.settings_box.find_child("setting_reduced_motion", true, false)
+	if nf == null or rm == null:
+		main.free()
+		return ["the settings have no \"No lightning flashes\" row (or no Reduced motion row)"]
+	if rm.button_pressed:
+		rm.button_pressed = false
+	nf.button_pressed = false
+	if nf.disabled or ui.bindings.no_flashes or main.weather.wants_soft():
+		p.append("with both off, the flashes row is disabled or the lightning is soft")
+	nf.button_pressed = true            # on its own
+	if not ui.bindings.no_flashes or not bool(main.cf.get_value("ui", "no_flashes", false)) or not main.weather.wants_soft():
+		p.append("\"No lightning flashes\" on its own was not saved or did not make the lightning soft")
+	nf.button_pressed = false
+	rm.button_pressed = true            # Reduced motion: the row on and not changeable
+	if not nf.button_pressed or not nf.disabled or not nf.text.contains("Reduced motion") or not main.weather.wants_soft():
+		p.append("with Reduced motion on, \"No lightning flashes\" is not shown on and fixed: %s" % nf.text)
+	if bool(main.cf.get_value("ui", "no_flashes", true)):
+		p.append("Reduced motion changed the flashes row's own saved value")
+	rm.button_pressed = false           # its own value (off) again
+	if nf.button_pressed or nf.disabled or main.weather.wants_soft():
+		p.append("with Reduced motion off again, the flashes row did not go back to its own value (off)")
+	# saved on, then Reduced motion on and off: the row comes back ticked, as saved (the lightning still glows)
+	nf.button_pressed = true
+	rm.button_pressed = true
+	rm.button_pressed = false
+	if not nf.button_pressed or nf.disabled or not ui.bindings.no_flashes or not main.weather.wants_soft():
+		p.append("with the row saved on, Reduced motion on and off left it unticked or the lightning flashing")
+	# ticked by the keyboard itself (focus on it, Space), not set by code
+	nf.button_pressed = false
+	nf.grab_focus()
+	await tree.process_frame
+	for down in [true, false]:
+		var ev := InputEventKey.new()
+		ev.keycode = KEY_SPACE
+		ev.physical_keycode = KEY_SPACE
+		ev.pressed = down
+		tree.root.push_input(ev)
+	await tree.process_frame
+	if not nf.button_pressed or not ui.bindings.no_flashes:
+		p.append("Space on the focused row did not tick it")
+	# a later start applies the saved row; and one with Reduced motion saved on shows the row ticked, fixed, saying why
+	hud.show_settings(false)
+	main.free()
+	main = _start(tree, "")
+	for i in 10:
+		await tree.process_frame
+	if not main.ui.bindings.no_flashes or not main.weather.wants_soft():
+		p.append("\"No lightning flashes\" was not kept for the next start")
+	main.cf.set_value("ui", "no_flashes", false)
+	main.cf.set_value("ui", "reduced_motion", true)
+	Quality.save(main.cf)
+	main.free()
+	main = _start(tree, "")
+	for i in 10:
+		await tree.process_frame
+	nf = main.hud.settings_box.find_child("setting_no_flashes", true, false)
+	if nf == null or not nf.button_pressed or not nf.disabled or not nf.text.contains("Reduced motion"):
+		p.append("started with Reduced motion saved on, the flashes row is not shown on and fixed")
+	# a settings file edited by hand ("yes", a list): every row still built, the defaults applied, the panel whole
+	main.cf.set_value("ui", "reduced_motion", false)
+	main.cf.set_value("ui", "no_flashes", "yes")
+	main.cf.set_value("ui", "mute", [1])
+	Quality.save(main.cf)
+	main.free()
+	main = _start(tree, "")
+	for i in 10:
+		await tree.process_frame
+	for k in ["no_flashes", "mute"]:
+		if main.hud.settings_box.find_child("setting_" + k, true, false) == null:
+			p.append("with %s edited by hand, its settings row was not built" % k)
+	if main.ui.bindings.no_flashes or main.hud.settings_box.find_child("workshop_kinds", true, false) == null \
+			and main.workshop != null and not main.workshop.kinds().is_empty():
+		p.append("with values edited by hand, the defaults were not applied or the panel stopped early")
+	main.cf.set_value("ui", "no_flashes", false)
+	main.cf.set_value("ui", "mute", false)
+	Quality.save(main.cf)               # (the tests' settings file: off again for the files after this one)
+	main.free()
+	return p
