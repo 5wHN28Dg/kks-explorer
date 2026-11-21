@@ -22,6 +22,11 @@ class FakeEngine extends RefCounted:
 	var step_no := 0
 
 
+## The spacing the IRIS analysis passed with (decision 0077, PR #467): written here, not read from weather_view.gd, so
+## a smaller FLASH_GAP fails this test.
+const MIN_GAP := 2.0
+
+
 func run(_tree: SceneTree) -> Array:
 	var p: Array = []
 	var speeds := [0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, SimClock.FF_MAX]
@@ -54,6 +59,7 @@ func _check(speed: float, dt: float, soft: bool, jumps: bool) -> Array:
 	var want := 0                     # the model's flashes come by now
 	var times: PackedFloat64Array = []
 	var light: PackedFloat64Array = []
+	var lit_at: PackedFloat64Array = []   # the real time each lit flash began
 	while t < SECONDS:
 		var d := dt if dt > 0.0 else rng.randf_range(0.007, 0.05)
 		t += d
@@ -71,7 +77,10 @@ func _check(speed: float, dt: float, soft: bool, jumps: bool) -> Array:
 			if not f.is_empty():
 				wv._pending.append(f)
 				want += 1
+		var lit0: int = wv.lit
 		wv._flash(e, d)
+		if wv.lit > lit0:
+			lit_at.append(t)
 		wv._apply(wv.look)
 		times.append(t)
 		light.append(wv.sun.light_energy)
@@ -80,6 +89,12 @@ func _check(speed: float, dt: float, soft: bool, jumps: bool) -> Array:
 	var worst := max_in_window(tr, 1.0)
 	if worst > 6:
 		p.append("%s: %d changes of the light in one second (%.1f flashes; at most 3)" % [what, worst, worst / 2.0])
+	# lit flashes FLASH_GAP real seconds apart at least (a sustained 2 to 3 a second would pass the 1-s count above but
+	# fail IRIS's extended rule: decision 0077)
+	for i in range(1, lit_at.size()):
+		if lit_at[i] - lit_at[i - 1] < MIN_GAP - 1e-6:
+			p.append("%s: two lit flashes %.2f s apart (at least %.1f s)" % [what, lit_at[i] - lit_at[i - 1], MIN_GAP])
+			break
 	if soft and not tr.is_empty():
 		p.append("%s: %d changes of 10 %% or more of the light (a soft glow has none)" % [what, tr.size()])
 	# every flash the model made is still counted (heard), lit or not; the pending ones still to come

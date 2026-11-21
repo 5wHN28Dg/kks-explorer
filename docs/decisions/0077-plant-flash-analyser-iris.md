@@ -29,7 +29,11 @@ without anything installed system-wide?
   checks it) and unpacked with `dpkg -x` under `~/kks-work/tools/`, not installed. Nothing is installed system-wide;
   if it needed that, we would stop and ask. Verified 2026-11-21: it builds and runs here (`tools/plant3d/flash_iris.sh`),
   and it fails the lightning as it was on main (60x: up to 8 luminance transitions a second) and passes it after #443.
-- Its default `config/appsettings.json`, unchanged. Input: Godot's Movie Maker (`--write-movie`, `--fixed-fps`), so
+- Its default `config/appsettings.json`, unchanged, with its pattern detection turned on (`-p 1`: the defaults leave
+  it off). Two of its defaults differ from WCAG 2.3.1: a flash counts only over 25 % of the screen
+  (`FlashDetection.AreaProportion`; WCAG's area is 341 x 256 of 1024 x 768, about 11 %), so IRIS can pass a flash
+  that covers 11 to 25 % of the screen where WCAG fails it; our own model (`tools/plant3d/flash_analysis.py`) counts at
+  11.1 % and 2 %, and a flash of that size needs both. The lightning lights 97.7 to 100 % of the frame. Input: Godot's Movie Maker (`--write-movie`, `--fixed-fps`), so
   each frame is one fixed step of real time and the video's time is the game's real time.
 - PEAT is ruled out by its own terms (no gaming material) and its platform; Harding FPA costs money (a choice for the
   owner if a certified result is ever needed).
@@ -38,5 +42,6 @@ without anything installed system-wide?
 ## When to revisit
 
 - If a certified analysis is required (a store, a customer): Harding FPA, the owner's decision.
-- If IRIS's repository is archived or its thresholds diverge from WCAG 2.3.1 / ITU-R BT.1702.
+- If IRIS's repository is archived, or its thresholds move further from WCAG 2.3.1 / ITU-R BT.1702 (the area
+  already differs, above), or a flashing effect is smaller than a quarter of the screen.
 - If PEAT's announced fully open-source version appears with terms that allow games.

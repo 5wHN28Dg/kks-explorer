@@ -260,6 +260,8 @@ func _bind(e) -> void:
 	_slots.clear()
 	drawn.clear()
 	_thunder.clear()
+	_flash_left = 0.0             # a flash or glow under way ends with its run (_since_lit keeps counting: the gap holds)
+	_glow = -1.0
 	# flashes still to come stay (a session's resync installs its engine mid-slot); a new run's start at step 0
 	# leaves none
 	var st: int = int(e.step_no) if e != null else 0

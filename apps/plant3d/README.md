@@ -504,7 +504,7 @@ real-time limit, at 60x up to 4 flashes in a second (86 in all, a fail); after i
 at 1x 1; with Reduced motion none (the mean luminance moves by 5 % at most); never a red flash.
 That analyser is a model of the rule; the analysis itself is EA's IRIS (decision 0077), on Godot Movie Maker videos
 of the same storm (`flash_capture.gd --movie`, each frame 1/60 s of the player's time): `IRIS_APP=… tools/plant3d/flash_iris.sh
-OUT_DIR`. Measured 2026-11-21 (960 x 540, IRIS's default settings): before the real-time limit, at 60x, **Fail** (up
+OUT_DIR`. Measured 2026-11-21 (960 x 540, IRIS's default settings with its pattern detection turned on, which they leave off): before the real-time limit, at 60x, **Fail** (up
 to 8 luminance transitions in a second, 35 flash-fail and 38 extended-fail frames); after it, **Pass** at 60x (60 s:
 at most 2 transitions, one flash, in any second; no warning frame), at 1x (120 s) and with Reduced motion at 60x and
 1x (one transition in all: the app's first frame, the sky to the plant); never a red transition or a pattern. At 1x
