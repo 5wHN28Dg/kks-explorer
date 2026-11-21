@@ -1,0 +1,18 @@
+# Evidence for PR #465
+scripts' commit: aa4d3267
+commands: web: KKS_SERVER=<CI linux-bin of 4f0ec21b: server code unchanged since> KKS_SHOTS=DIR platform/linux/e2e/test_web_valve.py (chromium, firefox, webkit; 1200x800; the location, custom-field and valve questions)
+data: synthetic (the test fixtures)
+
+sha256 per image:
+b690ab3f6def14734c5911a2495f764b376a18582cb7919981dafc706424c500  discard-question-custom-field-chromium.png
+3356243302561022e69377084d581db735b8e352be1c294b44fe2930cfc055e7  discard-question-custom-field-firefox.png
+f5adafc5accc59a8489422c32f4505ce24da5941122e71e5c3a62c0bd55589fa  discard-question-custom-field-webkit.png
+ab356d071100515a2187ea8d00fce3912a43f648ad21ab7eb81d3ef7d9f17d1b  discard-question-location-chromium.png
+4a31fd6619b0243216dd017861d90c31d874612ade77d03d9a9e3f7cbcb67a10  discard-question-location-firefox.png
+d77767962a74923d6e90c2a24804a5c80bab9466428ca6d2fec3a314fbad69f9  discard-question-location-webkit.png
+01926cdc063e50ea607749eae667209f42b884b00d0f432fa215069f62fbef60  discard-question-valve-chromium.png
+4f0c1cc380c58e4d8cc04c25606df4f35141ac8e6e9a84d4ca84036a98acf1d0  discard-question-valve-firefox.png
+bfdf1cc32e359f5a12c96d3feb54cffb4082aacb7b19204379327f89faf147db  discard-question-valve-webkit.png
+a05253107e3c52588d558fc4b07b428aa60a8c3a93e85551311fe9c40bfc034c  valve-cancel-kept-chromium.png
+154151765b1281219d0ce6a5fbcb670ea3af034cd555955c7c41c25a02d4ae83  valve-cancel-kept-firefox.png
+6ca4e2dd14cb98df2fa11159cf0a80fa0287fd79dec41defabcac96383dbbd6a  valve-cancel-kept-webkit.png
