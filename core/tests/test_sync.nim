@@ -311,3 +311,147 @@ suite "sync state machine":
     let t0 = epochTime()
     check mgrPhone.ingest(junk, tick()) == 0
     check epochTime() - t0 < 2.0                    # the search per entry took about 14 s here
+
+suite "changes waiting to be sent (§15c, #372)":
+  let rootKey = P.p256Generate()
+  let rootStr = keyString(rootKey.pub)
+  var phone = newNode(P, newMemStore(), P.p256Generate())
+  let mgr = P.newPersonId()
+  discard phone.append("genesis", P.genesisBody(rootKey, "Test plant", phone.device, mgr, "boss", "The Manager"), tick())
+  phone.adopt(rootStr)
+  let serverStore = newMemStore()
+  var server = newNode(P, serverStore, P.p256Generate())
+  discard phone.append("device_cert", deviceCertBody(server.device, mgr, "server"), tick())
+
+  test "nothing acknowledged yet: every own entry waits":
+    check phone.waiting == 2
+
+  test "a completed sync leaves nothing waiting; new entries wait until the next":
+    discard sync(server, phone, adopt = rootStr)       # the server's hello knew nothing; its bye, everything
+    check phone.waiting == 0
+    discard phone.append("person", personBody(P.newPersonId(), "one", "Person one", "user"), tick())
+    discard phone.append("person", personBody(P.newPersonId(), "two", "Person two", "user"), tick())
+    check phone.waiting == 2
+    discard sync(phone, server)                         # the phone starts this time: the server's bye acknowledges
+    check phone.waiting == 0
+    check server.waiting == 0                           # (the server's own log is empty)
+
+  test "kept across a restart (the store's meta)":
+    let st = newMemStore()
+    let key = P.p256Generate()
+    var p2 = newNode(P, st, key)
+    discard p2.append("genesis", P.genesisBody(rootKey, "Test plant", p2.device, mgr, "boss", "The Manager"), tick())
+    p2.adopt(rootStr)
+    var srv2 = newNode(P, newMemStore(), P.p256Generate())
+    discard p2.append("device_cert", deviceCertBody(srv2.device, mgr, "server"), tick())
+    discard sync(srv2, p2, adopt = rootStr)
+    check p2.waiting == 0
+    let again = newNode(P, st, key)
+    check again.waiting == 0
+    discard again.append("person", personBody(P.newPersonId(), "three", "Person three", "user"), tick())
+    check again.waiting == 1
+
+  test "an older device's bye without vv acknowledges nothing; hello never does (it comes before the blobs)":
+    discard phone.append("person", personBody(P.newPersonId(), "four", "Person four", "user"), tick())
+    check phone.waiting == 1
+    for round in 0 .. 1:          # twice: the second session's hello holds the entry, and still counts for nothing
+      let s1 = newSession(phone, true, server.device)
+      let s2 = newSession(server, false, phone.device)
+      s1.wall = tick(); s2.wall = s1.wall
+      var da, db: Deframer
+      var guard = 0
+      while not (s1.done and s2.done) and guard < 100:
+        inc guard
+        while s1.sending:
+          for m in s1.take():
+            for x in db.feed(frame(m)): s2.receive(x)
+        while s2.sending:
+          for m in s2.take():
+            var m2 = m
+            if m2["t"].s == "bye": m2 = newObj(@[("t", newStr("bye"))])   # as a device before 2026-11-21 sends it
+            for x in da.feed(frame(m2)): s1.receive(x)
+      check s1.done and s2.done
+      check phone.waiting == 1          # sent, but not acknowledged
+    discard sync(phone, server)         # a device that sends vv in bye
+    check phone.waiting == 0
+
+  test "a photo whose blob didn't arrive is still waiting (the session cut before bye)":
+    let pic = "\xff\x0afake jxl bytes of a waiting photo"
+    let sha = phone.keepBlob(pic)
+    discard phone.append("photo", newObj(@[("photo", newStr(P.newPersonId())), ("kks", newStr("11LAB70AA500")),
+                                           ("blob", newStr(sha)), ("caption", newStr("cut"))]), tick())
+    check phone.waiting == 1
+    let s1 = newSession(phone, true, server.device)
+    let s2 = newSession(server, false, phone.device)
+    s1.wall = tick(); s2.wall = s1.wall
+    var da, db: Deframer
+    var cut = false
+    for _ in 0 .. 20:                   # until the photo's bytes would go: the connection drops there
+      while s1.sending:
+        for m in s1.take():
+          if m["t"].s == "blob": cut = true
+          if not cut:
+            for x in db.feed(frame(m)): s2.receive(x)
+      if cut: break
+      while s2.sending:
+        for m in s2.take():
+          for x in da.feed(frame(m)): s1.receive(x)
+    check cut
+    check not server.store.blobHas(sha)
+    check phone.waiting == 1            # the entry is there, its photo isn't: still waiting
+    discard sync(phone, server)         # (its hello says it holds the entry; only the bye after the blobs counts)
+    check server.store.blobGet(sha) == pic
+    check phone.waiting == 0
+
+  test "what the app writes by itself is not a change waiting":
+    discard phone.append("box_key", newObj(@[("key", newStr("not a real key"))]), tick())
+    discard phone.append("report", newObj(@[("sealed", newStr("x"))]), tick())
+    check phone.waiting == 0
+    discard phone.append("person", personBody(P.newPersonId(), "five", "Person five", "user"), tick())
+    check phone.waiting == 1
+    discard sync(phone, server)
+    check phone.waiting == 0
+
+  test "a stranger's vv and an unknown seq acknowledge nothing; another entry at the seq (a fork, a restored peer) lowers":
+    discard phone.append("person", personBody(P.newPersonId(), "six", "Person six", "user"), tick())
+    let before = phone.waiting
+    check before == 1
+    let (last, id) = (int64(phone.vv()[phone.device][0].i), phone.vv()[phone.device][1].s)
+    var stranger = newNode(P, newMemStore(), P.p256Generate())
+    phone.noteAcked(stranger.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]), fromBye = true)
+    check phone.waiting == before
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last + 5), newStr(id)]))]), fromBye = true)
+    check phone.waiting == before
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]), fromBye = false)
+    check phone.waiting == before    # a hello never raises
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr(id)]))]), fromBye = true)
+    check phone.waiting == 0
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(last), newStr("another entry")]))]), fromBye = true)
+    check phone.waiting > 1          # that peer holds another entry there: nothing of this log is counted as held
+
+  test "a peer restored to less (a backup): its hello lowers the count back":
+    discard sync(phone, server)
+    check phone.waiting == 0
+    let all = phone.waiting
+    discard phone.append("person", personBody(P.newPersonId(), "seven", "Person seven", "user"), tick())
+    discard sync(phone, server)
+    check phone.waiting == all
+    # the server comes back from a backup made before the last entry: its hello names the entry before
+    let c = int64(phone.vv()[phone.device][0].i)
+    let prevId = phone.entriesFor(newObj(@[(phone.device, newArr(@[newInt(c - 2), newStr("")]))]))
+    var older = ""
+    for e in prevId:
+      if e["peer"].s == phone.device and e["seq"].i == c - 1: older = P.entryId(e)
+    check older.len > 0
+    phone.noteAcked(server.device, newObj(@[(phone.device, newArr(@[newInt(c - 1), newStr(older)]))]), fromBye = false)
+    check phone.waiting == 1
+
+  test "a removed device's acknowledgement counts for nothing":
+    let mate = newNode(P, newMemStore(), P.p256Generate())
+    discard phone.append("device_cert", deviceCertBody(mate.device, mgr, "second phone"), tick())
+    discard sync(mate, phone, adopt = rootStr)          # the second phone holds everything (its bye says so)
+    discard phone.append("person", personBody(P.newPersonId(), "eight", "Person eight", "user"), tick())
+    discard sync(mate, phone)
+    check phone.waiting == 0
+    discard phone.append("revoke", revokeBody(mate.device, 0), tick())
+    check phone.waiting > 0          # the server never got them; the removed phone doesn't count

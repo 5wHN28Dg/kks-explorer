@@ -110,6 +110,8 @@ type Node* = ref object
   keepsState*: bool                     ## saves its replayed state for the next start (§15b; the apps, not the server)
   unsaved: string                       ## the replayed state's bytes, made right after the replay, not yet written
   stateFromSaved*: bool                 ## this start read the saved state instead of replaying (tests, timing)
+  acked: Table[string, int64]           ## §15c: the store's "acked", read once (written through by noteAcked)
+  ackedRead: bool
 
 const SavedStateKey* = "saved_state"   ## the store's meta key of the saved replayed state (savedstate.nim)
 
@@ -266,6 +268,64 @@ proc mayRead*(n: Node, peer: string): bool =
   ## Only a certified, unrevoked device of a known person receives plant data.
   if n.run == nil or peer notin n.run.devices or peer in n.run.cuts: return false
   n.run.devices[peer]["person"].s in n.run.persons
+
+const AckedKey* = "acked"   ## the store's meta key of what other devices said they hold of this one's log (§15c)
+
+proc ackedOf*(n: Node): Table[string, int64] =
+  ## device → the highest seq of this device's own log it said it holds (§15c); read from the store once
+  if not n.ackedRead:
+    n.ackedRead = true
+    let raw = n.store.getMeta(AckedKey)
+    if raw.len > 0:
+      try:
+        let j = parseStrict(raw)
+        if j.kind == jObj:
+          for (d, v) in j.fields:
+            if v.kind == jInt: n.acked[d] = v.i
+      except JsonError: discard
+  n.acked
+
+proc noteAcked*(n: Node, peer: string, theirVv: JNode, fromBye: bool) =
+  ## §15c: what `peer` says it holds of this device's own log. Its `bye` (after taking our entries and blobs in) sets
+  ## the value: the seq it names with the very entry this device holds there, or 0 when it names none or another
+  ## entry (a peer restored from a backup holds less than it did). Its `hello` (before the blobs) can only lower it.
+  ## Only from a device of the plant (mayRead). Never raises: a failed write only leaves the count higher.
+  try:
+    if theirVv == nil or theirVv.kind != jObj or peer == n.device or not n.mayRead(peer): return
+    if n.root.len == 0 or n.store.getMeta("root") != n.root: return   # a store wiped under this node (§15)
+    let c = n.chains.getOrDefault(n.device)
+    let have = theirVv.get(n.device)
+    var seq = 0'i64
+    if have != nil and have.kind == jArr and have.len == 2 and have[0].kind == jInt and have[1].kind == jStr:
+      let s = have[0].i
+      if s >= 1 and s <= int64(c.len) and c[s - 1] == have[1].s: seq = s
+      elif s > int64(c.len): return     # more than this device holds of its own log: nothing to learn from it
+    discard n.ackedOf
+    let was = n.acked.getOrDefault(peer, 0)
+    if seq == was or (not fromBye and seq > was): return
+    if seq == 0: n.acked.del peer else: n.acked[peer] = seq
+    var ds: seq[string]
+    for d, _ in n.acked: ds.add d
+    ds.sort(system.cmp)
+    var o = newObj()
+    for d in ds: o.fields.add((d, newInt(n.acked[d])))
+    n.store.setMeta(AckedKey, toText(o))
+  except CatchableError: discard
+
+const NotChanges* = ["report", "box_key", "secret_share", "pair_reveal", "pair_commit"]
+  ## §15c: entry types the app writes by itself (diagnostics reports, the course-progress pairing): not counted as a
+  ## person's changes waiting to be sent (course progress itself, a `private` entry, is counted)
+
+proc waiting*(n: Node): int =
+  ## §15c: this device's own changes no device of the plant has said it holds (changes waiting to be sent); a device
+  ## removed since counts for nothing
+  var most = 0'i64
+  for d, s in n.ackedOf:
+    if n.mayRead(d): most = max(most, s)
+  let c = n.chains.getOrDefault(n.device)
+  for i in int(most) ..< c.len:
+    let e = n.entries.getOrDefault(c[i])
+    if e == nil or e.get("type") == nil or e["type"].kind != jStr or e["type"].s notin NotChanges: inc result
 
 proc entriesFor*(n: Node, theirVv: JNode): seq[JNode] =
   ## What the other side lacks: entries above its vv; a device's whole chain when its entry at their last seq differs

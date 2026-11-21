@@ -459,7 +459,9 @@ responder answers. `{"t":"error","why":...}` may be sent instead of any message,
    `{"t":"blobs_end"}`.
    - Nothing unless the other side may read.
    - A receiver accepts a blob only if its log references that hash and the bytes hash to it.
-6. **`bye`** both ways.
+6. **`bye`** both ways: `{"t":"bye", "vv": <as in hello>}`. `vv` (added 2026-11-21) is what the sender holds now
+   that it has taken the other side's entries and blobs in; a receiver uses it only as §15c says. A `bye` without `vv` (devices
+   before 2026-11-21) is still valid.
 
 Relaying is automatic: a device sends every entry it holds, not only its own.
 
@@ -499,6 +501,25 @@ written, a root adopted) the state is marked changed; the device writes it when 
 start after a replay; GNOME and Windows every 30 s while it changed and when the app closes; Android after each sync
 round and when it goes to the background).
 A write never happens inside a §15 store transaction. A state not written only means the next start replays.
+
+## 15c. Changes waiting to be sent (added 2026-11-21, issue #372)
+
+Local to one device, like §15b; nothing new is sent but `bye`'s `vv`. A device shows how many of its own entries no
+other device has said it holds, so that a person working offline sees what has not left the device yet.
+
+- **Acknowledged:** a `vv` received in a `bye` from a device of the plant (one the receiver may serve: `mayRead`)
+  sets what that device holds of this device's own log: if it names this log at seq `s` with the ID of the entry this
+  device holds at `s`, that device holds entries 1 to `s` (chains are continuous, §4) and their blobs (a `bye` comes
+  after both sides' blobs, steps 4 and 5); if it names no entry of this log, or another entry at that seq (a fork, or a
+  device restored from a backup), it holds none. A `hello`'s `vv`, which comes before the blobs, can only lower the
+  value (a device restored to less), never raise it. A `vv` naming a seq above this device's own chain, or from a
+  stranger, changes nothing. A device keeps, per other device, its value, in its store, across restarts.
+- **Waiting:** this device's own entries above the highest value of a device that is still of the plant (a removed
+  device's counts for nothing), not counting the types the device writes by itself: `report`, `box_key`,
+  `secret_share`, `pair_reveal`, `pair_commit`. Any device counts, not only a server: relaying is automatic (§15), so
+  an entry another device holds reaches the rest from there.
+- A device that sends no `vv` in `bye` (before 2026-11-21) acknowledges nothing; the count falls at the next
+  completed sync with one that does.
 
 ## 16. Join by invite (QR code)
 

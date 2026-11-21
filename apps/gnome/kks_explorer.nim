@@ -5,7 +5,7 @@ import std/[asyncdispatch, os, strutils, tables, sets, math, times, posix, sequt
 import kks/[json, api, applink]
 import kks/model
 import kksl/dbstore
-import appstate, darkcolor
+import appstate, darkcolor, syncwords
 import kksg/[gtk, ui, viewer, win, panel, sidepages, mark, manage, join, learn, multi, systems, coverage, links, photos, about]
 
 const AppId = "io.github._5wHN28Dg.walkdown"
@@ -140,7 +140,9 @@ proc statusText(w: Win): string =
       last = max(last, d["last_ok"].i)
       if now - d["last_ok"].i < 300 and d["error"].isNull: inc reachable
   result = w.a.plantName
-  result.add " · " & (if reachable == 0: "no device reachable" elif reachable == 1: "1 device reachable" else: $reachable & " devices reachable")
+  # (offline, the banner says so: the line keeps the plant and when it last synced, #372)
+  if not (uxOn("offline-state") and isOffline(snap, now)):
+    result.add " · " & (if reachable == 0: "no device reachable" elif reachable == 1: "1 device reachable" else: $reachable & " devices reachable")
   if last > 0: result.add " · synced " & fromUnix(last).local.format("HH:mm")
   if snap["relay"].s == "online":
     let n = snap["relay_online"].i
@@ -149,6 +151,31 @@ proc statusText(w: Win): string =
     of "direct": result.add ", last sync direct"
     of "relay": result.add ", last sync through the relay"
     else: discard
+
+proc showSyncState(w: Win) =
+  ## the sidebar's subtitle, and the banners over the sheets and over the drawing (#372): "Offline", with the changes
+  ## waiting to be sent; online, the changes that have waited a while. Read out when what they say changes.
+  if w.status == nil: return
+  adw_window_title_set_subtitle(w.status, w.statusText().cstring)
+  if w.offlineBanners.len == 0: return
+  let snap = w.a.snapshot
+  let offline = isOffline(snap, nowMs() div 1000)
+  let wt = waitingWords(shownWaiting(snap, offline, w.waitingSince, nowMs()))
+  let say = if offline: OfflineWord & (if wt.len > 0: " · " & wt else: "") else: wt
+  # the drawing's banner always; the sheets' only when the window is too narrow to show both pages (one says it)
+  let narrow = w.split != nil and adw_navigation_split_view_get_collapsed(w.split) != 0
+  for i, b in w.offlineBanners:
+    let on = say.len > 0 and (i == 1 or narrow or w.offlineBanners.len == 1)
+    if say != w.bannerSaid:
+      adw_banner_set_title(b, say.cstring)       # (empty while hidden: nothing stale for a screen reader)
+      gtk_widget_set_tooltip_text(b, (if offline: OfflineHelp else: "").cstring)
+    gtk_widget_set_visible(b, cint(on))
+    adw_banner_set_revealed(b, cint(on))
+  if say == w.bannerSaid: return
+  let was = w.bannerSaid
+  w.bannerSaid = say
+  let words = if say.len > 0: say elif was.startsWith(OfflineWord): "Back online" else: "All changes sent"
+  gtk_accessible_announce(w.window, words.cstring, 1)   # (from the window: a banner just hidden can't say it)
 
 proc tagGone(w: Win) =
   ## the tag whose panel is open is no longer there: the panel closes, and says why
@@ -248,7 +275,12 @@ proc sideRoot(w: Win): W =
       let n = await w.a.syncAll()
       w.toast(if n > 0: "Synced with " & $n & " device" & (if n == 1: "" else: "s") else: "No other device reached")
     asyncCheck go()))
-  toolbarView(sideHeader, side)
+  result = toolbarView(sideHeader, side)
+  if uxOn("offline-state"):    # #372: offline is a state of its own, above the sheets (and over the drawing, below)
+    let b = adw_banner_new("")
+    gtk_widget_set_visible(b, 0)
+    w.offlineBanners.add b
+    adw_toolbar_view_add_top_bar(result, b)
 
 proc mainScreen(w: Win): W =
   w.loadModel()
@@ -417,6 +449,11 @@ proc mainScreen(w: Win): W =
   let contentView = toolbarView(contentHeader, w.panelSplit)
   adw_toolbar_view_add_bottom_bar(contentView, w.pickBar())
   adw_toolbar_view_add_top_bar(contentView, w.banner)
+  if uxOn("offline-state"):    # #372: the drawing's page too (a narrow window shows it without the sheets)
+    let ob = adw_banner_new("")
+    gtk_widget_set_visible(ob, 0)
+    w.offlineBanners.add ob
+    adw_toolbar_view_add_top_bar(contentView, ob)
   w.queueBar = hbox(8)
   margins(w.queueBar, 6)
   w.queueBar.add adw_spinner_new()
@@ -590,7 +627,7 @@ proc activate(w: Win, app: W) =
         discard execv(getAppFilename().cstring, args)
         quit(1))
       return
-    if w.status != nil: adw_window_title_set_subtitle(w.status, w.statusText().cstring)
+    w.showSyncState()
     if why == "relay" or w.gone: return     # presence only: nothing to reload; or no window to reload
     if not w.reloadQueued and w.a.joined and w.m != nil:
       w.reloadQueued = true
@@ -750,8 +787,12 @@ proc activate(w: Win, app: W) =
   if getEnv("KKS_DEBUG_DIALOG").len > 0:     # accessibility check: a dialog over whatever screen is up
     after(3000, proc () =
       confirm(w.window, "Debug dialog", "Body text of the debug dialog", "OK", false, proc () = discard))
+  if uxOn("offline-state"):   # #372: offline comes with time (no sync for 5 minutes), not with an event
+    timeout(2_000, proc (): bool =
+      w.showSyncState()
+      true)
   timeout(30_000, proc (): bool =
-    if w.status != nil: adw_window_title_set_subtitle(w.status, w.statusText().cstring)
+    w.showSyncState()
     w.a.saveState()        # the replayed state, for the next start (when it changed; PROTOCOL-v2 §15b)
     true)
   let shot = getEnv("KKS_SHOT")             # tests: KKS_SHOT=file.png[,seconds[,quit]]

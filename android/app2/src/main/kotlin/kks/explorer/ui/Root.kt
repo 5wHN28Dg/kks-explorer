@@ -449,6 +449,8 @@ private fun Drawings(ui: Ui, snack: SnackbarHostState) {
                 }
             }
         })
+        // #372: online or offline and the changes waiting to be sent, under the top bar (the switch offline-state)
+        if (!ui.fullView && Ux.on(ctx, "offline-state")) SyncStateLine()
         if (systemsOpen) SystemsScreen(ui, systemsOnly) { systemsOpen = false }
         if (coverageOpen) CoverageScreen(
             onSheet = { id ->

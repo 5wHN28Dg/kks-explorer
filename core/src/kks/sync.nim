@@ -132,6 +132,10 @@ proc offer(s: Session): JNode =
   let rk = s.n.memberKeyOut   # the relay room key, to a device this one serves (decision 0050)
   if rk != nil: result["relay_member"] = rk
 
+proc bye(s: Session): JNode =
+  ## §15 step 6, with what this side holds now that it took the other's entries in (§15c: the other side's waiting count)
+  newObj(@[("t", newStr("bye")), ("vv", s.n.vv())])
+
 proc wantMsg(s: Session): JNode =
   var a = newArr()
   for sha in s.n.blobWants(): a.elems.add newStr(sha)
@@ -212,6 +216,7 @@ proc takeHello(s: Session, m: JNode) =
   elif theirs.len > 0 and theirs != s.n.root:
     fail("the other device belongs to a different plant")
   s.theirVv = if m.get("vv") != nil and m["vv"].kind == jObj: m["vv"] else: newObj()
+  s.n.noteAcked(s.remote, s.theirVv, fromBye = false)   # §15c: a hello can only lower what it acknowledged
 
 proc takeEntries(s: Session, m: JNode) =
   let es = if m.get("entries") != nil and m["entries"].kind == jArr: m["entries"].elems else: @[]
@@ -274,12 +279,13 @@ proc receive*(s: Session, m: JNode) =
     elif t == "blobs_end":
       s.gotBlobsEnd = true
       if not s.initiator: s.sendBlobs()
-      else: s.send newObj(@[("t", newStr("bye"))])
+      else: s.send s.bye()
       s.stage = sBye
     else: fail("expected blob, got " & t)
   of sBye:
     if t != "bye": fail("expected bye, got " & t)
-    if not s.initiator: s.send newObj(@[("t", newStr("bye"))])
+    s.n.noteAcked(s.remote, m.get("vv"), fromBye = true)   # §15c: it took our entries and blobs in (an older device sends no vv)
+    if not s.initiator: s.send s.bye()
     s.done = true
     s.stage = sDone
   of sDone: fail("message after bye")

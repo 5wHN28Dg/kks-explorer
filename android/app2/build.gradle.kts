@@ -48,6 +48,9 @@ android {
         versionName = appVersion
         buildConfigField("String", "KKS_COMMIT", "\"$buildCommit\"")
         buildConfigField("boolean", "KKS_MODIFIED", buildModified.toString())
+        // switched changes waiting for the owner's check (the UI and UX policy's 8.5): -PkksUx=name[,name…] turns
+        // them on in a build for that check (ui/Status.kt Ux); a release lists the checked ones in Ux.ON
+        buildConfigField("String", "KKS_UX", "\"${(findProperty("kksUx") as String?) ?: ""}\"")
         externalNativeBuild {
             cmake {
                 arguments += listOf("-DLIBJXL_SRC=${layout.buildDirectory.dir("third_party/libjxl").get().asFile}",

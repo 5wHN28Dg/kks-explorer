@@ -2802,6 +2802,82 @@ class Gnome(Plant):
             self.assertEqual([ln for ln in f if 'markup' in ln], [], 'GTK could not read a markup string')
 
 
+class OfflineState(Plant):
+    """#372 (switch offline-state, KKS_UX): on a server of its own, which the test stops (SIGSTOP) and lets go on"""
+
+    def subtitle(self, a):
+        """the sidebar's subtitle (the line under "Walkdown")"""
+        for n in atspi.find_all(a, 'label', contains='Test plant'):
+            if n.get_name() != 'Test plant':
+                return n.get_name()
+        return ''
+
+    @staticmethod
+    def banners(a):
+        """what the offline banners say on screen (over the sheets and over the drawing); hidden ones left out"""
+        out = []
+        for n in atspi.find_all(a, 'label', contains='waiting to be sent') + atspi.find_all(a, 'label', name='Offline'):
+            try:
+                if n.get_state_set().contains(Atspi.StateType.SHOWING):
+                    out.append(n.get_name())
+            except Exception:
+                continue
+        return sorted(set(out))
+
+    def wait_for(self, what, get, test, timeout=60):
+        for _ in range(timeout * 2):
+            v = get()
+            if test(v):
+                return v
+            time.sleep(0.5)
+        self.fail(f'{what}: stayed {get()!r}')
+
+    def test_offline_state(self):
+        """online, nothing waits, no banner; the server stops answering: "Offline" in a banner over the sheets and over
+        the drawing, the subtitle keeps the plant and the last sync; an edit made offline is counted; the server back:
+        it arrives, the banner goes, nothing waits"""
+        a = self.start_app('offline', KKS_UX='offline-state', KKS_OFFLINE_AFTER='4', KKS_SYNC_EVERY='2000')
+        self.join(a)
+        self.wait_for('online', lambda: self.subtitle(a), lambda t: 'device reachable' in t)
+        self.assertEqual(self.banners(a), [])
+        self.evidence(a, 'offline-state-online')
+        os.kill(self.server.pid, signal.SIGSTOP)
+        try:
+            # (a round has to fail first: 20 s for the stopped server's connection to time out)
+            got = self.wait_for('offline', lambda: self.banners(a), lambda b: b and b[0].startswith('Offline'), timeout=90)
+            self.assertEqual(got, ['Offline'], 'nothing the person did is waiting yet (what the app writes itself is not counted)')
+            t = self.subtitle(a)
+            self.assertTrue(t.startswith('Test plant · synced '), t)   # the plant and when it last synced, not cut by the state
+            self.evidence(a, 'offline-state-offline')
+            q = atspi.find(a, 'entry', contains='Search equipment')
+            atspi.set_text(q, 'LAB70AA500')
+            time.sleep(1)
+            atspi.click(atspi.find(a, 'button', name='11LAB70AA500', timeout=10))
+            self.press(a, 'Edit', ('text', 'Notes'))
+            atspi.set_text(atspi.find(a, 'text', name='Notes'), 'written offline')
+            atspi.click(atspi.find(a, 'button', name='Save'))
+            self.wait_for('offline, the edit waiting', lambda: self.banners(a),
+                          lambda b: b == ['Offline · 1 change waiting to be sent'], timeout=20)
+            self.evidence(a, 'offline-state-waiting')
+        finally:
+            os.kill(self.server.pid, signal.SIGCONT)
+        st = self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes'),
+                              'the edit made offline never arrived', tries=240)
+        self.assertEqual(st, 'written offline')
+        self.wait_for('back online', lambda: self.banners(a), lambda b: b == [], timeout=60)
+        self.wait_for('back online', lambda: self.subtitle(a), lambda t: 'device reachable' in t)
+        self.evidence(a, 'offline-state-back')
+        self.assertEqual(self.criticals('offline'), [])
+
+    def wait_server(self, cond, what, tries=40):
+        for _ in range(tries):
+            v = cond()
+            if v:
+                return v
+            time.sleep(0.5)
+        self.fail(what)
+
+
 class Coverage(Plant):
     """Coverage counts every code, tag, place and photo of the plant: on a server of its own, so the totals are the
     test plant's whatever ran before (on the shared one they changed with the tags test_multi and test_systems add)"""
