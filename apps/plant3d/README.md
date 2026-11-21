@@ -316,7 +316,10 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
   (`walk`, `shot`, `scenario`, `procedure`, `speed`) offers nothing and saves to `user://run-options.save`, never
   over a trainee's run. New run keeps the run it replaces as `run.save.prev` (one step back, by hand), and the offer
   says so.
-- **After an update** (issue #447): a save of another build (another app version or other content) is offered too,
+- **After an update** (issue #447; **switched off until the owner's check**, the UI and UX policy's tier 2, 8.5: the
+  project setting `walkdown/carry_saves_over`, which an `override.cfg` beside the exe with `[walkdown]` and
+  `carry_saves_over=true` turns on for the check; off, the offer is plant-v0.3.0's, which refuses a save of another
+  build and replaces it at New run; `tests/save_offer_shots.gd` makes the screenshots of both): a save of another build (another app version or other content) is offered too,
   and says which version saved it. Continue makes the run again in this build (`ui/run_migrate.gd`): the engine is
   deterministic and every change a run makes to the plant is an input in its log, so a fresh engine of this build is
   fed every saved input at its step up to the saved step, a slice of 20 ms per frame while the offer shows how far it
@@ -325,7 +328,7 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
   event list; fields a newer build added get their fresh values. Where the model has changed, the plant can come out
   a little differently from the saved run: the trainee's actions are the same. The file as saved is first kept aside
   as `run-kept-<version>-<date>.save` beside `run.save` (`-2`, `-3`… when taken), and the offer names it.
-- **A save that can't be continued** (a newer version's or save format, damaged, a state that doesn't fit, a scenario
+- **A save that can't be continued** (switched on: a newer version's or save format, damaged, a state that doesn't fit, a scenario
   this plant hasn't, a shared session's run, an action this build doesn't know) says why, names the file it is kept
   under (`run-kept-<version, "newer" or "damaged">-<date>.save`) and offers only a new run; choosing it copies the
   save there before anything replaces it (if the copy fails, the save stays and the new run saves to
@@ -365,7 +368,7 @@ fsync (Godot has none): after a power cut right after a save, a file system may 
 then says so and starts a new run.
 
 **Loaded strictly:** a file over 64 MiB, a wrong magic, a length that is not the file's, a hash that does not match,
-a payload that is not a Dictionary of exactly those parts of those types is refused as damaged; another save format,
+a payload that is not a Dictionary of exactly those parts of those types is refused as damaged; another save format is refused as such;
 another app version or other content is made again from its inputs (above), and the result is checked as any save
 is; engine or tracker state whose fields are not this
 version's, of other types (where the field is typed: an untyped field takes any value but an object), or (an array the fresh engine holds non-empty, sized by the model) of another length, a

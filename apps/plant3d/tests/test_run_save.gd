@@ -13,7 +13,7 @@
 ## - another build's save (#447): one of other code or content, and the release before's (tests/fixtures/run-0.3.0.save),
 ##   are made again in this build from their inputs, the file as saved kept aside; a save this build can't continue (a
 ##   newer version's or format's, damaged, a state that doesn't fit, a scenario this plant hasn't) is refused with its
-##   reason and kept aside under the name the offer gives, and a new run starts.
+##   reason and kept aside under the name the offer gives, and a new run starts (the switch on; off, as plant-v0.3.0).
 extends RefCounted
 
 const PlantModel = preload("res://sim/plant_model.gd")
@@ -47,6 +47,7 @@ func run(tree: SceneTree) -> Array:
 	_file(m, p)
 	_atomic(m, p)
 	await _app(tree, p)
+	Autosave.switch_override = -1
 	for f in DirAccess.get_files_at(DIR):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(DIR.path_join(f)))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(DIR))
@@ -803,6 +804,40 @@ func _app(tree: SceneTree, p: Array) -> void:
 	# a save of other content, then a damaged one: refused with the reason, a new run starts
 	var pl: Dictionary = ui.autosave.payload()
 	main.free()
+	# switched off (ui/autosave.gd carries(), until the owner's check): as plant-v0.3.0, a save of another build, of
+	# other content or a damaged one is refused with its reason and a new run starts
+	Autosave.switch_override = 0
+	for c in [["content", "content has changed"], ["app", "another version of the app"],
+			["contents", "a machine in a state it doesn't have"], ["damaged", "cut short"]]:
+		if c[0] == "contents":
+			var q := pl.duplicate(true)
+			q["engine"]["mstate"][0] = 99         # under a matching hash
+			RunSave.write(path, RunSave.encode(q))
+		elif c[0] == "content":
+			var q := pl.duplicate(true)
+			q["content"] = "0".repeat(64)
+			RunSave.write(path, RunSave.encode(q))
+		elif c[0] == "app":
+			var q := pl.duplicate(true)
+			q["app"] = "0.0.1+0123456789abcdef"
+			RunSave.write(path, RunSave.encode(q))
+		else:
+			var b := FileAccess.get_file_as_bytes(path)
+			FileAccess.open(path, FileAccess.WRITE).store_buffer(b.slice(0, b.size() - 3))
+		main = App.start(tree)
+		ui = main.ui
+		var txt := App.texts(ui)
+		if App.find_button(ui, "Continue") != null or not txt.contains("can't be continued") or not txt.contains(c[1]):
+			p.append("a save (%s) was not refused with its reason: %s" % [c[0], txt.left(300)])
+		var nb2 := App.find_button(ui, "New run")
+		if nb2 == null:
+			p.append("a refused save offers no New run")
+		else:
+			nb2.pressed.emit()
+			if not ui.autosave.armed or ui.clock.engine.step_no != 0:
+				p.append("after a refused save the new run did not start")
+		main.free()
+	Autosave.switch_override = 1
 	# a save this build can't continue: refused with the reason, kept aside under the name the offer gives (#447), a new
 	# run starts
 	for c in [["newer", "newer version of the app (99.0.0)"],
@@ -845,6 +880,7 @@ func _app(tree: SceneTree, p: Array) -> void:
 		main.free()
 	await _other_build(tree, pl, p)
 	await _old_release(tree, p)
+	Autosave.switch_override = -1
 	await _deviation(tree, p)
 	if not FileAccess.file_exists(path + ".prev"):
 		p.append("New run did not keep the run it replaced")
@@ -924,6 +960,12 @@ func _old_release(tree: SceneTree, p: Array) -> void:
 	var txt := App.texts(ui)
 	var cont := App.find_button(ui, "Continue")
 	var kept: String = ui.autosave.kept
+	for i in 3:
+		await tree.process_frame
+	var vh: float = ui.root.get_viewport_rect().size.y
+	if ui.autosave.offer_panel.size.y > vh - 32.0 or ui.autosave.offer_panel.get_global_rect().end.y > vh:
+		p.append("the offer is not as tall as its words, or goes past the screen: %s in a window %s high"
+				% [str(ui.autosave.offer_panel.get_global_rect()), vh])
 	if cont == null or not txt.contains("saved by version 0.3.0") or not txt.contains("kept as %s" % kept) \
 			or not kept.contains("0.3.0"):
 		p.append("the 0.3.0 save was not offered to continue: %s" % txt.left(400))

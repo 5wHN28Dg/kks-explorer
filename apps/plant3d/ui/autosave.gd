@@ -29,6 +29,13 @@ const MIGRATE_BUDGET_US := 20000  # a save of another build is made again in pie
 
 static var default_path := "user://run.save"   # tests/run_tests.gd points it elsewhere
 
+## The switch for issue #447's change (a tier-2 change, UI-UX policy 8.5): saves of another build made again, and saves
+## that can't be continued kept aside, only when the project setting `walkdown/carry_saves_over` is on (off until the
+## owner's check; off, the offer is plant-v0.3.0's). `switch_override` for the tests (-1: the project setting).
+static var switch_override := -1
+static func carries() -> bool:
+	return switch_override == 1 if switch_override >= 0 else bool(ProjectSettings.get_setting("walkdown/carry_saves_over", false))
+
 var ui                          # ui/plant_ui.gd
 var path := ""
 var content := ""               # the content's hash (RunSave.content_hash)
@@ -72,6 +79,10 @@ func begin(offer := true) -> void:
 		armed = true
 		return
 	ui.clock.set_speed(SimClock.Speed.PAUSED)
+	if not carries():
+		var why0: String = (check(r["payload"]) if r["ok"] else r["text"])
+		_show_offer(r["payload"] if r["ok"] and why0 == "" else {}, why0)
+		return
 	_read_file = r.get("file", path)
 	var mine := RunSave.app_version()
 	if not r["ok"]:
@@ -937,7 +948,7 @@ func _show_offer(p: Dictionary, why: String) -> void:
 					+ "differently). The file as saved is kept as %s.") % [RunSave.version_of(p["app"]), n,
 					"" if n == 1 else "s", kept])
 			lines.append("New run starts afresh; the saved run is kept as that file too.")
-		else:
+		elif carries():
 			lines.append("New run starts afresh and puts this run aside: it is kept as a backup until the next new run.")
 		_offer_text = W.label("\n".join(lines), 20, W.DIM)
 		v.add_child(_offer_text)
@@ -950,7 +961,8 @@ func _show_offer(p: Dictionary, why: String) -> void:
 	else:
 		last_error = why
 		v.add_child(W.label("The saved run can't be continued", 26))
-		_offer_text = W.label(why, 20, W.DIM)
+		_offer_text = W.label(why if carries() else "Because %s. A new run starts; the saved one will be replaced." % why,
+				20, W.DIM)
 		v.add_child(_offer_text)
 		v.add_child(row)
 		var nb := W.button("New run", func(): _choose({}), 200)
@@ -1108,6 +1120,11 @@ func _process(delta: float) -> void:
 func _each_frame(delta: float) -> void:
 	if migrating != null and offer_panel != null:
 		_migrate_frame()
+	# the offer as tall as its words: its wrapped labels' height is known only once its width is (a frame after it
+	# was placed, or after its words change), and a Control never shrinks by itself
+	if offer_panel != null and offer_panel.is_inside_tree() \
+			and offer_panel.size.y > offer_panel.get_combined_minimum_size().y + 1.0:
+		_place_offer()
 	_lt += delta
 	if _lt >= INTERVAL:
 		_lt = 0.0
