@@ -15,7 +15,6 @@ import kks.explorer.sync.Sync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import androidx.lifecycle.repeatOnLifecycle
 
 /** Switched changes waiting for the owner's check (the UI and UX policy's tier 2, its 8.5): off unless a release lists
  *  them in ON, a build for the check sets -PkksUx=name, or (debug builds) the DEBUG_UX broadcast turns them on. */
@@ -59,17 +58,15 @@ fun SyncStateLine(modifier: Modifier = Modifier, indent: androidx.compose.ui.uni
     var waiting by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
     var since by remember { mutableLongStateOf(0L) }
-    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle) {
-        // only while the screen is on view (no polling in the background)
-        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-            while (true) {
+    LaunchedEffect(Unit) {
+        while (true) {
+            if (Sync.onScreen) {       // (no polling while the app is in the background: MainActivity stopped)
                 waiting = withContext(Dispatchers.IO) {
                     try { Core.api("GET", "/native/waiting").json.optInt("waiting", 0) } catch (e: Exception) { 0 }
                 }
                 tick++
-                delay(2000)
             }
+            delay(2000)
         }
     }
     val offline = remember(tick) { SyncWords.offline() }

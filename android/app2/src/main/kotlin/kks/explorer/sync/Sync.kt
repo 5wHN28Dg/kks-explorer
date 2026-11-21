@@ -306,7 +306,9 @@ object Sync {
     }
 
     /** on screen: discovery, announce and rounds every 2 minutes; off screen they stop (SyncWorker runs then) */
+    @Volatile var onScreen = false   // the app is on view (MainActivity started): the status line polls only then
     @Synchronized fun foreground(ctx: Context, on: Boolean) {
+        onScreen = on
         start(ctx)
         if (on) {
             Discovery.start(ctx)
