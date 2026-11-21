@@ -24,6 +24,15 @@ proc reopen(s: DbStore): DbStore =
   s.close()
   openDbStore(p, path, key)
 
+proc damage(s: DbStore, tbl, k: string, at: int) =
+  ## Flips every bit of byte `at` of a sealed row, so it is sure to differ (#450: writing 00 there changed nothing
+  ## when the random nonce or ciphertext already had 00 at that place, about 1 run in 256).
+  var v = ""
+  for r in s.db.rows("SELECT v FROM rows WHERE tbl=? AND k=?", t(tbl), t(k)): v = r.colText(0)
+  doAssert v.len > at, "no row " & tbl & "/" & k
+  v[at] = char(uint8(v[at]) xor 0xFF)
+  s.db.run("UPDATE rows SET v = ? WHERE tbl=? AND k=?", b(v), t(tbl), t(k))
+
 proc pic(w, h: int, v: byte): seq[byte] =
   result = newSeq[byte](w * h * 3)
   for i in 0 ..< result.len: result[i] = byte((i + int(v)) mod 251)
@@ -120,7 +129,7 @@ suite "photo queue on disk":
     let b = q.add(p, pic(2, 2, 2), 2, 2, "B1", "", "", "", 2)
     let c = q.add(p, pic(2, 2, 3), 2, 2, "C1", "", "", "", 3)
     # a's picture: a flipped byte (the seal no longer opens); b's job: the wrong size for its picture
-    s.db.run("UPDATE rows SET v = substr(v, 1, 20) || x'00' || substr(v, 22) WHERE tbl=? AND k=?", t(PixelTable), t(a.key))
+    s.damage(PixelTable, a.key, 20)
     s.putRow(JobTable, b.key, newObj(@[("v", newInt(1)), ("client_id", newStr(b.clientId)), ("kks", newStr("B1")),
              ("caption", newStr("")), ("note", newStr("")), ("floor", newStr("")), ("w", newInt(3)), ("h", newInt(2)),
              ("at", newInt(2))]))
@@ -134,7 +143,7 @@ suite "photo queue on disk":
     discard q.finish(c.key, Sent, "", 0)
     # a job row that can't be opened at start: dropped with a report, its picture too
     let d = q.add(p, pic(2, 2, 4), 2, 2, "D1", "", "", "", 4)
-    s.db.run("UPDATE rows SET v = x'00' || substr(v, 2) WHERE tbl=? AND k=?", t(JobTable), t(d.key))
+    s.damage(JobTable, d.key, 0)
     s = s.reopen()
     q = newPhotoQueue(s)
     let rs = q.resume()
