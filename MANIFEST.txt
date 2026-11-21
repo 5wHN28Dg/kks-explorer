@@ -1,7 +1,7 @@
-# Evidence for PR #481 (second set, after the blind review; replaces the first)
-scripts' commit: 0c5e8825
+# Evidence for PR #481 (third set, after the adversarial review; replaces the earlier ones)
+scripts' commit: 78bd5fbb
 commands: KKS_SERVER=<server built from this branch; server code = main> KKS_SHOTS=DIR platform/linux/e2e/test_web_phone_header.py (chromium, firefox, webkit); then tools/ui_audit/blur_shots.py on the 412, off-412, 320-chromium and landscape-chromium shots
-data: synthetic (fixtures: test_web_systems.py sha256 7b54e347e358773e…, test_web_phone_header.py sha256 d33cb961e28a9ae2…)
+data: synthetic (fixtures: test_web_systems.py sha256 7b54e347e358773e…, test_web_phone_header.py sha256 f728bcb2f035c3e0…)
 
 sha256 per file:
 d1dc7d8166b1b9b5a18c7e72a6745ff4d852d5bcb26b948fc969c10148a5601e  phone-header-320-chromium-blur.png
@@ -15,7 +15,7 @@ e8fc13736d8a188d853b3d1e971af96183cab080829856974c3f5b4df39a4bbd  phone-header-3
 2407199a49a6d1d8761a749053a3412227086db7028c302948e09fbf3404c5c3  phone-header-320-firefox-menu.png
 90daedd013041ce8259a4873ce4f918b5a9f14b15c8918716bfe1a2c57754fb8  phone-header-320-firefox-offline.png
 a1a9f1d23b7302321d70d77826170247f6ea57d5d0ff6da8bf4d49f85c62513d  phone-header-320-firefox.png
-8389d98f3f89b3eb5ec9d2f29dee8d20a35142527d739be0533a7ace99b47474  phone-header-320-webkit-long-menu.png
+c5d0c4668f32862d68a5805a748c35d68ba8362a350247f6485e5e36334db409  phone-header-320-webkit-long-menu.png
 2af799924dfbf0750e704e3824872665ac1cc1e137deffd4675b61bbd0de9300  phone-header-320-webkit-long.png
 64c67ae8450d833286dd8e015b29c227d7d2b337948a4611b1d5d4c81689126e  phone-header-320-webkit-menu.png
 2124e17f6890f7120f9d44910c4e35eca6cdeb0c4e81892ea39027d14087c2bd  phone-header-320-webkit-offline.png
@@ -26,43 +26,43 @@ f7f4ae1348077ffc1f80ca5e8a7e86a5780369f6caf77daf2eb7a4e274356850  phone-header-4
 9149c51ea3d7f98d3278252fc4caee88f674eb7ff5571e5cb6beb41ed9fbe71c  phone-header-412-200-firefox.png
 84316c236683a80ecd8bf2bf3ce2e55448f3ebbdbc90e90f08d6e489238e1e00  phone-header-412-200-webkit-menu.png
 942ebfd76f5209a5e9f8df566618cae604807c14ceece9c109f1cfdc965a2c42  phone-header-412-200-webkit.png
-36306156ce13104d2db88a0412e21d60df5ba0da8398a2f54424417b2621fd86  phone-header-412-again-chromium-menu.png
-5a9f6e941af04cf9218ed507f8db3407581b0234b06b36c4ad5572e2c3164ba8  phone-header-412-again-chromium.png
-a5a19665c45aed826a207d1db1212ca5edf97145031b453cad88a64f8fc182d1  phone-header-412-again-firefox-menu.png
-8cb943f50ca68649b3364a6eac4727d81b78c37ce900e6464691ecbadfcc457d  phone-header-412-again-firefox.png
-907b935a7e76237daf99836e86f9485901a455d2d334240bca0562bd39ed32be  phone-header-412-again-webkit-menu.png
-7109f2fba835401fb70d5d0a13deaa8b24e5b0f2d3ad643ec07ec4c4de05acf8  phone-header-412-again-webkit.png
+399629e7046689c98b7da152147159ded1c008c92ced14ffbc093edef4d2c558  phone-header-412-again-chromium-menu.png
+251bfed752276b48d3b2513ff1257b0e4dcbae95d1c70da9dcf2e23dc5db71a7  phone-header-412-again-chromium.png
+33252b2cd2ec9d18a4d3563494427e7dc94b74f87b43e873e45571bef34405dd  phone-header-412-again-firefox-menu.png
+c5a365fcde42c4c7f5357d0cc1cec0eec7abf82a8d5bde3008a7e21778477f44  phone-header-412-again-firefox.png
+89e5396a2e1109f37acf518ebf670cb9750c75645f0667b9f43a3f74c272fc41  phone-header-412-again-webkit-menu.png
+d655dc780af5d3541436cfca74d0a9312810f6cb0da352acd54560e647049b06  phone-header-412-again-webkit.png
 6e239603ba82018356aa031125322197f44814fb69e022137f27195ba73eb322  phone-header-412-chromium-blur.png
-8d9f761928ff3a13215fa73c78bab9c8286165a2d98e1a5a672e643c0314e6bc  phone-header-412-chromium-floor.png
+e87460ec34ed0537e44958591694251a7ade960f2f8e86fea4f0754609677089  phone-header-412-chromium-floor.png
 211f809a5b57401f7a345f5dc65cc7f7e1be9ef3b9e6b51496dae52653626d4d  phone-header-412-chromium-menu.png
 8a226771a1774c9a6084db6c86c0c0534853a95af0f563ddbc679912c1408792  phone-header-412-chromium.png
-7c1cec40c48a208dedfe0d6d6be30606b6bea37ee69c9c089f10b049db370862  phone-header-412-chromium-queue.png
+c8a8cd9d36bd41c177842145aa42fa76a7fa72a8430913c346d24529a8892965  phone-header-412-chromium-queue.png
 ff176700fc8beb6dcc2d7c4cddb75326d0f31083c1937bf42622d9fd815b9836  phone-header-412-firefox-blur.png
-9c1fc9f3f22824602c8fdc086d7b0e93d2948b0a314424c50ddb16b067e43d54  phone-header-412-firefox-floor.png
+587640c2e6f66c6eda23c02ae528cfa96a7d737ed763a6a30271e4f5061c99d1  phone-header-412-firefox-floor.png
 33252b2cd2ec9d18a4d3563494427e7dc94b74f87b43e873e45571bef34405dd  phone-header-412-firefox-menu.png
 5caf789c6e012bf3b892953acb678297bf0c5a82a239370bac9e77dbb3a973e3  phone-header-412-firefox.png
-247dc2badeb6a9ebc9e7bf53b91fc1271cdaa7823471fa72d37a0813e24e5405  phone-header-412-firefox-queue.png
+2db0ef6288cdcea7aca3b5b27503731dba09cc7a9721b8d686df6f1c00e58ff7  phone-header-412-firefox-queue.png
 5b83b96c80056c65bf83791d33335cd739b78752a141d68e561543c1fd5375e5  phone-header-412-webkit-blur.png
-df0b168ed0d93d4369d745baa2e4bdc1aebcd7c7425706a173fe5fa2a50c80b8  phone-header-412-webkit-floor.png
+25f89093005ff23b408ce632f381534aab392e89bced00a1c7afe2d426ad78e6  phone-header-412-webkit-floor.png
 d3975147a4a6401f3d6cb94a7bbaf147d62193d534ee8ad10c638735f373ceb2  phone-header-412-webkit-menu.png
 4126a9d8997c1a0ea95746f8010eb510b900401929c738b819ddfbc959b8ffba  phone-header-412-webkit.png
-e91c8949b4e486cf239356f20d8e56e0f1c0257f08c498a86da12f2b8e7e5dd5  phone-header-412-webkit-queue.png
+64f2387f2229a8889983b5bc62b2eb4eda06699ed8456d7732d141f720aad6c3  phone-header-412-webkit-queue.png
 106ce3498a9c4d1bc76871eaeeb6ddadf351fb0b77fe14bc22be5ced1e9789ac  phone-header-landscape-chromium-blur.png
 c729c7c88f0f575bb1a5ca9554c96ba44c1dfd525c9b9218adc94686f3067b8d  phone-header-landscape-chromium-long-menu.png
-d6af5b67e06a6e3b3f8e863856f16dcc5cdd9b8c8838c4bc1bb707cdf3926459  phone-header-landscape-chromium-long.png
+b12c4c45706a718f6a47926eca228e0748f29f2d6ed750d58a4498347392c8ff  phone-header-landscape-chromium-long.png
 54fb32293ec26bb605d3e77e2717f0e9950322f347c3cbfa7000f3324d90e7a3  phone-header-landscape-chromium-menu.png
 72e1ee984e1db1d9c4216565568039f11f37266abd783e65faeda6dc0e0d0f2a  phone-header-landscape-chromium-offline.png
 090df6dfc549e49a81eb332cb6d637c8fe794f79b25357b44e334ad136daed2b  phone-header-landscape-chromium.png
 c690373302d2979d0f72c6d947a4c9257b28e8046e7ccbe3602adc84b80cae98  phone-header-landscape-firefox-long-menu.png
 ce84d5eea02343cfada5fabcfa8b0a26c565f42e7609bffc70789a29e6a91078  phone-header-landscape-firefox-long.png
 a2d617a49aee4ded3ad12bb55332762175e0bc5889e9d9b1dbb30dfd51ae01ae  phone-header-landscape-firefox-menu.png
-45d7987e8d652912b91493d409c077c33a510b7e5e05bb7c072588cf5e648a6e  phone-header-landscape-firefox-offline.png
+b70be7cea89279bd136daf8720dd8e0c07bae9a0c664222cd666ae1081e192e6  phone-header-landscape-firefox-offline.png
 2aeadaf3d23ddaa57f264e1e07e14fa4d73da2eacaba3dee1a7f842f6c5e764f  phone-header-landscape-firefox.png
-0bbffcd315eb50f3814f1e223da085ef99e6c7ff9910b180c42c3e21584463f0  phone-header-landscape-webkit-long-menu.png
-3450c9a91c94dfdf141695546ca52ebff1280d2e24cf7b9034b55ce6270c5b13  phone-header-landscape-webkit-long.png
-4378531a1162c62e81105945430f59596ff3bb29d03e3a8ce39f5f01072073cc  phone-header-landscape-webkit-menu.png
-92362e40046c608ff60df71d17f8971c0316258f6d6fe321af6905163f4dbd20  phone-header-landscape-webkit-offline.png
-e0595f05b41583f4b50809c08f660e0e25363dbee4f480b1bd885f88ce25cb4c  phone-header-landscape-webkit.png
+82d4e4da21a590e6a5460d5a4f3fec4a1189c6d0236e503f38780ceb3685be5c  phone-header-landscape-webkit-long-menu.png
+c0b4985b0d6b0e0ad5f6c6912cc48044633900fff34ac6dedd3a9863ce29f9d9  phone-header-landscape-webkit-long.png
+7acc5905b25eb2521109933e142a1160b92a76be16c178f362cd56333527b02f  phone-header-landscape-webkit-menu.png
+9ace8b7509875572fd83e57813f9fb0ae6d1a476678b399697b4061a4bc48ed9  phone-header-landscape-webkit-offline.png
+f1fc06f4cbbf5e5dfb192cb912f89428eb1265bd8529cb26ed8416d98771f669  phone-header-landscape-webkit.png
 743b7d5625d883a9e642fcf108d001a07c4d33bab5d103681369925b0ef61d3a  phone-header-laptop-200-chromium-menu.png
 a173f0ffc253190f3fe902211d670cd61ee881d0650c3ac870d68e49c641fd30  phone-header-laptop-200-chromium.png
 ac51c4aa019422e721d93872ed13670e8e9bd08936d7d60d7a89bfae127d9bb9  phone-header-laptop-200-firefox-menu.png
@@ -71,7 +71,7 @@ e861216284ac98b4d354604f6918e94e7f00ac2820f5429cfab521e6b9552103  phone-header-l
 4030c6d9016bbe3214ab7f29bbef4ca8ca9b850dbed6812b1fedf5cf7e0435f7  phone-header-laptop-200-webkit.png
 d02ab99263ce4a9422e4d02a1740c50c9ad0a193b6210b6f0a26cff0ac999cdb  phone-header-off-1200-chromium.png
 fb0d0beb4d3164ba6faeef35e937ef37f4ad812b7f4978fa9f55256fd46cc4be  phone-header-off-1200-firefox.png
-06bc897b1d8b37e6f7941f303abb37eef738e15c923cdcd1c4d084a64021a1ad  phone-header-off-1200-webkit.png
+57fb0589cd0bfa289a56dbe3f081529d60b2423cd5842c49c6937f5d2f957362  phone-header-off-1200-webkit.png
 6f1e68fe20cdaa4c89112bc72bff38d07e647f67444885b8a61720ee1f790444  phone-header-off-412-chromium-blur.png
 d9a73b1ead51b454665ef36beee7f8d656a9870fdef705028cdcfda8e81d560a  phone-header-off-412-chromium.png
 84457ef497a7a9d5ae2a607c2a54e971a67cfbcc1bf35359be101f905873c7d1  phone-header-off-412-firefox-blur.png
