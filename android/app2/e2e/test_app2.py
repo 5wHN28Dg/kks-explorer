@@ -1767,6 +1767,27 @@ class Phone(unittest.TestCase):
         # the description comes before the location fields
         ui.scroll_to('Draft description (unchecked)', exact=True)
         ui.scroll_to('Feed water isolation valve', exact=True)
+        # #436: the description's Cancel with something typed asks first; Keep editing keeps it, Discard drops it
+        ui.scroll_to('Edit description', exact=True)
+        ui.tap('Edit description', exact=True)
+        ui.tap('Cancel', exact=True)                        # nothing typed: closes at once
+        ui.find('Edit description', exact=True, timeout=10)
+        self.assertFalse(ui.present('Discard your edits?', exact=True), 'asked about text nobody typed')
+        ui.tap('Edit description', exact=True)
+        ui.type_into('Feed water isolation valve', 'typed description', clear=True)
+        ui.scroll_to('Cancel', exact=True)
+        ui.tap('Cancel', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.find('The description you typed has not been saved.', exact=True)
+        evidence('description-cancel-asks')
+        ui.tap('Keep editing', exact=True)
+        ui.find('typed description', exact=True, timeout=10)
+        ui.scroll_to('Cancel', exact=True)
+        ui.tap('Cancel', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.tap('Discard', exact=True)
+        ui.find('Edit description', exact=True, timeout=10)
+        self.assertFalse(ui.present('typed description', exact=True), 'Discard kept the typed text')
         ui.scroll_to('Confirm', exact=True)
         ui.tap('Confirm', exact=True)
 
@@ -1862,6 +1883,31 @@ class Phone(unittest.TestCase):
         ui.tap('Correct type', exact=True)
         ui.scroll_to('gate valve, motor-operated', exact=True)      # the field, holding the drawing's reading
         ui.type_into('gate valve, motor-operated', 'check valve', clear=True)
+        # #436: Cancel with something typed asks first; Keep editing keeps it
+        ui.scroll_to('Cancel', exact=True)
+        ui.tap('Cancel', exact=True)
+        ui.find('Discard your edits?', exact=True, timeout=10)
+        ui.find('The valve type you typed has not been saved.', exact=True)
+        evidence('valve-cancel-asks')
+        ui.tap('Keep editing', exact=True)
+        ui.find('check valve', exact=True, timeout=10)
+        # a valve type being typed is the panel's: the bottom tabs say so (#465)
+        ui.hide_keyboard()
+        ui.tap('Manage', exact=True)
+        ui.find('What you typed in the panel has not been saved.', exact=True, timeout=10)
+        ui.tap('Keep editing', exact=True)
+        ui.find('check valve', exact=True, timeout=10)
+        # Location and notes' own Cancel, nothing typed there: closes that form only, at once; the valve type stays (#465)
+        ui.scroll_to('Location and notes', exact=True)
+        ui.tap('Edit', exact=True)
+        ui.scroll_to('Save', exact=True)
+        cancels = [n for n in ui.nodes() if ui.label(n) == 'Cancel']
+        self.assertGreaterEqual(len(cancels), 1)
+        x, y = ui.center(max(cancels, key=lambda n: ui.center(n)[1]))   # (the lowest: the valve form's is above)
+        ui.sh('input', 'tap', str(x), str(y))
+        time.sleep(1)
+        self.assertFalse(ui.present('Discard your edits?', exact=True), 'asked about the other form')
+        ui.scroll_to('check valve', exact=True, up=True)
         ui.scroll_to('Send', exact=True)
         ui.tap('Send', exact=True)
 
@@ -1869,6 +1915,7 @@ class Phone(unittest.TestCase):
             c = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA601', {}).get('custom') or []
             return [x for x in c if x['k'] == 'Valve type']
         self.assertEqual(self.wait_server(typed, 'the corrected valve type never reached the server'), [{'k': 'Valve type', 'v': 'check valve'}])
+        ui.scroll_to('Valve type: check valve (confirmed)', exact=True, up=True)   # (the panel was scrolled down to Location)
         ui.find('Valve type: check valve (confirmed)', exact=True, timeout=20)
         ui.find("The drawing's symbol reads: gate valve, motor-operated", exact=True)
         self.assertFalse(ui.present('Confirm type', exact=True))

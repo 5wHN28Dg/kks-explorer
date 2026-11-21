@@ -99,8 +99,8 @@ class WebRequests(unittest.TestCase):
         errors = []
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.on('dialog', lambda d: d.accept(''))
-        self.asked = []
-        answer_confirms(page, lambda msg: (self.asked.append(msg), True)[1])
+        self.asked, self.answer = [], True      # (self.answer False: the in-page question's safe button)
+        answer_confirms(page, lambda msg: (self.asked.append(msg), self.answer)[1])
         return browser, ctx, page, errors
 
     def tag(self, code, n):
@@ -154,6 +154,24 @@ class WebRequests(unittest.TestCase):
         # the custom field holding it shows in its own section, not twice
         self.assertFalse(page.locator('#cfs .cf').first.is_visible())
         # Edit: a new text goes as a proposal
+        page.locator('#descSec').get_by_role('button', name='Edit').click()
+        # #436: Cancel with nothing typed closes the form; with something typed it asks first (Keep editing keeps it,
+        # Discard drops it)
+        page.locator('#descSec').get_by_role('button', name='Cancel').click()
+        self.assertEqual(page.locator('#descEdit').count(), 0)
+        self.assertEqual(page.locator('dialog.kconfirm').count(), 0)
+        page.locator('#descSec').get_by_role('button', name='Edit').click()
+        page.fill('#descEdit', 'typed and kept')
+        self.asked.clear()
+        self.answer = False                                 # Keep editing
+        page.locator('#descSec').get_by_role('button', name='Cancel').click()
+        page.wait_for_function("() => !document.querySelector('dialog.kconfirm')")
+        self.assertEqual(self.asked, ['Discard your edits?\n\nThe description you typed has not been saved.'])
+        self.assertEqual(page.input_value('#descEdit'), 'typed and kept')
+        self.answer = True                                  # Discard
+        page.locator('#descSec').get_by_role('button', name='Cancel').click()
+        page.wait_for_function("() => !document.getElementById('descEdit')")
+        self.assertEqual(len(self.asked), 2)
         page.locator('#descSec').get_by_role('button', name='Edit').click()
         page.fill('#descEdit', 'Feed water pump inlet isolation valve')
         page.locator('#descSec').get_by_role('button', name='Save').click()
