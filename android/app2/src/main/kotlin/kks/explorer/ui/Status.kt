@@ -9,7 +9,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import kks.explorer.BuildConfig
+import kks.explorer.v2.BuildConfig
 import kks.explorer.core.Core
 import kks.explorer.sync.Sync
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +28,7 @@ object Ux {
  *  (apps/common/syncwords.nim; tests/test_sync_words.py keeps them equal). */
 object SyncWords {
     const val OFFLINE_AFTER = 300L     // s without a successful sync with any device: offline
+    @Volatile var offlineAfterForTest = 0L   // (debug builds' DEBUG_UX --el offline_after N: the e2e can't wait 5 minutes)
     const val OFFLINE = "Offline"
     const val ONLINE = "Online"
     const val LOOKING = "Looking for the plant's devices…"
@@ -37,7 +38,8 @@ object SyncWords {
     fun offline(nowMs: Long = System.currentTimeMillis()): Boolean? {
         if (Sync.lastRound == 0L) return null
         val last = Sync.peers.values.maxOfOrNull { it.lastOk } ?: 0L
-        return last == 0L || nowMs - last >= OFFLINE_AFTER * 1000
+        val after = if (offlineAfterForTest > 0) offlineAfterForTest else OFFLINE_AFTER
+        return last == 0L || nowMs - last >= after * 1000
     }
     fun line(waiting: Int, offline: Boolean?): String {
         val w = waiting(waiting)

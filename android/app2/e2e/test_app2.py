@@ -4,7 +4,7 @@ the drawing is importer/tests/vectors/kkp-sample.pdf. Driven through the accessi
 KKS_E2E_PART=1|2|3|4 runs one of the four parts (PARTS, at the end); KKS_E2E_DIAG=folder records what happened.
 Needs a running emulator (adb devices); the app's data is cleared first. The emulator reaches this machine as
 10.0.2.2."""
-import json, os, re, shutil, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
+import json, os, re, shutil, signal, subprocess, sys, tempfile, time, unittest, urllib.error, urllib.request, http.cookiejar
 sys.path.insert(0, os.path.dirname(__file__))
 import adbui as ui  # noqa: E402
 
@@ -2890,6 +2890,55 @@ class Phone(unittest.TestCase):
         evidence('join-unreachable')
         self.assertFalse(ui.present('ECONNREFUSED'), 'the socket error is shown')
 
+    def test_offline_state(self):
+        """#372 (switch offline-state, the debug DEBUG_UX broadcast): a line under the top bar says Online; the
+        server stops answering (SIGSTOP): Offline, and an edit made then adds one to the changes waiting to be sent;
+        the server back and a sync: the edit reaches it, Online, nothing waiting"""
+        if not ui.debuggable(PKG):
+            self.skipTest('the switch is set by a debug-only broadcast')
+        ui.sh('am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_UX', '-p', PKG, '--es', 'on', 'offline-state')
+        self.join()
+        ui.sh('am', 'broadcast', '-f', '32', '-a', 'kks.explorer.DEBUG_UX', '-p', PKG, '--el', 'offline_after', '6')
+        ui.find('Online', exact=True, timeout=60)
+        evidence('offline-state-online')
+        self.server.send_signal(signal.SIGSTOP)
+        self.addCleanup(self.server.send_signal, signal.SIGCONT)
+
+        def state():
+            for n in ui.nodes():
+                t = n.get('text') or ''
+                if t.startswith('Offline') or t.startswith('Online') or t.startswith('Looking for'):
+                    return t
+            return ''
+        words = lambda n: '1 change waiting to be sent' if n == 1 else f'{n} changes waiting to be sent'
+        for _ in range(60):
+            t = state()
+            if t.startswith('Offline'):
+                break
+            time.sleep(1)
+        self.assertTrue(t.startswith('Offline'), t)
+        # (the app may have written something of its own since its last sync: its course progress key, a report)
+        m = re.match(r'Offline · (\d+) changes? waiting to be sent$', t)
+        self.assertTrue(m or t == 'Offline', t)
+        before = int(m.group(1)) if m else 0
+        evidence('offline-state-offline')
+        self.open_tag()
+        ui.scroll_to('Edit', exact=True)
+        ui.tap('Edit', exact=True)
+        ui.scroll_to('Notes', exact=True)
+        ui.type_into('Notes', 'written offline')
+        ui.scroll_to('Save', exact=True)
+        ui.tap('Save', exact=True)
+        ui.sh('input', 'keyevent', '4')                    # close the panel
+        ui.find('Offline · ' + words(before + 1), exact=True, timeout=20)
+        evidence('offline-state-waiting')
+        self.server.send_signal(signal.SIGCONT)
+        ui.tap('Sync', exact=True)
+        self.assertEqual(self.wait_server(lambda: self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA500', {}).get('notes'),
+                                          'the edit made offline never arrived', tries=120), 'written offline')
+        ui.find('Online', exact=True, timeout=60)
+        evidence('offline-state-back')
+
     def test_member_pages(self):
         """requests 6, 9 and 10 as a member: the leaderboard; Updates on Manage's top level (not in Account); My
         proposals filtered by status and grouped by code"""
@@ -2945,7 +2994,7 @@ PARTS = (('member_pages', 'coverage', 'multi_across', 'multi', 'floor_kept_when_
          ('systems', 'diagnostics', 'dark', 'photo_queue', 'photos', 'courses', 'about', 'description_and_credit', 'app_links'),
          ('hide_removed', 'position_required', 'approvals_grouped', 'floor_first', 'links_and_valve',
           'flow', 'course_figures', 'photo_marks'),
-         ('destructive', 'question_stays', 'saved_place', 'saved_place_more', 'join_unreachable'))
+         ('destructive', 'question_stays', 'saved_place', 'saved_place_more', 'join_unreachable', 'offline_state'))
 
 if __name__ == '__main__':
     tests = sorted(n[5:] for n in dir(Phone) if n.startswith('test_'))
