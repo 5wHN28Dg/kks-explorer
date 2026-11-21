@@ -1,0 +1,15 @@
+# Evidence for PR #484 (first set: GNOME)
+scripts' commit: 5e5f217e
+command: KKS_EVIDENCE=DIR KKS_SHOT_ON_SIGNAL=FILE apps/gnome/e2e/headless.sh python3 apps/gnome/e2e/test_gnome.py APP SERVER IMPORTER, the class OfflineState only (headless mutter 1280x900; app with KKS_UX=offline-state KKS_OFFLINE_AFTER=4 KKS_SYNC_EVERY=2000; the server stopped with SIGSTOP and let go with SIGCONT)
+data: synthetic (the e2e's test plant; test_gnome.py sha256 b93cd30a5438fc16…)
+files: offline-state-{online,offline,waiting,back}.png (window) and .json (the accessibility tree: role, name, extents)
+
+sha256 per file:
+fd222dae116583d1872b2d83e96a6cc93118b0c1b0b2491c756abeff02424b46  offline-state-back.png
+6b9fe5e67d613e9f26b77e6b76c7669dd2890ecfefd6363db4f2a096fc8df340  offline-state-offline.png
+c0c3acc18e4e45fc026e361c4dda4134ecaecd547dd269a546248f7e6b5bd40e  offline-state-online.png
+7543e6a13dff46d05621039a54739cd681cc7ee35dbcbfcbcd7d1e3063bbcb55  offline-state-waiting.png
+8e4b68e5ca7bf0be52956d272bdf3e3d4ee783042dd3babd1e9b4568f7c2b85e  offline-state-back.json
+ca19f1827644bde93818461546374a9152843a4ed329f984da60b4460ceb0561  offline-state-offline.json
+81f8048635cd0ffe70ab609ff50c56a785114e874bbb438bf0de79d4f5f33377  offline-state-online.json
+3c65a04d41e18bfd8027c99ca6219ab0bcd6afa55afda4caf05a6c90b42387ea  offline-state-waiting.json
