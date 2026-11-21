@@ -1915,6 +1915,7 @@ class Phone(unittest.TestCase):
             c = self.boss.req('GET', '/api/state')['equipment'].get('11LAB70AA601', {}).get('custom') or []
             return [x for x in c if x['k'] == 'Valve type']
         self.assertEqual(self.wait_server(typed, 'the corrected valve type never reached the server'), [{'k': 'Valve type', 'v': 'check valve'}])
+        ui.scroll_to('Valve type: check valve (confirmed)', exact=True, up=True)   # (the panel was scrolled down to Location)
         ui.find('Valve type: check valve (confirmed)', exact=True, timeout=20)
         ui.find("The drawing's symbol reads: gate valve, motor-operated", exact=True)
         self.assertFalse(ui.present('Confirm type', exact=True))
