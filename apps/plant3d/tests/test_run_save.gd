@@ -1254,16 +1254,17 @@ func _kept_list(tree: SceneTree, p: Array) -> void:
 	await tree.process_frame
 	var sec = main.hud.settings_box.find_child("kept_saves", true, false)
 	if sec == null:
-		p.append("with the switch on, the settings have no \"Kept saves\"")
+		p.append("with the switch on, the settings have no \"Saved runs kept aside\"")
 		main.free()
 	else:
 		var txt := App.texts(sec)
 		for n in names:
 			if not txt.contains(n):
-				p.append("\"Kept saves\" does not list %s: %s" % [n, txt.left(300)])
+				p.append("the kept list does not show %s: %s" % [n, txt.left(300)])
 		if App.find_button(sec, "Show folder") == null:
-			p.append("\"Kept saves\" has no Show folder on a desktop")
-		var row = sec.find_child("kept_" + names[0].validate_node_name(), true, false)
+			p.append("the kept list has no Show folder on a desktop")
+		var rid: String = "kept_" + names[0].validate_node_name()
+		var row = sec.find_child(rid, true, false)
 		var del := App.find_button(row, "Delete") if row != null else null
 		# laid out: the file's line as wide as the list (not wrapped to a letter a line), its buttons their own size
 		if row != null and (row.get_child(0).size.x < sec.size.x * 0.8 or del != null and del.size.y > 120.0 * W.scale):
@@ -1276,25 +1277,62 @@ func _kept_list(tree: SceneTree, p: Array) -> void:
 			await tree.process_frame
 			await tree.process_frame
 			var fo = tree.root.gui_get_focus_owner()
-			if not App.texts(row).contains("can't be undone") or fo == null or fo.text != "Keep":
-				p.append("Delete did not ask first with Keep focused: %s" % App.texts(row))
+			var sure := App.find_button(row, "Delete for good")
+			if not App.texts(row).contains("can't be undone") or fo == null or fo.text != "Keep" or sure == null \
+					or not sure.has_theme_stylebox_override("normal"):
+				p.append("Delete did not ask first with Keep focused and a confirming button styled as destructive: %s"
+						% App.texts(row))
 			App.find_button(row, "Keep").pressed.emit()
 			await tree.process_frame
-			if not FileAccess.file_exists(dir.path_join(names[0])) or App.find_button(row, "Delete") == null:
-				p.append("Keep did not leave the kept save as it was")
+			await tree.process_frame
+			fo = tree.root.gui_get_focus_owner()
+			if not FileAccess.file_exists(dir.path_join(names[0])) or App.find_button(row, "Delete") == null \
+					or fo == null or fo.text != "Delete" or not row.is_ancestor_of(fo):
+				p.append("Keep did not leave the kept save as it was, with the focus back on its Delete (%s)" % str(fo))
 			App.find_button(row, "Delete").pressed.emit()
 			await tree.process_frame
-			App.find_button(row, "Delete").pressed.emit()        # the confirming Delete
+			App.find_button(row, "Delete for good").pressed.emit()
 			await tree.process_frame
 			await tree.process_frame
 			fo = tree.root.gui_get_focus_owner()
 			txt = App.texts(sec)
 			if FileAccess.file_exists(dir.path_join(names[0])) or not FileAccess.file_exists(dir.path_join(names[1])) \
-					or txt.contains(names[0]) or not txt.contains(names[1]):
+					or sec.find_child(rid, true, false) != null \
+					or sec.find_child("kept_" + names[1].validate_node_name(), true, false) == null:
 				p.append("Delete did not remove that kept save only: %s" % txt.left(300))
+			if not txt.contains("%s deleted." % names[0]):
+				p.append("the list did not say what Delete did: %s" % txt.left(300))
 			if fo == null or not sec.is_ancestor_of(fo):
 				p.append("after Delete the focus left the list (%s)" % str(fo))
+			# a file already gone (removed with Show folder while Settings was open): said so, the list made again
+			var row2 = sec.find_child("kept_" + names[1].validate_node_name(), true, false)
+			App.find_button(row2, "Delete").pressed.emit()
+			await tree.process_frame
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(dir.path_join(names[1])))
+			App.find_button(row2, "Delete for good").pressed.emit()
+			await tree.process_frame
+			await tree.process_frame
+			txt = App.texts(sec)
+			fo = tree.root.gui_get_focus_owner()
+			if not txt.contains("was already gone") or not txt.contains("None."):
+				p.append("a file already gone was not said so, or the empty list not shown: %s" % txt.left(300))
+			if fo == null:
+				p.append("after the last Delete the focus was lost")
 		main.free()
+	# a second window (another one saves to run.save): its list is still run.save's kept runs
+	FileAccess.open(dir.path_join(names[0]), FileAccess.WRITE).store_buffer(fx)
+	var other := OS.create_process("sleep", ["60"])
+	FileAccess.open(path + ".lock", FileAccess.WRITE).store_string(str(other))
+	main = App.start(tree)
+	main.hud.show_settings(true)
+	await tree.process_frame
+	var sec2 = main.hud.settings_box.find_child("kept_saves", true, false)
+	if sec2 == null or not App.texts(sec2).contains(names[0]):
+		p.append("a second window's kept list is not run.save's")
+	main.free()
+	OS.kill(other)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path + ".lock"))
+	RunSave.remove(dir.path_join("run-second.save"))
 	# switched off: no list
 	Autosave.switch_override = 0
 	main = App.start(tree)

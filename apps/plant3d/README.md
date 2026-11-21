@@ -338,9 +338,10 @@ minutes and more). `ui/autosave.gd` saves the whole run to `user://run.save`:
   save there before anything replaces it. If the copy fails (storage full or not writable), nothing is replaced and
   the offer says so: the trainee can free space and start again, or choose Replace it (Continue anyway after a run
   made again), which keeps the save as `run.save.prev` until the next new run, as New run always did. Only the
-  trainee deletes a kept file: Settings' **Kept saves** (the owner, 2026-11-21, #474; with the same switch) lists
-  them by name, date and size, newest first, each with Delete, which asks in its row first ("… can't be undone",
-  Keep focused). On the desktops it also has Show folder (the app's data folder in the file manager), where a kept
+  trainee deletes a kept file: Settings' **Saved runs kept aside** (the owner, 2026-11-21, #474; with the same
+  switch) lists them by name, date and size, newest first (a second window lists `run.save`'s too), each with
+  Delete, which asks in its row first ("… can't be undone", Keep focused, then "Delete for good" in the destructive
+  style, `W.destructive`); what it did is said in the list. On the desktops it also has Show folder (the app's data folder in the file manager), where a kept
   file can be opened again by the version that made it, by copying it back as `run.save`; on Android the folder is
   private, so there a kept file can only be deleted. `tests/test_run_save.gd` loads the save the release before wrote
   (`tests/fixtures/run-0.3.0.save`, made by plant-v0.3.0's own autosave with `tools/plant3d/old_saves/`).

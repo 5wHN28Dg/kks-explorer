@@ -824,27 +824,33 @@ func open_failed_part(r: Dictionary) -> bool:
 	return true
 
 
-## The settings' Workshop row: a button per part kind the Workshop has.
-## "Kept saves" (the owner, 2026-11-21, #474): the saved runs kept aside (ui/autosave.gd, issue #447) listed by name
-## and date, each with Delete, which asks first in the row itself (Keep has the focus; Delete removes the file for
-## good); on the desktops also Show folder. Made again each time the settings are shown.
+## "Saved runs kept aside" (the owner, 2026-11-21, #474): the saved runs kept aside (ui/autosave.gd, issue #447),
+## listed by name, date and size, each with Delete, which asks first in the row itself (Keep has the focus, the
+## confirming Delete is marked as one that removes the file for good); on the desktops also Show folder. Made again
+## each time the settings are shown. The list is the trainee's run's (run.save's), in a second window too.
 func _kept_saves(box: VBoxContainer) -> void:
 	var v := VBoxContainer.new()
 	v.name = "kept_saves"
 	box.add_child(v)
-	_kept_fill(v)
+	_kept_fill(v, "")
 	box.visibility_changed.connect(func():
 		if box.is_visible_in_tree():
-			_kept_fill(v))
+			_kept_fill(v, ""))
 
 
-func _kept_fill(v: VBoxContainer) -> void:
+## The list made again; `said`: what the last Delete did, shown in the list (a toast would cover the focus).
+func _kept_fill(v: VBoxContainer, said: String) -> void:
 	W.clear(v)
-	v.add_child(W.label("Kept saves", 22))
-	var dir: String = autosave.path.get_base_dir()
-	var files: Array = RunSave.kept_files(autosave.path)
+	v.add_child(W.label("Saved runs kept aside", 22))
+	var main_path: String = Autosave.default_path     # (a second window saves apart; the kept ones are run.save's)
+	var dir := main_path.get_base_dir()
+	if said != "":
+		var l := W.label(said, 18)
+		l.name = "kept_said"
+		v.add_child(l)
+	var files: Array = RunSave.kept_files(main_path)
 	if files.is_empty():
-		v.add_child(W.label("No saved run is kept aside. A save this version can't continue is kept here.", 18, W.DIM))
+		v.add_child(W.label("None. A saved run this version can't continue is kept here.", 18, W.DIM))
 	for f in files:
 		var row := VBoxContainer.new()      # the words wrap in the panel's width, the buttons under them
 		row.name = "kept_" + f[0].validate_node_name()
@@ -853,36 +859,58 @@ func _kept_fill(v: VBoxContainer) -> void:
 	if OS.get_name() != "Android":
 		var bar := HBoxContainer.new()
 		v.add_child(bar)
-		bar.add_child(W.button("Show folder", func(): OS.shell_show_in_file_manager(ProjectSettings.globalize_path(dir), true)))
+		var folder := ProjectSettings.globalize_path(dir)
+		bar.add_child(W.button("Show folder", func():
+			if OS.shell_show_in_file_manager(folder, true) != OK:
+				_kept_fill(v, "The folder could not be opened. It is %s." % folder)))
 
 
 func _kept_row(row: VBoxContainer, v: VBoxContainer, dir: String, f: Array) -> void:
 	W.clear(row)
 	var when := Time.get_datetime_string_from_unix_time(int(f[1]) + Autosave._tz_offset(), true)
-	row.add_child(W.label("%s  (%s, %d KB)" % [f[0], when, int(ceil(f[2] / 1024.0))], 18, Color.WHITE))
+	row.add_child(W.label("%s  (%s, %d KB)" % [f[0], when, int(ceil(f[2] / 1024.0))], 18))
 	var bar := HBoxContainer.new()
 	row.add_child(bar)
-	bar.add_child(W.button("Delete", func():
+	var ask := W.button("Delete", func():
 		W.clear(row)
-		row.add_child(W.label("Delete %s? It can't be undone." % f[0], 18, Color.WHITE))
+		row.add_child(W.label("Delete %s? It can't be undone." % f[0], 18))
 		var bar2 := HBoxContainer.new()
+		bar2.add_theme_constant_override("separation", int(24 * W.scale))   # room between Keep and the one that deletes
 		row.add_child(bar2)
-		var keep := W.button("Keep", func(): _kept_row(row, v, dir, f))
+		var keep := W.button("Keep", func():
+			_kept_row(row, v, dir, f)
+			_kept_focus(row))
 		bar2.add_child(keep)
-		bar2.add_child(W.button("Delete", func():
-			var err := DirAccess.remove_absolute(ProjectSettings.globalize_path(dir.path_join(f[0])))
-			if err != OK:
-				toast("%s could not be deleted: it stays." % f[0], 6.0)
+		var del := W.button("Delete for good", func():
+			var p := ProjectSettings.globalize_path(dir.path_join(f[0]))
+			var said := ""
+			if not FileAccess.file_exists(p):
+				said = "%s was already gone." % f[0]
+			elif DirAccess.remove_absolute(p) != OK:
+				said = ("%s could not be deleted (its folder may not be writable). It is still kept; try again, or "
+						+ "%s.") % [f[0], "remove it with Show folder" if OS.get_name() != "Android" else "restart the app first"]
 			else:
-				toast("%s deleted." % f[0])
-			_kept_fill(v)
-			# the focus to the list's first button that is left (another Delete, or Show folder): never lost
-			for b in v.find_children("*", "Button", true, false):
-				b.grab_focus.call_deferred()
-				break))
-		keep.grab_focus.call_deferred()))
+				said = "%s deleted." % f[0]
+			_kept_fill(v, said)
+			_kept_focus(v))
+		W.destructive(del)
+		bar2.add_child(del)
+		keep.grab_focus.call_deferred())
+	ask.name = "kept_delete"
+	bar.add_child(ask)
 
 
+## The focus to the first button under `n` (the row's Delete after Keep; the list's next Delete or Show folder after a
+## delete), else the settings' Close: never lost.
+func _kept_focus(n: Node) -> void:
+	for b in n.find_children("*", "Button", true, false):
+		b.grab_focus.call_deferred()
+		return
+	if main != null and main.hud != null and main.hud.close_btn != null:
+		main.hud.close_btn.grab_focus.call_deferred()
+
+
+## The settings' Workshop row: a button per part kind the Workshop has.
 func _workshop_settings(box: VBoxContainer) -> void:
 	var kinds: Array = main.workshop.kinds() if main.workshop != null else load("res://workshop/workshop.gd").kinds()
 	if kinds.is_empty():
