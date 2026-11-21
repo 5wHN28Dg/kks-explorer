@@ -13,7 +13,10 @@
 ## number of this device. A scenario without weather leaves the plant's light as lighting.gd set it.
 ## The flashes are lit by real time, not by the model's steps (UI-UX-POLICY A10, no seizures; issue #443): a flash
 ## lights the plant only FLASH_GAP real seconds or more after the last one did, whatever the speed (fast-forward, a
-## jump's steps in one frame), so never more than one flash in any second; the others are heard, not seen. With
+## jump's steps in one frame), so never more than one flash in any second; the others are heard, not seen. That holds
+## at 1x too: a flash falls anywhere in its 2 s slot, so two in neighbouring slots can come 0.1 to 1.9 s apart, and the
+## second is then only heard. Which flashes are lit depends on this device's frames, so multiplayer peers can light
+## different ones (they hear the same thunder and step the same weather). With
 ## Reduced motion on, a flash is a soft glow instead (GLOW_RISE of the light at most, below the 10 % change WCAG 2.3.1
 ## counts as a flash), eased in and out.
 extends Node
@@ -40,7 +43,7 @@ const FLASH_SLOT := 20                      # model steps (2 s at 1x) in which a
 const FLASH_RATE := 0.08                    # flashes per slot at `lightning` 1 (one every 25 s)
 const FLASH_TIME := 0.15                    # seconds a flash lights the plant
 const FLASH_ENERGY := 3.0                   # the flash's light on top of the sun's
-const FLASH_GAP := 2.0                      # real seconds from one lit flash to the next, at least (1x's slot)
+const FLASH_GAP := 2.0                      # real seconds from one lit flash to the next, at least (a 1x slot's length)
 const GLOW_RISE := 0.05                     # Reduced motion: the glow's light at most, a share of the light it adds to
 const GLOW_UP := 0.5                        # seconds the glow takes to rise, and to fade (GLOW_DOWN)
 const GLOW_DOWN := 1.0

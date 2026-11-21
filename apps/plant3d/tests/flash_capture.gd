@@ -4,6 +4,9 @@
 ##     [--speed=60]     the plant's speed: 10 x speed model steps a second of real time (60: sim_clock.gd's FF_MAX)
 ##     [--seconds=60]   how long, after 3 s of warm-up
 ##     [--soft]         with the settings' Reduced motion on
+##     [--movie]        for Godot's Movie Maker (add `--write-movie FILE.avi --fixed-fps 60` before --script; --fps=N if not 60): each
+##                      frame is 1/fps of real time, the model stepped by it; nothing is read back (FILE is still
+##                      written: a header only). The video is for IRIS (decision 0077, tools/plant3d/flash_iris.sh)
 ## The scenario cold_iron at 01:00, its weather fixed at the thunderstorm (full lightning), the trainee flying 30 m
 ## over where they start, looking down at the plant. Each frame, after it is drawn, the whole window scaled down to
 ## 160 x 90 by averaging (Image.resize, bilinear over halvings: mipmaps) is written as RGB8 after a header line; the
@@ -21,6 +24,8 @@ var out := ""
 var speed := 60.0
 var seconds := 60.0
 var soft := false
+var movie := false
+var fps := 60.0                 # --movie: the --fixed-fps given to Godot
 
 
 func _init() -> void:
@@ -33,6 +38,10 @@ func _init() -> void:
 			seconds = float(a.substr(10))
 		elif a == "--soft":
 			soft = true
+		elif a == "--movie":
+			movie = true
+		elif a.begins_with("--fps="):
+			fps = float(a.substr(6))
 	if out == "":
 		push_error("flash_capture: --out=FILE")
 		quit(2)
@@ -81,17 +90,29 @@ func _go() -> void:
 	var acc := 0.0
 	var lit0: int = int(main.weather.get("lit")) if main.weather.get("lit") != null else 0
 	var fl0: int = main.weather.flashes
+	var frame := 0
 	while true:
 		var now := Time.get_ticks_usec()
-		if now - t0 > int(seconds * 1e6):
-			break
-		acc += float(now - last) / 1e6 * 10.0 * speed
+		if movie:
+			# Movie Maker: every frame is 1/fps of the video's (the player's) time, whatever it took to draw
+			if frame >= int(seconds * fps):
+				break
+			frame += 1
+			acc += 10.0 * speed / fps
+		else:
+			if now - t0 > int(seconds * 1e6):
+				break
+			acc += float(now - last) / 1e6 * 10.0 * speed
 		last = now
 		acc = minf(acc, speed)        # at most a tenth of a real second's steps in one frame (the clock's own cap)
 		var n := int(acc)
 		acc -= n
 		if n > 0:
 			ui.clock.run_steps(n)
+		if movie:
+			await process_frame
+			times.append(str(int(frame * 1e6 / fps)))
+			continue
 		await RenderingServer.frame_post_draw
 		var img: Image = root.get_texture().get_image()
 		img.convert(Image.FORMAT_RGB8)
