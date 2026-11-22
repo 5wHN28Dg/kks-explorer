@@ -56,6 +56,17 @@ var _t := 0.0
 var _lt := 0.0
 var _sig := ""
 var _thread: Thread
+## A save that fails (issue #473; the user's UI-UX policy S3, W3): said once on screen in plain words, then shown in the
+## HUD's status line for as long as it lasts (app/hud.gd save_note), and said again when a save succeeds after it. Tried
+## again by itself, less often the longer it fails (INTERVAL doubled each time, at most RETRY_MAX s).
+const RETRY_MAX := 60.0
+const TELL_AGAIN_MS := 5 * 60 * 1000   # a failure that comes back sooner after one was said is only shown, not said again
+var failing := false            # the last save failed
+var _retry := INTERVAL          # seconds until the next periodic try (INTERVAL while saves succeed)
+var _told_ms := -1              # when a failure was last said on screen (-1: never)
+var _told := false              # the failure now going on was said (its end is said too)
+var _ok_step := -1              # the model step of the last save that succeeded (-1: none in this run yet)
+var _thread_step := 0           # the model step the periodic save being written was taken at
 
 
 func setup(u, content_dir: String, save_path := "") -> void:
@@ -1243,7 +1254,7 @@ func _each_frame(delta: float) -> void:
 	if _thread != null and not _thread.is_alive():
 		_finish_thread()
 	_t += delta
-	if _t < INTERVAL:
+	if _t < (_retry if failing else INTERVAL):
 		return
 	_t = 0.0
 	var sig := _signature()
@@ -1253,6 +1264,7 @@ func _each_frame(delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
 	var p := payload()
 	capture_us = Time.get_ticks_usec() - t0
+	_thread_step = ui.clock.engine.step_no
 	_thread = Thread.new()
 	_thread.start(_write.bind(p))
 
@@ -1264,11 +1276,7 @@ func _write(p: Dictionary) -> int:
 func _finish_thread() -> void:
 	var err: int = _thread.wait_to_finish()
 	_thread = null
-	if err == OK:
-		saves += 1
-	else:
-		_sig = ""                       # tried again at the next interval
-		push_warning("autosave: the run was not saved (error %d)" % err)
+	_saved(err, _thread_step)
 
 
 ## Saves now, on this thread (going to the background, closing; tests). False when it could not be written.
@@ -1279,13 +1287,52 @@ func save_now() -> bool:
 		_finish_thread()
 	_sig = _signature()
 	_t = 0.0
+	var step: int = ui.clock.engine.step_no
 	var err := RunSave.write(path, RunSave.encode(payload()))
-	if err != OK:
-		_sig = ""
-		push_warning("autosave: the run was not saved (error %d)" % err)
-		return false
-	saves += 1
-	return true
+	_saved(err, step)
+	return err == OK
+
+
+## A save's outcome: counted, or a failure said (once), shown and tried again later; a success after failures said.
+func _saved(err: int, step: int) -> void:
+	if err == OK:
+		saves += 1
+		_ok_step = step
+		_retry = INTERVAL
+		if failing:
+			failing = false
+			if _told:
+				ui.toast("The run is saved again.", 5.0)
+			_told = false
+		return
+	_sig = ""                           # tried again at the next try, even if nothing changes meanwhile
+	push_warning("autosave: the run was not saved (error %d: %s)" % [err, error_string(err)])
+	_retry = minf(_retry * 2.0, RETRY_MAX) if failing else INTERVAL
+	if failing:
+		return
+	failing = true
+	var now := Time.get_ticks_msec()
+	if _told_ms < 0 or now - _told_ms >= TELL_AGAIN_MS:
+		_told_ms = now
+		_told = true
+		ui.toast(failure_text(), 14.0)
+
+
+## What a failed save means, in plain words (W3): what happened, what it means for the run, what to do.
+func failure_text() -> String:
+	return ("The run could not be saved. This device's storage may be full, or the app's folder may not be "
+			+ "writable. You can carry on, but if the app closes now, %s is lost. Free some space: saving is "
+			+ "tried again by itself.") % since_text()
+
+
+## What would be lost: "what was done since plant time H:MM:SS" (the last save that succeeded), or the whole run.
+func since_text() -> String:
+	return "the whole run" if _ok_step < 0 else "what was done since plant time %s" % W.model_time(_ok_step)
+
+
+## The HUD's status line's note while saves fail ("" while they succeed).
+func save_note() -> String:
+	return "" if not failing else "Run not saved since %s" % ("its start" if _ok_step < 0 else W.model_time(_ok_step))
 
 
 func _notification(what: int) -> void:

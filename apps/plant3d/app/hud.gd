@@ -790,6 +790,10 @@ func _each_frame(_d: float) -> void:
 	if main.player.mode == Player.Mode.WALK and Vector2(main.player.velocity.x, main.player.velocity.z).length() > Player.JOG_SPEED + 0.2:
 		mode = "running"
 	status.text = "%s · %s · x %.0f  y %.0f  +%.1f m · %s" % [main.area_at(p), mode, p.x, -p.z, p.y, main.tier]
+	# a save that fails, for as long as it does (ui/autosave.gd, issue #473): first, so a narrow line never hides it
+	var note: String = main.ui.autosave.save_note() if main.ui != null and main.ui.get("autosave") != null else ""
+	if note != "":
+		status.text = note + " · " + status.text
 	_measure_status()
 	if not _status_low and not status.visible:
 		status.visible = true            # (it was hidden over a view in the compact layout, which has ended)
