@@ -12,7 +12,7 @@
 ## beside the exe ([walkdown] flash_notice=true), and by the owner's OK in project.godot.
 ##
 ## Keys: Tab and the arrows move between the words (when they scroll), the box and the button; Enter or Space presses
-## or ticks; Escape and gamepad B close it as Continue does; gamepad A presses or ticks what has the focus. A screen
+## or ticks; Escape, gamepad B and Start close it as Continue does; gamepad A presses or ticks what has the focus. A screen
 ## reader says the notice's title and words with the button that has the focus at first.
 extends CanvasLayer
 
@@ -29,16 +29,29 @@ const TITLE := "Flashing light"
 const NO_FLASHES := "No lightning flashes: the lightning glows softly instead"   # (ui/plant_ui.gd NO_FLASHES)
 const PAD := 8              # the words' margin inside their scroll (px)
 
-## The notice's words, paragraph by paragraph; `in_about`: as About shows them (no box below them there).
-static func paragraphs(in_about := false) -> Array:
+## The notice's words, paragraph by paragraph. `where`: "start" (the first start: the box below them), "settings"
+## (opened again from the settings: they are already there) or "about" (no box below them).
+static func paragraphs(where := "start") -> Array:
 	return [
 		("Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. "
 			+ "Flashes come at most once every %d seconds, also in fast-forward.") % int(Weather.FLASH_GAP),
 		("If flashing light can affect you, turn on \"No lightning flashes\" %s: the lightning then only glows "
-			+ "softly. Reduced motion turns it on too.") % ("in Settings" if in_about else "below"),
-		"Both are in Settings, where you can also read this note again." if not in_about
-			else "Settings' \"About flashing light\" shows this note again.",
+			+ "softly. Reduced motion turns it on too.") % ("in Settings" if where == "about" else "below"),
+		{"start": "Both are in Settings, where you can also read this note again.",
+			"settings": "Both are also in the settings under this note.",
+			"about": "Settings' \"About flashing light\" shows this note again."}[where],
 	]
+
+
+## A settings value as a flag: a bool as it is, a number as true when not 0, anything else (a file edited by hand)
+## false: one odd value never stops the notice (as the settings' rows read them: ui/plant_ui.gd _flag).
+static func flag(settings: ConfigFile, key: String) -> bool:
+	var v = settings.get_value(SECTION, key, false)
+	if v is bool:
+		return v
+	if v is int or v is float:
+		return v != 0
+	return false
 
 
 ## Tests only: shown without a display too (1), or as the real start decides (-1).
@@ -66,7 +79,7 @@ static func switched_on() -> bool:
 ## Whether the notice is due at this start: switched on, not seen before, not a measurement, and a display to show it
 ## on (or a test's).
 static func wanted(settings: ConfigFile, opts: Dictionary) -> bool:
-	if not switched_on() or bool(settings.get_value(SECTION, KEY_SEEN, false)):
+	if not switched_on() or flag(settings, KEY_SEEN):
 		return false
 	for k in MinGpu.SCRIPTED:      # (a scripted or measured start never waits for a press)
 		if opts.has(k):
@@ -114,7 +127,7 @@ func _ready() -> void:
 	words = VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pad.add_child(words)
-	var paras := paragraphs()
+	var paras := paragraphs("settings" if again else "start")
 	for i in paras.size():
 		words.add_child(W.label(paras[i], 20, Color.WHITE if i < 2 else W.DIM))
 	no_flashes = CheckBox.new()
@@ -148,8 +161,8 @@ func _ready() -> void:
 ## The box as the settings have it: ticked when "No lightning flashes" is on; with Reduced motion on, ticked, not
 ## changeable, and saying why (as the settings' row: ui/plant_ui.gd _flashes_row).
 func _show_box() -> void:
-	var rm := bool(cf.get_value(SECTION, KEY_REDUCED, false))
-	no_flashes.set_pressed_no_signal(rm or bool(cf.get_value(SECTION, KEY_NO_FLASHES, false)))
+	var rm := flag(cf, KEY_REDUCED)
+	no_flashes.set_pressed_no_signal(rm or flag(cf, KEY_NO_FLASHES))
 	no_flashes.disabled = rm
 	no_flashes.text = NO_FLASHES + (" (on with Reduced motion)" if rm else "")
 	no_flashes.accessibility_name = no_flashes.text
@@ -249,7 +262,10 @@ func _on_resized() -> void:
 func _input(e: InputEvent) -> void:
 	if _done or not e.is_pressed():
 		return
-	if e.is_action_pressed("ui_cancel") or (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_B):
+	# (Start, the "menu" action, too: it would otherwise reach the settings under the notice and close them, as About
+	# takes it: app/about.gd)
+	if e.is_action_pressed("ui_cancel") or (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_B) \
+			or (InputMap.has_action("menu") and e.is_action_pressed("menu")):
 		get_viewport().set_input_as_handled()
 		close()
 	elif e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A:

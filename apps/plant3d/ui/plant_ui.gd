@@ -801,7 +801,7 @@ func add_settings(box: VBoxContainer) -> void:
 		rows[row[0]] = cb
 		box.add_child(cb)
 	_flashes_row(rows["no_flashes"], cf)
-	if FlashNotice.switched_on():   # the photosensitivity notice again (#443; switched off until the owner's check)
+	if _flash_notice_on():   # the photosensitivity notice again (#443; switched off until the owner's check)
 		var again := W.button("About flashing light", func(): show_flash_notice(rows["no_flashes"]))
 		again.name = "flash_notice_again"
 		box.add_child(again)
@@ -823,9 +823,14 @@ static func _flag(cf: ConfigFile, key: String, fallback: bool) -> bool:
 
 
 const NO_FLASHES := "No lightning flashes: the lightning glows softly instead"
-const FlashNotice = preload("res://app/flash_notice.gd")
 var flash_notice_btn: Button    # the settings' "About flashing light" (switched on only)
 var flash_notice                # app/flash_notice.gd while it is open from the settings
+
+## The notice switched on (the project setting, or a test's override); its script is loaded only then.
+static func _flash_notice_on() -> bool:
+	if bool(ProjectSettings.get_setting("walkdown/flash_notice", false)):
+		return true
+	return ResourceLoader.has_cached("res://app/flash_notice.gd") and load("res://app/flash_notice.gd").switched_on()
 
 ## The photosensitivity notice from the settings (#443): over them; its box changes "No lightning flashes" at once,
 ## as the settings' own row does; closed, the focus goes back to the button that opened it.
@@ -833,7 +838,7 @@ func show_flash_notice(row: CheckBox = null) -> void:
 	if is_instance_valid(flash_notice):
 		return
 	var cf: ConfigFile = main.cf
-	flash_notice = FlashNotice.new(cf, true)
+	flash_notice = load("res://app/flash_notice.gd").new(cf, true)
 	flash_notice.on_no_flashes = func(v: bool):
 		if bindings.reduced_motion:
 			return                  # (shown on while Reduced motion is)

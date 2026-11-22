@@ -83,6 +83,10 @@ func _when(p: Array) -> void:
 	FlashNotice.display_override = 1
 	if not FlashNotice.wanted(ConfigFile.new(), {}):
 		p.append("the notice is not due at a first start")
+	var odd := ConfigFile.new()           # a file edited by hand: never a script error, the notice as at a first start
+	odd.set_value("ui", "flash_notice_seen", "yes")
+	if not FlashNotice.wanted(odd, {}):
+		p.append("an odd seen value hides the notice")
 	var seen := ConfigFile.new()
 	seen.set_value("ui", "flash_notice_seen", true)
 	if FlashNotice.wanted(seen, {}):
@@ -256,7 +260,7 @@ func _with_reduced_motion(tree: SceneTree, p: Array) -> void:
 ## reaches them.
 func _large_ui(tree: SceneTree, p: Array) -> void:
 	var size0: Vector2i = tree.root.size
-	tree.root.size = Vector2i(1280, 600)
+	tree.root.size = Vector2i(960, 420)
 	W.apply_ui_size(tree.root, 2.0)
 	var n = FlashNotice.new(ConfigFile.new())
 	tree.root.add_child(n)
@@ -267,16 +271,18 @@ func _large_ui(tree: SceneTree, p: Array) -> void:
 		if not vr.encloses(c.get_global_rect()):
 			p.append("at 200 %% %s is off the window (%s in %s)" % [c.name, str(c.get_global_rect()), str(vr)])
 	var bar: VScrollBar = n.scroll.get_v_scroll_bar()
-	if bar.max_value > n.scroll.size.y + 1.0:
-		if n.scroll.focus_mode != Control.FOCUS_ALL:
-			p.append("at 200 % the words that don't fit can't take the focus")
-		else:
-			n.scroll.grab_focus()
-			await tree.process_frame
-			_key(tree, KEY_PAGEDOWN)
-			await tree.process_frame
-			if n.scroll.scroll_vertical <= 0:
-				p.append("at 200 % Page Down did not scroll the words")
+	# (a short window at 200 %: the words must scroll, so the keyboard's way to them is checked, never skipped)
+	if bar.max_value <= n.scroll.size.y + 1.0:
+		p.append("at 200 %% on a %s window the words fit: the scrolling is not checked" % str(tree.root.size))
+	elif n.scroll.focus_mode != Control.FOCUS_ALL:
+		p.append("at 200 % the words that don't fit can't take the focus")
+	else:
+		n.scroll.grab_focus()
+		await tree.process_frame
+		_key(tree, KEY_PAGEDOWN)
+		await tree.process_frame
+		if n.scroll.scroll_vertical <= 0:
+			p.append("at 200 % Page Down did not scroll the words")
 	n.free()
 	W.apply_ui_size(tree.root, 1.0)
 	tree.root.size = size0
@@ -310,6 +316,8 @@ func _from_settings(tree: SceneTree, p: Array) -> void:
 		main.free()
 		return
 	await tree.process_frame
+	if not UiApp.texts(n).contains("Both are also in the settings under this note."):
+		p.append("from the settings the notice still sends the user to Settings")
 	if n.continue_button.text != "Close":
 		p.append("from the settings the notice's button is \"%s\", not Close" % n.continue_button.text)
 	if tree.root.gui_get_focus_owner() != n.continue_button:
@@ -334,6 +342,28 @@ func _from_settings(tree: SceneTree, p: Array) -> void:
 	if tree.root.gui_get_focus_owner() != b:
 		var fo := tree.root.gui_get_focus_owner()
 		p.append("after the notice, the focus is on %s, not \"About flashing light\"" % [fo.name if fo else "nothing"])
+	# Escape and gamepad Start close it too, and only it (Start would close the settings: the blind review of #518)
+	for how in ["escape", "start"]:
+		b.grab_focus()
+		b.pressed.emit()
+		await tree.process_frame
+		await tree.process_frame
+		var n2 = main.ui.flash_notice
+		if not is_instance_valid(n2) or not n2.is_inside_tree():
+			p.append("\"About flashing light\" did not open the notice again (before %s)" % how)
+			break
+		if how == "escape":
+			_key(tree, KEY_ESCAPE)
+		else:
+			_joy(tree, JOY_BUTTON_START)
+		await tree.process_frame
+		await tree.process_frame
+		if is_instance_valid(n2) and n2.is_inside_tree():
+			p.append("%s did not close the notice opened from the settings" % how)
+		if not main.hud.panel.visible:
+			p.append("%s on the notice closed the settings under it too" % how)
+		if tree.root.gui_get_focus_owner() != b:
+			p.append("after %s the focus is not on \"About flashing light\"" % how)
 	var found := false
 	for s in About.sections():
 		if s[0] == FlashNotice.TITLE and s[1].contains("No lightning flashes") and s[1].contains("in Settings"):
