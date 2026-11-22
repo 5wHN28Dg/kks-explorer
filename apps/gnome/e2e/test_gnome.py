@@ -977,7 +977,9 @@ class Gnome(Plant):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         os.makedirs(SHOTS, exist_ok=True)
         shot = os.path.join(SHOTS, 'gnome-valve.png')
-        a = self.start_app('valve', KKS_SHOT_ON_SIGNAL=shot, KKS_SYNC_EVERY='2000')
+        # (a light theme, as the outline's colour below is the light drawing's: #459, a machine whose GSettings default
+        # is prefer-dark, as Ubuntu's desktop sets it, made the drawing dark and its outline the lighter magenta)
+        a = self.start_app('valve', KKS_SHOT_ON_SIGNAL=shot, KKS_SYNC_EVERY='2000', ADW_DEBUG_COLOR_SCHEME='prefer-light')
         pid = self.apps[-1].pid
         self.join(a)
         def custom(code):        # saved in the app's own node first, then on the server by sync
