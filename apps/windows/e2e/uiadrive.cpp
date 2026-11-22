@@ -28,6 +28,16 @@
 //   escdrag <name> x0 y0 x1 y1 [hold]  a drag as `drag` that Escape (posted to its window) interrupts before the button
 //                           is up; with "hold" the button stays down (until `mouseup`)
 //   mouseup <name>          the left button up in the element's window
+//   surface <name> dark|light  wait (10 s) until the element's whole rectangle as drawn (PrintWindow) has a median grey
+//                           under 70 (dark) or over 190 (light): a control's or page's background in the app's theme
+//   titlebar <name> dark|light  the same for the title bar of the window holding the element (PrintWindow with its
+//                           frame): its median grey across the caption
+//   dialog <name> <text>    the top-level window holding the element is a dialog to UI Automation (what a screen reader
+//                           announces as one: its localized control type "dialog") and its description (FullDescription,
+//                           or HelpText) holds <text>, e.g. what a question means
+//   hover <name>            the mouse pointer to the element's middle (its hover look)
+//   holddown <name>         the left button down on the element (its pressed look); letgo <name> cancels the press
+//                           without a click
 //   pixels <name> <rrggbb> <max>  the element as drawn (PrintWindow) has at most <max> pixels of this colour (each
 //                           channel within 3): e.g. no box left on the drawing
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
@@ -161,6 +171,53 @@ static bool shade_of(IUIAutomationElement *e, int &median, int &light, int &dark
     }
     SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(nullptr, sdc);
     return ok;
+}
+
+// the median grey of a rectangle of the element's top-level window as drawn (PrintWindow): the element's own, or the caption
+static int median_grey(IUIAutomationElement *e, bool caption) {
+    UIA_HWND hw = 0;
+    e->get_CurrentNativeWindowHandle(&hw);
+    if (!hw) return -1;
+    HWND root = GetAncestor((HWND)hw, GA_ROOT);
+    RECT rr, er;
+    GetWindowRect(root, &rr);
+    GetWindowRect((HWND)hw, &er);
+    int W = rr.right - rr.left, H = rr.bottom - rr.top;
+    if (W <= 0 || H <= 0) return -1;
+    HDC sdc = GetDC(nullptr);
+    HDC dc = CreateCompatibleDC(sdc);
+    BITMAPINFO bi = {};
+    bi.bmiHeader.biSize = sizeof bi.bmiHeader; bi.bmiHeader.biWidth = W; bi.bmiHeader.biHeight = -H;
+    bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32; bi.bmiHeader.biCompression = BI_RGB;
+    void *bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(sdc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    HGDIOBJ old = SelectObject(dc, bmp);
+    // (the whole window as drawn, its frame too: a capture of the screen read the Windows 10 VM's dark title bar as white)
+    bool ok = PrintWindow(root, dc, 2) != 0;
+    int med = -1;
+    if (ok) {
+        int x0, y0, x1, y1;
+        if (caption) {
+            // the caption between the window's frame and its client area, away from the icon, title and buttons
+            POINT c = {0, 0};
+            ClientToScreen(root, &c);
+            x0 = W / 3; x1 = W / 2; y0 = 4; y1 = std::max(6L, c.y - rr.top - 4);
+        } else {
+            x0 = er.left - rr.left; y0 = er.top - rr.top; x1 = er.right - rr.left; y1 = er.bottom - rr.top;
+        }
+        std::vector<int> greys;
+        for (int y = std::max(0, y0); y < std::min(H, y1); y++)
+            for (int x = std::max(0, x0); x < std::min(W, x1); x++) {
+                const uint8_t *p = (const uint8_t *)bits + ((size_t)y * W + x) * 4;
+                greys.push_back((p[0] + p[1] + p[2]) / 3);
+            }
+        if (!greys.empty()) {
+            std::nth_element(greys.begin(), greys.begin() + greys.size() / 2, greys.end());
+            med = greys[greys.size() / 2];
+        }
+    }
+    SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(nullptr, sdc);
+    return med;
 }
 
 // pixels of the element, as drawn, within 3 of this colour in each channel; -1 if not captured
@@ -552,6 +609,51 @@ int wmain(int argc, wchar_t **argv) {
             if (!ok) { say("ERROR: " + arg + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
             continue;
         }
+        if (cmd == "surface" || cmd == "titlebar") {
+            bool wantDark = f.size() > 2 && f[2] == "dark", ok = false;
+            int med = -1;
+            for (int t = 0; t < 10000 && !ok; t += 500) {
+                IUIAutomationElement *x = find(pid, arg);
+                if (x) {
+                    med = median_grey(x, cmd == "titlebar");
+                    ok = med >= 0 && (wantDark ? med < 70 : med > 190);
+                    x->Release();
+                }
+                if (!ok) Sleep(500);
+            }
+            say("  median grey " + std::to_string(med));
+            e->Release();
+            if (!ok) { say("ERROR: " + arg + (cmd == "titlebar" ? "'s title bar" : "") + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
+            continue;
+        }
+        if (cmd == "dialog") {
+            // the window: the element's top-level window as UI Automation sees it
+            UIA_HWND hw = 0; e->get_CurrentNativeWindowHandle(&hw); e->Release();
+            IUIAutomationElement *w = nullptr;
+            HWND root = hw ? GetAncestor((HWND)hw, GA_ROOT) : nullptr;
+            if (!root || FAILED(ua->ElementFromHandle((UIA_HWND)root, &w)) || !w) { say("ERROR: no window for " + arg); return 1; }
+            auto prop = [&](PROPERTYID id) {
+                VARIANT v; VariantInit(&v);
+                std::wstring out;
+                if (SUCCEEDED(w->GetCurrentPropertyValue(id, &v)) && v.vt == VT_BSTR && v.bstrVal) out = v.bstrVal;
+                VariantClear(&v);
+                return out;
+            };
+            std::wstring type = prop(UIA_LocalizedControlTypePropertyId), name = prop(UIA_NamePropertyId);
+            std::wstring desc = prop(30159 /* UIA_FullDescriptionPropertyId */) + L" | " + prop(UIA_HelpTextPropertyId);
+            VARIANT isd; VariantInit(&isd);
+            bool dialog = SUCCEEDED(w->GetCurrentPropertyValue(30174 /* UIA_IsDialogPropertyId */, &isd)) && isd.vt == VT_BOOL && isd.boolVal;
+            VariantClear(&isd);
+            if (dialog) type += L" (IsDialog: dialog)";
+            w->Release();
+            say("  window \"" + std::string(name.begin(), name.end()) + "\", " + std::string(type.begin(), type.end()) +
+                ", description: " + std::string(desc.begin(), desc.end()));
+            std::wstring want = wide(f.size() > 2 ? f[2] : "");
+            if (type.find(L"dialog") == std::wstring::npos || desc.find(want) == std::wstring::npos) {
+                say("ERROR: " + arg + "'s window is not a dialog with that description"); return 1;
+            }
+            continue;
+        }
         if (cmd == "pixels") {
             unsigned long rgb = std::stoul(f.size() > 2 ? f[2] : "0", nullptr, 16);
             int most = f.size() > 3 ? std::stoi(f[3]) : 0;
@@ -656,6 +758,19 @@ int wmain(int argc, wchar_t **argv) {
                 Sleep(300);
             }
             if (!(cmd == "escdrag" && f.size() > 6 && f[6] == "hold")) PostMessageW((HWND)hw, WM_LBUTTONUP, 0, at(4, 5));
+        } else if (cmd == "hover") {
+            // the mouse pointer over the element's middle (a real move: the control sees WM_MOUSEMOVE, its hover look)
+            RECT r; e->get_CurrentBoundingRectangle(&r);
+            SetCursorPos((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+        } else if (cmd == "holddown" || cmd == "letgo") {
+            // holddown: the left button down on the element (its pressed look, as long as it is held); letgo: the press
+            // cancelled without a click (WM_CANCELMODE), so holding a button down for a screenshot changes nothing
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            RECT c; GetClientRect((HWND)hw, &c);
+            if (cmd == "holddown") PostMessageW((HWND)hw, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(c.right / 2, c.bottom / 2));
+            else SendMessageW((HWND)hw, WM_CANCELMODE, 0, 0);
         } else if (cmd == "mouseup") {
             UIA_HWND hw = 0;
             e->get_CurrentNativeWindowHandle(&hw);

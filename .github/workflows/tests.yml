@@ -482,6 +482,7 @@ jobs:
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-uistale -o:out/plat/test_ui_stale.exe apps/windows/tests/test_ui_stale.nim
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-panelhead -o:out/plat/test_panel_head.exe apps/windows/tests/test_panel_head.nim
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-tabs -o:out/plat/test_tabs.exe apps/windows/tests/test_tabs.nim
+          nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-theme -o:out/plat/test_theme.exe apps/windows/tests/test_theme.nim
           nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console --nimcache:/tmp/kkswin-about -o:out/plat/test_about.exe apps/windows/tests/test_about.nim
           ls -l out out/core out/plat
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

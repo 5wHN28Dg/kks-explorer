@@ -6,7 +6,7 @@ import kks/[json, api, pathstore, views, applink]
 import kks/model
 import appstate, syncwords
 import kksl/dbstore
-import kkswin/[w32, ui, viewer, win, panel, side, manage, setup, learn, multi, photos, links, about]
+import kkswin/[w32, ui, theme, viewer, win, panel, side, manage, setup, learn, multi, photos, links, about]
 
 const
   TimerPump = 1'u
@@ -289,9 +289,12 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     if (int(wp) and 0xFFF0) == IdmAbout:
       guard: openAbout(h)
       return 0
-  of 0x001A'u32:              # WM_SETTINGCHANGE: Windows' app mode may have changed; drawings that follow it do
+  of 0x001A'u32, 0x0015'u32, 0x031A'u32:
+    # WM_SETTINGCHANGE, WM_SYSCOLORCHANGE, WM_THEMECHANGED: Windows' app mode or contrast theme may have changed; the
+    # drawings that follow it do, and the controls (theme.nim, switch win-dark-ui)
     if w != nil and w.v != nil:
       guard: w.applyDark()
+    guard: discard refreshTheme()
   of WM_SIZE:
     if w != nil and w.v != nil or setupP != nil: layoutMain()
     return 0
@@ -324,6 +327,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
         guard: refresh()
       elif w.v != nil and setupP == nil:
         setStatus()
+      guard: discard refreshTheme()     # (also when no window was told: the app mode read once a second)
       if w.v != nil and setupP == nil:
         guard: w.catchUpFollowers()     # a window marked stale under the focus, once the focus has left it
         guard: w.panelCatchUp()         # the panel too, left alone under the keyboard or typed text
@@ -442,6 +446,7 @@ proc main() =
   var icc = CommonControlsInit(dwSize: DWORD(sizeof(CommonControlsInit)), dwICC: 0xFFFF)
   InitCommonControlsEx(addr icc)
   hinst = GetModuleHandleW(nil)
+  initTheme()               # the dark colours for the controls, behind the switch win-dark-ui (theme.nim)
   makeFonts(96)
   createDir(dataDir())
   errorLog = dataDir() / "crash.log"
@@ -456,6 +461,7 @@ proc main() =
   let hw = CreateWindowExW(WS_EX_CONTROLPARENT, newWideCString("KKSMain"), newWideCString("Walkdown"),
                            WS_OVERLAPPEDWINDOW or WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT, 1280, 820, nil, nil, hinst, nil)
   makeFonts(int(GetDpiForWindow(hw)))
+  themeContainer(hw)        # (its title bar dark before it is shown)
   laterWindow = hw
   let sysMenu = GetSystemMenu(hw, 0)          # About in the window's system menu (Alt+Space, the icon's menu)
   if sysMenu != nil:

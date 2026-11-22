@@ -9,7 +9,7 @@ import std/[strutils, tables]
 import kks/json
 import kks/views
 import kks/model
-import w32, ui, win, systems
+import w32, ui, win, systems, theme
 
 proc s(n: JNode, k: string): string =
   if n != nil and n.get(k) != nil and n[k].isStr: n[k].s else: ""
@@ -48,7 +48,7 @@ proc drawBar(dc: HDC, r: RECT, c: Counts) =
   var total = 0
   for x in c: total += x
   let inner = RECT(left: r.left + 1, top: r.top + 1, right: r.right - 1, bottom: r.bottom - 1)
-  fillRgb(dc, inner, 0xFFFFFF'u32)     # nothing to count: empty (and no colours left from before)
+  fillRgb(dc, inner, if uiDark: DarkColours[rSurface] else: 0xFFFFFF'u32)   # nothing to count: empty (and no colours left from before)
   if total > 0:
     var x = float(inner.left)
     let wdt = float(inner.right - inner.left)

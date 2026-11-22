@@ -7,7 +7,7 @@
 import std/[strutils, tables, sets, sequtils, unicode, math]
 import kks/[json, courses, model, applink]
 import appstate, coursestate
-import w32, ui, win, coursefig, photos, coursertf
+import w32, ui, win, coursefig, photos, coursertf, theme
 
 proc viewNew(h: HWND): pointer {.importc: "kks_view_new", cdecl.}
 proc viewFree(v: pointer) {.importc: "kks_view_free", cdecl.}
@@ -93,7 +93,7 @@ proc key(cw: CW, k: string, h: HWND) = cw.keys[k] = h
 
 proc flowOut(cw: CW, f: var Flow) =
   if f.rtf.len > 0:
-    cw.page.rich(RtfHead & f.rtf & "}", f.links)
+    cw.page.rich(rtfHead(uiDark) & f.rtf & "}", f.links)
     f = Flow()
 
 # ---- pictures inside the page
@@ -671,6 +671,7 @@ proc courseProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
   DefWindowProcW(h, m, wp, lp)
 
 var courseClass = false
+var themeHooked = false
 
 proc openCourseWindow*(w: Win, id: string, page = "") =
   if id in openById:
@@ -698,6 +699,10 @@ proc openCourseWindow*(w: Win, id: string, page = "") =
   MoveWindow(cw.hwnd, wa.left + 20, wa.top + 10, min(px(1180), wa.right - wa.left - 40), min(px(860), wa.bottom - wa.top - 20), 0)
   courseWins[cw.hwnd] = cw
   openById[id] = cw
+  if not themeHooked:       # the theme changed (theme.nim): open courses made again in its colours, where they were
+    themeHooked = true
+    onThemeChange.add proc () =
+      for _, x in courseWins: x.rebuild()
   cw.page = newPage(cw.hwnd)
   let pages = c.pages
   let (rl, _) = control(cw.hwnd, "LISTBOX", "Course contents", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT, WS_EX_CLIENTEDGE)
