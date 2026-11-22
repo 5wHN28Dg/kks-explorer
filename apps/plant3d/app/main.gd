@@ -210,6 +210,7 @@ func _ready() -> void:
 		get_tree().change_scene_to_file.call_deferred("res://voice/demo/voice_wav.tscn")
 		return
 	cf = Quality.settings()
+	load("res://app/report.gd").start_keeping(self)   # the log kept for "Report a problem" (switched off: nothing)
 	_apply_ui_size()
 	# the minimum GPU (decision 0076): a desktop that Godot put on the Compatibility renderer is told so, once, before
 	# anything of the plant is loaded, and may quit (app/min_gpu.gd)
