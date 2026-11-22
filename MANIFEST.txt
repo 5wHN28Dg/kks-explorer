@@ -1,0 +1,13 @@
+# Evidence for PR #512 (first set)
+windows-11/: app and uiadrive built from 138a39b9 (the text-size commits on #506's b329981e; the head cdef09ba adds only #506's later fixes by a merge). KKS_SHOTS=… KKS_TESTS=test_text_size python3 apps/windows/e2e/test_windows.py <kks-win11> … (26H2, 26300): Windows' Text size set to 150 % in Settings through UI Automation (e2e/textsize.ps1); win-text-150-dark*.png: the same with both switches on (KKS_UX=win-text-size,win-dark-ui) and dark app mode, a question open
+windows-10/: test_text_size on kks-win10 (22H2, 19045) at f9b4d22b's parent code (an earlier build: sidebar and panel at most 40 and 35 % of the window then, 35 and 30 % now)
+data: synthetic (test_windows.py's test plant: importer/tests/vectors/kkp-sample.pdf sha256 9f56a4f8d94a19d1549af869c3ee77e1690d28842b3b57ebb9116529ea53fb0e, the tag 11LAB70AA500)
+before: main's app doesn't follow Windows' text size at all (apps/windows/README.md, the real laptop 2026-11-18): at 150 % its text stays at 100 %
+
+sha256 per file:
+a3609c50cf27ecfb0091819f669a7b77c2b097578aa66c2b71b8a2b7aa81be8d  windows-10/win-text-150-account.png
+6f1e2b61320a938c58159eae28572512e48c69ba555783a9a448c3eb027e3093  windows-10/win-text-150-drawings.png
+fec1b808ec433aad5096569e9d093c66fb1c8e5addffb3daee2a0bff50d599c0  windows-11/win-text-150-account.png
+578c0cf8927e2a68a4a53c86a4fcf9fb87b165ca9e6d7b42b175fd1d7dc180c5  windows-11/win-text-150-dark.png
+b51a03ba14a59745e37ae614f28b5590e21e216b6ef46df229417d746ed868bd  windows-11/win-text-150-dark-question.png
+5209f0efd293bab69eb80c5e0256d5d997a78d65ee91aa01e32af23e93c2ea7c  windows-11/win-text-150-drawings.png
