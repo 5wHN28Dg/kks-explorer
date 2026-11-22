@@ -1,13 +1,34 @@
-# Evidence for PR #512 (first set)
-windows-11/: app and uiadrive built from 138a39b9 (the text-size commits on #506's b329981e; the head cdef09ba adds only #506's later fixes by a merge). KKS_SHOTS=… KKS_TESTS=test_text_size python3 apps/windows/e2e/test_windows.py <kks-win11> … (26H2, 26300): Windows' Text size set to 150 % in Settings through UI Automation (e2e/textsize.ps1); win-text-150-dark*.png: the same with both switches on (KKS_UX=win-text-size,win-dark-ui) and dark app mode, a question open
-windows-10/: test_text_size on kks-win10 (22H2, 19045) at f9b4d22b's parent code (an earlier build: sidebar and panel at most 40 and 35 % of the window then, 35 and 30 % now)
-data: synthetic (test_windows.py's test plant: importer/tests/vectors/kkp-sample.pdf sha256 9f56a4f8d94a19d1549af869c3ee77e1690d28842b3b57ebb9116529ea53fb0e, the tag 11LAB70AA500)
-before: main's app doesn't follow Windows' text size at all (apps/windows/README.md, the real laptop 2026-11-18): at 150 % its text stays at 100 %
+# Evidence for PR #512 (second set, after review pass 1; replaces the first)
+scripts' commit: 5690b7d7 (app and uiadrive built from it) for windows-11/ and windows-10/
+command: KKS_SHOTS=<folder> KKS_TESTS=test_text_size python3 apps/windows/e2e/test_windows.py <vm-address> Walkdown.exe uiadrive.exe kks_server kks_import (with KKS_VM_DOMAIN=kks-win10 for Windows 10)
+machines: kks-win11 (26H2, 26300) and kks-win10 (22H2, 19045), both at 100 % scaling; Windows' Text size set in Settings itself through UI Automation (e2e/textsize.ps1): the setup screen at 225 %; then 150 %, 100 % and 150 % while the app runs; then 200 % and 225 %: the main screen with a tag, Manage → Account with an error in the status line, Procedures and Review (empty), Equipment by system, a course window at 360 x 640; every step passed uiadrive's fits (every label, field, button, check box and list measured in its own font; the window's own parts and a page's controls never overlapping; every control inside its parent's width)
+switched-off/: main's app (#506's head 814208ad, the same code as main 7f583929) and this PR's app at f88d0e32 switched off, the same steps on Windows 11 at 100 % (a tag's panel open; a course window): 0 pixels differ in each pair (PIL ImageChops.difference); fits passed on the PR's
+both-switches/: win-text-size and win-dark-ui together, dark app mode, 150 %, Windows 11 (built from 138a39b9)
+data: synthetic (test_windows.py's test plant: importer/tests/vectors/kkp-sample.pdf sha256 9f56a4f8d94a19d1549af869c3ee77e1690d28842b3b57ebb9116529ea53fb0e, the tag 11LAB70AA500, data/courses/inc.json sha256 b26ab75ad0624fb4b88750a0f052173cc56746e21588523c66cdca83257efd9f)
+timing of each live change (fonts and every page laid out again; timing.log): Windows 11 53, 66, 92, 39, 82, 23 ms; Windows 10 108, 59, 84, 101, 83, 87 ms (f88d0e32)
 
 sha256 per file:
-a3609c50cf27ecfb0091819f669a7b77c2b097578aa66c2b71b8a2b7aa81be8d  windows-10/win-text-150-account.png
-6f1e2b61320a938c58159eae28572512e48c69ba555783a9a448c3eb027e3093  windows-10/win-text-150-drawings.png
+578c0cf8927e2a68a4a53c86a4fcf9fb87b165ca9e6d7b42b175fd1d7dc180c5  both-switches/win-text-150-dark.png
+b51a03ba14a59745e37ae614f28b5590e21e216b6ef46df229417d746ed868bd  both-switches/win-text-150-dark-question.png
+cf55f9609797988a4c7a4fd1971422fa7c6c44a1ce7b7c098e89169c790ec1d6  switched-off/off-course-main.png
+cf55f9609797988a4c7a4fd1971422fa7c6c44a1ce7b7c098e89169c790ec1d6  switched-off/off-course-pr.png
+ccfda71c4f934037b7af924c1ec8e4cf2b6cdf1fe5baf46eb8b11cba8d9f563d  switched-off/off-drawings-main.png
+ccfda71c4f934037b7af924c1ec8e4cf2b6cdf1fe5baf46eb8b11cba8d9f563d  switched-off/off-drawings-pr.png
+6632eb0dde5e560f143b6d7f5cfb94fd506521928e6088df019975dd64be5ee0  windows-10/win-text-150-account.png
+10ed654ae35f0793c785d671e248efedc03e4827f553a4fe0fa6bfe7f47149a8  windows-10/win-text-150-drawings.png
+6ee8262c86a846dbb13dd075b600901f22a53daff9c7f9dd1c83af2ab42b6e40  windows-10/win-text-200-account.png
+9ee3bb223184c9ea85abac0d97af34cacd815b5bcf1ff08da18d36a7ca139cbd  windows-10/win-text-200-course-360.png
+f977b63da9d83bbcf205a915e8ced262224b774be32aef0c0f75f7cb51a70ffc  windows-10/win-text-200-drawings.png
+eafb9a590a68bca831f32b5209b5281fb24b106f560e7252d8f8f31f30b08c9b  windows-10/win-text-225-account.png
+4ebd366a5baf433050fbe972ae98cb8fd1ac571a88c0cfc3c7af50fa7589c946  windows-10/win-text-225-course-360.png
+d8c188faac8d51eba500788ae85551738ef8336f438549ceaf108206e10f43f5  windows-10/win-text-225-drawings.png
+1408578a03e0119665a2c130ab94bc86433ff9f43b78443989aeb16034d3a397  windows-10/win-text-225-setup.png
 fec1b808ec433aad5096569e9d093c66fb1c8e5addffb3daee2a0bff50d599c0  windows-11/win-text-150-account.png
-578c0cf8927e2a68a4a53c86a4fcf9fb87b165ca9e6d7b42b175fd1d7dc180c5  windows-11/win-text-150-dark.png
-b51a03ba14a59745e37ae614f28b5590e21e216b6ef46df229417d746ed868bd  windows-11/win-text-150-dark-question.png
 5209f0efd293bab69eb80c5e0256d5d997a78d65ee91aa01e32af23e93c2ea7c  windows-11/win-text-150-drawings.png
+875d0ee941987bfc948dd325921d053c6121ef5d9a193f883effc317d388a0e5  windows-11/win-text-200-account.png
+1d81f68ecbe6e853c0375d041850f18c949bd3d9718794b8d85dba9b0b788724  windows-11/win-text-200-course-360.png
+f2d8e74e393cfb607410ae7b10c40dac441275bebc3a55c872524b615102948f  windows-11/win-text-200-drawings.png
+5d5c48f56961ad13eb8ec5440379abb24bf341d088b3984716ac9c78586d7bb0  windows-11/win-text-225-account.png
+dc748783de3c342c9ffad7b44af40a79e199561edabd26f7a0e42dbd090a85c2  windows-11/win-text-225-course-360.png
+9bd701fcbf0332e2206c7903bcd870a08ea8ba5227c46878085cf0a80f378bbe  windows-11/win-text-225-drawings.png
+938cb137543f17efae0850e31a9b8af3bc5ac551c2e1ca5bd1a3a088055c27c6  windows-11/win-text-225-setup.png
