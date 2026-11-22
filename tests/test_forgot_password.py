@@ -79,7 +79,8 @@ class ForgotPassword(unittest.TestCase):
         # ... each with its "How?" that shows the details: a disclosure (web <details>, GNOME GtkExpander, Android a
         # button that expands and collapses), a button that shows and hides them on Windows
         self.assertIn("K.h('details', {id: 'forgotHow'}, K.h('summary', null, 'How?'), K.h('p', null, K.forgotPasswordHow))", web)
-        self.assertIn('gtk_expander_new(ForgotPasswordHowLabel.cstring)', gnome)
+        self.assertIn('gtk_expander_set_label_widget(how, howLabel)', gnome)
+        self.assertIn('let howLabel = label(ForgotPasswordHowLabel)', gnome)
         self.assertIn('gtk_expander_set_child(how, label(ForgotPasswordHow', gnome)
         self.assertIn('how.setLabel(if shown: "" else: ForgotPasswordHow)', win)
         self.assertIn('if (how) androidx.compose.foundation.text.selection.SelectionContainer { Dim(FORGOT_PASSWORD_HOW) }', kt)

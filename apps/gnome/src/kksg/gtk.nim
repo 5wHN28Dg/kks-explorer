@@ -437,6 +437,7 @@ proc gtk_box_prepend*(b, w: W) {.importc, header: HA.}
 proc gtk_label_new*(s: cstring): W {.importc, header: HA.}
 proc gtk_expander_new*(label: cstring): W {.importc, header: HA.}
 proc gtk_expander_set_child*(e, child: W) {.importc, header: HA.}
+proc gtk_expander_set_label_widget*(e, w: W) {.importc, header: HA.}
 proc gtk_label_set_text*(l: W, s: cstring) {.importc, header: HA.}
 proc gtk_label_set_markup*(l: W, s: cstring) {.importc, header: HA.}
 proc gtk_label_set_wrap*(l: W, v: cint) {.importc, header: HA.}
