@@ -1,11 +1,13 @@
 OS Windows 10.0.26300; renderer Microsoft Basic Render Driver
+PASS the report view open, the inputs box unticked (false)
+VIEW_OPEN
 PASS draft written: C:/Users/kks/AppData/Roaming/Godot/app_userdata/Walkdown Plant/report-draft.txt
-FAIL copy: clipboard 3521 characters, the note: The report was copied (3468 characters).
+PASS copy: clipboard 3460 characters, the note: The report was copied (3460 characters).
 issue: button Copy and open a public issue; link 201 characters; fits false
 issue: the note: A new issue opens in your browser, with the report copied: paste it into the issue. Nothing is posted until you press its button there.
 PASS the description kept after Copy and the issue
 SAVE_DIALOG_OPEN
-PASS saved through the dialog: 3468 characters; the note: The report was saved as report.txt.
+PASS saved through the dialog: 3460 characters; the note: The report was saved as report.txt.
 PASS the description and its draft cleared after the save
 PASS a failed save said: The report could not be saved there: the folder may not be writable, or the storage full. Choose another folder, or copy the report instead.
 DONE
@@ -13,9 +15,9 @@ DONE
 activated=True
 ---
 
- Id
- --
-896
+  Id
+  --
+1456
 ---
 201
 --- edge command lines

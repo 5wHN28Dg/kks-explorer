@@ -1,6 +1,6 @@
-# UX evidence: Report a problem (#446), round 6
+# UX evidence: Report a problem (#446), round 7: Windows 11 VM again
 
-Synthetic (the invented plant), commit 638c15d44fda96fedcb8fabf0a2db6cd7009ec49. `apps/plant3d/tests/report_shots.gd` at 638c15d4, switched on, OFFSCREEN_GODOT_DATA a folder of its own: desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout), small640_desk_ui2 (640x360, --ui-size=2); states report_about, report_shown (the public-issue line beside the buttons, at 18), report_written, report_inputs, report_save_failed, report_copied. The win11_vm_* files are round 5's (an earlier commit); round 7 adds the re-run.
+Synthetic (the invented plant), commit 638c15d44fda96fedcb8fabf0a2db6cd7009ec49. Round 6's shots, plus the Windows 11 VM re-run (kks-win11, Windows 10.0.26300, Microsoft Basic Render Driver) of a scratch export of 638c15d4 with the switch on through override.cfg and a one-off driver (never committed; Copy compared with CR LF made LF): win11_vm_results.txt, its log; win11_vm_view_open_unticked.png, the report view open with the inputs box unticked (the start offer from round 5's saved run lies over its middle: the scripted start opened the view before choosing).
 
 ```
 25d73420b0cd52d65822efd290b3983b343b08249acbae9ce4c61b624d021ec9  desk_ui2_report_about.png
@@ -27,7 +27,6 @@ c0f1ba291de2c52d767fa36085712511683d44a1ff4b7873e6188041d6533681  small640_desk_
 abe5470d901432472da87d76b388cb9c2654ebd60f816ee3ff63bd039dc8935b  small640_desk_ui2_report_save_failed.png
 d002db140735ae26154ff357886aba74c3bc0e46a9ffb21482fc2eb9bcabbccc  small640_desk_ui2_report_shown.png
 0e91fe489fa0d12e5bbf757c6b691ccc30e590ddf01f67ee49d0b8ab2c13a2f9  small640_desk_ui2_report_written.png
-870102034b44c703de56d0292e09c1c90a90bb1aec0e0c8aff96f01ef9bc3efa  win11_vm_after.png
-49220c0da2b8c7588e6dd7d74d351df90a41ad124801e42a6bac548b2aba440c  win11_vm_results.txt
-eb2ce9ac8236964e196f82cf3b9e686d49128f63c1d8c050d36a8507dd738c09  win11_vm_save_dialog_behind_edge.png
+45d4ebcea953b323a24a9fafc34d5946c610698f6796e019cc87582de8d45657  win11_vm_results.txt
+0c1de797c8f749e9a746e0d48a6239d5828b25ba199da765efee1f3432636dfb  win11_vm_view_open_unticked.png
 ```
