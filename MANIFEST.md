@@ -1,0 +1,18 @@
+# UX evidence: Restart in it asks first (#437), round 1
+
+Synthetic (the invented plant), commit 32550c748ea9c8bf93a6e9e7173d99094f33508e. `apps/plant3d/tests/restart_ask_shots.gd` under tools/plant3d/bench/offscreen.sh with OFFSCREEN_GODOT_DATA an empty folder of its own. desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout). States: restart_rows, restart_asks (just asked: Restart disabled), restart_armed (after half a second), restart_kept (Keep the run pressed).
+
+```
+2c85d32f9238d8f6e22a8c30aa5f2f87ab0ab9e3836941bab5fff4e32a25e931  desk_ui2_restart_armed.png
+4a55b601718d3946ce8beac77ef109996efa1a3d8a09cccd78d032d8de100cba  desk_ui2_restart_asks.png
+6c11cc38f7d5421b971ee1cf0e1ec0b1526cc6a959ae72f0844c8e1ee8f63c9f  desk_ui2_restart_kept.png
+2d9dcecd65d3a6ea5086b6275aeb99f62034d75d4df9d276f5210bbce04525ee  desk_ui2_restart_rows.png
+acd68c10748dd768e4922c9547d07e096a95ae509c6ea25da8f54235141a2648  desk_uidefault_restart_armed.png
+3a23260dcf5b19f7d30f48fb326e7f81392710171636b78af7a4108ff6a095f1  desk_uidefault_restart_asks.png
+349dd2ddff5859be70f4c8bd8386c28d6d8888acb2aca5564a99d57321bcf538  desk_uidefault_restart_kept.png
+df62bd9e77fc43358924c0f3e2f704c1297e40a56eae309413edaad08cc7c52b  desk_uidefault_restart_rows.png
+dbdf49404b4806d21886563db4bf4972166e351f7f69cd88be1d4974f80855b3  phone_uidefault_restart_armed.png
+44e924258f7b28e378b051e24f2d0ebaf77cb6743e7cd0e6dfea207d6ad7b7cf  phone_uidefault_restart_asks.png
+23dc74da6677edf22944313e4391883e2cbb445e0a9598eb155c868fb3292dc3  phone_uidefault_restart_kept.png
+5dce76ecb5f966048e300679cd20fe6de0a8e2e4cef496aec692b097599ab0b3  phone_uidefault_restart_rows.png
+```
