@@ -368,7 +368,7 @@ Lessons (don't repeat):
   - A rotated sheet's `.kkp` must follow `kkp.sheetExtra` = −(rot + page /Rotate).
   - The overview is rendered with the annotations baked in; tags are read without them.
 
-## Backlog (rough priority)
+## Backlog (rough priority; all post-1.0, see docs/ROADMAP-1.0.md)
 
 1. When users have marked missed tags (the log's `tag_add` entries), find why the reader missed them and fix the cause
    in the importer.
