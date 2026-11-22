@@ -1,0 +1,13 @@
+Owner-check evidence from the user's Windows 10 laptop (i7 4th gen U, 4 GB, Intel HD 4400, 1920x1080 at 125 %),
+2026-11-22/23. Synthetic data only (importer/tests/vectors/kkp-sample.pdf, the fixture tag 11LAB70AA500).
+Walkdown for Windows built from origin/main 2cd254b5; Walkdown Plant raw Windows export (unbaked, headless export,
+build.sh export windows) from the same commit.
+
+125-*.png             screenshots at 125 % display scale, cropped to the app's windows (taskbar and desktop left out)
+  light|dark          Windows' app mode (AppsUseLightTheme, the real setting)
+  off|dark-ui-on|text-size-on|both-on   KKS_UX switches (win-dark-ui, win-text-size)
+  text150|text200     Windows' Text size, set in Settings (Ease of Access > Display) by UI Automation
+resize-text{100,150,200}-{on,off}.gif   a live drag of the main window's bottom-right corner (real mouse input, 20
+                      steps 360 px in and back out, 34 ms apart), 82 screen captures each at half size;
+                      *-times.txt: each capture's time from the start
+plant-455-*.png       Walkdown Plant, #455: off = no override.cfg; on = override.cfg [walkdown] min_gpu_message=true
