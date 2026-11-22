@@ -160,6 +160,23 @@ func run(tree: SceneTree) -> Array:
 	rv.refresh()
 	if rv.text_box.text.contains("Layla"):
 		p.append("a player who left is named in the report")
+	# Share (off Android: refused) and the issue (opened by a stand-in browser) keep what happened and its draft: either
+	# may be cancelled there; only a save gives it away
+	rv.what_box.text = "kept until a save"
+	rv._keep_draft()
+	rv.share()
+	if rv.what_box.text != "kept until a save" or not FileAccess.file_exists(Report.DRAFT):
+		p.append("Share (not opened) dropped what happened or its draft")
+	var opened: Array = []
+	rv.open_url = func(u: String) -> int:
+		opened.append(u)
+		return OK
+	rv.open_issue()
+	if opened.size() != 1 or not String(opened[0]).begins_with(Report.ISSUES):
+		p.append("the issue's button opened %s" % str(opened))
+	if rv.what_box.text != "kept until a save" or not FileAccess.file_exists(Report.DRAFT):
+		p.append("opening the issue dropped what happened or its draft")
+	rv.what_box.text = keep_what
 	# a name's part never replaced inside a word (a player "Ali …" and the word "quality")
 	Report.remember("Ali Hassan", "[player name]")
 	rv.refresh()
@@ -167,8 +184,10 @@ func run(tree: SceneTree) -> Array:
 		p.append("a name's part replaced inside a word: %s" % rv.text_box.text.substr(rv.text_box.text.find("Window"), 120))
 	# a join link, even one with its code cut short, never logs the code
 	ui.handle_link("walkdown-plant://join/QX7K2M9F2MHT4C7")
+	ui.handle_link("walkdown-plant:///join/QX7K2M9F2MHT4C8")
+	ui.handle_link("WALKDOWN-PLANT://Join/QX7K2M9F2MHT4C9")
 	await tree.process_frame
-	if str(Report.keeper.last(20)).contains("QX7K2M9F2MHT4C7"):
+	if str(Report.keeper.last(20)).contains("QX7K2M9F2MHT4C"):
 		p.append("a join link's (bad) code was logged")
 	# the session notes its code and players as it sees them (net/session.gd)
 	var S = load("res://net/session.gd").new()
@@ -226,6 +245,16 @@ func run(tree: SceneTree) -> Array:
 		p.append("a second script error said it again")
 	if not str(k.last(5)).contains("SCRIPT ERROR: test: another fault"):
 		p.append("the log keeps no script error: %s" % str(k.last(5)))
+	# a name next to punctuation of any script is still a whole word (an apostrophe, a no-break space, an ellipsis, a
+	# dash, quotes, guillemets, the Arabic comma and question mark)
+	for t in ["Sara’s", "Sara\u00a0Zed", "Sara…", "—Sara—", "“Sara”", "«Sara»"]:
+		if Report.redact(t, [["Sara", "[player name]"]]).contains("Sara"):
+			p.append("a name beside punctuation is not redacted: %s" % t)
+	for t in ["سارة،", "سارة؟"]:
+		if Report.redact(t, [["سارة", "[player name]"]]).contains("سارة"):
+			p.append("an Arabic name beside Arabic punctuation is not redacted: %s" % t)
+	if not Report.redact("Saraband", [["Sara", "[player name]"]]).contains("Saraband"):
+		p.append("a name replaced inside a longer word")
 	# redaction: any case, never inside words put in, generic names left alone
 	var r := Report.redact("C:\\Users\\SARA <b>ZED</b> سارة\\x Player one", [[NAME, "[player name]"], ["Player", "[player name]"]])
 	if r.contains("SARA") or not r.contains("Player one"):

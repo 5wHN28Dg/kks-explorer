@@ -611,8 +611,8 @@ inputs only when ticked. Player names and session codes (registered by `net/sess
 the user's folders and login name are left out; a join link's path is never logged. What happened is typed in a box of
 its own, kept as a draft in `user://report-draft.txt` until a save succeeds. Save to a file (the system's dialog),
 Share (Android's share sheet), Copy, or open a public issue (a link of at most 2,000 characters; longer reports are
-copied to paste, over 60,000 characters saved to attach). The release page says what a report holds and that an issue
-is public (the owner's verdict on #505). Tests: `tests/test_report_problem.gd`; shots: `tests/report_shots.gd`.
+copied to paste, over 60,000 characters saved to attach). The root README says what a report holds and that an issue
+is public, in the README (the owner's verdict on #505). Tests: `tests/test_report_problem.gd`; shots: `tests/report_shots.gd`.
 
 ## Releasing
 

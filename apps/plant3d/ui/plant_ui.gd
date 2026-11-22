@@ -2444,9 +2444,10 @@ func handle_link(url: String) -> void:
 		return
 	var r: Dictionary = Links.read_link(url, model)
 	# (a join link's code is the session's key: never in the log, which a problem report shows; app/report.gd)
-	# (any join link's path, valid or not, is never logged: a code cut short can be made whole again)
-	var joins: bool = r["open"] == "join" or url.to_lower().contains("://join")
-	print("plant: link opens %s" % ("a session's join" if joins else "%s %s" % [url.left(80), JSON.stringify(r)]))
+	# only a link to equipment or a procedure is logged with its path: a join's code is the session's key, and an
+	# unrecognised link may be a join written another way (a code cut short can be made whole again)
+	var shown: bool = r["open"] == "kks" or r["open"] == "procedure"
+	print("plant: link opens %s" % ("%s %s" % [url.left(80), JSON.stringify(r)] if shown else r["open"]))
 	match r["open"]:
 		"kks":
 			var asked := url.get_slice("/", 3).left(24)

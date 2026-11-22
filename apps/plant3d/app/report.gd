@@ -187,8 +187,13 @@ static func _replace_nocase(text: String, what: String, with: String) -> String:
 	return out + text.substr(at)
 
 
+static var _word_re: RegEx = null
+## A letter, a digit or a combining mark of any script, or "_": part of a word. (Punctuation of any script is not: an
+## apostrophe, a no-break space, quotes, the Arabic comma.)
 static func _wordish(c: String) -> bool:
-	return c == "_" or c.is_valid_int() or c.to_upper() != c.to_lower() or c.unicode_at(0) > 127
+	if _word_re == null:
+		_word_re = RegEx.create_from_string("^[\\p{L}\\p{N}\\p{M}_]$")
+	return _word_re.search(c) != null
 
 
 ## The report, as shown and given. `with_inputs`: the run's inputs too.
@@ -291,6 +296,7 @@ var issue_btn: Button
 var scroll: ScrollContainer
 var _dialog: FileDialog
 var report := ""
+var open_url := func(u: String) -> int: return OS.shell_open(u)   # (the tests put their own in: no browser opens)
 
 
 func _init() -> void:
@@ -364,7 +370,7 @@ func _init() -> void:
 		note.set("accessibility_live", 1)
 	add_child(note)
 	# beside the buttons, what the issue's button means (the owner's verdict on #505: a line next to it)
-	var pub := W.label("An issue on GitHub is public: anyone can read what you post there.", 16, W.DIM)
+	var pub := W.label("An issue on GitHub is public: anyone can read what you post there.", 18, W.DIM)
 	pub.name = "public_note"
 	add_child(pub)
 	var row := HFlowContainer.new()
@@ -554,7 +560,7 @@ func open_issue() -> void:
 	var copied := not fits and not too_long and said.begins_with("Copy")
 	if copied:
 		DisplayServer.clipboard_set(t)
-	var err := OS.shell_open(url)
+	var err: int = open_url.call(url)
 	if err != OK:
 		_say("No browser opened. Copy the report (or save it), then make a new issue at %s." % ISSUES)
 		return
