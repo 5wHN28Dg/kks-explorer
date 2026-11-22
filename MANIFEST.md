@@ -1,6 +1,6 @@
-# UX evidence: Restart in it asks first (#437), round 2
+# UX evidence: Restart in it asks first (#437), round 3
 
-Synthetic (the invented plant), commit 543a4338f8356500f2840c5fd8a034d1b8978b19. `apps/plant3d/tests/restart_ask_shots.gd` under tools/plant3d/bench/offscreen.sh with OFFSCREEN_GODOT_DATA a folder of its own. desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout). States: restart_rows, restart_asks (0.3 s after asking: Restart disabled), restart_armed, restart_focus_restart (the focus on Restart), restart_kept (Keep the run pressed), restart_asks_same (the running scenario's own question).
+Synthetic (the invented plant), commit 3d192e6341b378400c03afd4c88847c609536b67. `apps/plant3d/tests/restart_ask_shots.gd` under tools/plant3d/bench/offscreen.sh (OFFSCREEN_GODOT_DATA a folder of its own): desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout); states restart_rows, restart_asks (0.3 s after asking), restart_armed, restart_focus_restart, restart_kept, restart_asks_same. AT-SPI trees in the headless GNOME session: a11y_restart_asks.json (tools/ui_audit/plant_a5_script.py with restart_ask_shots.gd --hold=90, the question asked) and a11y_main_card.json (the base branch's tools/ui_audit/plant_a5.py, a card open, code the PR doesn't touch): both trees hold only the HUD's top bar, no side panel.
 
 ```
 b643dfc8a773ffb45dc7d4a04de4583fab979200ffaa5762725559b4b6d5d248  desk_ui2_restart_armed.png
@@ -21,4 +21,6 @@ dc1072b91cbe7e0868e6294b054c2217ed4734f06a2697c1b31aafd41f2a7318  phone_uidefaul
 c28c4d0818a3be527c5ee38bca6d046e14fe406dca8f90bad226fea1f27a74b3  phone_uidefault_restart_focus_restart.png
 d70b2bb3dbbda64856c9e170e786c54b6baa19d1f74905a509a6c87396e45bcc  phone_uidefault_restart_kept.png
 0f35c3ab52f4a920a282ffe382ea84b03d27616c4dc19da35b19eeb448f6f571  phone_uidefault_restart_rows.png
+456fec5d94e99b97edb9d2db596df657bb4678767736c61c8123005516f72a69  a11y_main_card.json
+44fc52031a3e9eb9cc125a0f38f8d3b2137961498987354e98057d4e90445abb  a11y_restart_asks.json
 ```
