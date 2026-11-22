@@ -991,8 +991,9 @@ class Phone(unittest.TestCase):
                              'the photo for all was never written to the queue', tries=60)
         else:
             time.sleep(5)
-        ui.sh('am', 'force-stop', PKG)
-        time.sleep(2)
+        # held, so not sent, and on disk sealed: read before the stop (#479). The hold is a flag in the process, and
+        # Android may start the app again within milliseconds of `am force-stop` for its pending photo job; that new
+        # process has no hold, sends the job and empties the queue before anything here could list it.
         self.assertEqual(mine('photo'), [], 'the held photo was sent')
         with self.subTest('one sealed job for all four codes'):
             if not ui.debuggable(PKG):
@@ -1004,6 +1005,9 @@ class Phone(unittest.TestCase):
                 self.assertTrue(raw.startswith(b'KSL1'), f'{n} is not sealed')
                 for k in codes:
                     self.assertNotIn(k.encode(), raw, f'{n} holds a code in clear text')
+        # the app ends with the job queued; whichever process sends it next (Android's restart for the job, or the
+        # start below) has only the queue on disk to send it from
+        ui.sh('am', 'force-stop', PKG)
         # the app starts again: the queue sends it, one photo for every code
         ui.sh('am', 'start', '-n', f'{PKG}/kks.explorer.MainActivity')
         ph = self.wait_server(lambda: (lambda p: p if len(p) >= 4 else None)(mine('photo')),
