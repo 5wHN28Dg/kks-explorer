@@ -142,7 +142,7 @@ func run(tree: SceneTree) -> Array:
 		p.append("Restart did not restart in %s (now %s at step %d)" % [other, ui.clock.scenario, ui.clock.engine.step_no])
 	if tp.visible and tp.body.find_child("restart_question", true, false) != null:
 		p.append("the question stayed after the restart")
-	# 5. gamepad: A on Restart in it asks, A again keeps the run; B closes the panel, which keeps the run and drops the
+	# 5. gamepad: A on Restart in it asks, A again keeps the run; then Escape closes the panel, which keeps the run and drops the
 	# question (reopened, none)
 	var first2: String = ui.clock.scenario
 	if not tp.visible:
