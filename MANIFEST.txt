@@ -1,10 +1,11 @@
-# Evidence for PR #506 (third set, after review pass 2; replaces the earlier ones)
-scripts' commit: 017e1f0d (app and uiadrive built from it)
+# Evidence for PR #506 (fourth set, after the recheck; replaces the earlier ones)
+scripts' commit: b329981e (app and uiadrive built from it) for windows-11/ and windows-11-125/
 data: synthetic (test_windows.py's test plant: importer/tests/vectors/kkp-sample.pdf sha256 9f56a4f8d94a19d1549af869c3ee77e1690d28842b3b57ebb9116529ea53fb0e, the tag 11LAB70AA500, data/courses/inc.json sha256 b26ab75ad0624fb4b88750a0f052173cc56746e21588523c66cdca83257efd9f)
-windows-11/ and windows-10/: KKS_SHOTS=… KKS_TESTS=test_dark_ui python3 apps/windows/e2e/test_windows.py <vm> Walkdown.exe uiadrive.exe kks_server kks_import, on kks-win11 (26H2, 26300) and kks-win10 (22H2, 19045), both at 017e1f0d
-windows-10/before-dark-*.png: main 0e5ca777's app in dark app mode; windows-10/win-dark-ui-menu.png: a field's menu with Windows' app mode really dark (taken at f13426b8; the menu code is unchanged since)
-switched-off/: the same steps with main's app and this PR's app switched off, Windows 11: light (sidebar scrolled, ba5bb362) and dark app mode (KKS_TEST_SYSTEM_DARK=1, 017e1f0d): 0 pixels differ in each pair (PIL ImageChops.difference)
-pre-existing/: main's Equipment by system tree, light, its unfocused selection #F0F0F0 on #FFFFFF (#510)
+windows-11/: KKS_SHOTS=… KKS_TESTS=test_dark_ui python3 apps/windows/e2e/test_windows.py <kks-win11> Walkdown.exe uiadrive.exe kks_server kks_import (26H2, 26300, 100 %); win-dark-ui-ticked.png: the ticked check box (window 1240 x 700) and the chosen radio; win-dark-ui-systems.png: the tree's selection in the accent colour without the keyboard
+windows-11-125/: the same at 125 % (LogPixels 120, signed in again; put back to 100 % afterwards): the focused search field's ring is 3 device px (2.4 logical px), win-dark-ui-systems.png
+windows-10-017e1f0d/: test_dark_ui on kks-win10 (22H2, 19045) at 017e1f0d (the code since then: the tree's selection colour, the ring width above 100 %, the guard's cap; 100 % unchanged); before-dark-*.png: main 0e5ca777's app in dark app mode; win-dark-ui-menu.png a field's menu with Windows' app mode really dark (f13426b8)
+switched-off/: main's app and this PR's app switched off, same steps, Windows 11: light and dark app mode, 0 pixels differ in each pair
+pre-existing/: main's tree, light: unfocused selection #F0F0F0 on #FFFFFF (#510)
 
 sha256 per file:
 580bf22310f66f18bc8902ba0117ed2b86e2bf7778588f7b22525851f8e31ffe  pre-existing/tree-unfocused-selection-main-0e5ca777.png
@@ -12,22 +13,30 @@ sha256 per file:
 5fb3ab91bee574621783c24579df2789940aba42f429fd7eaa39f8c088589037  switched-off/dark-mode-pr-switched-off-017e1f0d.png
 b8967495e10f25321394da9171a7eac8f468325ae2895944e6b97253d48c1a24  switched-off/light-main-0e5ca777.png
 b8967495e10f25321394da9171a7eac8f468325ae2895944e6b97253d48c1a24  switched-off/light-pr-switched-off-ba5bb362.png
-b2ca3408cb0a2859f3889fda20230b4a9dbb384cc944460d2256d63ed1416895  windows-10/before-dark-drawings.png
-c455d7520f308739d14c666d147eb37585d47791721eb3307c9e7c60599116cf  windows-10/before-dark-question.png
-b717d47e0bdc123fbf0fd28e7fe702f5aa0fc15062838124ce1b50dff7b752e1  windows-10/win-dark-ui-contrast.png
-231761b52d960c4b6f13c97e2181f48c9db3f3466cd9760ecdb3e5e90d736b08  windows-10/win-dark-ui-course.png
-89187281404f533baf53f845604d07c1297b01783293d4f4885d9f8e5e11412f  windows-10/win-dark-ui-drawings.png
-bd8d54ca2b0671c723eee4187659c1fea63e59a77c9e3376a9aa7bcef50ad7b4  windows-10/win-dark-ui-light.png
-c9da424de4aceb33ed53b1477b7a4a9d788c5f47dd8ff1b5cf5a634dc9a41bd0  windows-10/win-dark-ui-manage.png
-4d54a62a38466f8a81fa6cfd36758e346030b3ed0a0dc9b72919f373d5d3fd97  windows-10/win-dark-ui-menu.png
-9a3c1625e0cbefa56c485af07f02f2ac88fe48bab89af2184a420eebbc59f4ec  windows-10/win-dark-ui-question.png
-6b99d4e99eaa382112a1ffcfab38b2fed7811e235cfa2acb9a4e40848775514f  windows-10/win-dark-ui-systems.png
-657bb7299d71a2bb2b5ceb08dede0062f236f4a97c51c79d62499d0585a9956d  windows-10/win-dark-ui-ticked.png
-7b01afb474caa83cc2d06375abf3cca6966b6a7b67bb7305a66621a806e96b3f  windows-11/win-dark-ui-contrast.png
+b2ca3408cb0a2859f3889fda20230b4a9dbb384cc944460d2256d63ed1416895  windows-10-017e1f0d/before-dark-drawings.png
+c455d7520f308739d14c666d147eb37585d47791721eb3307c9e7c60599116cf  windows-10-017e1f0d/before-dark-question.png
+b717d47e0bdc123fbf0fd28e7fe702f5aa0fc15062838124ce1b50dff7b752e1  windows-10-017e1f0d/win-dark-ui-contrast.png
+231761b52d960c4b6f13c97e2181f48c9db3f3466cd9760ecdb3e5e90d736b08  windows-10-017e1f0d/win-dark-ui-course.png
+89187281404f533baf53f845604d07c1297b01783293d4f4885d9f8e5e11412f  windows-10-017e1f0d/win-dark-ui-drawings.png
+bd8d54ca2b0671c723eee4187659c1fea63e59a77c9e3376a9aa7bcef50ad7b4  windows-10-017e1f0d/win-dark-ui-light.png
+c9da424de4aceb33ed53b1477b7a4a9d788c5f47dd8ff1b5cf5a634dc9a41bd0  windows-10-017e1f0d/win-dark-ui-manage.png
+4d54a62a38466f8a81fa6cfd36758e346030b3ed0a0dc9b72919f373d5d3fd97  windows-10-017e1f0d/win-dark-ui-menu.png
+9a3c1625e0cbefa56c485af07f02f2ac88fe48bab89af2184a420eebbc59f4ec  windows-10-017e1f0d/win-dark-ui-question.png
+6b99d4e99eaa382112a1ffcfab38b2fed7811e235cfa2acb9a4e40848775514f  windows-10-017e1f0d/win-dark-ui-systems.png
+657bb7299d71a2bb2b5ceb08dede0062f236f4a97c51c79d62499d0585a9956d  windows-10-017e1f0d/win-dark-ui-ticked.png
+bbb64a949a8402f7eea3425167531fe683afbbae9763c00dc5ec253717afa1a8  windows-11-125/win-dark-ui-contrast.png
+3a2cce72d09696f0e565b27a5fd62837632a23c25bc338fa0f0cac203e0889af  windows-11-125/win-dark-ui-course.png
+acf2e3795e8db0363367c3b98aa67b76ba614b197e1eb0ea770af392dea408ae  windows-11-125/win-dark-ui-drawings.png
+1f8a67cc9a0aaaa0e40bd60304baf923833c237cca5f957228b3bfa2ea42e82d  windows-11-125/win-dark-ui-light.png
+b51b7f5d61d05f2e11f6feefb8d3eb0648bca614c8dd7dd961e8a50f3292c763  windows-11-125/win-dark-ui-manage.png
+996fd9eb52982643ed1a264025ec20cff94feedbf6b3027bf7b6b36b6bf11133  windows-11-125/win-dark-ui-question.png
+0fd6b7c9cef7c4f413c344e403383f035ea5688060d063f926733cdb58518815  windows-11-125/win-dark-ui-systems.png
+fe93f4a59fe1295a1b6f8b275190cdec8dbecf3d7cdb011f95d366a76ce86149  windows-11-125/win-dark-ui-ticked.png
+40dadea6f858af11e37ccbb3a49d5bdc6482b8ba2b113c7cf788264aabfcc8d1  windows-11/win-dark-ui-contrast.png
 044ba316eb43ab2e01abaed6dd73c81748cda85c448f2ace62a62143bf843e1a  windows-11/win-dark-ui-course.png
 8e0c04c8afed922b7fec9cefb49bf6d44055e071c54a6626db94bcd70fe9bdfd  windows-11/win-dark-ui-drawings.png
 afbd21d3ff3d82f12a775b91be46f46117d2451c1ef89b8c6221bd276919ef8b  windows-11/win-dark-ui-light.png
 7c26f4a402d648fc98711abcff0e2d11f164cf4fd38f6d3c3465e64fbbb3abe6  windows-11/win-dark-ui-manage.png
-3767c6810cf3a1154f322581c1ecf72b3f38ba52cbdc3f87b04bfd72209d1dd4  windows-11/win-dark-ui-question.png
-3a00dacacdafb9ac1b69f942d8f8f5819d6d08324b731016739fbb09f012e50e  windows-11/win-dark-ui-systems.png
-e77906cb2b848ace0f1fe62d09444b814356bef6a69dd5e4d9ca54f52f9dae9c  windows-11/win-dark-ui-ticked.png
+51fe15d9e96717ea7014114535c5e52b24015ee3aa87a6e6d5510e7bf505643a  windows-11/win-dark-ui-question.png
+bce5d97f317c7083d1ef9e4635ee996978819c0ad7f32238885994b0700164f9  windows-11/win-dark-ui-systems.png
+bab7d628e29827f4162a9d91c12c49495520ced11858e884a1d3b0d8060cd977  windows-11/win-dark-ui-ticked.png
