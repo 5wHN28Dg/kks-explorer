@@ -82,6 +82,11 @@ proc textSizeChanged() =
   ## the cause is outside the app), while Settings went on announcing its changes
   if w == nil or (w.v == nil and setupP == nil): return
   layoutMain()
+  if w.v != nil and setupP == nil:
+    # the pages made again where they can be (never under the keyboard or typed text: panelChanged, sideChanged): a
+    # value to read wraps at a larger text size, which its field must be made with
+    w.panelChanged()
+    w.sideChanged()
   for d in [1000, 3000, 6000, 10000]:
     discard afterMs(d, proc () =
       if w != nil and (w.v != nil or setupP != nil):
@@ -95,9 +100,7 @@ proc layoutMain() =
   let H = int(r.bottom)
   if setupP != nil:
     MoveWindow(setupP.hwnd, 0, 0, int32(W), int32(H), 1)
-    if w.status != nil: ShowWindow(w.status, SW_HIDE)    # (the status line belongs to the main screen, not under setup)
     return
-  if w.status != nil: ShowWindow(w.status, SW_SHOW)
   # the sidebar and the panel wider with the text size (#377), never more than 35 and 30 % of the window, never
   # narrower than at 100 %
   let side = sideWidth(W)

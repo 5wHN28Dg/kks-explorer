@@ -105,6 +105,7 @@ proc page(long = false): (Page, seq[HWND]) =
   hs.add p.dim(longer("Secondary text: Enter or double-click a result to show it on its drawing.", long))
   hs.add p.field(longer("Search equipment by KKS code or description", long), "11LAB70AA500")
   hs.add p.multiField("Note", "A note\r\non two lines", 60)
+  hs.add p.field("System", longer("LAB  Feed water piping system (a value to read)", long), readonly = true)
   hs.add p.buttons((longer("Equipment by system…", long), proc () = discard), (longer("Coverage…", long), proc () = discard))
   hs.add p.check(longer("Colour tags by photos", long), false, proc (on: bool) = discard)
   hs.add p.radios(@["Follow theme", "Always dark"], 0, proc (i: int) = discard)
@@ -136,6 +137,13 @@ proc checkFits(p: Page, made: seq[HWND], what: string) =
       check nh <= int(r.bottom)                                    # every line of it shown
     of "edit":
       check lineH(h) <= int(r.bottom)                              # a whole line of text in the field
+      if (style and 0x0800) != 0:                                  # ES_READONLY: a value to read, all of it shown
+        if (style and 0x0004) != 0:                                # (wrapped onto lines: ES_MULTILINE)
+          let (_, nh) = needed(h, int(r.right) - int(px(8)), wrap = true)
+          check nh <= int(r.bottom)
+        else:
+          let (nw, _) = needed(h, 0, wrap = false)
+          check nw + px(6) <= int(r.right)
     of "button":
       if (style and 0xF) in [3'u32, 9'u32]:                        # check box, radio button: the box and the text
         if (style and 0x2000) != 0:                                # (its lines wrapped beside the box)
@@ -252,5 +260,15 @@ suite "Windows' text size":
     pump()
     check fontOf(hs[1]) == fontNormal
     check lineH(hs[1]) > before
-    checkFits(p, hs, "after the change")
+    # (a value to read is made to wrap with its page, which the app makes again after a change: textSizeChanged)
     p.destroy()
+    let (p2, hs2) = page(long = true)
+    checkFits(p2, hs2, "after the change")
+    # and back to 100 %: a label that wrapped is on one line again (the released single line), nothing cut
+    putEnv("KKS_TEST_TEXT_SCALE", "1")
+    check refreshTextScale()
+    pump()
+    for h in hs2:
+      if cls(h) == "button" and (GetWindowLongPtrW(h, -16) and 0x100) == 0:     # (not the tall answer buttons, BS_LEFT)
+        check (GetWindowLongPtrW(h, -16) and 0x2000) == 0                        # BS_MULTILINE gone
+    p2.destroy()

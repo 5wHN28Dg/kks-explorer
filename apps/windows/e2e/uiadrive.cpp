@@ -243,6 +243,7 @@ static SIZE need(HWND h, const std::wstring &t, int width, bool wrap, bool editc
     LOGFONTW lf = {};
     HFONT theirs = (HFONT)SendMessageW(h, WM_GETFONT, 0, 0);
     HFONT mine = theirs && GetObjectW(theirs, sizeof lf, &lf) ? CreateFontIndirectW(&lf) : nullptr;
+    if (theirs && !mine) say("  (could not read the font of a control: measured in the default GUI font)");
     HDC dc = GetDC(h);
     HGDIOBJ old = SelectObject(dc, mine ? (HGDIOBJ)mine : GetStockObject(DEFAULT_GUI_FONT));
     RECT r = {0, 0, width, 0};
@@ -282,6 +283,13 @@ static int fits(IUIAutomationElement *e) {
         } else if (!_wcsicmp(cls, L"Edit")) {
             SIZE s = need(h, L"Ag", 1000, false);
             if (!(style & ES_MULTILINE) && s.cy > r.bottom) why = "a line " + std::to_string(s.cy) + " px tall in " + std::to_string(r.bottom);
+            else if ((style & ES_MULTILINE) && (style & ES_READONLY) && n) {   // a value on several lines: all in view
+                SIZE w2 = need(h, t, std::max<LONG>(1, r.right - MulDiv(8, (int)GetDpiForWindow(h), 96)), true, true);
+                if (w2.cy > r.bottom) why = "value " + std::to_string(w2.cy) + " px tall in " + std::to_string(r.bottom);
+            } else if (!(style & ES_MULTILINE) && (style & ES_READONLY) && n) {   // a value to read on one line: all of it
+                SIZE w1 = need(h, t, 0, false);
+                if (w1.cx + MulDiv(6, (int)GetDpiForWindow(h), 96) > r.right) why = "value " + std::to_string(w1.cx) + " px wide in " + std::to_string(r.right);
+            }
         } else if (!_wcsicmp(cls, L"Button") && n) {
             int kind = style & BS_TYPEMASK;
             std::wstring shown;      // (the label as drawn: "&&" is one "&", a lone "&" marks the access key)
@@ -293,9 +301,18 @@ static int fits(IUIAutomationElement *e) {
                 if (s.cy > r.bottom) why = "label " + std::to_string(s.cy) + " px tall in " + std::to_string(r.bottom);
             } else if (kind == BS_AUTOCHECKBOX || kind == BS_CHECKBOX || kind == BS_AUTORADIOBUTTON || kind == BS_RADIOBUTTON) {
                 SIZE s = need(h, shown, 0, false);
-                int box = MulDiv(16, (int)GetDpiForWindow(h), 96);
+                int box = MulDiv(24, (int)GetDpiForWindow(h), 96);   // (the box and the gap before the label)
                 if (s.cy > r.bottom || s.cx + box > r.right) why = "label " + std::to_string(s.cx) + "x" + std::to_string(s.cy) + " with its box";
             } else if (style & BS_MULTILINE) {
+                // (and no word broken: each word on a line of its own still fits)
+                size_t a = 0;
+                while (why.empty() && a < shown.size()) {
+                    size_t b = shown.find(L' ', a);
+                    if (b == std::wstring::npos) b = shown.size();
+                    SIZE ws = need(h, shown.substr(a, b - a), 0, false);
+                    if (ws.cx + MulDiv(12, (int)GetDpiForWindow(h), 96) > r.right) why = "the word \"" + utf8(shown.substr(a, b - a)) + "\" broken";
+                    a = b + 1;
+                }
                 SIZE s = need(h, shown, std::max<LONG>(1, r.right - MulDiv(12, (int)GetDpiForWindow(h), 96)), true);
                 if (s.cy > r.bottom) why = "text " + std::to_string(s.cy) + " px tall in " + std::to_string(r.bottom);
             } else {
@@ -307,7 +324,21 @@ static int fits(IUIAutomationElement *e) {
         } else if (!_wcsicmp(cls, L"ListBox")) {
             SIZE s = need(h, L"Ag", 1000, false);
             LRESULT ih = SendMessageW(h, LB_GETITEMHEIGHT, 0, 0);
-            if (ih < s.cy) why = "rows " + std::to_string(ih) + " px for a line of " + std::to_string(s.cy);
+            if (!(style & LBS_OWNERDRAWVARIABLE) && ih < s.cy)
+                why = "rows " + std::to_string(ih) + " px for a line of " + std::to_string(s.cy);
+            // a plain list's rows: each one's text whole (owner-drawn rows mark a cut with an ellipsis, or wrap)
+            if (why.empty() && !(style & (LBS_OWNERDRAWFIXED | LBS_OWNERDRAWVARIABLE))) {
+                LRESULT count = SendMessageW(h, LB_GETCOUNT, 0, 0);
+                for (LRESULT k = 0; k < count && why.empty(); k++) {
+                    LRESULT len = SendMessageW(h, LB_GETTEXTLEN, k, 0);
+                    if (len <= 0) continue;
+                    std::wstring row(len + 1, L'\0');
+                    SendMessageW(h, LB_GETTEXT, k, (LPARAM)&row[0]);
+                    row.resize(len);
+                    SIZE rs = need(h, row, 0, false);
+                    if (rs.cx + MulDiv(4, (int)GetDpiForWindow(h), 96) > r.right) why = "row \"" + utf8(row.substr(0, 40)) + "\" cut";
+                }
+            }
         }
         if (!why.empty()) {
             LOGFONTW lf = {};
@@ -339,6 +370,10 @@ static int fits(IUIAutomationElement *e) {
         for (size_t j = 0; j < i; j++) {
             HWND a = c.all[i], b = c.all[j];
             if (GetParent(a) != GetParent(b)) continue;
+            // (an empty label shows nothing that could be covered or cover: the status line behind the setup screen)
+            wchar_t c1[16] = L"", c2[16] = L"";
+            GetClassNameW(a, c1, 16); GetClassNameW(b, c2, 16);
+            if ((!_wcsicmp(c1, L"Static") && !GetWindowTextLengthW(a)) || (!_wcsicmp(c2, L"Static") && !GetWindowTextLengthW(b))) continue;
             RECT ra, rb, x;
             GetWindowRect(a, &ra); GetWindowRect(b, &rb);
             if (IntersectRect(&x, &ra, &rb)) {

@@ -132,6 +132,7 @@ template guard*(body: untyped) =
 const TextSizeSwitch* = "win-text-size"
 
 var textScale* = 1.0        ## the app's text, and the heights made for it, times this (tx)
+var zoomPending = false     ## rich text to be zoomed to a new text size (relayoutAll)
 
 proc RegGetValueTs(key: pointer, sub, value: WideCString, flags: uint32, typ: ptr uint32, data: pointer,
                    size: ptr uint32): int32 {.importc: "RegGetValueW", stdcall, header: HG.}
@@ -223,6 +224,7 @@ proc refreshTextScale*(): bool =
   if abs(s - textScale) < 0.001: return false
   let t0 = epochTime()
   textScale = s
+  zoomPending = true
   makeFonts(dpi)
   if getEnv("KKS_TIMING").len > 0 and errorLog.len > 0:     # (docs/m6/MEASUREMENTS.md style: how long the app froze)
     try:
@@ -508,9 +510,12 @@ proc layout*(p: Page) =
       y += h + px(if it.kind == ikTitle: 8 else: 6)
     of ikField:
       let lh = p.fieldLabel(it.hwnds[0], w)
+      var eh = int(tx(28))
+      if (uint32(GetWindowLongPtrW(it.hwnds[1], -16)) and ES_MULTILINE) != 0:      # a value that wraps (field)
+        eh = max(eh, p.measure(it.hwnds[1].text, fontNormal, w - int(px(12))) + int(px(10)))
       MoveWindow(it.hwnds[0], x, int32(y), int32(w), int32(lh), 1)
-      MoveWindow(it.hwnds[1], x, int32(y + lh), int32(w), tx(28), 1)
-      y += lh - int(tx(20)) + txp(48, 8)
+      MoveWindow(it.hwnds[1], x, int32(y + lh), int32(w), int32(eh), 1)
+      y += lh - int(tx(20)) + eh - int(tx(28)) + txp(48, 8)
     of ikMulti:
       let lh = p.fieldLabel(it.hwnds[0], w)
       MoveWindow(it.hwnds[0], x, int32(y), int32(w), int32(lh), 1)
@@ -535,6 +540,8 @@ proc layout*(p: Page) =
           # the button as tall as they need (at 100 % as released: cut at the column)
           SetWindowLongPtrW(b, -16, GetWindowLongPtrW(b, -16) or int(BS_MULTILINE))
           bh = max(bh, p.measure(b.text.replace("&&", "&"), fontNormal, w - int(px(28))) + int(px(12)))
+        elif (uint32(GetWindowLongPtrW(b, -16)) and BS_MULTILINE) != 0:
+          SetWindowLongPtrW(b, -16, GetWindowLongPtrW(b, -16) and not int(BS_MULTILINE))   # (fits on one line again)
         MoveWindow(b, int32(bx), int32(y), int32(min(bw, w)), int32(bh), 1)
         rowH = max(rowH, bh)
         bx += bw + int(px(8))
@@ -545,6 +552,9 @@ proc layout*(p: Page) =
         # (a label wider than the column: its lines wrap beside the box, as tall as they need)
         SetWindowLongPtrW(it.hwnds[0], -16, GetWindowLongPtrW(it.hwnds[0], -16) or int(BS_MULTILINE))
         ch = max(ch, p.measure(it.hwnds[0].text.replace("&&", "&"), fontNormal, w - int(px(24))) + int(px(8)))
+      elif (uint32(GetWindowLongPtrW(it.hwnds[0], -16)) and BS_MULTILINE) != 0:
+        # (fits on one line again, after a smaller text size: the released single line)
+        SetWindowLongPtrW(it.hwnds[0], -16, GetWindowLongPtrW(it.hwnds[0], -16) and not int(BS_MULTILINE))
       MoveWindow(it.hwnds[0], x, int32(y), int32(w), int32(ch), 1)
       y += ch - int(tx(26)) + txp(26, 6)
     of ikList:      # (its height is made for a number of rows: it grows with them)
@@ -592,10 +602,12 @@ proc relayoutAll() =
     for it in p.items:
       if it.kind == ikList and it.hwnds[0] in ownerDraws:
         SendMessageW(it.hwnds[0], 0x01A0'u32, 0, LPARAM(tx(26)))           # LB_SETITEMHEIGHT
-  var rs: seq[HWND]
-  for h in richH.keys: rs.add h
-  for h in rs:
-    if IsWindow(h) != 0: zoomRich(h)
+  if zoomPending:      # (only for a text size change: a scale change keeps the zoom the reader chose, Ctrl+wheel)
+    zoomPending = false
+    var rs: seq[HWND]
+    for h in richH.keys: rs.add h
+    for h in rs:
+      if IsWindow(h) != 0: zoomRich(h)
   for p in ps:
     if p.hwnd != nil and IsWindow(p.hwnd) != 0: p.layout()
 
@@ -879,7 +891,11 @@ proc field*(p: Page, name, value: string, password = false, readonly = false, on
   ## key: what the field holds, where its label doesn't say (a custom field's value: its name), so that what was typed
   ## goes back into the field for the same thing when the page is made again (restoreText)
   let lab = control(p.hwnd, "STATIC", name, SS_LEFT or SS_NOPREFIX)[0]
-  let (e, _) = control(p.hwnd, "EDIT", value, WS_TABSTOP or ES_AUTOHSCROLL or (if password: ES_PASSWORD else: 0) or
+  # a value to read (a decoded code, a description) at a larger text size: on as many lines as it needs, never cut
+  # mid-word with no mark (an edit's style can't change later: a text size change makes the page again, textSizeChanged)
+  let wrapRead = readonly and textScale > 1.0
+  let (e, _) = control(p.hwnd, "EDIT", (if wrapRead: value.replace("\n", "\r\n") else: value), WS_TABSTOP or
+                       (if wrapRead: ES_MULTILINE else: ES_AUTOHSCROLL) or (if password: ES_PASSWORD else: 0) or
                        (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE)
   if onChange != nil: ctl(e).change = onChange
   if not readonly: p.typed.add Typed(h: e, name: name, key: (if key.len > 0: key else: name), was: e.text, secret: password)
