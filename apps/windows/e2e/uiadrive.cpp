@@ -326,6 +326,22 @@ static int fits(IUIAutomationElement *e) {
             LRESULT ih = SendMessageW(h, LB_GETITEMHEIGHT, 0, 0);
             if (!(style & LBS_OWNERDRAWVARIABLE) && ih < s.cy)
                 why = "rows " + std::to_string(ih) + " px for a line of " + std::to_string(s.cy);
+            // a list whose rows wrap (owner-drawn, each its own height): each row as tall as its text wrapped at the
+            // row's width (the row's text inset by 4 DIP a side, as the app draws it)
+            if (why.empty() && (style & LBS_OWNERDRAWVARIABLE) && (style & LBS_HASSTRINGS)) {
+                LRESULT count = SendMessageW(h, LB_GETCOUNT, 0, 0);
+                int inset = MulDiv(8, (int)GetDpiForWindow(h), 96), pad = MulDiv(3, (int)GetDpiForWindow(h), 96);
+                for (LRESULT k = 0; k < count && why.empty(); k++) {
+                    LRESULT len = SendMessageW(h, LB_GETTEXTLEN, k, 0);
+                    if (len <= 0) continue;
+                    std::wstring row(len + 1, L'\0');
+                    SendMessageW(h, LB_GETTEXT, k, (LPARAM)&row[0]);
+                    row.resize(len);
+                    SIZE rs = need(h, row, std::max<LONG>(1, r.right - inset), true, true);
+                    LRESULT rh = SendMessageW(h, LB_GETITEMHEIGHT, k, 0);
+                    if (rs.cy + pad > rh) why = "row \"" + utf8(row.substr(0, 40)) + "\" " + std::to_string(rs.cy) + " px tall in " + std::to_string(rh);
+                }
+            }
             // a plain list's rows: each one's text whole (owner-drawn rows mark a cut with an ellipsis, or wrap)
             if (why.empty() && !(style & (LBS_OWNERDRAWFIXED | LBS_OWNERDRAWVARIABLE))) {
                 LRESULT count = SendMessageW(h, LB_GETCOUNT, 0, 0);

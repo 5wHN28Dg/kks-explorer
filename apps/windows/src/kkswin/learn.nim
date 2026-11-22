@@ -684,7 +684,10 @@ proc makeRail(cw: CW) =
     hadFocus = GetFocus() == cw.rail
     forgetControl(cw.rail)
     DestroyWindow(cw.rail)
-  let wrap = if textScale > 1.0: 0x0020'u32 or 0x0040'u32 else: 0'u32      # LBS_OWNERDRAWVARIABLE, LBS_HASSTRINGS
+  # LBS_OWNERDRAWVARIABLE, LBS_HASSTRINGS, LBS_DISABLENOSCROLL: the scroll bar always there, so each row is measured
+  # at the width it is drawn at (with the bar appearing only once the list overflowed, the rows measured before were
+  # measured wider and lost their last line, #512's second recheck)
+  let wrap = if textScale > 1.0: 0x0020'u32 or 0x0040'u32 or 0x1000'u32 else: 0'u32
   let (rl, _) = control(cw.hwnd, "LISTBOX", "Course contents", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or
                         LBS_NOINTEGRALHEIGHT or wrap, WS_EX_CLIENTEDGE)
   cw.rail = rl
@@ -752,11 +755,9 @@ proc courseProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
         return 1
     of WM_SIZE:
       if cw != nil:
-        # the rail grows with the text, to at most 35 % of the window, so the page keeps the rest even in a narrow
-        # window (at 100 % as released: 260)
-        # never narrower than released while the window has room for the page beside it, nor more than half of it
-        # never narrower than released while the window has room for the page beside it (at most half of it), and the
-        # page kept at least 220 wide where the window allows
+        # the rail grows with the text (at 100 % as released: 260): to 35 % of the window, never narrower than released
+        # while the window has room for the page beside it (at most half of it), and the page kept at least 220 wide
+        # where the window allows
         let W = loword(lp)
         let least = min(int(tx(260)), W * 35 div 100)
         let rw = if textScale == 1.0: px(260)

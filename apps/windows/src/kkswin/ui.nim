@@ -619,6 +619,8 @@ proc relayoutPages*() =
 
 proc isEmpty*(p: Page): bool = p == nil or p.items.len == 0
 
+proc RedrawWindow(h: HWND, r: pointer, rgn: pointer, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
+
 proc placeColumn*(head, body: Page, x, w, h: int, headOn: bool): int =
   ## a column of two pages at `x`: `head` on top, as tall as what it holds (at most half the column), and `body`
   ## under it, which scrolls on its own: what is in `head` stays in view however far `body` is scrolled (the tag
@@ -633,6 +635,9 @@ proc placeColumn*(head, body: Page, x, w, h: int, headOn: bool): int =
     head.layout()            # (at its own height: no scroll bar when all of it fits)
   ShowWindow(head.hwnd, if result > 0: SW_SHOW else: SW_HIDE)
   MoveWindow(body.hwnd, int32(x), int32(result), int32(max(w, 0)), int32(h - result), 1)
+  # (the heading painted again, all of it: moved and laid out with the first move unpainted, it kept old pixels of its
+  # buttons, seen at 200 % text after the window was resized)
+  if result > 0: RedrawWindow(head.hwnd, nil, nil, 0x0001'u32 or 0x0004'u32 or 0x0080'u32)   # INVALIDATE, ERASE, ALLCHILDREN
 
 proc tabRows*(widths: seq[int], avail, gap: int): seq[seq[int]] =
   ## the tabs (their least widths) in rows of at most `avail` px with `gap` between them, in order; a tab wider than
