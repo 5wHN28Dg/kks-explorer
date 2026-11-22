@@ -49,6 +49,19 @@ proc bottomRow(W: int): tuple[st, statusW, n, qw: int, q: bool] =
   let lineH = textHeight(w.status, "Ag", result.statusW)
   result.st = max(int(tx(StatusH)), min(textHeight(w.status, statusText(), result.statusW), 4 * lineH) + int(px(10)))
 
+proc sideWidth(W: int): int =
+  ## the sidebar wider with the text size (#377), never more than 35 % of the window (the drawing keeps the rest),
+  ## never narrower than at 100 %
+  max(int(px(SideW)), min(int(tx(SideW)), W * 35 div 100))
+
+proc layoutHeld(): bool =
+  ## the sidebar still as wide as the last layout made it. After a text size change in Windows 11's Settings the
+  ## window's pages were seen at their sizes from before the change a moment after the app had laid them out anew
+  ## (26H2, 2026-11-22; not from the app's code): the refresh timer lays the window out again when that happens
+  var r, c: RECT
+  if GetWindowRect(w.side.hwnd, addr r) == 0 or GetClientRect(w.hwnd, addr c) == 0: return true
+  int(r.right - r.left) == sideWidth(int(c.right))
+
 proc layoutMain() =
   var r: RECT
   GetClientRect(w.hwnd, addr r)
@@ -57,9 +70,9 @@ proc layoutMain() =
   if setupP != nil:
     MoveWindow(setupP.hwnd, 0, 0, int32(W), int32(H), 1)
     return
-  # the sidebar and the panel wider with the text size (#377), never more than 35 and 30 % of the window (the drawing
-  # keeps the rest), never narrower than at 100 %
-  let side = max(int(px(SideW)), min(int(tx(SideW)), W * 35 div 100))
+  # the sidebar and the panel wider with the text size (#377), never more than 35 and 30 % of the window, never
+  # narrower than at 100 %
+  let side = sideWidth(W)
   let panelW = if w.selected.len > 0 or w.picking: max(int(px(PanelW)), min(int(tx(PanelW)), W * 30 div 100)) else: 0
   let (st, statusW, n, qw, q) = bottomRow(W)
   statusRow = st
@@ -334,6 +347,7 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
       guard: discard refreshTheme()     # (also when no window was told: the app mode read once a second)
       guard:
         if refreshTextScale() and (w.v != nil or setupP != nil): layoutMain()    # and the text size
+        elif w.v != nil and setupP == nil and not layoutHeld(): layoutMain()
       if w.v != nil and setupP == nil:
         guard: w.catchUpFollowers()     # a window marked stale under the focus, once the focus has left it
         guard: w.panelCatchUp()         # the panel too, left alone under the keyboard or typed text

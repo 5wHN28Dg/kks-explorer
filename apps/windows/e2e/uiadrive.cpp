@@ -320,7 +320,8 @@ static int fits(IUIAutomationElement *e) {
             if (IntersectRect(&x, &ra, &rb)) {
                 wchar_t ta[80] = L"", tb[80] = L"";
                 GetWindowTextW(a, ta, 80); GetWindowTextW(b, tb, 80);
-                say("  overlap: \"" + utf8(ta) + "\" and \"" + utf8(tb) + "\"");
+                auto rs = [](RECT r) { return std::to_string(r.left) + "," + std::to_string(r.top) + "-" + std::to_string(r.right) + "," + std::to_string(r.bottom); };
+                say("  overlap: \"" + utf8(ta) + "\" " + rs(ra) + " and \"" + utf8(tb) + "\" " + rs(rb));
                 c.bad++;
             }
         }
