@@ -142,5 +142,74 @@ func run(tree: SceneTree) -> Array:
 		p.append("Restart did not restart in %s (now %s at step %d)" % [other, ui.clock.scenario, ui.clock.engine.step_no])
 	if tp.visible and tp.body.find_child("restart_question", true, false) != null:
 		p.append("the question stayed after the restart")
+	# 5. gamepad: A on Restart in it asks, A again keeps the run; B closes the panel, which keeps the run and drops the
+	# question (reopened, none)
+	var first2: String = ui.clock.scenario
+	if not tp.visible:
+		ui.toggle_trainer()
+		await tree.process_frame
+	var other2 := ""
+	for id in ui.info.m.scenarios:
+		if id != first2 and other2 == "":
+			other2 = id
+	var rb2: Button = tp.body.find_child("restart_" + other2, true, false)
+	rb2.grab_focus()
+	_joy(tree, JOY_BUTTON_A)         # (the first press of a pad makes it the controls, and does nothing else)
+	await tree.process_frame
+	if tp.body.find_child("restart_question", true, false) == null:
+		(tp.body.find_child("restart_" + other2, true, false) as Button).grab_focus()
+		_joy(tree, JOY_BUTTON_A)
+		await tree.process_frame
+	if tp.body.find_child("restart_question", true, false) == null or _focus(ui) != "keep_run":
+		p.append("gamepad A on Restart in it did not ask with Keep the run focused (focus %s)" % _focus(ui))
+	_joy(tree, JOY_BUTTON_A)
+	await tree.process_frame
+	if tp.body.find_child("restart_question", true, false) != null or ui.clock.scenario != first2:
+		p.append("gamepad A on Keep the run did not keep the run")
+	(tp.body.find_child("restart_" + other2, true, false) as Button).pressed.emit()
+	await tree.process_frame
+	_key(tree, KEY_ESCAPE)
+	await tree.process_frame
+	if tp.visible or ui.clock.scenario != first2:
+		p.append("Escape while asked did not close the panel and keep the run (visible %s, %s)" % [tp.visible, ui.clock.scenario])
+	ui.toggle_trainer()
+	await tree.process_frame
+	if tp.body.find_child("restart_question", true, false) != null:
+		p.append("the question came back when the panel was opened again")
+	# 6. touch: a tap on Restart in it asks, and takes no focus (no panel takes it on touch)
+	main.hud.touch_screen = true
+	var fo: Control = ui.get_viewport().gui_get_focus_owner()
+	if fo != null:
+		fo.release_focus()
+	(tp.body.find_child("restart_" + other2, true, false) as Button).pressed.emit()   # (a tap)
+	await tree.process_frame
+	if tp.body.find_child("restart_question", true, false) == null:
+		p.append("a tap on Restart in it asked nothing")
+	if _focus(ui) == "keep_run":
+		p.append("on touch the question took the focus (no other panel does)")
+	main.hud.touch_screen = false
+	# 7. in a session: refused as before, with no question
+	var fake := GDScript.new()
+	fake.source_code = "extends RefCounted\nfunc active() -> bool:\n\treturn true\n"
+	fake.reload()
+	var was = ui.session
+	ui.session = fake.new()
+	tp.asking = ""
+	ui._toast.visible = false
+	tp.ask_restart(other2)
+	var refused: bool = ui._toast.visible and ui._toast.text.begins_with("Not while a session is open")
+	ui.session = was
+	if not refused or tp.asking != "" or ui.clock.scenario != first2:
+		p.append("in a session Restart in it was not refused as before (asking %s)" % tp.asking)
 	main.free()
 	return p
+
+
+static func _joy(tree: SceneTree, b: JoyButton) -> void:
+	var j := InputEventJoypadButton.new()
+	j.pressed = true
+	j.button_index = b
+	tree.root.push_input(j)
+	var up: InputEventJoypadButton = j.duplicate()
+	up.pressed = false
+	tree.root.push_input(up)

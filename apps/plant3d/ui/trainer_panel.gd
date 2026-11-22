@@ -242,3 +242,18 @@ func _focus_row(id: String) -> void:
 	if back != null and ui.wants_focus():
 		back.grab_focus()
 		get_tree().create_timer(0.05).timeout.connect(func(): ui._keep_in_view(back))
+
+
+## Gamepad A presses the panel's focused button (Godot's ui_accept has no gamepad button; ui/permit_panel.gd and
+## app/hud.gd do the same): Restart in it, its question, the weather and the faults work from a gamepad too.
+func _input(ev: InputEvent) -> void:
+	if not visible or not (ev is InputEventJoypadButton and ev.button_index == JOY_BUTTON_A):
+		return
+	var fo := get_viewport().gui_get_focus_owner()
+	if fo == null or not is_ancestor_of(fo) or not fo.is_visible_in_tree() or not fo is BaseButton:
+		return
+	get_viewport().set_input_as_handled()
+	var a := InputEventAction.new()
+	a.action = "ui_accept"
+	a.pressed = ev.pressed
+	get_viewport().push_input(a)
