@@ -75,23 +75,34 @@ proc layoutHeld(): bool =
 
 proc layoutMain()
 
+proc RedrawWindow(h: HWND, r: pointer, rgn: pointer, flags: UINT): BOOL {.importc, stdcall, header: "<windows.h>", discardable.}
+
+proc repaintAll() =
+  ## every part of the window painted again (a page's controls moved under a heading that kept its old pixels: seen
+  ## at 225 % on Windows 11, the tag's heading half painted over)
+  RedrawWindow(w.hwnd, nil, nil, 0x0001'u32 or 0x0004'u32 or 0x0080'u32 or 0x0100'u32)   # INVALIDATE, ERASE, ALLCHILDREN, UPDATENOW
+
 proc textSizeChanged() =
   ## Windows' text size changed: the window laid out in the new fonts at once, and again a few times over the next
   ## seconds. On Windows 11 26H2 the window's pages were seen back at their sizes from before the change some
   ## seconds after the app had laid them out anew (traced 2026-11-22: every layout the app made used the new size;
   ## the cause is outside the app), while Settings went on announcing its changes
   if w == nil or (w.v == nil and setupP == nil): return
-  layoutMain()
   if w.v != nil and setupP == nil:
     # the pages made again where they can be (never under the keyboard or typed text: panelChanged, sideChanged): a
     # value to read wraps at a larger text size, which its field must be made with
     w.panelChanged()
     w.sideChanged()
+  # (last: the pages laid out first, then the window, whose column of the tag's heading and panel measures the
+  # heading as laid out: the panel under it never covers it)
+  layoutMain()
+  repaintAll()
   for d in [1000, 3000, 6000, 10000]:
     discard afterMs(d, proc () =
       if w != nil and (w.v != nil or setupP != nil):
+        relayoutPages()
         layoutMain()
-        relayoutPages())
+        repaintAll())
 
 proc layoutMain() =
   var r: RECT

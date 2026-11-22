@@ -624,16 +624,22 @@ class Windows(unittest.TestCase):
             # and a course in a window at the profile's smallest width (360 px)
             for pct in (200, 225):
                 self.assertIn('PASSED', text_size(pct))
-                self.check('ts5.uia', ['sleep\t2500', 'fits\tDrawings', 'fits\tCopy',
+                # (the window within the VM's 800 px screen, so the status line's last row is in the screenshots)
+                self.check('ts5.uia', ['resize\tDrawings\t1240\t700', 'sleep\t2500', 'fits\tDrawings', 'fits\tCopy',
                                        'click\tManage', 'click\tAccount', 'wait\t‹ Manage\t20',
                                        'set\tSync with an address (host:port@device)\t192.0.2.1:9@nobody', 'click\tSync now',
-                                       'sleep\t4000', 'fits\t‹ Manage',
+                                       'sleep\t4000', 'fits\t‹ Manage'])
+                self.screenshot('win-text-%d-sync-error' % pct)
+                self.check('ts5b.uia', [
                                        'click\tDrawings', 'wait\tEquipment by system…\t20', 'click\tEquipment by system…',
                                        'wait\tEquipment by system\t20', 'fits\tSearch codes, systems, descriptions',
                                        'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system',
                                        # tabs with nothing or little in them (no procedures, an empty review queue)
-                                       'click\tProcedures', 'sleep\t800', 'fits\tProcedures', 'click\tReview', 'sleep\t800',
-                                       'fits\tReview',
+                                       'click\tProcedures', 'sleep\t800', 'fits\tProcedures'])
+                self.screenshot('win-text-%d-procedures' % pct)
+                self.check('ts5c.uia', ['click\tReview', 'sleep\t800', 'fits\tReview'])
+                self.screenshot('win-text-%d-review' % pct)
+                self.check('ts5d.uia', [
                                        'click\tLearning', 'select\t~Instrumentation and control', 'click\tOpen the course',
                                        'wait\t~Instrumentation and control — \t30', 'resize\tOpen the selected page\t360\t640',
                                        'sleep\t1000', 'fits\tOpen the selected page'])
@@ -642,8 +648,17 @@ class Windows(unittest.TestCase):
                                        'wait\tEquipment by system…\t20', 'click\tManage', 'click\tAccount',
                                        'wait\t‹ Manage\t20', 'sleep\t500'])
                 self.screenshot('win-text-%d-account' % pct)
-                self.check('ts7.uia', ['click\tDrawings', 'wait\tEquipment by system…\t20', 'sleep\t500'])
+                self.check('ts7.uia', ['click\tDrawings', 'wait\tEquipment by system…\t20', 'sleep\t500', 'fits\tCopy'])
                 self.screenshot('win-text-%d-drawings' % pct)
+            # with the dark colours too (win-dark-ui, dark app mode): the course window's own rows, at 200 %
+            self.assertIn('PASSED', text_size(200))
+            both = dict(env, KKS_UX='win-text-size,win-dark-ui', KKS_TEST_SYSTEM_DARK='1')
+            self.check('ts8.uia', ['wait\t~Sample sheet\t60', 'click\tLearning', 'select\t~Instrumentation and control',
+                                   'click\tOpen the course', 'wait\t~Instrumentation and control — \t30', 'sleep\t1500',
+                                   'surface\tOpen the selected page\tdark', 'fits\tOpen the selected page'],
+                       restart=True, env=both)
+            self.screenshot('win-text-200-dark-course')
+            self.check('ts9.uia', ['close\tOpen the selected page', 'gone\tOpen the selected page'])
         finally:
             text_size(100)
         # how long each live change took (fonts and every page laid out again: the app holds still meanwhile, P1)
