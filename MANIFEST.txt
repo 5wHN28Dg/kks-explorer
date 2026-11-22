@@ -1,48 +1,48 @@
-# Evidence for PR #512 (fourth set, after the recheck; replaces the earlier ones)
-scripts' commit: 29aa98bb (app and uiadrive built from it)
+# Evidence for PR #512 (fifth set, after review pass 4; replaces the earlier ones)
+scripts' commit: e25ae19b (app and uiadrive built from it)
 command: KKS_SHOTS=<folder> KKS_TESTS=test_text_size python3 apps/windows/e2e/test_windows.py <vm-address> Walkdown.exe uiadrive.exe kks_server kks_import (KKS_VM_DOMAIN=kks-win10 for Windows 10)
-machines: kks-win11 (26H2, 26300) and kks-win10 (22H2, 19045), 100 % scaling; Windows' Text size set in Settings itself through UI Automation (e2e/textsize.ps1). Steps, each passing uiadrive's fits: the setup screen at 225 %; 150 %, 100 %, 150 % while the app runs; at 200 % and 225 % (window 1240 x 700): the main screen with a tag (fits again seconds later, after the delayed layouts), Manage → Account with a sync error in the status line (win-text-2xx-sync-error), Procedures and Review with nothing in them (win-text-2xx-procedures, -review), Equipment by system, a course window at 360 x 640; then both switches with dark app mode at 200 %: a course window (win-text-200-dark-course)
-switched-off-w10/: main's app (#506's head 814208ad = main 7f583929's code) and this PR's app (29aa98bb) switched off, the same steps on Windows 10 at 100 % (a tag's panel open; a course window): 0 pixels differ in each pair
-before-fix/: the tag's heading at 225 % on Windows 11 before (f720a2a4: old pixels left under it) and after (29aa98bb) the repaint
+machines: kks-win11 (26H2, 26300) and kks-win10 (22H2, 19045), 100 % scaling; Windows' Text size set in Settings itself through UI Automation (e2e/textsize.ps1). Steps, each passing uiadrive's fits (which now also compares each owner-drawn rail row's wrapped height with its row height): the setup screen at 225 %; 150 %, 100 %, 150 % while the app runs; at 200 % and 225 % (window 1240 x 700): the main screen with a tag (fits again seconds later, after the delayed layouts), Manage → Account with a sync error in the status line, Procedures and Review with nothing in them, Equipment by system, a course window at 360 x 640; then both switches with dark app mode at 200 %: a course window
+switched-off-w10/: main's app (7f583929's code) and this PR's app (e25ae19b) switched off, the same steps on Windows 10 at 100 % (a tag's panel open; a course window): 0 pixels differ in each pair
+before-fix/: Windows 11 at 29aa98bb: the tag's heading at 200 % with old pixels of Close behind it, and the course rail at 225 % with each wrapped row cut by a line; windows-11/ and windows-10/ win-text-200-drawings, -200-account and -225-course-360 show both whole at e25ae19b
 data: synthetic (test_windows.py's test plant: importer/tests/vectors/kkp-sample.pdf sha256 9f56a4f8d94a19d1549af869c3ee77e1690d28842b3b57ebb9116529ea53fb0e, the tag 11LAB70AA500, data/courses/inc.json sha256 b26ab75ad0624fb4b88750a0f052173cc56746e21588523c66cdca83257efd9f)
-time of each live change (fonts and every page; timing.log, Windows 10 at 29aa98bb): 136, 82, 162, 112, 158, 98, 284 ms
+time of each live change (fonts and every page; timing.log, Windows 10 at e25ae19b): 77, 88, 48, 166, 80, 20, 10 ms
 
 sha256 per file:
-8760d768d2fa66737af265edae678ab27148758773d6c5ec438a17454455ab2f  before-fix/head-225-29aa98bb.png
-428573b65fe575f5e86de1e97c007c5059dabb95acb54e5d3b40f18762dfaa84  before-fix/head-225-f720a2a4.png
+11777ebe6340dfab995e3474341b00639738341afcfe3ee2f4d7744fb578bd3c  before-fix/w11-200-drawings-29aa98bb.png
+6e19d4a740f764061f650e6fb66454efc8eb96962de8f41d80b242531f2dc875  before-fix/w11-225-course-360-29aa98bb.png
 48aff3d6b87b341d99c88064e0ac3a76f88f16aba2a16331d73f39f2efc86e95  switched-off-w10/off-course-main.png
 48aff3d6b87b341d99c88064e0ac3a76f88f16aba2a16331d73f39f2efc86e95  switched-off-w10/off-course-pr.png
 bbe741ec5197a20235eac7e17b186af1f35ae4b999be795240b6b622d49edcd7  switched-off-w10/off-drawings-main.png
 bbe741ec5197a20235eac7e17b186af1f35ae4b999be795240b6b622d49edcd7  switched-off-w10/off-drawings-pr.png
 9bba29885692fdf875bd0b7969cc63ef1d3b6c241a4153250b669e8aa0ceced1  windows-10/win-text-150-account.png
 c1cf9e8143245c1b98b7367d3f49c11f7ce5da6c828814461946f96640e8455b  windows-10/win-text-150-drawings.png
-3b049eed2aba3b20f49342b48eb690502a8c77a40b32398c2969cb8bb19fccd5  windows-10/win-text-200-account.png
-ffac90df98a8f35fd556ea7b9770f4e8983b1959f36a68ad5c8f1edfa3a84686  windows-10/win-text-200-course-360.png
+39dce509f7e335529517f5f2f632cc707ac5b7ab01d1e0f9bbcb4d4dc3b01bc6  windows-10/win-text-200-account.png
+48c83ef7fc7530da60ee0ac0975298104d9b736633dd7a2982e7abc162364140  windows-10/win-text-200-course-360.png
 ddf1d74bfed7bc748ab65ef02f6cac716d8aed02cb3b32bab04a82da6e01b041  windows-10/win-text-200-dark-course.png
-c18b15222d912df656e4c03224b0e12b10ec4db47b99043a9bbbc57ef7a363ba  windows-10/win-text-200-drawings.png
-f55ab5baea10641de13769fa4723177a0772bd1ffa621f5cd70a9610322624bb  windows-10/win-text-200-procedures.png
-a06c3cd79ee823c50e8c996fb0c73917cb6064213c3638fe08d7d52a8d967571  windows-10/win-text-200-review.png
-7b462c0ea9669d02f6241fe0e3409dc861ef575ca613db448a6228b1d2dcb31e  windows-10/win-text-200-sync-error.png
-0cf3338f0dea9e2235069785c1fddca1595d61bcf37a01612c12a2f2157171d0  windows-10/win-text-225-account.png
-c090c52ece3e3a065e5c92b93ebdd5f25fdd05dadd7f7135e0c1330348ffdabc  windows-10/win-text-225-course-360.png
-4247b01a4843550ff41b6705c5df1d305cdfc71510195f85fd090818447b9db5  windows-10/win-text-225-drawings.png
-522d2096bee487e310f97af73a4b51c4fcc3ca82be3a0601400f9b05e1be35ce  windows-10/win-text-225-procedures.png
-bfde63fd67ee502b163852bbdfacc7b2b1c91946fdaabfc311ec03e2161490d8  windows-10/win-text-225-review.png
+001d57bd21b704c0d9430275fabc5db47f04a64bf4db4a45bea91a5166d23d01  windows-10/win-text-200-drawings.png
+954e7cad8366a9e839d5c264a57c5b9fe9b85ee6d1d981d905f3f9637d4d42a0  windows-10/win-text-200-procedures.png
+39b8b65b689fc4b888318591df0dd358c7540c38c222ab59a9a708c19c8b67c4  windows-10/win-text-200-review.png
+a2bfebb8e93ff2c6f06754eb5a02d2b7f8119806f47130bf4baca82f0c91ddde  windows-10/win-text-200-sync-error.png
+2ded040c4a83f3fe8eabbfe2de2e133f70d5c98fc5e55e813355fab1c1f9e256  windows-10/win-text-225-account.png
+fddfbe662811574c92b47c70c125c0f1b4880c3ff616e20512c307b09b5fd89c  windows-10/win-text-225-course-360.png
+af7be0c42ada3ace9e6c4feb87c8fd98252d93d7b48c2d8fece319d7bd1f3155  windows-10/win-text-225-drawings.png
+3b92f1ea5621c976ec8d7ec0d1f1789a942ae546c957deef7efe6d1f85be5dd1  windows-10/win-text-225-procedures.png
+6dec04fe59d45991086f6846eddc00b1343977c16ada20f358858b2b3e0dcacc  windows-10/win-text-225-review.png
 9094cef874a8a90d3749ef8d2cfdae3c1690ec70158f20d2672aae28395a9f89  windows-10/win-text-225-setup.png
-3933b91a2c9f380d1dc135e5d1a79329420104468e55fbfe233215b01ef5d4b8  windows-10/win-text-225-sync-error.png
+6cd7b617e0fc8f2ee6c5fe82554d97406f7863a127b9c37ba68168dd550183c2  windows-10/win-text-225-sync-error.png
 2857885e584d2672eb253351a533662bef895859c93d311163cb7bc0a169725c  windows-11/win-text-150-account.png
 31a6d905f582404198a2d9960a6b30eca9725548de73b95894a91145e18cc85f  windows-11/win-text-150-drawings.png
-ed743cadb7a0f775cacb7fc38bff02d34576bef6d956851b1860e2b06e145608  windows-11/win-text-200-account.png
-f45253289386928a7c278d59847613a9f34b0528df21258b3f2b91d46aecbbc6  windows-11/win-text-200-course-360.png
+2afe5cff2df849781ce63e5919294c66b98b3b3124ca732f1402cbf382f6f1eb  windows-11/win-text-200-account.png
+79e2231d5f6ec1df91f2d225b573a3c1342260817a6f123590555785739a2c62  windows-11/win-text-200-course-360.png
 b69037d62ad172a01eb857512d89317013797c8475aba9fedbd7eb65c6293eaf  windows-11/win-text-200-dark-course.png
-11777ebe6340dfab995e3474341b00639738341afcfe3ee2f4d7744fb578bd3c  windows-11/win-text-200-drawings.png
-342226d621b41b43361a5a0a64da250929d41584280ffe57a3c66a4a1d1a1320  windows-11/win-text-200-procedures.png
-57971adc45a6b4436aeefdce3a39ea37b10f8afbe3dff3fe6ac8966cb3f884f2  windows-11/win-text-200-review.png
-016840ad591b357fd8a3068709c0dfa4ce5137a9e880442a13932948499950d6  windows-11/win-text-200-sync-error.png
-278aa088e2dbe98ffe0957c4da2d16221a0201fe0813b208a6fc928242dc8a06  windows-11/win-text-225-account.png
-6e19d4a740f764061f650e6fb66454efc8eb96962de8f41d80b242531f2dc875  windows-11/win-text-225-course-360.png
-c8c804b8f6d0081bbb3e2b7aeefd2455530b58fac79b46d1d60952bfc2d9fb18  windows-11/win-text-225-drawings.png
-02e5a94e0efd5dd65a309be554ea0c63c7dd58e3281a3481af2e513095aa5aa5  windows-11/win-text-225-procedures.png
-c6175c2118f262a4299fcb63577c9213dd7ff20b7d0e874315a76e220b759c43  windows-11/win-text-225-review.png
+cc02c212b2d6f817b8cfa806b3be11417c12870c37ff56832d60a0e8c9ebec47  windows-11/win-text-200-drawings.png
+405fe5fc1e89f5fc1a664c4bfe9a849d0d095086c514480f3767d53c85e1c29e  windows-11/win-text-200-procedures.png
+f077b3d69b7e8933213f9d8d522c4a7908f87cdb722dfedc552ae87f2cad0baf  windows-11/win-text-200-review.png
+0019646a20c43b89601c78bf5769807570a890123f44e3ef682ecb8f1154c450  windows-11/win-text-200-sync-error.png
+154b37629e1ea272cf2f0f09ed965393aac1798dc2efa6b4864f301c16b3305c  windows-11/win-text-225-account.png
+74b14d90ca51fbc0a6fea0bfa57867c5086f0a38ffcbde118f612fb81f622c0e  windows-11/win-text-225-course-360.png
+efbe95a8150ba4e8e8972fa461389ed588b3357a78fcc11689937d626c0db4f5  windows-11/win-text-225-drawings.png
+0c12ac41548e051dbf7e325ed3f0c0f9708b350fbf636f67df3a3d6a84bfbc9a  windows-11/win-text-225-procedures.png
+363096be2d7995417524f204541027f2c9b987bf8bffe5f58fa5a59377b4ace1  windows-11/win-text-225-review.png
 0209ce90af6908adf6d98f28b9b4759de389b7b805e3a80464b60187871579fb  windows-11/win-text-225-setup.png
-c18c6b360c75a9537395a65c8a0b169d2d3c5ec16fbd6e22abf3804348a420e1  windows-11/win-text-225-sync-error.png
+84a18b49bba31ad3663928173acf89d7b9ffd2945b038891e7dfadeeb6bde338  windows-11/win-text-225-sync-error.png
