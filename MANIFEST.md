@@ -1,15 +1,15 @@
-# UX evidence: A failed autosave said (#473), round 1
+# UX evidence: A failed autosave said (#473), round 2
 
-Synthetic (the invented plant), commit 49066a666a1b9546ae634b4dab55eabf47ca7bc2. `apps/plant3d/tests/save_failure_shots.gd` under tools/plant3d/bench/offscreen.sh (OFFSCREEN_GODOT_DATA a folder of its own): desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout); states savefail_said (the message and the status line), savefail_line (the line alone, the message gone), savefail_saved_again.
+Synthetic (the invented plant), commit 24dda7403501ad4973be0ac166fda2d4304386de. `apps/plant3d/tests/save_failure_shots.gd` under tools/plant3d/bench/offscreen.sh (OFFSCREEN_GODOT_DATA a folder of its own): desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout); states savefail_said (the notice above the status line), savefail_line, savefail_saved_again.
 
 ```
-6e9cccb52d6d7ee3c0c6b4fd332f8906a19012b2c78160b5adfc66af9656b7b1  desk_ui2_savefail_line.png
-0c54fb1c469207738e753ae74455b7250d6f5d87718fd7a9a00308d09ff0b47f  desk_ui2_savefail_said.png
-2fa613925c12906b384e538f89762f72f629c585300bf40e972444db8afe693c  desk_ui2_savefail_saved_again.png
-0949c22bff3622dfb9b6435cbce231457c37519fcc9c6443a4a5d384fe529b7c  desk_uidefault_savefail_line.png
-23e6debc512e2c3cc85681351081a235cc2c521b8b66a707e9c9e89dab28c098  desk_uidefault_savefail_said.png
-b316b7a0d37771c9c43bbfd1482e8168691d065038b4ad231b1d1064dfc5fe6f  desk_uidefault_savefail_saved_again.png
-9fadc351120bacac2024da57ecbd2dca74c2ec9fccdb9b9053ce916f3c78edcd  phone_uidefault_savefail_line.png
-771799cda71babba48ef6c4c00f4e46c1f62d1a0861c6c5bc5ae5d7167254a69  phone_uidefault_savefail_said.png
-2027b9ae90937a3de95352aa05cd122b061aebdc88c1750b793671e6e02cdc73  phone_uidefault_savefail_saved_again.png
+63c24366a7682fdea820279eea5dc8caf9433504de3cd2b5bd06869e4f375ad9  desk_ui2_savefail_line.png
+d49487b6645e8204c5dcf893775f6af34cd3915eef183cb745422efdd8f30187  desk_ui2_savefail_said.png
+b756fd49b151986d9916a494a4a5b00085f2241d8f873b7a1d3c7a0bd3de91d9  desk_ui2_savefail_saved_again.png
+1c922497630851933034823241baf0ac5530cfd392405fceffab45825d4d5d0f  desk_uidefault_savefail_line.png
+a931fe3627984f370953820079eeeeec2971404969d45e066f7173ee91ffe8df  desk_uidefault_savefail_said.png
+ab764099dff78d5a70539ca0838bf18934b9d0560e38ebed8540ef2259b0e1f7  desk_uidefault_savefail_saved_again.png
+8aef3434afd58f89a0dde6a7f58b42a5a34f49f96987d9e7fd0aca11ad9307e4  phone_uidefault_savefail_line.png
+4bfd895a4b6da3d27890d845db8fc5adfeac6e3e90ed799aed122326d43740cc  phone_uidefault_savefail_said.png
+7c592278d5210b90bc7a95c31aff522eec7bcc1f99d9ca7d6ae5d81ce80dd2ae  phone_uidefault_savefail_saved_again.png
 ```
