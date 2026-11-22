@@ -41,13 +41,13 @@ proc bottomRow(W: int): tuple[st, statusW, n, qw: int, q: bool] =
   ## tall as the status line's text needs (a plain-words error is a sentence or two, #371), up to four lines
   var right = W - int(px(8))
   result.n = if w.failedButton != nil: failedCount() else: 0
-  if result.n > 0: right -= int(px(170)) + int(px(8))
+  if result.n > 0: right -= int(tx(170)) + int(px(8))
   result.q = w.queueLabel != nil and queuedCount() > 0
   result.qw = if result.q: min(int(px(520)), (right - int(px(8))) div 2) else: 0
   if result.q: right -= result.qw + int(px(8))
   result.statusW = max(10, right - int(px(8)))
   let lineH = textHeight(w.status, "Ag", result.statusW)
-  result.st = max(int(px(StatusH)), min(textHeight(w.status, statusText(), result.statusW), 4 * lineH) + int(px(10)))
+  result.st = max(int(tx(StatusH)), min(textHeight(w.status, statusText(), result.statusW), 4 * lineH) + int(px(10)))
 
 proc layoutMain() =
   var r: RECT
@@ -57,8 +57,10 @@ proc layoutMain() =
   if setupP != nil:
     MoveWindow(setupP.hwnd, 0, 0, int32(W), int32(H), 1)
     return
-  let side = int(px(SideW))
-  let panelW = if w.selected.len > 0 or w.picking: int(px(PanelW)) else: 0
+  # the sidebar and the panel wider with the text size (#377), never more than 35 and 30 % of the window (the drawing
+  # keeps the rest), never narrower than at 100 %
+  let side = max(int(px(SideW)), min(int(tx(SideW)), W * 35 div 100))
+  let panelW = if w.selected.len > 0 or w.picking: max(int(px(PanelW)), min(int(tx(PanelW)), W * 30 div 100)) else: 0
   let (st, statusW, n, qw, q) = bottomRow(W)
   statusRow = st
   # the tabs within the sidebar's width, wrapped when they don't fit (they ran 472 px into a 380 px sidebar, Manage
@@ -74,8 +76,8 @@ proc layoutMain() =
   if w.failedButton != nil:
     ShowWindow(w.failedButton, if n > 0: SW_SHOW else: SW_HIDE)
     if n > 0:
-      at -= int(px(170))
-      MoveWindow(w.failedButton, int32(at), int32(H - st + int(px(1))), px(170), px(StatusH - 2), 1)
+      at -= int(tx(170))
+      MoveWindow(w.failedButton, int32(at), int32(H - st + int(px(1))), tx(170), tx(StatusH - 2), 1)
       at -= int(px(8))
   if w.queueLabel != nil:
     ShowWindow(w.queueLabel, if q: SW_SHOW else: SW_HIDE)
@@ -295,6 +297,8 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     if w != nil and w.v != nil:
       guard: w.applyDark()
     guard: discard refreshTheme()
+    guard:
+      if refreshTextScale() and (w != nil and w.v != nil or setupP != nil): layoutMain()   # Windows' text size (#377)
   of WM_SIZE:
     if w != nil and w.v != nil or setupP != nil: layoutMain()
     return 0
@@ -328,6 +332,8 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
       elif w.v != nil and setupP == nil:
         setStatus()
       guard: discard refreshTheme()     # (also when no window was told: the app mode read once a second)
+      guard:
+        if refreshTextScale() and (w.v != nil or setupP != nil): layoutMain()    # and the text size
       if w.v != nil and setupP == nil:
         guard: w.catchUpFollowers()     # a window marked stale under the focus, once the focus has left it
         guard: w.panelCatchUp()         # the panel too, left alone under the keyboard or typed text
@@ -447,6 +453,7 @@ proc main() =
   InitCommonControlsEx(addr icc)
   hinst = GetModuleHandleW(nil)
   initTheme()               # the dark colours for the controls, behind the switch win-dark-ui (theme.nim)
+  textScale = systemTextScale()     # Windows' text size, behind the switch win-text-size (ui.nim)
   makeFonts(96)
   createDir(dataDir())
   errorLog = dataDir() / "crash.log"

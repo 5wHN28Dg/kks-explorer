@@ -652,9 +652,9 @@ proc courseProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     case m
     of WM_SIZE:
       if cw != nil:
-        let rw = px(260)
-        MoveWindow(cw.rail, 0, 0, rw, int32(hiword(lp)) - px(40), 1)
-        MoveWindow(cw.railGo, px(4), int32(hiword(lp)) - px(36), rw - px(8), px(32), 1)
+        let rw = tx(260)
+        MoveWindow(cw.rail, 0, 0, rw, int32(hiword(lp)) - txp(32, 8), 1)
+        MoveWindow(cw.railGo, px(4), int32(hiword(lp)) - txp(32, 4), rw - px(8), tx(32), 1)
         MoveWindow(cw.page.hwnd, rw, 0, int32(loword(lp)) - rw, int32(hiword(lp)), 1)
       return 0
     of WM_COMMAND:

@@ -101,6 +101,22 @@ def contrast(on, scheme='High Contrast White'):
     return 'no answer from contrast.ps1'
 
 
+def text_size(percent):
+    """Windows' text size set in Settings as a person does it (e2e/textsize.ps1 drives its slider and Apply through
+    UI Automation, in the desktop session); -> the driver's log"""
+    build = int(vm('[Environment]::OSVersion.Version.Build').strip() or 0)
+    slider = 'Text size' if build >= 22000 else '~Drag the slider'      # (Windows 10: the slider is named by its hint)
+    vm('Remove-Item C:\\kks\\textsize.log -ErrorAction SilentlyContinue')
+    args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\textsize.ps1 -Percent %d -Slider "%s"' % (percent, slider)
+    vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kkstextsize'
+       % base64.b64encode(args.encode()).decode())
+    for _ in range(90):
+        time.sleep(1)
+        out = vm('[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Content C:\\kks\\textsize.log -Encoding UTF8 -ErrorAction SilentlyContinue')
+        if 'PASSED' in out or 'ERROR' in out: return out
+    return 'no answer from textsize.ps1'
+
+
 def msix(args):
     """msix.ps1 in the desktop session (installs need one); -> its result line"""
     vm('Remove-Item C:\\kks\\msix.log -ErrorAction SilentlyContinue')
@@ -547,6 +563,43 @@ class Windows(unittest.TestCase):
         finally:
             self.assertIn('contrast 0 True', contrast(0))
         self.check('du5.uia', self.surfaces('dark'))
+        self.leave()
+
+    def test_text_size(self):
+        """#377, switch win-text-size: at Windows' text size of 150 % (set in Settings, as a person does) the app's text
+        is larger and nothing is cut off or overlaps (`fits`: every label, field, button, check box and list measured in
+        its own font) on the Drawings tab, Manage, Account, a tag's panel and Equipment by system; the size changes
+        while the app runs (back to 100 % and up again). Switched off, the text stays at its size (as before)."""
+        env = {'KKS_UX': 'win-text-size'}
+        put(os.path.join(HERE, 'textsize.ps1'))
+        self.join('tsjoin.uia', env=env)
+        whole = ['wait\t~Sample sheet\t60', 'fits\tDrawings', 'click\tManage', 'wait\tAccount\t20', 'fits\tAccount',
+                 'click\tAccount', 'wait\t‹ Manage\t20', 'fits\t‹ Manage', 'click\tDrawings', 'wait\t~Sample sheet\t20',
+                 'set\tSearch equipment by KKS code or description\tLAB70', 'select\t~11LAB70AA500',
+                 'click\tShow on the drawing', 'wait\tCopy\t20', 'fits\tCopy',
+                 'click\tEquipment by system…', 'wait\tEquipment by system\t20', 'fits\tSearch codes, systems, descriptions',
+                 'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system']
+        try:
+            self.assertIn('PASSED', text_size(150))
+            self.check('ts0.uia', whole + ['height\tEquipment by system…\t44'], restart=True, env=env)
+            self.screenshot('win-text-150-drawings')
+            self.check('ts0b.uia', ['click\tManage', 'click\tAccount', 'wait\t‹ Manage\t20', 'sleep\t500'])
+            self.screenshot('win-text-150-account')
+            # switched off: the text at its size whatever Windows says
+            self.check('ts1.uia', ['wait\t~Sample sheet\t60', 'click\tDrawings', 'wait\tEquipment by system…\t20',
+                                   'sleep\t500'], restart=True, env={})
+            self.check('ts1b.uia', ['height\tEquipment by system…\t28\t32'])
+            # while the app runs: back to 100 %, then 150 % again
+            self.check('ts2.uia', ['wait\t~Sample sheet\t60', 'click\tDrawings', 'wait\tEquipment by system…\t20',
+                                   'set\tSearch equipment by KKS code or description\tLAB70', 'select\t~11LAB70AA500',
+                                   'click\tShow on the drawing', 'wait\tCopy\t20', 'height\tEquipment by system…\t44'],
+                       restart=True, env=env)
+            self.assertIn('PASSED', text_size(100))
+            self.check('ts3.uia', ['sleep\t2000', 'fits\tDrawings', 'fits\tCopy', 'height\tEquipment by system…\t28\t32'])
+            self.assertIn('PASSED', text_size(150))
+            self.check('ts4.uia', ['sleep\t2000', 'fits\tDrawings', 'fits\tCopy', 'height\tEquipment by system…\t44'])
+        finally:
+            text_size(100)
         self.leave()
 
     def test_multi(self):

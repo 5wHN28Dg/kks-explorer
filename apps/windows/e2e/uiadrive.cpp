@@ -35,6 +35,11 @@
 //   dialog <name> <text>    the top-level window holding the element is a dialog to UI Automation (what a screen reader
 //                           announces as one: its localized control type "dialog") and its description (FullDescription,
 //                           or HelpText) holds <text>, e.g. what a question means
+//   fits <name>             every control with text in the window holding the element shows all of it (#377: text size):
+//                           a label's wrapped text, a field's line, a button's or check box's label and a list's rows
+//                           fit their rectangles (measured with the control's own font), and no two controls of a
+//                           page overlap; each one that doesn't is logged
+//   range <name> <value>    set a slider (RangeValue) to the value, as a person dragging it does (Settings' Text size)
 //   pixels <name> <rrggbb> <max>  the element as drawn (PrintWindow) has at most <max> pixels of this colour (each
 //                           channel within 3): e.g. no box left on the drawing
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
@@ -215,6 +220,112 @@ static int median_grey(IUIAutomationElement *e, bool caption) {
     }
     SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(nullptr, sdc);
     return med;
+}
+
+// ---- fits: does every control's text fit its control (measured in its own font)?
+struct FitCtx { int bad; std::vector<HWND> all; };
+static std::string utf8(const std::wstring &w) {
+    int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    std::string s(n ? n - 1 : 0, '\0');
+    if (n) WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, &s[0], n, nullptr, nullptr);
+    return s;
+}
+static BOOL CALLBACK collect(HWND h, LPARAM l) {
+    if (IsWindowVisible(h)) ((FitCtx *)l)->all.push_back(h);
+    return TRUE;
+}
+static SIZE need(HWND h, const std::wstring &t, int width, bool wrap) {
+    // (the control's font is the app's: a GDI handle of another process can't be selected here, so a copy is made
+    // from its description)
+    LOGFONTW lf = {};
+    HFONT theirs = (HFONT)SendMessageW(h, WM_GETFONT, 0, 0);
+    HFONT mine = theirs && GetObjectW(theirs, sizeof lf, &lf) ? CreateFontIndirectW(&lf) : nullptr;
+    HDC dc = GetDC(h);
+    HGDIOBJ old = SelectObject(dc, mine ? (HGDIOBJ)mine : GetStockObject(DEFAULT_GUI_FONT));
+    RECT r = {0, 0, width, 0};
+    DrawTextW(dc, t.c_str(), -1, &r, DT_CALCRECT | DT_NOPREFIX | (wrap ? DT_WORDBREAK : DT_SINGLELINE));
+    TEXTMETRICW tm = {};
+    GetTextMetricsW(dc, &tm);
+    SelectObject(dc, old);
+    ReleaseDC(h, dc);
+    if (mine) DeleteObject(mine);
+    SIZE s = {r.right - r.left, std::max<LONG>(r.bottom - r.top, tm.tmHeight)};
+    return s;
+}
+static int fits(IUIAutomationElement *e) {
+    UIA_HWND hw = 0;
+    e->get_CurrentNativeWindowHandle(&hw);
+    if (!hw) return -1;
+    HWND root = GetAncestor((HWND)hw, GA_ROOT);
+    FitCtx c = {0, {}};
+    EnumChildWindows(root, collect, (LPARAM)&c);
+    for (HWND h : c.all) {
+        wchar_t cls[64] = L"";
+        GetClassNameW(h, cls, 64);
+        int n = GetWindowTextLengthW(h);
+        std::wstring t(n, L'\0');
+        if (n) GetWindowTextW(h, &t[0], n + 1);
+        RECT r;
+        GetClientRect(h, &r);
+        LONG style = GetWindowLongW(h, GWL_STYLE);
+        std::string why;
+        if (!_wcsicmp(cls, L"Static")) {
+            int kind = style & SS_TYPEMASK;
+            if (n && kind != SS_OWNERDRAW && kind != SS_ICON && kind != SS_BITMAP) {
+                SIZE s = need(h, t, r.right, true);
+                if (s.cy > r.bottom) why = "text " + std::to_string(s.cy) + " px tall in " + std::to_string(r.bottom);
+            }
+        } else if (!_wcsicmp(cls, L"Edit")) {
+            SIZE s = need(h, L"Ag", 1000, false);
+            if (!(style & ES_MULTILINE) && s.cy > r.bottom) why = "a line " + std::to_string(s.cy) + " px tall in " + std::to_string(r.bottom);
+        } else if (!_wcsicmp(cls, L"Button") && n) {
+            int kind = style & BS_TYPEMASK;
+            std::wstring shown;      // (the label as drawn: "&&" is one "&", a lone "&" marks the access key)
+            for (size_t i = 0; i < t.size(); i++) { if (t[i] == L'&' && i + 1 < t.size()) i++; shown += t[i]; }
+            if (kind == BS_AUTOCHECKBOX || kind == BS_CHECKBOX || kind == BS_AUTORADIOBUTTON || kind == BS_RADIOBUTTON) {
+                SIZE s = need(h, shown, 0, false);
+                int box = MulDiv(16, (int)GetDpiForWindow(h), 96);
+                if (s.cy > r.bottom || s.cx + box > r.right) why = "label " + std::to_string(s.cx) + "x" + std::to_string(s.cy) + " with its box";
+            } else if (style & BS_MULTILINE) {
+                SIZE s = need(h, shown, std::max<LONG>(1, r.right - MulDiv(12, (int)GetDpiForWindow(h), 96)), true);
+                if (s.cy > r.bottom) why = "text " + std::to_string(s.cy) + " px tall in " + std::to_string(r.bottom);
+            } else {
+                SIZE s = need(h, shown, 0, false);
+                if (s.cy > r.bottom || s.cx > r.right) why = "label " + std::to_string(s.cx) + "x" + std::to_string(s.cy);
+            }
+        } else if (!_wcsicmp(cls, L"ListBox")) {
+            SIZE s = need(h, L"Ag", 1000, false);
+            LRESULT ih = SendMessageW(h, LB_GETITEMHEIGHT, 0, 0);
+            if (ih < s.cy) why = "rows " + std::to_string(ih) + " px for a line of " + std::to_string(s.cy);
+        }
+        if (!why.empty()) {
+            LOGFONTW lf = {};
+            HFONT hf = (HFONT)SendMessageW(h, WM_GETFONT, 0, 0);
+            if (hf) GetObjectW(hf, sizeof lf, &lf);
+            say("  cut off: " + utf8(cls) + " \"" + utf8(t).substr(0, 60) + "\" " + std::to_string(r.right) + "x" +
+                std::to_string(r.bottom) + ": " + why + " (font " + std::to_string(lf.lfHeight) + ")");
+            c.bad++;
+        }
+    }
+    // no two controls of one parent overlap (the pages, the drawing and the figures are containers, not controls)
+    for (size_t i = 0; i < c.all.size(); i++)
+        for (size_t j = 0; j < i; j++) {
+            HWND a = c.all[i], b = c.all[j];
+            if (GetParent(a) != GetParent(b)) continue;
+            wchar_t ca[64] = L"", cb[64] = L"";
+            GetClassNameW(a, ca, 64); GetClassNameW(b, cb, 64);
+            if (!wcsncmp(ca, L"KKS", 3) || !wcsncmp(cb, L"KKS", 3)) continue;
+            RECT ra, rb, x;
+            GetWindowRect(a, &ra); GetWindowRect(b, &rb);
+            if (IntersectRect(&x, &ra, &rb)) {
+                wchar_t ta[80] = L"", tb[80] = L"";
+                GetWindowTextW(a, ta, 80); GetWindowTextW(b, tb, 80);
+                say("  overlap: \"" + utf8(ta) + "\" and \"" + utf8(tb) + "\"");
+                c.bad++;
+            }
+        }
+    say("  " + std::to_string(c.all.size()) + " windows looked at");
+    return c.bad;
 }
 
 // pixels of the element, as drawn, within 3 of this colour in each channel; -1 if not captured
@@ -503,7 +614,7 @@ int wmain(int argc, wchar_t **argv) {
             continue;
         }
         int timeout = (cmd == "wait" && f.size() > 2) ? std::stoi(f[2]) * 1000 : 15000;
-        CONTROLTYPEID only = (cmd == "set" || cmd == "settext" || cmd == "value") ? UIA_EditControlTypeId : cmd == "slide" ? UIA_SliderControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
+        CONTROLTYPEID only = (cmd == "set" || cmd == "settext" || cmd == "value") ? UIA_EditControlTypeId : (cmd == "slide" || cmd == "range") ? UIA_SliderControlTypeId : cmd == "click" ? UIA_ButtonControlTypeId :
                              (cmd == "enter" || cmd == "select" || cmd == "pick") ? UIA_ListItemControlTypeId :
                              (cmd == "toggle" || cmd == "state") ? UIA_CheckBoxControlTypeId :
                              (cmd == "choose" || cmd == "chosen") ? UIA_RadioButtonControlTypeId : 0;
@@ -528,6 +639,9 @@ int wmain(int argc, wchar_t **argv) {
             UINT dpi = hw ? GetDpiForWindow((HWND)hw) : 96;
             int h = (int)(r.bottom - r.top) * 96 / (int)(dpi ? dpi : 96);
             if (f.size() < 3 || h < std::stoi(f[2])) { say("ERROR: " + arg + " is " + std::to_string(h) + " px tall, not at least " + (f.size() > 2 ? f[2] : "?")); return 1; }
+            // (height\tNAME\tMIN\tMAX: and at most MAX: text at its size, not larger)
+            if (f.size() > 3 && h > std::stoi(f[3])) { say("ERROR: " + arg + " is " + std::to_string(h) + " px tall, more than " + f[3]); return 1; }
+            say("  " + std::to_string(h) + " px tall");
             continue;
         }
         if (cmd == "value") {
@@ -649,6 +763,21 @@ int wmain(int argc, wchar_t **argv) {
             if (type.find(L"dialog") == std::wstring::npos || desc.find(want) == std::wstring::npos) {
                 say("ERROR: " + arg + "'s window is not a dialog with that description"); return 1;
             }
+        if (cmd == "fits") {
+            int bad = fits(e);
+            e->Release();
+            if (bad != 0) { say("ERROR: " + std::to_string(bad) + " control(s) cut off or overlapping in the window of " + arg); return 1; }
+            continue;
+        }
+        if (cmd == "range") {
+            IUIAutomationRangeValuePattern *rp = nullptr;
+            e->GetCurrentPatternAs(UIA_RangeValuePatternId, __uuidof(IUIAutomationRangeValuePattern), (void **)&rp);
+            HRESULT hr = rp ? rp->SetValue(std::stod(f.size() > 2 ? f[2] : "0")) : E_NOINTERFACE;
+            double v = -1;
+            if (rp) { rp->get_CurrentValue(&v); rp->Release(); }
+            e->Release();
+            say("  value " + std::to_string(v));
+            if (FAILED(hr)) { say("ERROR: can't set " + arg); return 1; }
             continue;
         }
         if (cmd == "pixels") {
