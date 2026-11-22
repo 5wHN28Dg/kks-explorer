@@ -8,6 +8,7 @@ import w32
 from syncwords import uxOn
 
 {.compile("kks_theme.cpp", "-std=c++17").}
+{.passL: "-loleacc -loleaut32".}
 
 const DarkUiSwitch* = "win-dark-ui"
 
@@ -20,7 +21,8 @@ const DarkColours*: array[Role, uint32] = [
   0x2B2B2B,       ## rSurface: inside fields, lists and the tree
   0xF2F2F2,       ## rText: 14.7:1 on the window, 12.7:1 in a field
   0xC8C8C8,       ## rDim: secondary text, 9.9:1 on the window
-  0x9A9A9A,       ## rBorder: a button's and a field's edge, 5.9:1 on the window (3:1 needed)
+  0x7A7A7A,       ## rBorder: a button's and a field's edge, 3.8:1 on the window, 3.3:1 on a field (3:1 needed);
+                  ## under the keyboard it turns white, 4.3:1 from this (#506's review: the focus ring's every pixel)
   0x3A3A3A,       ## rButton
   0x484848,       ## rHot: a button under the mouse
   0x505050,       ## rDown: a button pressed (lighter again: 1.6:1 against the button, its label 7.2:1)
@@ -40,6 +42,8 @@ proc kksThemeDim(h: HWND) {.importc: "kks_theme_dim", cdecl.}
 proc kksThemeDanger(h: HWND) {.importc: "kks_theme_danger", cdecl.}
 proc kksThemeApplyAll() {.importc: "kks_theme_apply_all", cdecl.}
 proc menusKnown*(build: cuint): cint {.importc: "kks_theme_menus_known", cdecl.}
+proc kksDialogA11y(h: HWND, description: WideCString): cint {.importc: "kks_theme_dialog_a11y", cdecl.}
+
 
 var
   themeOn = false       ## the switch, read once at the start
@@ -100,6 +104,9 @@ proc themeContainer*(h: HWND) = (if themeOn: kksThemeContainer(h))
 proc themeControl*(h: HWND) = (if themeOn: kksThemeControl(h))
 proc themeDim*(h: HWND) = (if themeOn: kksThemeDim(h))
 proc themeDanger*(h: HWND) = (if themeOn: kksThemeDanger(h))
+proc themeDialog*(h: HWND, description: string): bool {.discardable.} =
+  ## the app's own question as a dialog to a screen reader, with what it means as its description
+  if themeOn: kksDialogA11y(h, newWideCString(description)) == 1 else: false
 
 proc GetSysColor(i: cint): DWORD {.importc, stdcall, header: "<windows.h>".}
 

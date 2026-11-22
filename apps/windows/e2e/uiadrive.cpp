@@ -32,6 +32,9 @@
 //                           under 70 (dark) or over 190 (light): a control's or page's background in the app's theme
 //   titlebar <name> dark|light  the same for the title bar of the window holding the element (PrintWindow with its
 //                           frame): its median grey across the caption
+//   dialog <name> <text>    the top-level window holding the element is a dialog to UI Automation (what a screen reader
+//                           announces as one: its localized control type "dialog") and its description (FullDescription,
+//                           or HelpText) holds <text>, e.g. what a question means
 //   pixels <name> <rrggbb> <max>  the element as drawn (PrintWindow) has at most <max> pixels of this colour (each
 //                           channel within 3): e.g. no box left on the drawing
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
@@ -618,6 +621,34 @@ int wmain(int argc, wchar_t **argv) {
             say("  median grey " + std::to_string(med));
             e->Release();
             if (!ok) { say("ERROR: " + arg + (cmd == "titlebar" ? "'s title bar" : "") + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
+            continue;
+        }
+        if (cmd == "dialog") {
+            // the window: the element's top-level window as UI Automation sees it
+            UIA_HWND hw = 0; e->get_CurrentNativeWindowHandle(&hw); e->Release();
+            IUIAutomationElement *w = nullptr;
+            HWND root = hw ? GetAncestor((HWND)hw, GA_ROOT) : nullptr;
+            if (!root || FAILED(ua->ElementFromHandle((UIA_HWND)root, &w)) || !w) { say("ERROR: no window for " + arg); return 1; }
+            auto prop = [&](PROPERTYID id) {
+                VARIANT v; VariantInit(&v);
+                std::wstring out;
+                if (SUCCEEDED(w->GetCurrentPropertyValue(id, &v)) && v.vt == VT_BSTR && v.bstrVal) out = v.bstrVal;
+                VariantClear(&v);
+                return out;
+            };
+            std::wstring type = prop(UIA_LocalizedControlTypePropertyId), name = prop(UIA_NamePropertyId);
+            std::wstring desc = prop(30159 /* UIA_FullDescriptionPropertyId */) + L" | " + prop(UIA_HelpTextPropertyId);
+            VARIANT isd; VariantInit(&isd);
+            bool dialog = SUCCEEDED(w->GetCurrentPropertyValue(30174 /* UIA_IsDialogPropertyId */, &isd)) && isd.vt == VT_BOOL && isd.boolVal;
+            VariantClear(&isd);
+            if (dialog) type += L" (IsDialog: dialog)";
+            w->Release();
+            say("  window \"" + std::string(name.begin(), name.end()) + "\", " + std::string(type.begin(), type.end()) +
+                ", description: " + std::string(desc.begin(), desc.end()));
+            std::wstring want = wide(f.size() > 2 ? f[2] : "");
+            if (type.find(L"dialog") == std::wstring::npos || desc.find(want) == std::wstring::npos) {
+                say("ERROR: " + arg + "'s window is not a dialog with that description"); return 1;
+            }
             continue;
         }
         if (cmd == "pixels") {

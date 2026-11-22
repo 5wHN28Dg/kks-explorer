@@ -494,7 +494,8 @@ class Windows(unittest.TestCase):
         revs = len(self.boss.req('GET', '/api/revisions')['revisions'])
         self.check('du0q.uia', ['click\tHistory', 'wait\tRevert\t20', 'click\tRevert', 'wait\tRevert this change?\t20',
                                 'surface\tRevert this change?\tdark', 'titlebar\tRevert this change?\tdark',
-                                'focused\tCancel', 'sleep\t300'])
+                                'dialog\tRevert this change?\tThis writes a new change that undoes it',
+                                'sleep\t800', 'focused\tCancel', 'sleep\t300'])
         self.screenshot('win-dark-ui-question')
         self.check('du0r.uia', ['press\tCancel\t0x1B', 'gone\tRevert this change?', 'wait\tRestore'])
         time.sleep(3)      # (a revert would have reached the server by the next sync)

@@ -87,7 +87,7 @@ proc textOf(h: HWND): string =
 hinst = GetModuleHandleW(nil)
 makeFonts(96)
 block:
-  let cls = newWideCString("KKSTestTheme")
+  let cls = newWideCString("KKSMain")   # (the app's main window class: the theme follows it)
   var wc = WNDCLASSEXW(cbSize: UINT(sizeof(WNDCLASSEXW)), lpfnWndProc: mainProc, hInstance: hinst,
                        hbrBackground: GetSysColorBrush(COLOR_WINDOW), lpszClassName: cls)
   discard RegisterClassExW(addr wc)
@@ -132,6 +132,7 @@ suite "the dark colours (the switch on)":
       check contrast(colorRef(c[rDim]), colorRef(c[bg])) >= 4.5        # secondary text
       check contrast(colorRef(c[rBorder]), colorRef(c[bg])) >= 3.0     # edges of fields and buttons (A2)
       check contrast(colorRef(c[rFocus]), colorRef(c[bg])) >= 3.0      # the focus ring (A2)
+      check contrast(colorRef(c[rFocus]), colorRef(c[rBorder])) >= 3.0  # every pixel of the ring changes by 3:1 (A23)
       check contrast(colorRef(c[rAccent]), colorRef(c[bg])) >= 3.0     # a ticked box, a chosen radio button (A2)
     for face in [rButton, rHot, rDown, rDanger, rDangerHot, rDangerDown]:
       check contrast(colorRef(c[rText]), colorRef(c[face])) >= 7.0     # a button's label in each of its states
@@ -159,6 +160,7 @@ suite "the dark colours (the switch on)":
     check refreshTheme()
     check not uiDark
     check erased(p.hwnd) == GetSysColor(5)
+    check erased(main) == GetSysColor(5)       # the window holding it too (its class background followed)
     check ctlColour(p, WM_CTLCOLORSTATIC, lab)[1] == GetSysColor(5)
     check not refreshTheme()                                         # (nothing changed: nothing done)
     putEnv("KKS_TEST_SYSTEM_DARK", "1")
@@ -172,7 +174,7 @@ suite "the dark colours (the switch on)":
     SetFocus(f)                                       # (where the keyboard was: it goes back there)
     var seen = ""
     var dialogBg: DWORD = 0
-    discard afterMs(400, proc () =
+    discard afterMs(900, proc () =
       let d = FindWindowExW(nil, nil, newWideCString("KKSPopup"), newWideCString("Delete this photo?"))
       doAssert d != nil, "no dialog named by its question"
       dialogBg = erased(d)
@@ -184,7 +186,7 @@ suite "the dark colours (the switch on)":
     check GetFocus() == f
     # the named action, in the destructive colour, pressed
     var danger = false
-    discard afterMs(400, proc () =
+    discard afterMs(900, proc () =
       let d = FindWindowExW(nil, nil, newWideCString("KKSPopup"), newWideCString("Delete this photo?"))
       doAssert d != nil, "no dialog"
       var b: HWND = nil
@@ -200,14 +202,26 @@ suite "the dark colours (the switch on)":
     check danger
     check IsWindowEnabled(main) != 0          # the owner usable again
     # Yes and No as the message box has them: the keyboard on Yes (Enter says yes), Escape says no
-    discard afterMs(400, proc () =
+    discard afterMs(900, proc () =
       seen = textOf(GetFocus())
       PostMessageW(GetFocus(), WM_KEYDOWN, VK_RETURN, 0))
     check askYesNo(main, "And its tag plate?", "Add the tag plate photo too?")
     check seen == "Yes"
-    discard afterMs(400, proc () = PostMessageW(GetFocus(), WM_KEYDOWN, VK_ESCAPE, 0))
+    discard afterMs(900, proc () = PostMessageW(GetFocus(), WM_KEYDOWN, VK_ESCAPE, 0))
     check not askYesNo(main, "And its tag plate?", "Add the tag plate photo too?")
     p.destroy()
+
+  test "a press as the question opens (the second of a double-click) answers nothing":
+    discard afterMs(80, proc () =
+      let d = FindWindowExW(nil, nil, newWideCString("KKSPopup"), newWideCString("Delete this photo?"))
+      doAssert d != nil, "no dialog"
+      let page = FindWindowExW(d, nil, newWideCString("KKSPage"), nil)
+      var c = FindWindowExW(page, nil, newWideCString("Button"), nil)
+      while c != nil:
+        if textOf(c) == "Delete photo": SendMessageW(c, 0x00F5'u32, 0, 0)     # BM_CLICK, at once
+        c = FindWindowExW(page, c, newWideCString("Button"), nil))
+    discard afterMs(1200, proc () = PostMessageW(GetFocus(), WM_KEYDOWN, VK_ESCAPE, 0))
+    check not ask(main, "Delete this photo?", "It is removed for everyone.", "Delete photo")
 
   test "course text in the dark colours: figdraw's dark tokens":
     check "\\red226\\green232\\blue235;" in rtfHead(true)     # ink #E2E8EB

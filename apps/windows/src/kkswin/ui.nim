@@ -1073,6 +1073,7 @@ type MONITORINFO {.importc, header: HG.} = object
   rcMonitor, rcWork: RECT
   dwFlags: DWORD
 proc MonitorFromWindow(h: HWND, flags: DWORD): pointer {.importc, stdcall, header: HG.}
+proc GetDoubleClickTime(): UINT {.importc, stdcall, header: HG.}
 proc GetMonitorInfoW(m: pointer, mi: ptr MONITORINFO): BOOL {.importc, stdcall, header: HG.}
 
 proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], focusOn, cancelWith: int,
@@ -1084,6 +1085,7 @@ proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], foc
   ## and the close box give `cancelWith`; Enter presses the button with the keyboard; `danger`: the answer whose action
   ## can't be taken back, in the destructive colour. The keyboard goes back where it was. -> the index of the answer
   var chosen = cancelWith
+  var armed = true
   let ownerTop = if owner != nil: GetAncestor(owner, 2) else: nil        # GA_ROOT
   let before = GetFocus()
   let (hw, p) = popup(ownerTop, title, 460, 240, escape = true)
@@ -1111,11 +1113,16 @@ proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], foc
     closureScope:
       let k = i
       specs.add (answers[k], proc () =
+        if not armed: return
         chosen = k
         release()
         DestroyWindow(hw))
   let bs = p.buttons(specs, right = true)
   if danger in 0 ..< bs.len: themeDanger(bs[danger])
+  themeDialog(hw, text)          # a dialog to a screen reader, what it means as its description (as a task dialog)
+  # the buttons take no press for a double-click's time: a second press of the button that opened the question
+  # never answers it (S2), whatever sent it (the mouse, a key, UI Automation's Invoke)
+  armed = false
   p.layout()
   # as tall as what it holds (within the screen's work area: the buttons stay on screen), over its owner, a third of
   # the way down
@@ -1137,6 +1144,7 @@ proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], foc
   SetWindowPos(hw, nil, int32(x), int32(y), int32(wW), int32(wH), 0x0024'u32)   # SWP_NOZORDER, SWP_FRAMECHANGED
   if ownerTop != nil: EnableWindow(ownerTop, 0)
   ShowWindow(hw, SW_SHOW)
+  let ready = afterMs(int(GetDoubleClickTime()), proc () = armed = true)
   if focusOn in 0 ..< bs.len: SetFocus(bs[focusOn])
   var msg: MSG
   while IsWindow(hw) != 0:
@@ -1154,6 +1162,7 @@ proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], foc
     if root != nil and IsDialogMessageW(root, addr msg) != 0: continue
     TranslateMessage(addr msg)
     DispatchMessageW(addr msg)
+  cancel(ready)
   release()
   if IsWindow(hw) != 0: DestroyWindow(hw)
   if ownerTop != nil: SetForegroundWindow(ownerTop)

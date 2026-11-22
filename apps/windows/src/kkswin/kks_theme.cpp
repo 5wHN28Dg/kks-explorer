@@ -13,6 +13,7 @@
 #include <dwmapi.h>
 #include <richedit.h>
 #include <string.h>
+#include <oleacc.h>
 #include <stdlib.h>
 #include <algorithm>
 using std::max;
@@ -303,8 +304,10 @@ static void control(HWND h) {
         SendMessageW(h, EM_SETBKGNDCOLOR, 0, dark ? (LPARAM)pal[Window] : (LPARAM)GetSysColor(COLOR_WINDOW));
     }
     LONG style = GetWindowLongW(h, GWL_STYLE);
-    bool bars = (style & (WS_VSCROLL | WS_HSCROLL)) || isClass(h, L"SysTreeView32") || isClass(h, L"ListBox") ||
-                isClass(h, L"msctls_trackbar32");
+    // (not a list box: on Windows 11 26H2 the dark theme drew its selected row white, its text white on it, #506's
+    // review; its scroll bar stays light)
+    bool bars = ((style & (WS_VSCROLL | WS_HSCROLL)) || isClass(h, L"SysTreeView32") || isClass(h, L"msctls_trackbar32")) &&
+                !isClass(h, L"ListBox");
     if (bars) SetWindowTheme(h, dark ? L"DarkMode_Explorer" : nullptr, nullptr);
     if (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_CLIENTEDGE) SetWindowSubclass(h, edgeProc, SubId, 0);
 }
@@ -316,7 +319,7 @@ static void container(HWND h) {
     // the app's own window classes paint their first frame in the theme's colour (no white flash as a window opens)
     wchar_t cls[64] = L"";
     GetClassNameW(h, cls, 64);
-    if (!wcsncmp(cls, L"KKS", 3))
+    if (!wcscmp(cls, L"KKSPage") || !wcscmp(cls, L"KKSPopup") || !wcscmp(cls, L"KKSCourse") || !wcscmp(cls, L"KKSMain"))
         SetClassLongPtrW(h, GCLP_HBRBACKGROUND, (LONG_PTR)(dark ? brWindow : GetSysColorBrush(COLOR_WINDOW)));
     if (allowWindow) allowWindow(h, TRUE);
     SetWindowSubclass(h, containerProc, SubId, 0);     // (again: the same one, nothing changes)
@@ -360,12 +363,15 @@ static BOOL CALLBACK eachChild(HWND h, LPARAM) {
     // the app's own windows that hold controls (a page) follow too; a field or list with a scroll bar is a control
     wchar_t cls[64] = L"";
     GetClassNameW(h, cls, 64);
-    if (!wcsncmp(cls, L"KKS", 3)) container(h);
+    // (the windows that hold controls; the drawing, figures, pictures and photo canvases paint their own background)
+    if (!wcscmp(cls, L"KKSPage") || !wcscmp(cls, L"KKSPopup") || !wcscmp(cls, L"KKSCourse") || !wcscmp(cls, L"KKSMain"))
+        container(h);
     return TRUE;
 }
 
 static BOOL CALLBACK eachTop(HWND h, LPARAM) {
     if (!GetPropW(h, DoneProp)) return TRUE;           // only the app's own windows (not a task dialog)
+    container(h);       // (its own background and class brush too: the strip behind the tabs, a course window's)
     topBar(h);
     EnumChildWindows(h, eachChild, 0);
     RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
@@ -381,4 +387,30 @@ extern "C" void kks_theme_apply_all() {
         if (flush) flush();
     }
     EnumThreadWindows(GetCurrentThreadId(), eachTop, 0);
+}
+
+// ---- the app's own question to a screen reader as Windows' dialogs are: the dialog role (UI Automation's IsDialog),
+// and what it means as its description (FullDescription), through the documented Dynamic Annotation (oleacc), on the
+// window and its client area (UI Automation reads a top-level window's annotations from either)
+static const GUID IsDialogGuid = {0x9d0dfb9b, 0x8436, 0x4501, {0xbb, 0xbb, 0xe5, 0x34, 0xa4, 0xfb, 0x3b, 0x3f}};
+static const GUID FullDescriptionGuid = {0x0dc5e6ed, 0x3e16, 0x4bf1, {0x8f, 0x9a, 0xa9, 0x79, 0x87, 0x8b, 0xc1, 0x95}};
+extern "C" int kks_theme_dialog_a11y(HWND h, const wchar_t *description) {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);   // (already: S_FALSE or another mode; the call works either way)
+    IAccPropServices *ps = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_AccPropServices, nullptr, CLSCTX_INPROC_SERVER, IID_IAccPropServices, (void **)&ps)))
+        return 0;
+    int ok = 1;
+    for (LONG obj : {OBJID_WINDOW, OBJID_CLIENT}) {
+        VARIANT role; VariantInit(&role); role.vt = VT_I4; role.lVal = ROLE_SYSTEM_DIALOG;
+        VARIANT yes; VariantInit(&yes); yes.vt = VT_BOOL; yes.boolVal = VARIANT_TRUE;
+        ok &= SUCCEEDED(ps->SetHwndProp(h, obj, CHILDID_SELF, PROPID_ACC_ROLE, role));
+        ps->SetHwndProp(h, obj, CHILDID_SELF, IsDialogGuid, yes);       // (Windows 10 1809 and later)
+        if (description && description[0]) {
+            ok &= SUCCEEDED(ps->SetHwndPropStr(h, obj, CHILDID_SELF, PROPID_ACC_DESCRIPTION, description));
+            ps->SetHwndPropStr(h, obj, CHILDID_SELF, FullDescriptionGuid, description);
+            ps->SetHwndPropStr(h, obj, CHILDID_SELF, PROPID_ACC_HELP, description);   // (UI Automation's HelpText)
+        }
+    }
+    ps->Release();
+    return ok;
 }
