@@ -4,7 +4,7 @@
 ## (WS_EX_CONTROLPARENT + IsDialogMessage in the message loop).
 
 import std/[tables, strutils, os]
-import w32, labels
+import w32, labels, theme
 
 const HG = "<windows.h>"
 type SIZE {.importc, header: HG.} = object
@@ -54,10 +54,6 @@ const
 
 type OwnerDraw* = proc (dc: HDC, r: RECT, item: int, selected: bool)
 var ownerDraws = initTable[HWND, OwnerDraw]()
-
-proc colorRef(rgb: uint32): DWORD =
-  ## 0xRRGGBB → GDI's 0x00BBGGRR
-  DWORD(((rgb and 0xFF) shl 16) or (rgb and 0xFF00) or ((rgb shr 16) and 0xFF))
 
 proc fillRgb*(dc: HDC, r: RECT, rgb: uint32) =
   var rr = r
@@ -164,6 +160,8 @@ proc control*(parent: HWND, cls, text: string, style: uint32, ex = 0'u32, font: 
   let h = CreateWindowExW(ex, newWideCString(cls), newWideCString(shown), WS_CHILD or WS_VISIBLE or style, 0, 0, 10, 10,
                           parent, cast[HMENU](id), hinst, nil)
   SendMessageW(h, WM_SETFONT, cast[WPARAM](if font != nil: font else: fontNormal), 1)
+  themeContainer(parent)      # (the switch win-dark-ui: the parent paints its controls in the theme's colours)
+  themeControl(h)
   ctls.del h      # (a window handle used again for a new control never brings an old control's handlers with it)
   (h, id)
 
@@ -650,6 +648,7 @@ proc newPage*(parent: HWND): Page =
   result.hwnd = CreateWindowExW(WS_EX_CONTROLPARENT, newWideCString("KKSPage"), newWideCString(""),
                                 WS_CHILD or WS_VISIBLE or WS_VSCROLL or WS_CLIPCHILDREN, 0, 0, 10, 10, parent, nil, hinst, nil)
   pages[result.hwnd] = result
+  themeContainer(result.hwnd)
 
 proc destroy*(p: Page) =
   if p != nil and p.hwnd != nil:
@@ -727,6 +726,7 @@ proc title*(p: Page, text: string): HWND {.discardable.} =
 
 proc dim*(p: Page, text: string): HWND {.discardable.} =
   result = control(p.hwnd, "STATIC", text, SS_LEFT or SS_NOPREFIX or SS_EDITCONTROL, font = fontSmall)[0]
+  themeDim(result)
   p.items.add Item(kind: ikDim, hwnds: @[result], text: text)
 
 proc field*(p: Page, name, value: string, password = false, readonly = false, onChange: proc () = nil,
@@ -791,10 +791,14 @@ proc list*(p: Page, rows: seq[string], height = 200, onSelect: proc (i: int) = n
 proc drawRow*(dc: HDC, r: RECT, text: string, selected: bool, indent: int) =
   ## an owner-drawn list row's background and text, the text from `indent` px (a picture goes before it)
   var rr = r
-  FillRect(dc, addr rr, cast[HBRUSH0](GetSysColorBrush(if selected: COLOR_HIGHLIGHT else: int32(COLOR_WINDOW))))
+  if selected: FillRect(dc, addr rr, cast[HBRUSH0](GetSysColorBrush(COLOR_HIGHLIGHT)))
+  else:
+    let b = CreateSolidBrush(themeColor(rSurface))      # (the system's window colour, or the dark theme's)
+    FillRect(dc, addr rr, b)
+    DeleteObject(b)
   let oldFont = SelectObject(dc, fontNormal)
   SetBkMode(dc, 1)          # TRANSPARENT
-  SetTextColor(dc, GetSysColor(if selected: COLOR_HIGHLIGHTTEXT else: COLOR_WINDOWTEXT))
+  SetTextColor(dc, if selected: GetSysColor(COLOR_HIGHLIGHTTEXT) else: themeColor(rText))
   var tr = RECT(left: r.left + int32(indent), top: r.top, right: r.right - px(4), bottom: r.bottom)
   discard DrawTextW(dc, newWideCString(text), -1, addr tr, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS)
   SelectObject(dc, oldFont)  # the DC goes back as it came (WM_DRAWITEM)
@@ -845,8 +849,8 @@ proc drawPhotoMark*(dc: HDC, r: RECT, photos: string, selected: bool) =
   let d = px(12)
   let l = r.left + px(7)
   let t = r.top + (r.bottom - r.top - d) div 2
-  let hue = colorRef(markRgb(photos, lightRgb(GetSysColor(if selected: COLOR_HIGHLIGHT else: int32(COLOR_WINDOW)))))
-  let line = CreatePen(0, 1, GetSysColor(if selected: COLOR_HIGHLIGHTTEXT else: COLOR_WINDOWTEXT))
+  let hue = colorRef(markRgb(photos, lightRgb(if selected: GetSysColor(COLOR_HIGHLIGHT) else: themeColor(rSurface))))
+  let line = CreatePen(0, 1, if selected: GetSysColor(COLOR_HIGHLIGHTTEXT) else: themeColor(rText))
   let ring = CreatePen(6, max(2, px(2)), hue)          # PS_INSIDEFRAME: the ring stays inside its box
   let fill = CreateSolidBrush(hue)
   let hollow = GetStockObject(5)                       # NULL_BRUSH
@@ -931,7 +935,7 @@ proc rich*(p: Page, rtf: string, links: seq[(string, string)] = @[]): HWND {.dis
     discard LoadLibraryW(newWideCString("Msftedit.dll"))
     richLoaded = true
   result = control(p.hwnd, "RICHEDIT50W", "", WS_TABSTOP or ES_MULTILINE or ES_READONLY)[0]
-  SendMessageW(result, EM_SETBKGNDCOLOR, 0, LPARAM(GetSysColor(colorWindowIdx)))
+  SendMessageW(result, EM_SETBKGNDCOLOR, 0, LPARAM(if uiDark: themeColor(rWindow) else: GetSysColor(colorWindowIdx)))
   SendMessageW(result, EM_AUTOURLDETECT, 0, 0)
   # Advanced typography: line breaking that keeps a no-break space with what stands before it (without it a line
   # ended between a digit and a no-break space, "0.385" / " Ω per °C"), and breaks a word too long for its table
@@ -1046,10 +1050,84 @@ proc setRows*(l: HWND, rows: seq[string]) =
   for r in rows: sendText(l, LB_ADDSTRING, 0, r)
   listRows[l] = rows
 
+proc popup*(owner: HWND, title: string, w, h: int, onClose: proc () = nil, escape = false): (HWND, Page)
+
+proc LoadIconW(inst: HINSTANCE, name: int): pointer {.importc: "LoadIconW", stdcall, header: HG.}
+proc SetWindowPos(h, after: HWND, x, y, cx, cy: int32, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
+proc GetWindowLongPtrW(h: HWND, i: int32): int {.importc, stdcall, header: HG.}
+proc SetWindowLongPtrW(h: HWND, i: int32, v: int): int {.importc, stdcall, header: HG, discardable.}
+proc DrawIconEx(dc: HDC, x, y: int32, icon: pointer, w, h: int32, step: UINT, br: pointer, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
+
+proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], safe: int,
+                     warning = false): int =
+  ## The app's own modal dialog for ask, askYesNo and say while its dark colours are on (theme.nim, #377): the task
+  ## dialog and the message box are drawn by Windows in light colours whatever the app mode. The same parts and keys:
+  ## the question (`title`) and what it means, one button per answer, named by it; the keyboard starts on the safe
+  ## answer (`safe`), which Escape and the close box give too; Enter presses the button with the keyboard. -> the
+  ## index of the answer
+  result = safe
+  var chosen = safe
+  let ownerTop = if owner != nil: GetAncestor(owner, 2) else: nil        # GA_ROOT
+  let (hw, p) = popup(ownerTop, "Walkdown", 460, 240, escape = true)
+  # a dialog: no maximise, minimise or resizing
+  SetWindowLongPtrW(hw, -16, GetWindowLongPtrW(hw, -16) and not 0x00070000)   # GWL_STYLE: WS_THICKFRAME, MIN/MAXBOX
+  SetWindowPos(hw, nil, 0, 0, 0, 0, 0x0027'u32)        # SWP_FRAMECHANGED, NOMOVE, NOSIZE, NOZORDER: the new frame
+  if warning:
+    let icon = LoadIconW(nil, 32515)                                         # IDI_WARNING (the task dialog's)
+    p.picture("Warning", 34, proc (dc: HDC, r: RECT, item: int, selected: bool) =
+      fillRgb(dc, r, if uiDark: DarkColours[rWindow] else: 0xFFFFFF'u32)
+      DrawIconEx(dc, r.left, r.top, icon, px(32), px(32), 0, nil, 3))     # DI_NORMAL
+  p.title(title)
+  if text.len > 0: p.label(text)
+  var specs: seq[(string, proc ())]
+  for i in 0 ..< answers.len:
+    closureScope:
+      let k = i
+      specs.add (answers[k], proc () =
+        chosen = k
+        DestroyWindow(hw))
+  let bs = p.buttons(specs)
+  p.layout()
+  # as tall as what it holds, over the middle of its owner
+  var wr, cr, orr: RECT
+  discard GetWindowRect(hw, addr wr)
+  GetClientRect(hw, addr cr)
+  let wW = int(wr.right - wr.left)
+  let wH = int(wr.bottom - wr.top) - int(cr.bottom) + p.contentH + 1   # (+1: no scroll bar, as placeColumn)
+  var x = int(wr.left)
+  var y = int(wr.top)
+  if ownerTop != nil and GetWindowRect(ownerTop, addr orr) != 0:
+    x = (int(orr.left) + int(orr.right) - wW) div 2
+    y = (int(orr.top) + int(orr.bottom) - wH) div 3 + int(orr.top) * 2 div 3
+  SetWindowPos(hw, nil, int32(x), int32(y), int32(wW), int32(wH), 0x0024'u32)   # SWP_NOZORDER, SWP_FRAMECHANGED
+  if ownerTop != nil: EnableWindow(ownerTop, 0)
+  ShowWindow(hw, SW_SHOW)
+  if safe in 0 ..< bs.len: SetFocus(bs[safe])
+  var msg: MSG
+  while IsWindow(hw) != 0:
+    if GetMessageW(addr msg, nil, 0, 0) <= 0:
+      PostQuitMessage(int32(msg.wParam))       # (the app is closing: the main loop sees it too)
+      break
+    if msg.message == WM_KEYDOWN and int(msg.wParam) == VK_RETURN and GetAncestor(msg.hwnd, 2) == hw:
+      let f = GetFocus()
+      if f != nil and f in bs:
+        SendMessageW(f, 0x00F5'u32, 0, 0)      # BM_CLICK
+        continue
+    let root = GetAncestor(msg.hwnd, 2)
+    if root != nil and IsDialogMessageW(root, addr msg) != 0: continue
+    TranslateMessage(addr msg)
+    DispatchMessageW(addr msg)
+  if ownerTop != nil:
+    EnableWindow(ownerTop, 1)
+    SetForegroundWindow(ownerTop)
+  result = chosen
+
 proc ask*(owner: HWND, title, text, yes: string, no = "Cancel", destructive = true): bool =
   ## A question before an action (#365, D2 in docs/UI-UX-POLICY.md): a task dialog whose confirming button names the
   ## action (`yes`: "Delete photo", never OK), and whose default is the safe button (`no`), so Enter, Escape and
   ## closing it keep. With `destructive`: the warning icon. `title` is the question, `text` what it means. True: `yes`.
+  ## In the app's dark colours: themedQuestion, with the same buttons, default and keys.
+  if uiDark: return themedQuestion(owner, title, text, @[yes, no], 1, destructive) == 0
   let wTitle = newWideCString("Walkdown")
   let wQ = newWideCString(title)
   let wText = newWideCString(text)
@@ -1077,9 +1155,13 @@ proc ask*(owner: HWND, title, text, yes: string, no = "Cancel", destructive = tr
 
 proc askYesNo*(owner: HWND, title, text: string): bool =
   ## a question with Yes and No (MB_YESNO; IDYES = 6)
+  if uiDark: return themedQuestion(owner, title, text, @["Yes", "No"], 1, warning = true) == 0
   MessageBoxW(owner, newWideCString(text), newWideCString(title), 0x4'u32 or MB_ICONQUESTION) == 6
 
 proc say*(owner: HWND, title, text: string) =
+  if uiDark:
+    discard themedQuestion(owner, title, text, @["OK"], 0)
+    return
   discard MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OK)
 
 proc GlobalAlloc(flags: UINT, n: csize_t): pointer {.importc, stdcall, header: HG.}

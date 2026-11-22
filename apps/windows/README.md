@@ -46,6 +46,12 @@ which the `config.nims` of core/, platform/linux/, platform/windows/ and apps/wi
     what it showed before asking; Photo for all asks the floor first when a code has none, names those codes, and
     sends it with the photo: the core writes it for them only). The List, the forms and the floor question close
     when the mode ends; a tag opened from elsewhere asks before it drops a selection;
+  - `theme.nim` + `kks_theme.cpp` (#377, decision 0078; switch `win-dark-ui`, `KKS_UX=win-dark-ui`): in Windows'
+    dark app mode the app's own colours for every control (labels, fields and their hints, lists, the tree, buttons,
+    check boxes and radio buttons drawn at `NM_CUSTOMDRAW`, edges at `WM_NCPAINT`, rich text, the status line), the
+    title bar (DWM), scroll bars and menus (decision 0078), course pages and figures, and its own dialog for
+    questions (the task dialog stays light); followed while the app runs (`WM_SETTINGCHANGE` and once a second); a
+    contrast theme wins. Switched off, nothing is subclassed or changed (`tests/test_theme.nim`);
   - `kks_uia.cpp`: the drawing's tags as UI Automation buttons;
   - `win.nim`, `panel.nim`, `side.nim` (search, sheets, floors, procedures with link mode, the review queue),
     `systems.nim` (Equipment by system: core `systemsView` in a window with a search field and a native TreeView;
@@ -108,6 +114,10 @@ It covers:
 - an edit synced to the server;
 - a photo marked up with a box (the server's JPEG XL is decoded to check the box is in it);
 - dark drawings (the drawing's pixels as drawn, overview and tiles; the choice after a restart);
+- the app's dark colours (switch `win-dark-ui`): the controls, title bars, a question and a course page dark in dark
+  app mode (`surface`, `titlebar`: the median grey as drawn), light in light mode and switched off, following the app
+  mode while the app runs, and a contrast theme (`e2e/contrast.ps1`) winning; `KKS_E2E_APP_ENV` gives every fresh app
+  more environment (the whole suite in the dark colours: `KKS_UX=win-dark-ui;KKS_TEST_SYSTEM_DARK=1`);
 - several tags at once (a dragged box, search results, a tag button; the List; place, note and photo for all; a
   member's photo for all on codes without a floor: the floor asked first and proposed with the photo; codes of
   another drawing picked from the search and typed into the List);

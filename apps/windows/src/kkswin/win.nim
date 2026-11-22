@@ -6,7 +6,7 @@ import kks/model
 import appstate
 import kksl/dbstore
 from std/os import getEnv
-import w32, ui, viewer, darkcolor
+import w32, ui, viewer, darkcolor, theme
 
 type Follower* = ref object
   area*: HWND                ## the control a rebuild replaces the contents of (a tree)
@@ -246,19 +246,9 @@ proc statusText*(w: Win): string =
 
 
 # ---- the Dark drawings setting (darkcolor.nim): follow the system's theme, always dark, or always light ----
-proc RegGetValueW(key: pointer, sub, value: WideCString, flags: uint32, typ: ptr uint32, data: pointer,
-                  size: ptr uint32): int32 {.importc, stdcall, header: "<windows.h>".}
-
 proc systemDark*(): bool =
-  ## Windows' own setting for apps (Settings → Personalisation → Colours → "Choose your default app mode"): dark when
-  ## AppsUseLightTheme is 0. KKS_TEST_SYSTEM_DARK (1 or 0) stands in for it in the tests.
-  let t = getEnv("KKS_TEST_SYSTEM_DARK")
-  if t.len > 0: return t == "1"
-  var v: uint32 = 1
-  var n = uint32(sizeof(v))
-  let hkcu = cast[pointer](0x80000001'u)       # HKEY_CURRENT_USER
-  RegGetValueW(hkcu, newWideCString("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
-               newWideCString("AppsUseLightTheme"), 0x10'u32, nil, addr v, addr n) == 0 and v == 0   # RRF_RT_REG_DWORD
+  ## Windows' own setting for apps (theme.appsDark; KKS_TEST_SYSTEM_DARK stands in for it in the tests)
+  appsDark()
 
 proc darkMode*(w: Win): DarkMode = darkModeOf(w.a.store.getMeta("dark_drawings"))
 

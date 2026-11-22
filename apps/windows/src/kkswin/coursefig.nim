@@ -4,7 +4,7 @@
 
 import std/[math, os, tables, times]
 import kks/[json, courses]
-import w32, ui, figdraw
+import w32, ui, figdraw, theme
 
 {.compile("kks_fig.cpp", "-std=c++17").}
 {.passL: "-ldwrite".}
@@ -108,8 +108,8 @@ var views = initTable[HWND, FigView]()
 var classDone = false
 
 proc dark*(): bool =
-  ## Windows' app theme (AppsUseLightTheme = 0)
-  false
+  ## the app's dark colours are in use (theme.nim: Windows' app mode, the switch win-dark-ui, no contrast theme)
+  uiDark
 
 proc visible(v: FigView): bool =
   var r, pr: RECT

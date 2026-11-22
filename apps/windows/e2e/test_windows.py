@@ -48,6 +48,10 @@ def ui(name, lines, keep=True, sync_every=0, restart=False, env=None, during=(),
     the focus is where the script put it (a new script would take it away: its console window comes to the front
     first, #158). app_args: a fresh app's command line; link: a walkdown:// link opened before the script (run.ps1)"""
     during = list(during)
+    # KKS_E2E_APP_ENV="NAME=value;…": more environment for every fresh app, under the test's own (the whole suite in
+    # the app's dark colours: KKS_UX=win-dark-ui;KKS_TEST_SYSTEM_DARK=1)
+    extra = dict(kv.split('=', 1) for kv in os.environ.get('KKS_E2E_APP_ENV', '').split(';') if '=' in kv)
+    env = dict(extra, **(env or {})) or None
     path = os.path.join(tempfile.gettempdir(), name)
     with open(path, 'w') as f: f.write('\n'.join(lines) + '\n')
     put(path)
@@ -80,6 +84,21 @@ def screen_shot(path):
             time.sleep(1)       # (written at once, but let it close the file)
             subprocess.run(['scp', '-q'] + SSH + ['kks@%s:C:/kks/shot.bmp' % VM, path], check=True, timeout=120)
             return
+
+
+def contrast(on, scheme='High Contrast White'):
+    """a contrast theme on or off for the desktop user (e2e/contrast.ps1, in the desktop session); -> its log line"""
+    vm('Remove-Item C:\\kks\\contrast.log -ErrorAction SilentlyContinue')
+    args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\contrast.ps1 -On %d -Scheme "%s"' % (on, scheme)
+    vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kkscontrast'
+       % base64.b64encode(args.encode()).decode())
+    for _ in range(60):
+        time.sleep(1)
+        out = vm('Get-Content C:\\kks\\contrast.log -ErrorAction SilentlyContinue').strip()
+        if out:
+            time.sleep(8)       # (Windows repaints every window in the new colours)
+            return out
+    return 'no answer from contrast.ps1'
 
 
 def msix(args):
@@ -439,6 +458,89 @@ class Windows(unittest.TestCase):
         finally:
             if was in ('0', '1'): app_mode(was)
             else: vm('Remove-ItemProperty -Path %s -Name AppsUseLightTheme -ErrorAction SilentlyContinue' % key)
+        self.leave()
+
+    DARK_UI = {'KKS_UX': 'win-dark-ui'}
+
+    def surfaces(self, shade, title=True):
+        """the main window's controls and its title bar, each `shade` (dark or light) as drawn (`title`: a contrast
+        theme colours the title bar its own way)"""
+        # (the check box and the radio buttons are low in the sidebar: the keyboard on the check box scrolls them into
+        # view, a Shift press changes nothing)
+        return ['surface\tDrawings\t' + shade, 'surface\tEquipment by system…\t' + shade,
+                'surface\tSearch equipment by KKS code or description\t' + shade] + \
+               (['titlebar\tDrawings\t' + shade] if title else []) + [
+                'press\tSelect tags\t0x10', 'sleep\t300', 'surface\tSelect tags\t' + shade,
+                'surface\tFollow theme\t' + shade, 'press\tSearch equipment by KKS code or description\t0x10', 'sleep\t300']
+
+    def test_dark_ui(self):
+        """#377, switch win-dark-ui: in Windows' dark app mode the app's own controls are dark (the tabs, buttons, the
+        search field, check boxes and radio buttons, the title bar, a window of its own with its tree), light in light
+        mode, and they follow a change of the app mode while the app runs (Settings writes AppsUseLightTheme; the app
+        reads it at WM_SETTINGCHANGE and once a second). Switched off, dark mode leaves them light (as before)."""
+        dark = dict(self.DARK_UI, KKS_TEST_SYSTEM_DARK='1')
+        self.course_files()
+        self.join('dujoin.uia', env=dark)
+        self.check('du0.uia', ['wait\t~Sample sheet\t60'] + self.surfaces('dark') +
+                   ['click\tEquipment by system…', 'wait\tEquipment by system\t20',
+                    'surface\tSearch codes, systems, descriptions\tdark',
+                    'titlebar\tSearch codes, systems, descriptions\tdark'], env=dark)
+        self.screenshot('win-dark-ui-systems')
+        self.check('du0b.uia', ['keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system',
+                                'click\tManage', 'wait\tAccount\t20', 'surface\tAccount\tdark'])
+        self.screenshot('win-dark-ui-manage')
+        # a question (the task dialog is light whatever the mode): the app's own dialog, dark, the keyboard on the
+        # safe answer; Escape keeps (nothing reverted)
+        revs = len(self.boss.req('GET', '/api/revisions')['revisions'])
+        self.check('du0q.uia', ['click\tHistory', 'wait\tRevert\t20', 'click\tRevert', 'wait\tRevert this change?\t20',
+                                'surface\tRevert this change?\tdark', 'titlebar\tRevert this change?\tdark',
+                                'focused\tCancel', 'sleep\t300'])
+        self.screenshot('win-dark-ui-question')
+        self.check('du0r.uia', ['press\tCancel\t0x1B', 'gone\tRevert this change?', 'wait\tRestore'])
+        time.sleep(3)      # (a revert would have reached the server by the next sync)
+        self.assertEqual(len(self.boss.req('GET', '/api/revisions')['revisions']), revs)
+        # a course (Instrumentation and control: no plant data): its window, its rail and its page's rich text dark
+        self.check('du0s.uia', ['click\tLearning', 'select\t~Instrumentation and control', 'click\tOpen the course',
+                                'wait\t~Instrumentation and control — 0 of 77 solved\t30', 'select\t4 · 4–20 mA',
+                                'click\tOpen the selected page', 'wait\tOne value, four signals\t20',
+                                'surface\tOpen the selected page\tdark',
+                                'titlebar\tOpen the selected page\tdark', 'click\tPause', 'wait\tPlay\t10', 'sleep\t500'])
+        self.screenshot('win-dark-ui-course')
+        self.check('du0t.uia', ['close\tOpen the selected page', 'gone\tOpen the selected page', 'click\tDrawings',
+                                'wait\t~Sample sheet\t20'])
+        self.check('du0c.uia', ['click\tDrawings', 'wait\t~Sample sheet\t20', 'sleep\t500'])
+        self.screenshot('win-dark-ui-drawings')
+        # light mode, the switch on: as before
+        self.check('du1.uia', ['wait\t~Sample sheet\t60'] + self.surfaces('light'), restart=True,
+                   env=dict(self.DARK_UI, KKS_TEST_SYSTEM_DARK='0'))
+        self.screenshot('win-dark-ui-light')
+        # switched off: light whatever the mode
+        self.check('du2.uia', ['wait\t~Sample sheet\t60'] + self.surfaces('light'), restart=True,
+                   env={'KKS_TEST_SYSTEM_DARK': '1'})
+        # Windows' own setting (no stand-in), changed while the app runs
+        key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize'
+        was = vm('(Get-ItemProperty -Path %s -Name AppsUseLightTheme -ErrorAction SilentlyContinue).AppsUseLightTheme' % key).strip()
+        def app_mode(v):
+            vm('if (-not (Test-Path %s)) { New-Item -Path %s | Out-Null }; Set-ItemProperty -Path %s -Name AppsUseLightTheme -Value %s -Type DWord' % (key, key, key, v), check=True)
+        try:
+            app_mode(1)
+            self.check('du3.uia', ['wait\t~Sample sheet\t60'] + self.surfaces('light') +
+                       ['sleep\t1501'] + self.surfaces('dark') + ['sleep\t1502'] + self.surfaces('light'),
+                       restart=True, env=self.DARK_UI, during=[('sleep\t1501', lambda: app_mode(0)),
+                                                              ('sleep\t1502', lambda: app_mode(1))])
+        finally:
+            if was in ('0', '1'): app_mode(was)
+            else: vm('Remove-ItemProperty -Path %s -Name AppsUseLightTheme -ErrorAction SilentlyContinue' % key)
+        # a contrast theme (a light one) wins over the dark app mode: the system's colours, light; off again, while the
+        # app runs, the dark colours come back
+        put(os.path.join(HERE, 'contrast.ps1'))
+        try:
+            self.assertIn('contrast 1 True', contrast(1))
+            self.check('du4.uia', ['wait\t~Sample sheet\t60', 'sleep\t1000'] + self.surfaces('light', title=False), restart=True, env=dark)
+            self.screenshot('win-dark-ui-contrast')
+        finally:
+            self.assertIn('contrast 0 True', contrast(0))
+        self.check('du5.uia', self.surfaces('dark'))
         self.leave()
 
     def test_multi(self):

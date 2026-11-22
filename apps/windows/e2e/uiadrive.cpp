@@ -28,6 +28,10 @@
 //   escdrag <name> x0 y0 x1 y1 [hold]  a drag as `drag` that Escape (posted to its window) interrupts before the button
 //                           is up; with "hold" the button stays down (until `mouseup`)
 //   mouseup <name>          the left button up in the element's window
+//   surface <name> dark|light  wait (10 s) until the element's whole rectangle as drawn (PrintWindow) has a median grey
+//                           under 70 (dark) or over 190 (light): a control's or page's background in the app's theme
+//   titlebar <name> dark|light  the same for the title bar of the window holding the element (PrintWindow with its
+//                           frame): its median grey across the caption
 //   pixels <name> <rrggbb> <max>  the element as drawn (PrintWindow) has at most <max> pixels of this colour (each
 //                           channel within 3): e.g. no box left on the drawing
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
@@ -161,6 +165,53 @@ static bool shade_of(IUIAutomationElement *e, int &median, int &light, int &dark
     }
     SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(nullptr, sdc);
     return ok;
+}
+
+// the median grey of a rectangle of the element's top-level window as drawn (PrintWindow): the element's own, or the caption
+static int median_grey(IUIAutomationElement *e, bool caption) {
+    UIA_HWND hw = 0;
+    e->get_CurrentNativeWindowHandle(&hw);
+    if (!hw) return -1;
+    HWND root = GetAncestor((HWND)hw, GA_ROOT);
+    RECT rr, er;
+    GetWindowRect(root, &rr);
+    GetWindowRect((HWND)hw, &er);
+    int W = rr.right - rr.left, H = rr.bottom - rr.top;
+    if (W <= 0 || H <= 0) return -1;
+    HDC sdc = GetDC(nullptr);
+    HDC dc = CreateCompatibleDC(sdc);
+    BITMAPINFO bi = {};
+    bi.bmiHeader.biSize = sizeof bi.bmiHeader; bi.bmiHeader.biWidth = W; bi.bmiHeader.biHeight = -H;
+    bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32; bi.bmiHeader.biCompression = BI_RGB;
+    void *bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(sdc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    HGDIOBJ old = SelectObject(dc, bmp);
+    // (the whole window as drawn, its frame too: a capture of the screen read the Windows 10 VM's dark title bar as white)
+    bool ok = PrintWindow(root, dc, 2) != 0;
+    int med = -1;
+    if (ok) {
+        int x0, y0, x1, y1;
+        if (caption) {
+            // the caption between the window's frame and its client area, away from the icon, title and buttons
+            POINT c = {0, 0};
+            ClientToScreen(root, &c);
+            x0 = W / 3; x1 = W / 2; y0 = 4; y1 = std::max(6L, c.y - rr.top - 4);
+        } else {
+            x0 = er.left - rr.left; y0 = er.top - rr.top; x1 = er.right - rr.left; y1 = er.bottom - rr.top;
+        }
+        std::vector<int> greys;
+        for (int y = std::max(0, y0); y < std::min(H, y1); y++)
+            for (int x = std::max(0, x0); x < std::min(W, x1); x++) {
+                const uint8_t *p = (const uint8_t *)bits + ((size_t)y * W + x) * 4;
+                greys.push_back((p[0] + p[1] + p[2]) / 3);
+            }
+        if (!greys.empty()) {
+            std::nth_element(greys.begin(), greys.begin() + greys.size() / 2, greys.end());
+            med = greys[greys.size() / 2];
+        }
+    }
+    SelectObject(dc, old); DeleteObject(bmp); DeleteDC(dc); ReleaseDC(nullptr, sdc);
+    return med;
 }
 
 // pixels of the element, as drawn, within 3 of this colour in each channel; -1 if not captured
@@ -550,6 +601,23 @@ int wmain(int argc, wchar_t **argv) {
                 " of " + std::to_string(n));
             e->Release();
             if (!ok) { say("ERROR: " + arg + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
+            continue;
+        }
+        if (cmd == "surface" || cmd == "titlebar") {
+            bool wantDark = f.size() > 2 && f[2] == "dark", ok = false;
+            int med = -1;
+            for (int t = 0; t < 10000 && !ok; t += 500) {
+                IUIAutomationElement *x = find(pid, arg);
+                if (x) {
+                    med = median_grey(x, cmd == "titlebar");
+                    ok = med >= 0 && (wantDark ? med < 70 : med > 190);
+                    x->Release();
+                }
+                if (!ok) Sleep(500);
+            }
+            say("  median grey " + std::to_string(med));
+            e->Release();
+            if (!ok) { say("ERROR: " + arg + (cmd == "titlebar" ? "'s title bar" : "") + " is not " + (f.size() > 2 ? f[2] : "")); return 1; }
             continue;
         }
         if (cmd == "pixels") {

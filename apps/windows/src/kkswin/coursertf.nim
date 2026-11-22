@@ -63,7 +63,13 @@ proc plainRun(r: JNode): string =
 const RtfHead* = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Segoe UI;}{\\f1\\fmodern Consolas;}}" &
                 "{\\colortbl;\\red22\\green34\\blue43;\\red31\\green95\\blue139;\\red86\\green100\\blue110;" &
                 "\\red179\\green38\\blue30;\\red46\\green122\\blue78;\\red154\\green100\\blue18;}\\f0\\fs22\\cf1 "
-  ## colours: 1 ink, 2 accent, 3 muted, 4 act, 5 ok, 6 alarm
+  ## colours: 1 ink, 2 accent, 3 muted, 4 act, 5 ok, 6 alarm (figdraw's light tokens)
+const RtfHeadDark* = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Segoe UI;}{\\f1\\fmodern Consolas;}}" &
+                "{\\colortbl;\\red226\\green232\\blue235;\\red109\\green175\\blue220;\\red149\\green164\\blue173;" &
+                "\\red240\\green119\\blue107;\\red98\\green192\\blue138;\\red228\\green174\\blue69;}\\f0\\fs22\\cf1 "
+  ## the same six from figdraw's dark tokens, for the app's dark colours (theme.nim): each 5.9:1 or more on the window
+
+proc rtfHead*(dark: bool): string = (if dark: RtfHeadDark else: RtfHead)
 
 proc rtfEsc*(s: string): string =
   for r in s.runes:
