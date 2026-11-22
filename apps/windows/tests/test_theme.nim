@@ -4,7 +4,7 @@
 ## meet the profile's contrast; the mode followed when it changes; ask, askYesNo and say use the app's own dialog,
 ## whose keyboard starts on the safe answer. Real windows and messages, so it runs on Windows (CI's windows-test):
 ##   nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console -o:test_theme.exe apps/windows/tests/test_theme.nim
-import std/[unittest, os, math, strutils]
+import std/[unittest, os, math, strutils, times]
 import kkswin/[w32, ui, theme, coursertf]
 
 const H = "<windows.h>"
@@ -222,6 +222,19 @@ suite "the dark colours (the switch on)":
         c = FindWindowExW(page, c, newWideCString("Button"), nil))
     discard afterMs(1200, proc () = PostMessageW(GetFocus(), WM_KEYDOWN, VK_ESCAPE, 0))
     check not ask(main, "Delete this photo?", "It is removed for everyone.", "Delete photo")
+
+  test "the safe answer is never held back: Cancel pressed as the question opens closes it":
+    discard afterMs(80, proc () =
+      let d = FindWindowExW(nil, nil, newWideCString("KKSPopup"), newWideCString("Delete this photo?"))
+      doAssert d != nil, "no dialog"
+      let page = FindWindowExW(d, nil, newWideCString("KKSPage"), nil)
+      var c = FindWindowExW(page, nil, newWideCString("Button"), nil)
+      while c != nil:
+        if textOf(c) == "Cancel": SendMessageW(c, 0x00F5'u32, 0, 0)     # BM_CLICK, at once
+        c = FindWindowExW(page, c, newWideCString("Button"), nil))
+    let t0 = epochTime()
+    check not ask(main, "Delete this photo?", "It is removed for everyone.", "Delete photo")
+    check epochTime() - t0 < 0.5                                         # (closed by Cancel, not by a later Escape)
 
   test "course text in the dark colours: figdraw's dark tokens":
     check "\\red226\\green232\\blue235;" in rtfHead(true)     # ink #E2E8EB

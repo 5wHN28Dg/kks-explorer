@@ -483,7 +483,7 @@ class Windows(unittest.TestCase):
         theme colours the title bar its own way)"""
         # (the check box and the radio buttons are low in the sidebar: the keyboard on the check box scrolls them into
         # view, a Shift press changes nothing)
-        return ['surface\tDrawings\t' + shade, 'surface\tEquipment by system…\t' + shade,
+        return ['hover\tDrawing', 'sleep\t200', 'surface\tDrawings\t' + shade, 'surface\tEquipment by system…\t' + shade,
                 'surface\tSearch equipment by KKS code or description\t' + shade] + \
                (['titlebar\tDrawings\t' + shade] if title else []) + [
                 'press\tSelect tags\t0x10', 'sleep\t300', 'surface\tSelect tags\t' + shade,
@@ -532,6 +532,15 @@ class Windows(unittest.TestCase):
                                 'press\tSelect tags\t0x10', 'sleep\t500'])
         self.screenshot('win-dark-ui-ticked')
         self.check('du0e.uia', ['toggle\tSelect tags', 'state\tSelect tags\toff', 'sleep\t300'])
+        # a button under the mouse and one held down (their looks), and the keyboard in Equipment by system's tree (the
+        # selected item's focus ring)
+        self.check('du0f.uia', ['hover\tEquipment by system…', 'holddown\tCoverage…', 'sleep\t500'])
+        self.screenshot('win-dark-ui-hover-pressed')
+        self.check('du0g.uia', ['letgo\tCoverage…', 'click\tEquipment by system…', 'wait\tEquipment by system\t20',
+                                'press\tSearch codes, systems, descriptions\t0x09,0x09', 'sleep\t700'])
+        self.screenshot('win-dark-ui-tree-focus')
+        self.check('du0h.uia', ['keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system',
+                                'hover\tDrawing'])     # (the mouse away from the buttons for the later steps)
         # light mode, the switch on: as before
         self.check('du1.uia', ['wait\t~Sample sheet\t60'] + self.surfaces('light'), restart=True,
                    env=dict(self.DARK_UI, KKS_TEST_SYSTEM_DARK='0'))

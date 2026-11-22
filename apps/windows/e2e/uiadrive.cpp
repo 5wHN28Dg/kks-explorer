@@ -40,6 +40,9 @@
 //                           fit their rectangles (measured with the control's own font), and no two controls of a
 //                           page overlap; each one that doesn't is logged
 //   range <name> <value>    set a slider (RangeValue) to the value, as a person dragging it does (Settings' Text size)
+//   hover <name>            the mouse pointer to the element's middle (its hover look)
+//   holddown <name>         the left button down on the element (its pressed look); letgo <name> cancels the press
+//                           without a click
 //   pixels <name> <rrggbb> <max>  the element as drawn (PrintWindow) has at most <max> pixels of this colour (each
 //                           channel within 3): e.g. no box left on the drawing
 //   press <name> <vk,vk,…>  real key presses (SendInput) with the keyboard focus on that element, its window in front:
@@ -887,6 +890,19 @@ int wmain(int argc, wchar_t **argv) {
                 Sleep(300);
             }
             if (!(cmd == "escdrag" && f.size() > 6 && f[6] == "hold")) PostMessageW((HWND)hw, WM_LBUTTONUP, 0, at(4, 5));
+        } else if (cmd == "hover") {
+            // the mouse pointer over the element's middle (a real move: the control sees WM_MOUSEMOVE, its hover look)
+            RECT r; e->get_CurrentBoundingRectangle(&r);
+            SetCursorPos((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+        } else if (cmd == "holddown" || cmd == "letgo") {
+            // holddown: the left button down on the element (its pressed look, as long as it is held); letgo: the press
+            // cancelled without a click (WM_CANCELMODE), so holding a button down for a screenshot changes nothing
+            UIA_HWND hw = 0;
+            e->get_CurrentNativeWindowHandle(&hw);
+            if (!hw) { say("ERROR: no window: " + arg); return 1; }
+            RECT c; GetClientRect((HWND)hw, &c);
+            if (cmd == "holddown") PostMessageW((HWND)hw, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(c.right / 2, c.bottom / 2));
+            else SendMessageW((HWND)hw, WM_CANCELMODE, 0, 0);
         } else if (cmd == "mouseup") {
             UIA_HWND hw = 0;
             e->get_CurrentNativeWindowHandle(&hw);
