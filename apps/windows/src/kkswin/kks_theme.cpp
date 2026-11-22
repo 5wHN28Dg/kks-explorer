@@ -18,7 +18,8 @@
 using std::max;
 using std::min;
 
-enum { Window, Surface, Text, Dim, Border, Button, Hot, Down, Focus, Accent, AccentText, Disabled, NColours };
+enum { Window, Surface, Text, Dim, Border, Button, Hot, Down, Focus, Accent, AccentText, Disabled, Danger, DangerHot,
+       DangerDown, NColours };
 
 static int enabled = 0;      // the switch (theme.nim): nothing is subclassed or changed without it
 static int dark = 0;         // the colours in use now: ours (dark) or the system's (light, high contrast)
@@ -27,6 +28,8 @@ static HBRUSH brWindow, brSurface;
 static const UINT_PTR SubId = 0x4B4B5354;   // "KKST"
 static const wchar_t *DimProp = L"kksThemeDim";
 static const wchar_t *DoneProp = L"kksThemeTop";
+static const wchar_t *DangerProp = L"kksThemeDanger";    // a button whose action can't be taken back (a question's)
+static const wchar_t *ContainerProp = L"kksThemeContainer";
 
 static COLORREF rgb(unsigned v) { return RGB((v >> 16) & 255, (v >> 8) & 255, v & 255); }
 
@@ -104,7 +107,10 @@ static void drawButton(NMCUSTOMDRAW *cd) {
     bool focus = (cd->uItemState & CDIS_FOCUS) != 0;
     bool hot = (cd->uItemState & CDIS_HOT) != 0;
     bool down = (cd->uItemState & CDIS_SELECTED) != 0;
-    bool cues = !(SendMessageW(h, WM_QUERYUISTATE, 0, 0) & UISF_HIDEACCEL);
+    LRESULT ui = SendMessageW(h, WM_QUERYUISTATE, 0, 0);
+    bool cues = !(ui & UISF_HIDEACCEL);
+    if (ui & UISF_HIDEFOCUS) focus = false;     // (as Windows' own buttons: no ring after a click, until a key is used)
+    int ring = max(2, sc(h, 2));                // the focus ring: 2 px at 100 %, more at higher scaling
     int n = GetWindowTextLengthW(h);
     wchar_t *text = (wchar_t *)calloc(n + 1, sizeof(wchar_t));
     GetWindowTextW(h, text, n + 1);
@@ -119,9 +125,10 @@ static void drawButton(NMCUSTOMDRAW *cd) {
         int box = sc(h, 14);
         int top = r.top + (r.bottom - r.top - box) / 2;
         RECT b = {r.left + sc(h, 1), top, r.left + sc(h, 1) + box, top + box};
-        COLORREF edge = disabled ? pal[Disabled] : (hot || down ? pal[Focus] : pal[Border]);
+        COLORREF edge = disabled ? pal[Disabled] : pal[Border];
         HPEN pen = CreatePen(PS_SOLID, sc(h, 1), on && !disabled ? pal[Accent] : edge);
-        HBRUSH brush = CreateSolidBrush(on && !disabled ? pal[Accent] : pal[Surface]);
+        // (under the mouse or pressed: the box lighter, never the focus colour)
+        HBRUSH brush = CreateSolidBrush(on && !disabled ? pal[Accent] : (down ? pal[Down] : hot ? pal[Hot] : pal[Surface]));
         HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, brush);
         if (radio) {
             Ellipse(dc, b.left, b.top, b.right, b.bottom);
@@ -154,15 +161,19 @@ static void drawButton(NMCUSTOMDRAW *cd) {
         DrawTextW(dc, text, -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | prefix);
         if (focus) {      // a ring round the label, in the text colour (3:1 and more against the window)
             int th = m.bottom - m.top;
-            RECT f = {t.left - sc(h, 2), r.top + (r.bottom - r.top - th) / 2 - sc(h, 1),
-                      min(t.left + (m.right - m.left) + sc(h, 2), r.right), r.top + (r.bottom - r.top + th) / 2 + sc(h, 1)};
-            frame(dc, f, pal[Focus], 1);
+            RECT f = {t.left - ring - sc(h, 1), r.top + (r.bottom - r.top - th) / 2 - ring,
+                      min(t.left + (m.right - m.left) + ring + sc(h, 1), r.right), r.top + (r.bottom - r.top + th) / 2 + ring};
+            f.top = max(f.top, r.top);
+            f.bottom = min(f.bottom, r.bottom);
+            frame(dc, f, pal[Focus], ring);
         }
     } else {
         // a push button: a filled box with a border; focus: a two-pixel ring in the focus colour
-        COLORREF face = disabled ? pal[Window] : down ? pal[Down] : hot ? pal[Hot] : pal[Button];
+        bool danger = GetPropW(h, DangerProp) != nullptr;
+        COLORREF face = disabled ? pal[Window] : danger ? (down ? pal[DangerDown] : hot ? pal[DangerHot] : pal[Danger])
+                                                        : (down ? pal[Down] : hot ? pal[Hot] : pal[Button]);
         fill(dc, r, face);
-        frame(dc, r, disabled ? pal[Disabled] : (focus ? pal[Focus] : pal[Border]), focus ? max(2, sc(h, 2)) : 1);
+        frame(dc, r, disabled ? pal[Disabled] : (focus ? pal[Focus] : pal[Border]), focus ? ring : 1);
         RECT t = r;
         InflateRect(&t, -sc(h, 6), -sc(h, 3));
         if (style & BS_MULTILINE) {
@@ -188,9 +199,12 @@ static LRESULT CALLBACK edgeProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id
         RECT r;
         GetWindowRect(h, &r);
         OffsetRect(&r, -r.left, -r.top);
-        frame(dc, r, GetFocus() == h ? pal[Focus] : pal[Border], 1);
+        // the edge: a line in the edge colour; under the keyboard two lines in the focus colour (the second changes
+        // from the field's colour to white: far above 3:1)
+        bool focused = GetFocus() == h;
+        frame(dc, r, focused ? pal[Focus] : pal[Border], 1);
         InflateRect(&r, -1, -1);
-        frame(dc, r, pal[Surface], 1);
+        frame(dc, r, focused ? pal[Focus] : pal[Surface], 1);
         ReleaseDC(h, dc);
         return res;
     }
@@ -229,6 +243,7 @@ static LRESULT CALLBACK edgeProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id
 static LRESULT CALLBACK containerProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR) {
     if (m == WM_NCDESTROY) {
         RemovePropW(h, DoneProp);
+        RemovePropW(h, ContainerProp);
         RemoveWindowSubclass(h, containerProc, id);
         return DefSubclassProc(h, m, w, l);
     }
@@ -241,6 +256,12 @@ static LRESULT CALLBACK containerProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_P
         return 1;
     }
     case WM_CTLCOLORSTATIC:
+        if (isClass((HWND)l, L"Edit")) {          // a read-only field: still a field (its own colour, as its edge)
+            SetTextColor((HDC)w, pal[Text]);
+            SetBkColor((HDC)w, pal[Surface]);
+            return (LRESULT)brSurface;
+        }
+        // fall through
     case WM_CTLCOLORBTN: {
         HDC dc = (HDC)w;
         HWND c = (HWND)l;
@@ -289,6 +310,14 @@ static void control(HWND h) {
 }
 
 static void container(HWND h) {
+    // once per window: a page's every new control asks for it (#506's review: hundreds of calls for a long list)
+    if (GetPropW(h, ContainerProp) && GetPropW(h, ContainerProp) == (HANDLE)(INT_PTR)(dark + 1)) return;
+    SetPropW(h, ContainerProp, (HANDLE)(INT_PTR)(dark + 1));
+    // the app's own window classes paint their first frame in the theme's colour (no white flash as a window opens)
+    wchar_t cls[64] = L"";
+    GetClassNameW(h, cls, 64);
+    if (!wcsncmp(cls, L"KKS", 3))
+        SetClassLongPtrW(h, GCLP_HBRBACKGROUND, (LONG_PTR)(dark ? brWindow : GetSysColorBrush(COLOR_WINDOW)));
     if (allowWindow) allowWindow(h, TRUE);
     SetWindowSubclass(h, containerProc, SubId, 0);     // (again: the same one, nothing changes)
     if (GetWindowLongW(h, GWL_STYLE) & (WS_VSCROLL | WS_HSCROLL))
@@ -323,11 +352,15 @@ extern "C" void kks_theme_control(HWND h) {
 }
 
 extern "C" void kks_theme_dim(HWND h) { if (enabled && h) SetPropW(h, DimProp, (HANDLE)1); }
+extern "C" void kks_theme_danger(HWND h) { if (enabled && h) SetPropW(h, DangerProp, (HANDLE)1); }
 
 static BOOL CALLBACK eachChild(HWND h, LPARAM) {
     control(h);
     // a window that holds controls (a page) is subclassed already; its scroll bar follows too
-    if (GetWindowLongW(h, GWL_STYLE) & (WS_VSCROLL | WS_HSCROLL)) container(h);
+    // the app's own windows that hold controls (a page) follow too; a field or list with a scroll bar is a control
+    wchar_t cls[64] = L"";
+    GetClassNameW(h, cls, 64);
+    if (!wcsncmp(cls, L"KKS", 3)) container(h);
     return TRUE;
 }
 

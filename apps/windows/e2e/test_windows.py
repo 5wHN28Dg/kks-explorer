@@ -510,6 +510,10 @@ class Windows(unittest.TestCase):
                                 'wait\t~Sample sheet\t20'])
         self.check('du0c.uia', ['click\tDrawings', 'wait\t~Sample sheet\t20', 'sleep\t500'])
         self.screenshot('win-dark-ui-drawings')
+        # a ticked check box and a chosen radio button (a tick and a dot, not only a colour), the keyboard on the box
+        self.check('du0d.uia', ['toggle\tSelect tags', 'state\tSelect tags\ton', 'press\tSelect tags\t0x10', 'sleep\t500'])
+        self.screenshot('win-dark-ui-ticked')
+        self.check('du0e.uia', ['toggle\tSelect tags', 'state\tSelect tags\toff', 'sleep\t300'])
         # light mode, the switch on: as before
         self.check('du1.uia', ['wait\t~Sample sheet\t60'] + self.surfaces('light'), restart=True,
                    env=dict(self.DARK_UI, KKS_TEST_SYSTEM_DARK='0'))

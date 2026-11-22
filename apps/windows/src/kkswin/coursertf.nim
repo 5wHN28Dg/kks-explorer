@@ -4,7 +4,7 @@
 
 import std/[strutils, sets, unicode]
 import kks/json
-import nobreak
+import nobreak, figdraw
 
 proc rtfEsc*(s: string): string
 
@@ -64,12 +64,18 @@ const RtfHead* = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Segoe UI;}{\\f1\\f
                 "{\\colortbl;\\red22\\green34\\blue43;\\red31\\green95\\blue139;\\red86\\green100\\blue110;" &
                 "\\red179\\green38\\blue30;\\red46\\green122\\blue78;\\red154\\green100\\blue18;}\\f0\\fs22\\cf1 "
   ## colours: 1 ink, 2 accent, 3 muted, 4 act, 5 ok, 6 alarm (figdraw's light tokens)
-const RtfHeadDark* = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Segoe UI;}{\\f1\\fmodern Consolas;}}" &
-                "{\\colortbl;\\red226\\green232\\blue235;\\red109\\green175\\blue220;\\red149\\green164\\blue173;" &
-                "\\red240\\green119\\blue107;\\red98\\green192\\blue138;\\red228\\green174\\blue69;}\\f0\\fs22\\cf1 "
-  ## the same six from figdraw's dark tokens, for the app's dark colours (theme.nim): each 5.9:1 or more on the window
 
-proc rtfHead*(dark: bool): string = (if dark: RtfHeadDark else: RtfHead)
+proc rtfColour(name: string, dark: bool): string =
+  let c = token(name, dark)          # figdraw's tokens, "#RRGGBB"
+  "\\red" & $parseHexInt(c[1 .. 2]) & "\\green" & $parseHexInt(c[3 .. 4]) & "\\blue" & $parseHexInt(c[5 .. 6]) & ";"
+
+proc rtfHead*(dark: bool): string =
+  ## the RTF head for the app's colours: as released in light; in its dark colours (theme.nim) the same six colours
+  ## taken from figdraw's dark tokens (each 5.9:1 or more on the dark window)
+  if not dark: return RtfHead
+  "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Segoe UI;}{\\f1\\fmodern Consolas;}}{\\colortbl;" &
+    rtfColour("ink", true) & rtfColour("accent", true) & rtfColour("muted", true) & rtfColour("act", true) &
+    rtfColour("ok", true) & rtfColour("alarm", true) & "}\\f0\\fs22\\cf1 "
 
 proc rtfEsc*(s: string): string =
   for r in s.runes:

@@ -12,7 +12,8 @@ from syncwords import uxOn
 const DarkUiSwitch* = "win-dark-ui"
 
 type Role* = enum
-  rWindow, rSurface, rText, rDim, rBorder, rButton, rHot, rDown, rFocus, rAccent, rAccentText, rDisabled
+  rWindow, rSurface, rText, rDim, rBorder, rButton, rHot, rDown, rFocus, rAccent, rAccentText, rDisabled,
+  rDanger, rDangerHot, rDangerDown
 
 const DarkColours*: array[Role, uint32] = [
   0x1F1F1F'u32,   ## rWindow: behind everything (pages, the main window, dialogs)
@@ -21,18 +22,22 @@ const DarkColours*: array[Role, uint32] = [
   0xC8C8C8,       ## rDim: secondary text, 9.9:1 on the window
   0x9A9A9A,       ## rBorder: a button's and a field's edge, 5.9:1 on the window (3:1 needed)
   0x3A3A3A,       ## rButton
-  0x474747,       ## rHot: a button under the mouse
-  0x2C2C2C,       ## rDown: a button pressed
+  0x484848,       ## rHot: a button under the mouse
+  0x505050,       ## rDown: a button pressed (lighter again: 1.6:1 against the button, its label 7.2:1)
   0xFFFFFF,       ## rFocus: the keyboard focus ring, 16:1 on the window
   0x9CD0FF,       ## rAccent: a ticked check box, a chosen radio button (10:1 on the window)
   0x101010,       ## rAccentText: the tick and the dot on the accent (11.7:1)
-  0x8C8C8C]       ## rDisabled: a disabled control's text and edge (exempt from the contrast minimum, still 4.9:1)
+  0x8C8C8C,       ## rDisabled: a disabled control's text and edge (exempt from the contrast minimum, still 4.9:1)
+  0x9C1C16,       ## rDanger: a question's button whose action can't be taken back ("Delete photo"), label 7.2:1
+  0x8A1812,       ## rDangerHot
+  0x761410]       ## rDangerDown
 
 proc kksThemeInit(colours: ptr uint32, n: cint) {.importc: "kks_theme_init", cdecl.}
 proc kksThemeSetDark(on: cint) {.importc: "kks_theme_set_dark", cdecl.}
 proc kksThemeContainer(h: HWND) {.importc: "kks_theme_container", cdecl.}
 proc kksThemeControl(h: HWND) {.importc: "kks_theme_control", cdecl.}
 proc kksThemeDim(h: HWND) {.importc: "kks_theme_dim", cdecl.}
+proc kksThemeDanger(h: HWND) {.importc: "kks_theme_danger", cdecl.}
 proc kksThemeApplyAll() {.importc: "kks_theme_apply_all", cdecl.}
 proc menusKnown*(build: cuint): cint {.importc: "kks_theme_menus_known", cdecl.}
 
@@ -94,6 +99,7 @@ proc refreshTheme*(): bool =
 proc themeContainer*(h: HWND) = (if themeOn: kksThemeContainer(h))
 proc themeControl*(h: HWND) = (if themeOn: kksThemeControl(h))
 proc themeDim*(h: HWND) = (if themeOn: kksThemeDim(h))
+proc themeDanger*(h: HWND) = (if themeOn: kksThemeDanger(h))
 
 proc GetSysColor(i: cint): DWORD {.importc, stdcall, header: "<windows.h>".}
 
@@ -111,3 +117,4 @@ proc themeColor*(r: Role): DWORD =
   of rBorder: GetSysColor(16)                                      # COLOR_BTNSHADOW
   of rAccent: GetSysColor(13)                                      # COLOR_HIGHLIGHT
   of rAccentText: GetSysColor(14)                                  # COLOR_HIGHLIGHTTEXT
+  of rDanger, rDangerHot, rDangerDown: GetSysColor(15)             # COLOR_BTNFACE

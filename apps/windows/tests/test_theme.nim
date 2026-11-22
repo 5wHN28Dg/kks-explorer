@@ -4,8 +4,8 @@
 ## meet the profile's contrast; the mode followed when it changes; ask, askYesNo and say use the app's own dialog,
 ## whose keyboard starts on the safe answer. Real windows and messages, so it runs on Windows (CI's windows-test):
 ##   nim c --os:windows -d:mingw --cpu:amd64 --cc:clang -d:release --app:console -o:test_theme.exe apps/windows/tests/test_theme.nim
-import std/[unittest, os, math]
-import kkswin/[w32, ui, theme]
+import std/[unittest, os, math, strutils]
+import kkswin/[w32, ui, theme, coursertf]
 
 const H = "<windows.h>"
 proc GetDC(h: HWND): HDC {.importc, stdcall, header: H.}
@@ -24,6 +24,7 @@ type LOGBRUSH {.importc, header: H.} = object
 proc GetObjectW(o: pointer, n: int32, p: pointer): int32 {.importc, stdcall, header: H.}
 proc FindWindowExW(parent, after: HWND, cls, title: WideCString): HWND {.importc, stdcall, header: H.}
 proc GetWindowTextW(h: HWND, s: WideCString, n: int32): int32 {.importc, stdcall, header: H.}
+proc GetPropW(h: HWND, name: WideCString): pointer {.importc, stdcall, header: H.}
 
 var main: HWND
 
@@ -132,7 +133,7 @@ suite "the dark colours (the switch on)":
       check contrast(colorRef(c[rBorder]), colorRef(c[bg])) >= 3.0     # edges of fields and buttons (A2)
       check contrast(colorRef(c[rFocus]), colorRef(c[bg])) >= 3.0      # the focus ring (A2)
       check contrast(colorRef(c[rAccent]), colorRef(c[bg])) >= 3.0     # a ticked box, a chosen radio button (A2)
-    for face in [rButton, rHot, rDown]:
+    for face in [rButton, rHot, rDown, rDanger, rDangerHot, rDangerDown]:
       check contrast(colorRef(c[rText]), colorRef(c[face])) >= 7.0     # a button's label in each of its states
       check contrast(colorRef(c[rBorder]), colorRef(c[rWindow])) >= 3.0
     check contrast(colorRef(c[rAccentText]), colorRef(c[rAccent])) >= 4.5   # the tick and the dot
@@ -166,32 +167,52 @@ suite "the dark colours (the switch on)":
     check erased(p.hwnd) == colorRef(DarkColours[rWindow])
     p.destroy()
 
-  test "a question in the app's own dialog: the keyboard on the safe answer, Escape keeps":
+  test "a question in the app's own dialog: named by its question, the keyboard on the safe answer, Escape keeps":
+    let (p, lab, _, f) = makePage()
+    SetFocus(f)                                       # (where the keyboard was: it goes back there)
     var seen = ""
     var dialogBg: DWORD = 0
     discard afterMs(400, proc () =
-      let d = FindWindowExW(nil, nil, newWideCString("KKSPopup"), newWideCString("Walkdown"))
-      doAssert d != nil, "no dialog"
+      let d = FindWindowExW(nil, nil, newWideCString("KKSPopup"), newWideCString("Delete this photo?"))
+      doAssert d != nil, "no dialog named by its question"
       dialogBg = erased(d)
       seen = textOf(GetFocus())
       PostMessageW(GetFocus(), WM_KEYDOWN, VK_ESCAPE, 0))
     check not ask(main, "Delete this photo?", "It is removed for everyone.", "Delete photo")
     check seen == "Cancel"
     check dialogBg == colorRef(DarkColours[rWindow])
-    # the named action, pressed
+    check GetFocus() == f
+    # the named action, in the destructive colour, pressed
+    var danger = false
     discard afterMs(400, proc () =
-      let d = FindWindowExW(nil, nil, newWideCString("KKSPopup"), newWideCString("Walkdown"))
+      let d = FindWindowExW(nil, nil, newWideCString("KKSPopup"), newWideCString("Delete this photo?"))
       doAssert d != nil, "no dialog"
       var b: HWND = nil
-      for page in [FindWindowExW(d, nil, newWideCString("KKSPage"), nil)]:
-        var c = FindWindowExW(page, nil, newWideCString("Button"), nil)
-        while c != nil:
-          if textOf(c) == "Delete photo": b = c
-          c = FindWindowExW(page, c, newWideCString("Button"), nil)
+      let page = FindWindowExW(d, nil, newWideCString("KKSPage"), nil)
+      var c = FindWindowExW(page, nil, newWideCString("Button"), nil)
+      while c != nil:
+        if textOf(c) == "Delete photo": b = c
+        c = FindWindowExW(page, c, newWideCString("Button"), nil)
       doAssert b != nil, "no Delete photo button"
+      danger = GetPropW(b, newWideCString("kksThemeDanger")) != nil
       SendMessageW(b, 0x00F5'u32, 0, 0))     # BM_CLICK
     check ask(main, "Delete this photo?", "It is removed for everyone.", "Delete photo")
+    check danger
     check IsWindowEnabled(main) != 0          # the owner usable again
+    # Yes and No as the message box has them: the keyboard on Yes (Enter says yes), Escape says no
+    discard afterMs(400, proc () =
+      seen = textOf(GetFocus())
+      PostMessageW(GetFocus(), WM_KEYDOWN, VK_RETURN, 0))
+    check askYesNo(main, "And its tag plate?", "Add the tag plate photo too?")
+    check seen == "Yes"
+    discard afterMs(400, proc () = PostMessageW(GetFocus(), WM_KEYDOWN, VK_ESCAPE, 0))
+    check not askYesNo(main, "And its tag plate?", "Add the tag plate photo too?")
+    p.destroy()
+
+  test "course text in the dark colours: figdraw's dark tokens":
+    check "\\red226\\green232\\blue235;" in rtfHead(true)     # ink #E2E8EB
+    check "\\red228\\green174\\blue69;" in rtfHead(true)      # alarm #E4AE45
+    check rtfHead(false) == RtfHead
 
   test "menus in dark only on the Windows builds where uxtheme's unnamed exports are known":
     check menusKnown(17762) == 0

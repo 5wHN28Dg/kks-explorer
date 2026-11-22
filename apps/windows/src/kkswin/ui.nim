@@ -270,6 +270,7 @@ type
     hwnds: seq[HWND]
     height: int          ## for lists, multi-line fields, custom
     natW, natH: int      ## ikAspect: natural size (DIPs)
+    right: bool          ## ikButtons: at the right (a dialog's)
     text: string         ## for labels (height is measured)
   Typed = object                ## a field a person can type into
     h: HWND
@@ -417,6 +418,10 @@ proc layout*(p: Page) =
       y += px(it.height) + px(28)
     of ikButtons:
       var bx = int(x)
+      if it.right:       # (one row at the right when they fit; else from the left, as any)
+        var total = 0
+        for b in it.hwnds: total += max(int(px(90)), p.textWidth(b.text.replace("&&", "&"), fontNormal) + int(px(28))) + int(px(8))
+        if total - int(px(8)) <= w: bx = int(x) + w - (total - int(px(8)))
       for b in it.hwnds:
         let bw = max(int(px(90)), p.textWidth(b.text.replace("&&", "&"), fontNormal) + int(px(28)))
         if bx > int(x) and bx + bw > int(x) + w:        # wrap to the next line
@@ -756,12 +761,16 @@ proc toSpec*[F](x: (string, F)): (string, proc ()) =
   let f = x[1]
   (x[0], proc () = f())
 
-proc buttons*(p: Page, specs: varargs[(string, proc ()), toSpec]): seq[HWND] {.discardable.} =
+proc buttons*(p: Page, specs: seq[(string, proc ())], right: bool): seq[HWND] {.discardable.} =
+  ## buttons in a row (wrapped when they don't fit); `right`: at the right, as a dialog's
   for (t, f) in specs:
     let (b, _) = control(p.hwnd, "BUTTON", t, WS_TABSTOP or BS_PUSHBUTTON)
     onClick(b, f)
     result.add b
-  p.items.add Item(kind: ikButtons, hwnds: result)
+  p.items.add Item(kind: ikButtons, hwnds: result, right: right)
+
+proc buttons*(p: Page, specs: varargs[(string, proc ()), toSpec]): seq[HWND] {.discardable.} =
+  p.buttons(@specs, false)
 
 proc check*(p: Page, text: string, on: bool, f: proc (on: bool)): HWND {.discardable.} =
   let (b, _) = control(p.hwnd, "BUTTON", text, WS_TABSTOP or BS_AUTOCHECKBOX)
@@ -1051,6 +1060,7 @@ proc setRows*(l: HWND, rows: seq[string]) =
   listRows[l] = rows
 
 proc popup*(owner: HWND, title: string, w, h: int, onClose: proc () = nil, escape = false): (HWND, Page)
+var popupMayClose* = initTable[HWND, proc (): bool]()   ## a popup's close box (and Escape) asks this first: false keeps it
 
 proc LoadIconW(inst: HINSTANCE, name: int): pointer {.importc: "LoadIconW", stdcall, header: HG.}
 proc SetWindowPos(h, after: HWND, x, y, cx, cy: int32, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
@@ -1058,24 +1068,41 @@ proc GetWindowLongPtrW(h: HWND, i: int32): int {.importc, stdcall, header: HG.}
 proc SetWindowLongPtrW(h: HWND, i: int32, v: int): int {.importc, stdcall, header: HG, discardable.}
 proc DrawIconEx(dc: HDC, x, y: int32, icon: pointer, w, h: int32, step: UINT, br: pointer, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
 
-proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], safe: int,
-                     warning = false): int =
+type MONITORINFO {.importc, header: HG.} = object
+  cbSize: DWORD
+  rcMonitor, rcWork: RECT
+  dwFlags: DWORD
+proc MonitorFromWindow(h: HWND, flags: DWORD): pointer {.importc, stdcall, header: HG.}
+proc GetMonitorInfoW(m: pointer, mi: ptr MONITORINFO): BOOL {.importc, stdcall, header: HG.}
+
+proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], focusOn, cancelWith: int,
+                     warning = false, danger = -1): int =
   ## The app's own modal dialog for ask, askYesNo and say while its dark colours are on (theme.nim, #377): the task
   ## dialog and the message box are drawn by Windows in light colours whatever the app mode. The same parts and keys:
-  ## the question (`title`) and what it means, one button per answer, named by it; the keyboard starts on the safe
-  ## answer (`safe`), which Escape and the close box give too; Enter presses the button with the keyboard. -> the
-  ## index of the answer
-  result = safe
-  var chosen = safe
+  ## the question (`title`, also the window's name, which a screen reader says first) and what it means, one button per
+  ## answer, named by it, at the bottom right as Windows' dialogs have them; the keyboard starts on `focusOn`; Escape
+  ## and the close box give `cancelWith`; Enter presses the button with the keyboard; `danger`: the answer whose action
+  ## can't be taken back, in the destructive colour. The keyboard goes back where it was. -> the index of the answer
+  var chosen = cancelWith
   let ownerTop = if owner != nil: GetAncestor(owner, 2) else: nil        # GA_ROOT
-  let (hw, p) = popup(ownerTop, "Walkdown", 460, 240, escape = true)
+  let before = GetFocus()
+  let (hw, p) = popup(ownerTop, title, 460, 240, escape = true)
   # a dialog: no maximise, minimise or resizing
   SetWindowLongPtrW(hw, -16, GetWindowLongPtrW(hw, -16) and not 0x00070000)   # GWL_STYLE: WS_THICKFRAME, MIN/MAXBOX
   SetWindowPos(hw, nil, 0, 0, 0, 0, 0x0027'u32)        # SWP_FRAMECHANGED, NOMOVE, NOSIZE, NOZORDER: the new frame
+  proc release() =
+    # the owner usable again before the question goes, so Windows gives it the activation (not another app's window)
+    if ownerTop != nil: EnableWindow(ownerTop, 1)
+  popupMayClose[hw] = proc (): bool =        # Escape, the close box, Alt+F4: the cancelling answer
+    release()
+    true
   if warning:
     let icon = LoadIconW(nil, 32515)                                         # IDI_WARNING (the task dialog's)
     p.picture("Warning", 34, proc (dc: HDC, r: RECT, item: int, selected: bool) =
-      fillRgb(dc, r, if uiDark: DarkColours[rWindow] else: 0xFFFFFF'u32)
+      let b = CreateSolidBrush(themeColor(rWindow))
+      var rr = r
+      FillRect(dc, addr rr, b)
+      DeleteObject(b)
       DrawIconEx(dc, r.left, r.top, icon, px(32), px(32), 0, nil, 3))     # DI_NORMAL
   p.title(title)
   if text.len > 0: p.label(text)
@@ -1085,29 +1112,39 @@ proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], saf
       let k = i
       specs.add (answers[k], proc () =
         chosen = k
+        release()
         DestroyWindow(hw))
-  let bs = p.buttons(specs)
+  let bs = p.buttons(specs, right = true)
+  if danger in 0 ..< bs.len: themeDanger(bs[danger])
   p.layout()
-  # as tall as what it holds, over the middle of its owner
+  # as tall as what it holds (within the screen's work area: the buttons stay on screen), over its owner, a third of
+  # the way down
   var wr, cr, orr: RECT
   discard GetWindowRect(hw, addr wr)
   GetClientRect(hw, addr cr)
-  let wW = int(wr.right - wr.left)
-  let wH = int(wr.bottom - wr.top) - int(cr.bottom) + p.contentH + 1   # (+1: no scroll bar, as placeColumn)
+  var mi = MONITORINFO(cbSize: DWORD(sizeof(MONITORINFO)))
+  discard GetMonitorInfoW(MonitorFromWindow(if ownerTop != nil: ownerTop else: hw, 2), addr mi)   # MONITOR_DEFAULTTONEAREST
+  let wa = mi.rcWork
+  let wW = min(int(wr.right - wr.left), int(wa.right - wa.left))
+  let wH = min(int(wr.bottom - wr.top) - int(cr.bottom) + p.contentH + 1, int(wa.bottom - wa.top))  # (+1: no scroll bar)
   var x = int(wr.left)
   var y = int(wr.top)
   if ownerTop != nil and GetWindowRect(ownerTop, addr orr) != 0:
     x = (int(orr.left) + int(orr.right) - wW) div 2
-    y = (int(orr.top) + int(orr.bottom) - wH) div 3 + int(orr.top) * 2 div 3
+    y = int(orr.top) + (int(orr.bottom) - int(orr.top) - wH) div 3
+  x = max(int(wa.left), min(x, int(wa.right) - wW))
+  y = max(int(wa.top), min(y, int(wa.bottom) - wH))
   SetWindowPos(hw, nil, int32(x), int32(y), int32(wW), int32(wH), 0x0024'u32)   # SWP_NOZORDER, SWP_FRAMECHANGED
   if ownerTop != nil: EnableWindow(ownerTop, 0)
   ShowWindow(hw, SW_SHOW)
-  if safe in 0 ..< bs.len: SetFocus(bs[safe])
+  if focusOn in 0 ..< bs.len: SetFocus(bs[focusOn])
   var msg: MSG
   while IsWindow(hw) != 0:
-    if GetMessageW(addr msg, nil, 0, 0) <= 0:
+    let got = GetMessageW(addr msg, nil, 0, 0)
+    if got == 0:
       PostQuitMessage(int32(msg.wParam))       # (the app is closing: the main loop sees it too)
       break
+    if got < 0: break
     if msg.message == WM_KEYDOWN and int(msg.wParam) == VK_RETURN and GetAncestor(msg.hwnd, 2) == hw:
       let f = GetFocus()
       if f != nil and f in bs:
@@ -1117,17 +1154,18 @@ proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], saf
     if root != nil and IsDialogMessageW(root, addr msg) != 0: continue
     TranslateMessage(addr msg)
     DispatchMessageW(addr msg)
-  if ownerTop != nil:
-    EnableWindow(ownerTop, 1)
-    SetForegroundWindow(ownerTop)
-  result = chosen
+  release()
+  if IsWindow(hw) != 0: DestroyWindow(hw)
+  if ownerTop != nil: SetForegroundWindow(ownerTop)
+  if before != nil and IsWindow(before) != 0: SetFocus(before)    # the keyboard back where it was
+  chosen
 
 proc ask*(owner: HWND, title, text, yes: string, no = "Cancel", destructive = true): bool =
   ## A question before an action (#365, D2 in docs/UI-UX-POLICY.md): a task dialog whose confirming button names the
   ## action (`yes`: "Delete photo", never OK), and whose default is the safe button (`no`), so Enter, Escape and
   ## closing it keep. With `destructive`: the warning icon. `title` is the question, `text` what it means. True: `yes`.
   ## In the app's dark colours: themedQuestion, with the same buttons, default and keys.
-  if uiDark: return themedQuestion(owner, title, text, @[yes, no], 1, destructive) == 0
+  if uiDark: return themedQuestion(owner, title, text, @[yes, no], 1, 1, destructive, if destructive: 0 else: -1) == 0
   let wTitle = newWideCString("Walkdown")
   let wQ = newWideCString(title)
   let wText = newWideCString(text)
@@ -1155,12 +1193,12 @@ proc ask*(owner: HWND, title, text, yes: string, no = "Cancel", destructive = tr
 
 proc askYesNo*(owner: HWND, title, text: string): bool =
   ## a question with Yes and No (MB_YESNO; IDYES = 6)
-  if uiDark: return themedQuestion(owner, title, text, @["Yes", "No"], 1, warning = true) == 0
+  if uiDark: return themedQuestion(owner, title, text, @["Yes", "No"], 0, 1) == 0     # (as MB_YESNO: Yes first)
   MessageBoxW(owner, newWideCString(text), newWideCString(title), 0x4'u32 or MB_ICONQUESTION) == 6
 
 proc say*(owner: HWND, title, text: string) =
   if uiDark:
-    discard themedQuestion(owner, title, text, @["OK"], 0)
+    discard themedQuestion(owner, title, text, @["OK"], 0, 0)
     return
   discard MessageBoxW(owner, newWideCString(text), newWideCString(title), MB_OK)
 
@@ -1226,7 +1264,6 @@ proc activateFocused*(): bool =
 # ---------------------------------------------------------------- a popup window hosting a page
 
 var popups = initTable[HWND, (Page, proc ())]()
-var popupMayClose* = initTable[HWND, proc (): bool]()   ## a popup's close box (and Escape) asks this first: false keeps it
 
 proc popupProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
   case m
