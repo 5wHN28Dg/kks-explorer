@@ -136,6 +136,7 @@ var _ev_seen := 0
 var _horn := 0
 var _hint: Label
 var _toast: Label
+var _toast_low_at := -1.0      # where the low status line began when the toast was placed (-1: not low or hidden)
 var _toast_t := 0.0
 var _toast_beside_card := false
 var _toast_side := false        # a side panel was open when the notice was laid out
@@ -480,6 +481,8 @@ func _build_toast() -> void:
 	_toast.add_theme_stylebox_override("normal", bg)
 	_toast.visible = false
 	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if "accessibility_live" in _toast:
+		_toast.set("accessibility_live", 1)     # polite: a screen reader says each notice (#374, #473)
 	# on a layer of its own above the settings (app/hud.gd, layer 8), which would hide it; shown with the layer's root
 	# (the Workshop hides that)
 	var tl := CanvasLayer.new()
@@ -746,6 +749,11 @@ func _layout_toast() -> void:
 	var h := _toast.get_combined_minimum_size().y
 	# (its bottom never below the screen's: a narrow notice between panels grows taller, and moves up)
 	_toast.position.y = (vs.y - h - 16.0) if screens_open() else minf(vs.y - 200.0 * W.scale, vs.y - h - 16.0)
+	# above the HUD's status line when it is at the bottom (a phone, a large UI size): never over its words
+	var hb = main.hud if main != null else null
+	if hb != null and hb.get("top_box") != null and hb._status_low and hb.top_box.visible:
+		# (never above the panels' top: a tall notice on a short canvas then lies over the line's lowest words)
+		_toast.position.y = maxf(minf(_toast.position.y, hb.top_box.position.y - h - 8.0), panels_top())
 
 
 ## Something open that reaches the bottom of the canvas (a side panel, the screens, the drawings, the tools, the
@@ -1610,6 +1618,8 @@ func restart(scenario: String, quiet := false) -> void:
 		toast("Not while a session is open: every player's plant would differ. The host starts a new session for another scenario.")
 		return
 	task_given = {}                  # (a new run: none of its tasks begun yet)
+	if autosave != null:
+		autosave.new_run()           # (a failed save of it says the whole run, not the last one's plant time)
 	_aboard_was = false              # (a new run: the walker is aboard nothing)
 	if bus_drive != null:
 		bus_drive.log = []           # (a new run: no bus driven yet; a load puts its own back, ui/autosave.gd)
@@ -2240,6 +2250,7 @@ func continue_alone() -> void:
 	mine = 0
 	clock.scenario = d["scenario"]
 	adopt_engine(e)
+	autosave.new_run()               # (a run of its own now: nothing of it saved yet)
 	inputs.slot = mine
 	clock.driven = false
 	autosave.armed = true
@@ -2585,8 +2596,12 @@ func _fit() -> void:
 
 func _toast_tick(delta: float) -> void:
 	if _toast_t > 0.0:
-		if (card != null and card.visible != _toast_beside_card) or _side_open() != _toast_side:
-			_layout_toast()                  # a card or panel opened under the word: the word moves clear of it
+		var hb = main.hud if main != null else null
+		var low_at: float = hb.top_box.position.y if hb != null and hb.get("top_box") != null and hb._status_low \
+				and hb.top_box.visible else -1.0
+		if (card != null and card.visible != _toast_beside_card) or _side_open() != _toast_side or low_at != _toast_low_at:
+			_toast_low_at = low_at
+			_layout_toast()                  # a card or panel opened under the word, the status line moved: clear of it
 		_toast_t -= delta
 		if _toast_t <= 0.0:
 			_toast.text = ""
