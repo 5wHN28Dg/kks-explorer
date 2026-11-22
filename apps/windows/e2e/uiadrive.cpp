@@ -316,8 +316,13 @@ static int apart(DWORD &pid, IUIAutomationElement *drawing, const std::string &o
     HWND root = dh ? GetAncestor((HWND)dh, GA_ROOT) : nullptr;
     if (!root) { say("ERROR: the drawing has no window"); return 1; }
     // the window in front first, as a person sees it (the script's console window starts in front of it); then the
-    // hit test is about the window's own children
+    // hit test is about the window's own children. On top of the others too, even when it is already the foreground
+    // window: the console of a script started by the Task Scheduler is shown above it without taking the
+    // foreground, so the window could be active and still covered (#458, #480: a "Text Area" document, the
+    // console's, found where the sidebar's controls are, once Windows placed that console over the sidebar)
     if (GetForegroundWindow() != root) { SetForegroundWindow(root); Sleep(500); }
+    SetWindowPos(root, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    Sleep(300);
     if (GetForegroundWindow() != root) say("  (the window could not come to the front: a hit test may find what covers it)");
     RECT cr; GetClientRect(root, &cr);
     POINT c0{cr.left, cr.top}, c1{cr.right, cr.bottom}; ClientToScreen(root, &c0); ClientToScreen(root, &c1);
