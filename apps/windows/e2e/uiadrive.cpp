@@ -764,6 +764,8 @@ int wmain(int argc, wchar_t **argv) {
             if (type.find(L"dialog") == std::wstring::npos || desc.find(want) == std::wstring::npos) {
                 say("ERROR: " + arg + "'s window is not a dialog with that description"); return 1;
             }
+            continue;
+        }
         if (cmd == "fits") {
             int bad = fits(e);
             e->Release();
