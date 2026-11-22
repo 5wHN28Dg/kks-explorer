@@ -14,6 +14,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.collapse
+import androidx.compose.ui.semantics.expand
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -102,13 +106,25 @@ private fun ServerJoin(onJoined: () -> Unit) {
     }) { Text("Join") }
     if (msg.isNotEmpty()) Text(msg)
     Spacer(Modifier.height(8.dp))
-    androidx.compose.foundation.text.selection.SelectionContainer { Dim(FORGOT_PASSWORD) }   // (the command can be copied)
+    Dim(FORGOT_PASSWORD)
+    // the details behind "How?" (the owner, 2026-11-22, on #462: "Shorten"); a screen reader hears it as a button
+    // that expands or collapses them
+    var how by rememberSaveable { mutableStateOf(false) }
+    TextButton(onClick = { how = !how }, modifier = Modifier.semantics {
+        stateDescription = if (how) "Expanded" else "Collapsed"
+        if (how) collapse { how = false; true } else expand { how = true; true }
+    }) { Text(if (how) FORGOT_HOW_HIDE else FORGOT_HOW) }
+    if (how) androidx.compose.foundation.text.selection.SelectionContainer { Dim(FORGOT_PASSWORD_HOW) }   // (the command can be copied)
 }
 
 /** the way back in after a forgotten password, under "Join through a server" (#449; the web's sign-in, GNOME and
- *  Windows say the same words: tests/test_forgot_password.py): the manager (or an admin, for a member) makes a one-time password link
- *  (admin.html → Users → Password link); the manager's own comes from the server's command line */
-const val FORGOT_PASSWORD = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and use it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME."
+ *  Windows say the same words: tests/test_forgot_password.py): one plain sentence, the details behind "How?". The
+ *  manager (or an admin, for a member) makes a one-time password link (admin.html → Users → Password link); the
+ *  manager's own comes from the server's command line */
+const val FORGOT_PASSWORD = "Forgot your password? Ask your plant's manager for a password link."
+const val FORGOT_PASSWORD_HOW = "An admin can also make a password link for a member. Use the link within 3 days to set a new password. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME."
+const val FORGOT_HOW = "How?"
+const val FORGOT_HOW_HIDE = "Hide how"
 
 /** asks until the admin decides; in the lobby the person confirms the code before the first sync (§16) */
 @Composable
