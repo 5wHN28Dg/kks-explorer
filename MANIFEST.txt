@@ -1,0 +1,64 @@
+# Evidence for PR #518 (the photosensitivity notice, #443), scripts at 22ce11a9
+command: XH_SIZE=WxH@60 tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --resolution WxH --script res://tests/flash_notice_shots.gd -- --out=DIR [--pseudo], for 1920x1080, 1280x720, 2220x1080 (the Note 9's screen in landscape), and 1280x720 pseudo-localised
+the file name holds the window's size at the shot (a UI size above 100 % changes the window under the offscreen display); kinds: first (the first start), reduced (Reduced motion on), again (from Settings: Close, over a stand-in for the dimmed plant); -tab, -ticked, -pagedown: the focus by Tab, the box ticked, the words scrolled by Page Down
+data: synthetic (a ConfigFile of the script's own; no user settings)
+
+sha256 per file:
+8a8ba85494f668596e51151086c53608531c773ef551946299bd17a8fe0c3e25  flash-notice-1280x683-100-again.png
+af4651ac05a22ce91c8c1c77a70be8c28fbd2496104240f5880aa83a79efbca8  flash-notice-1280x683-100-again-pseudo.png
+7f2c30ab80153da3f231ad3bf0f266360b78f29df594e337702dc244c0a09e83  flash-notice-1280x683-100-reduced-pseudo.png
+8cbb5fb37c35de779e9e083cd13d4c93afe4b77cbd94a6b7834ad48d92b0fa9d  flash-notice-1280x683-150-again.png
+75ff135f9c95f77a5fd180cd6d1928ee4c82c3883328d0c316fef179b5c49f2e  flash-notice-1280x683-150-again-pseudo.png
+6411c1323a147d302357d68c66003d277adb922855d2b59b4138c6c24eb25d10  flash-notice-1280x683-150-first.png
+aa21776b1ec367be800783415d386a8c01873842391994cf123dff874bf2fc21  flash-notice-1280x683-150-first-pseudo.png
+ea8595357864cfb94ca90377e33be872ec0a62328b95cded5056a292fbe65a91  flash-notice-1280x683-150-reduced.png
+02ba99052a5e5ea29bfad0502b0bb269733c028827a3c3f16f8a76e0f6727dbb  flash-notice-1280x683-150-reduced-pseudo.png
+8b98cdafc5da583695f62feaf920670c18208a5aa664c6db7beb54a70fa370b7  flash-notice-1280x683-200-again-pagedown.png
+c95102ddb26716ad117ffc8dec2b5d952ae29c73173e1c5c32a8abd53a4af062  flash-notice-1280x683-200-again.png
+4c70233633206d0fdb5e624c0ee8ed92d2cde6683d96a3d1fca2cb49c279a9a2  flash-notice-1280x683-200-again-pseudo-pagedown.png
+09a041df51cc84848e64302d981b1ba54b32a97b24f4e8968320a0bf311fd9c9  flash-notice-1280x683-200-again-pseudo.png
+838c09199f1f9ef7a27df84173493ca8147d5ef3f5c2459d46f08e906a1b4349  flash-notice-1280x683-200-first-pagedown.png
+e216f8fc3e01385b7ee81de087d2bebd72259aaf5f7f38ee06396ae905156ece  flash-notice-1280x683-200-first.png
+41bb303a54485740722fe69e7743231b98769fda39e5e7fdb32ec1254dd90eee  flash-notice-1280x683-200-first-pseudo-pagedown.png
+986633b1acd94e1dec694409cda5261e28a5356b2c8dc7023f23e05057cd7215  flash-notice-1280x683-200-first-pseudo.png
+b76c41ed29a2d5cdbb5a25bc64f54ab72703fc40948c65368ab11e7035a752d7  flash-notice-1280x683-200-reduced-pagedown.png
+f2c46f53453aa24465b93d790832030b791bb0f4ca2c7dba37afb3793ed101ee  flash-notice-1280x683-200-reduced.png
+26240071b01c6429b4aa8810ff59c7b189e3014997c64c363e090738c599aeb4  flash-notice-1280x683-200-reduced-pseudo-pagedown.png
+e07d92f49b19ff7b16361279497959be7b5e6b89585868724ba6ced02ed1c76b  flash-notice-1280x683-200-reduced-pseudo.png
+c61618ecfb285d15f74b195c5bf806786df368969cb094275b72f0c61e33d469  flash-notice-1280x720-100-first.png
+1035a50b1bad7e15bd3c50b2b1b543cf2de867f696ac8f2cf66ce7d06c704aa1  flash-notice-1280x720-100-first-pseudo.png
+2b19512124b23746bd0d40724691831b8f293ff223ca418a2a557726f027d1d3  flash-notice-1280x720-100-first-pseudo-tab.png
+76d81d12dbe78a0d377c9dde772fe73d45c65bfa838c5b84431b02654c565b8d  flash-notice-1280x720-100-first-pseudo-ticked.png
+3e0a3276985fd7863e8d497da6343f060871148e663159d901ff9e69cf4ff323  flash-notice-1280x720-100-first-tab.png
+83b6a82d35f21da1934607b9668ec6479adcd1a5717aafd796c0712941d73aab  flash-notice-1280x720-100-first-ticked.png
+f6a9b4eaadac0f0edb31f8b29f49b6e9d2b8d8d2c7394198583bdcb986960fce  flash-notice-1280x720-100-reduced.png
+bd04f7dd8914ba74d32401b1304f91aac4008ab647753ba47d0707460a49578f  flash-notice-1920x1043-100-again.png
+d09ea65014710edda75e691537dd3b929579b6850459c282afa68b1ae45509d0  flash-notice-1920x1043-100-reduced.png
+bd5bcd250b240d59ce329596cbb2763366763d5f69c549fb61e29a0713f669ca  flash-notice-1920x1043-150-again.png
+19a6fd7700dd84f950e5c85fe08380de94d0db1d2d7b35e42e422f2296af0987  flash-notice-1920x1043-150-first.png
+d4fb39fd2084d70bf18f3f627bfa92de91b5c4bd0fc99de44a9d71d5772225ac  flash-notice-1920x1043-150-reduced.png
+f4c558b24df5887431a6fefdf6e747897f427b5dd2674625ac9d01da5fcb4748  flash-notice-1920x1043-200-again-pagedown.png
+9696e58c0866ebb597f6115970f7ac1cdfd41fa6b5e5214c612df2823e322862  flash-notice-1920x1043-200-again.png
+78cd9077805bcb679f2d2cf7dafe97f577133b0d7754533178c45fda65ae14f4  flash-notice-1920x1043-200-first-pagedown.png
+22f019c39536bd435f87dbb8e7be98bf69050431cbae6bf70053c71221ff4469  flash-notice-1920x1043-200-first.png
+4ec7ccaafce41a5bf8238160262f72ae50153ebc85acb76c56fddcc795ff0e47  flash-notice-1920x1043-200-reduced-pagedown.png
+712169e1b7cc0db25635a63b25c93245735fb220d5a680a199c3834983cb0e2a  flash-notice-1920x1043-200-reduced.png
+5250221b2ee04cbd02061ad01eda8f0d9b46f27fe1571ab0e6d38f56b969cad7  flash-notice-1920x1080-100-first.png
+fd52d951d2b4a8f7635d7896f60272e0704c3055d49f7509d15096af0e3b1cf9  flash-notice-1920x1080-100-first-tab.png
+ab171dab42ef7695a31d072db28b7c930117dca4be91127eaad12861407b85a7  flash-notice-1920x1080-100-first-ticked.png
+37e320826900cdfe8ebbad200f6ae956f414a125a7032d796c45edfe70570987  flash-notice-2220x1043-100-again.png
+502fddc8867941c78b61f3070940eaddb2d979705db1f0fa97aaed82147b3d61  flash-notice-2220x1043-100-reduced.png
+7e2556e5b7fb58cbca4433ad16aa4934023b8850a57160e7bcfe0c9e14a6e637  flash-notice-2220x1043-150-again.png
+ef0844cf4ad67ad8682a79ab1a82bbc0570de97204bb9f7b67865a431937e23f  flash-notice-2220x1043-150-first.png
+decdecd3feee63575db8281d69ae3d763a671ca2e89f190a5f9da556e96e09ce  flash-notice-2220x1043-150-reduced.png
+6f791902de26b096200fe238d5995b77c0b09f16d61e8924bd48847a8e91e11c  flash-notice-2220x1043-200-again-pagedown.png
+35acc5db9525701ff820b5dd7a150da2db9e8c1f6f157c306cd19327d9c14854  flash-notice-2220x1043-200-again.png
+35f30efb5a1b2684045a139b095e86c5a3a3c23d8f6417a26d96f5c3f75f5ddf  flash-notice-2220x1043-200-first-pagedown.png
+81df9bed8315934af53282289c6bd497756e8562fc77d78c638c6bc9864f46b8  flash-notice-2220x1043-200-first.png
+d63463618ba8af4a373b2a6b9573fe24fbe0fbe169552e4b0faaa60b0a84d458  flash-notice-2220x1043-200-reduced-pagedown.png
+cfe554202925d7431afba6c4822faccd9c8bdb56da9e550a2e5e7d7e3ca0580e  flash-notice-2220x1043-200-reduced.png
+e7641c5eac14d669d6cce6c5a3e437f47a93a3aaad7ed815cf9cdbc464f88beb  flash-notice-2220x1080-100-first.png
+afefa26078369b8141af06f6bcb18a64faf5147f0214bf9c9ee4c204eef27e23  flash-notice-2220x1080-100-first-tab.png
+0f268e424941ad58ed10fc40d4d80c12172f2a2347912c11a4bd53a3e5e3e3a8  flash-notice-2220x1080-100-first-ticked.png
+f146a8948aca7e52fd42adf6dad7277d61eace914c71748dfe171b44f96d800f  scripts/flash_notice_shots.gd
+bf7b6507bc96c9832486a094c87cba80186b3042b94785444001636d2bc37324  shots.log

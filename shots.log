@@ -1,0 +1,525 @@
+libmutter-Message: 00:26:04.239: Running Mutter (using mutter 50.1) as a Wayland display server
+
+(mutter:2503474): libmutter-WARNING **: 00:26:04.248: Unknown experimental feature 'scale-monitor-framebuffer'
+
+(mutter:2503474): libmutter-WARNING **: 00:26:04.248: Unknown experimental feature 'xwayland-native-scaling'
+libmutter-Message: 00:26:07.241: Added device '/dev/dri/renderD128' (i915) using no mode setting.
+libmutter-Message: 00:26:07.248: Created gbm renderer for '/dev/dri/renderD128'
+libmutter-Message: 00:26:07.248: Boot VGA GPU /dev/dri/renderD128 selected as primary
+** Message: 00:26:07.254: Obtained a high priority EGL context
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=2503474 comm="mutter --headless --virtual-monitor 1920x1080@60 -" label="unconfined")
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+libmutter-Message: 00:26:16.985: Added virtual monitor Meta-0
+libmutter-Message: 00:26:16.997: Using public X11 display :2, (using unix:/tmp/.X11-unix/X3 for managed services)
+libmutter-Message: 00:26:16.997: Using Wayland display name 'xh-2503446'
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+WARNING: Failed to create wd.xic as the input method or its xim server may not have started yet.
+     at: _create_xic (platform/linuxbsd/x11/display_server_x11.cpp:6347)
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.6' (uid=1000 pid=2503801 comm="/home/finn/.local/kksdev/godot/Godot_v4.7.2-stable" label="unconfined")
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Successfully activated service 'org.a11y.Bus'
+Vulkan 1.4.335 - Forward+ - Using Device #0: Intel - Intel(R) Iris(R) Xe Graphics (ADL GT2)
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2503902 comm="/usr/libexec/mutter-x11-frames" label="unconfined")
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.9' (uid=1000 pid=2503925 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=2503925 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.9' (uid=1000 pid=2503925 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Activating service name='org.gnome.Settings.GlobalShortcutsProvider' requested by ':1.12' (uid=1000 pid=2503948 comm="/usr/libexec/xdg-desktop-portal-gnome" label="unconfined")
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Successfully activated service 'org.gnome.Settings.GlobalShortcutsProvider'
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:97)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio/audio_server.cpp:258)
+
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=2503925 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2504020]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2504001 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined")
+dbus-daemon[2504020]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:2503925): xdg-desktop-portal-WARNING **: 00:26:20.511: Failed to connect to PipeWire: Couldn't connect to PipeWire
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Activating service name='org.freedesktop.secrets' requested by ':1.9' (uid=1000 pid=2503925 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+** Message: 00:26:20.555: couldn't access control socket: /home/finn/.cache/agent-tmp/flash/kks-offscreen.Q0mDV0/keyring/control: No such file or directory
+discover_other_daemon: 0dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Successfully activated service 'org.freedesktop.secrets'
+dbus-daemon[2503472]: [session uid=1000 pid=2503472 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+first, ui size 100 %: canvas (1600.0, 900.0), window (1920, 1080)
+  panel [P: (420.0, 241.0), S: (760.0, 418.0)]
+  words [P: (434.0, 299.0), S: (732.0, 226.0)]
+  no_flashes [P: (434.0, 533.0), S: (732.0, 52.0)]
+  continue [P: (434.0, 593.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1080-100-first.png
+  focus after Tab: no_flashes
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1080-100-first-tab.png
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1080-100-first-ticked.png
+reduced, ui size 100 %: canvas (1656.0, 900.0), window (1920, 1043)
+  panel [P: (448.0, 233.0), S: (760.0, 434.0)]
+  words [P: (462.0, 291.0), S: (732.0, 226.0)]
+  no_flashes [P: (462.0, 525.0), S: (732.0, 68.0)]
+  continue [P: (462.0, 601.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-100-reduced.png
+again, ui size 100 %: canvas (1656.0, 900.0), window (1920, 1043)
+  panel [P: (448.0, 241.0), S: (760.0, 418.0)]
+  words [P: (462.0, 299.0), S: (732.0, 226.0)]
+  no_flashes [P: (462.0, 533.0), S: (732.0, 52.0)]
+  continue [P: (462.0, 593.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-100-again.png
+first, ui size 150 %: canvas (1104.0, 600.0), window (1920, 1043)
+  panel [P: (172.0, 91.0), S: (760.0, 418.0)]
+  words [P: (186.0, 149.0), S: (732.0, 226.0)]
+  no_flashes [P: (186.0, 383.0), S: (732.0, 52.0)]
+  continue [P: (186.0, 443.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-150-first.png
+reduced, ui size 150 %: canvas (1104.0, 600.0), window (1920, 1043)
+  panel [P: (172.0, 83.0), S: (760.0, 434.0)]
+  words [P: (186.0, 141.0), S: (732.0, 226.0)]
+  no_flashes [P: (186.0, 375.0), S: (732.0, 68.0)]
+  continue [P: (186.0, 451.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-150-reduced.png
+again, ui size 150 %: canvas (1104.0, 600.0), window (1920, 1043)
+  panel [P: (172.0, 91.0), S: (760.0, 418.0)]
+  words [P: (186.0, 149.0), S: (732.0, 226.0)]
+  no_flashes [P: (186.0, 383.0), S: (732.0, 52.0)]
+  continue [P: (186.0, 443.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-150-again.png
+first, ui size 200 %: canvas (828.0, 450.0), window (1920, 1043)
+  panel [P: (34.0, 19.0), S: (760.0, 412.0)]
+  words [P: (48.0, 77.0), S: (732.0, 220.0)]
+  no_flashes [P: (48.0, 305.0), S: (732.0, 52.0)]
+  continue [P: (48.0, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-200-first.png
+  words scrolled by Page Down to 0
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-200-first-pagedown.png
+reduced, ui size 200 %: canvas (828.0, 450.0), window (1920, 1043)
+  panel [P: (34.0, 19.0), S: (760.0, 412.0)]
+  words [P: (48.0, 77.0), S: (732.0, 204.0)]
+  no_flashes [P: (48.0, 289.0), S: (732.0, 68.0)]
+  continue [P: (48.0, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: false
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-200-reduced.png
+  words scrolled by Page Down to 5
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-200-reduced-pagedown.png
+again, ui size 200 %: canvas (828.0, 450.0), window (1920, 1043)
+  panel [P: (34.0, 19.0), S: (760.0, 412.0)]
+  words [P: (48.0, 77.0), S: (732.0, 220.0)]
+  no_flashes [P: (48.0, 305.0), S: (732.0, 52.0)]
+  continue [P: (48.0, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-200-again.png
+  words scrolled by Page Down to 0
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1920x1043-200-again-pagedown.png
+Gdk-Message: 00:26:25.085: Lost connection to Wayland compositor.
+Gdk-Message: 00:26:25.085: Error reading events from display: Broken pipe
+Gdk-Message: 00:26:25.086: Lost connection to Wayland compositor.
+libmutter-Message: 00:26:25.183: Removed virtual monitor Meta-0
+A connection to the bus can't be made
+libmutter-Message: 00:26:26.116: Running Mutter (using mutter 50.1) as a Wayland display server
+
+(mutter:2504694): libmutter-WARNING **: 00:26:26.126: Unknown experimental feature 'scale-monitor-framebuffer'
+
+(mutter:2504694): libmutter-WARNING **: 00:26:26.126: Unknown experimental feature 'xwayland-native-scaling'
+libmutter-Message: 00:26:26.282: Added device '/dev/dri/renderD128' (i915) using no mode setting.
+libmutter-Message: 00:26:26.288: Created gbm renderer for '/dev/dri/renderD128'
+libmutter-Message: 00:26:26.288: Boot VGA GPU /dev/dri/renderD128 selected as primary
+** Message: 00:26:26.295: Obtained a high priority EGL context
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=2504694 comm="mutter --headless --virtual-monitor 1280x720@60 --" label="unconfined")
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+libmutter-Message: 00:26:26.392: Added virtual monitor Meta-0
+libmutter-Message: 00:26:26.401: Using public X11 display :2, (using unix:/tmp/.X11-unix/X3 for managed services)
+libmutter-Message: 00:26:26.402: Using Wayland display name 'xh-2504687'
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+WARNING: Failed to create wd.xic as the input method or its xim server may not have started yet.
+     at: _create_xic (platform/linuxbsd/x11/display_server_x11.cpp:6347)
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.6' (uid=1000 pid=2504763 comm="/home/finn/.local/kksdev/godot/Godot_v4.7.2-stable" label="unconfined")
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Successfully activated service 'org.a11y.Bus'
+Vulkan 1.4.335 - Forward+ - Using Device #0: Intel - Intel(R) Iris(R) Xe Graphics (ADL GT2)
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2504863 comm="/usr/libexec/mutter-x11-frames" label="unconfined")
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.9' (uid=1000 pid=2504927 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=2504927 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.9' (uid=1000 pid=2504927 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Activating service name='org.gnome.Settings.GlobalShortcutsProvider' requested by ':1.12' (uid=1000 pid=2504955 comm="/usr/libexec/xdg-desktop-portal-gnome" label="unconfined")
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Successfully activated service 'org.gnome.Settings.GlobalShortcutsProvider'
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:97)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio/audio_server.cpp:258)
+
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=2504927 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2505064]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2505054 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined")
+dbus-daemon[2505064]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+first, ui size 100 %: canvas (1600.0, 900.0), window (1280, 720)
+  panel [P: (420.0, 241.0), S: (760.0, 418.0)]
+  words [P: (434.0, 299.0), S: (732.0, 226.0)]
+  no_flashes [P: (434.0, 533.0), S: (732.0, 52.0)]
+  continue [P: (434.0, 593.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:2504927): xdg-desktop-portal-WARNING **: 00:26:29.127: Failed to connect to PipeWire: Couldn't connect to PipeWire
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Activating service name='org.freedesktop.secrets' requested by ':1.9' (uid=1000 pid=2504927 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+** Message: 00:26:29.157: couldn't access control socket: /home/finn/.cache/agent-tmp/flash/kks-offscreen.5td2lO/keyring/control: No such file or directory
+discover_other_daemon: 0dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Successfully activated service 'org.freedesktop.secrets'
+dbus-daemon[2504693]: [session uid=1000 pid=2504693 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x720-100-first.png
+  focus after Tab: no_flashes
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x720-100-first-tab.png
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x720-100-first-ticked.png
+reduced, ui size 100 %: canvas (1600.0, 900.0), window (1280, 720)
+  panel [P: (420.0, 233.0), S: (760.0, 434.0)]
+  words [P: (434.0, 291.0), S: (732.0, 226.0)]
+  no_flashes [P: (434.0, 525.0), S: (732.0, 68.0)]
+  continue [P: (434.0, 601.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x720-100-reduced.png
+again, ui size 100 %: canvas (1686.0, 900.0), window (1280, 683)
+  panel [P: (463.0, 241.0), S: (760.0, 418.0)]
+  words [P: (477.0, 299.0), S: (732.0, 226.0)]
+  no_flashes [P: (477.0, 533.0), S: (732.0, 52.0)]
+  continue [P: (477.0, 593.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-100-again.png
+first, ui size 150 %: canvas (1124.0, 600.0), window (1280, 683)
+  panel [P: (182.0, 91.0), S: (760.0, 418.0)]
+  words [P: (196.0, 149.0), S: (732.0, 226.0)]
+  no_flashes [P: (196.0, 383.0), S: (732.0, 52.0)]
+  continue [P: (196.0, 443.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-150-first.png
+reduced, ui size 150 %: canvas (1124.0, 600.0), window (1280, 683)
+  panel [P: (182.0, 83.0), S: (760.0, 434.0)]
+  words [P: (196.0, 141.0), S: (732.0, 226.0)]
+  no_flashes [P: (196.0, 375.0), S: (732.0, 68.0)]
+  continue [P: (196.0, 451.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-150-reduced.png
+again, ui size 150 %: canvas (1124.0, 600.0), window (1280, 683)
+  panel [P: (182.0, 91.0), S: (760.0, 418.0)]
+  words [P: (196.0, 149.0), S: (732.0, 226.0)]
+  no_flashes [P: (196.0, 383.0), S: (732.0, 52.0)]
+  continue [P: (196.0, 443.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-150-again.png
+first, ui size 200 %: canvas (843.0, 450.0), window (1280, 683)
+  panel [P: (41.5, 19.0), S: (760.0, 412.0)]
+  words [P: (55.5, 77.0), S: (732.0, 220.0)]
+  no_flashes [P: (55.5, 305.0), S: (732.0, 52.0)]
+  continue [P: (55.5, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-first.png
+  words scrolled by Page Down to 0
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-first-pagedown.png
+reduced, ui size 200 %: canvas (843.0, 450.0), window (1280, 683)
+  panel [P: (41.5, 19.0), S: (760.0, 412.0)]
+  words [P: (55.5, 77.0), S: (732.0, 204.0)]
+  no_flashes [P: (55.5, 289.0), S: (732.0, 68.0)]
+  continue [P: (55.5, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: false
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-reduced.png
+  words scrolled by Page Down to 5
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-reduced-pagedown.png
+again, ui size 200 %: canvas (843.0, 450.0), window (1280, 683)
+  panel [P: (41.5, 19.0), S: (760.0, 412.0)]
+  words [P: (55.5, 77.0), S: (732.0, 220.0)]
+  no_flashes [P: (55.5, 305.0), S: (732.0, 52.0)]
+  continue [P: (55.5, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-again.png
+  words scrolled by Page Down to 0
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-again-pagedown.png
+Gdk-Message: 00:26:31.653: Error reading events from display: Broken pipe
+(EE) failed to read Wayland events: Broken pipe
+Gdk-Message: 00:26:31.654: Lost connection to Wayland compositor.
+Gdk-Message: 00:26:31.654: Lost connection to Wayland compositor.
+libmutter-Message: 00:26:31.715: Removed virtual monitor Meta-0
+A connection to the bus can't be made
+libmutter-Message: 00:26:32.645: Running Mutter (using mutter 50.1) as a Wayland display server
+
+(mutter:2505523): libmutter-WARNING **: 00:26:32.651: Unknown experimental feature 'scale-monitor-framebuffer'
+
+(mutter:2505523): libmutter-WARNING **: 00:26:32.651: Unknown experimental feature 'xwayland-native-scaling'
+libmutter-Message: 00:26:32.833: Added device '/dev/dri/renderD128' (i915) using no mode setting.
+libmutter-Message: 00:26:32.839: Created gbm renderer for '/dev/dri/renderD128'
+libmutter-Message: 00:26:32.839: Boot VGA GPU /dev/dri/renderD128 selected as primary
+** Message: 00:26:32.845: Obtained a high priority EGL context
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=2505523 comm="mutter --headless --virtual-monitor 2220x1080@60 -" label="unconfined")
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+libmutter-Message: 00:26:32.937: Added virtual monitor Meta-0
+libmutter-Message: 00:26:32.949: Using public X11 display :2, (using unix:/tmp/.X11-unix/X3 for managed services)
+libmutter-Message: 00:26:32.949: Using Wayland display name 'xh-2505503'
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+WARNING: Failed to create wd.xic as the input method or its xim server may not have started yet.
+     at: _create_xic (platform/linuxbsd/x11/display_server_x11.cpp:6347)
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.6' (uid=1000 pid=2505591 comm="/home/finn/.local/kksdev/godot/Godot_v4.7.2-stable" label="unconfined")
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Successfully activated service 'org.a11y.Bus'
+Vulkan 1.4.335 - Forward+ - Using Device #0: Intel - Intel(R) Iris(R) Xe Graphics (ADL GT2)
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2505675 comm="/usr/libexec/mutter-x11-frames" label="unconfined")
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.9' (uid=1000 pid=2505709 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=2505709 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.9' (uid=1000 pid=2505709 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Activating service name='org.gnome.Settings.GlobalShortcutsProvider' requested by ':1.12' (uid=1000 pid=2505735 comm="/usr/libexec/xdg-desktop-portal-gnome" label="unconfined")
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Successfully activated service 'org.gnome.Settings.GlobalShortcutsProvider'
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:97)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio/audio_server.cpp:258)
+
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=2505709 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2505796]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2505788 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined")
+dbus-daemon[2505796]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+first, ui size 100 %: canvas (1850.0, 900.0), window (2220, 1080)
+  panel [P: (545.0, 241.0), S: (760.0, 418.0)]
+  words [P: (559.0, 299.0), S: (732.0, 226.0)]
+  no_flashes [P: (559.0, 533.0), S: (732.0, 52.0)]
+  continue [P: (559.0, 593.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:2505709): xdg-desktop-portal-WARNING **: 00:26:36.017: Failed to connect to PipeWire: Couldn't connect to PipeWire
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Activating service name='org.freedesktop.secrets' requested by ':1.9' (uid=1000 pid=2505709 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+** Message: 00:26:36.055: couldn't access control socket: /home/finn/.cache/agent-tmp/flash/kks-offscreen.ztwuh6/keyring/control: No such file or directory
+discover_other_daemon: 0dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Successfully activated service 'org.freedesktop.secrets'
+dbus-daemon[2505522]: [session uid=1000 pid=2505522 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1080-100-first.png
+  focus after Tab: no_flashes
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1080-100-first-tab.png
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1080-100-first-ticked.png
+reduced, ui size 100 %: canvas (1915.0, 900.0), window (2220, 1043)
+  panel [P: (577.5, 233.0), S: (760.0, 434.0)]
+  words [P: (591.5, 291.0), S: (732.0, 226.0)]
+  no_flashes [P: (591.5, 525.0), S: (732.0, 68.0)]
+  continue [P: (591.5, 601.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-100-reduced.png
+again, ui size 100 %: canvas (1915.0, 900.0), window (2220, 1043)
+  panel [P: (577.5, 241.0), S: (760.0, 418.0)]
+  words [P: (591.5, 299.0), S: (732.0, 226.0)]
+  no_flashes [P: (591.5, 533.0), S: (732.0, 52.0)]
+  continue [P: (591.5, 593.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-100-again.png
+first, ui size 150 %: canvas (1276.667, 600.0), window (2220, 1043)
+  panel [P: (258.3333, 91.0), S: (760.0, 418.0)]
+  words [P: (272.3333, 149.0), S: (732.0, 226.0)]
+  no_flashes [P: (272.3333, 383.0), S: (732.0, 52.0)]
+  continue [P: (272.3333, 443.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-150-first.png
+reduced, ui size 150 %: canvas (1276.667, 600.0), window (2220, 1043)
+  panel [P: (258.3333, 83.0), S: (760.0, 434.0)]
+  words [P: (272.3333, 141.0), S: (732.0, 226.0)]
+  no_flashes [P: (272.3333, 375.0), S: (732.0, 68.0)]
+  continue [P: (272.3333, 451.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-150-reduced.png
+again, ui size 150 %: canvas (1276.667, 600.0), window (2220, 1043)
+  panel [P: (258.3333, 91.0), S: (760.0, 418.0)]
+  words [P: (272.3333, 149.0), S: (732.0, 226.0)]
+  no_flashes [P: (272.3333, 383.0), S: (732.0, 52.0)]
+  continue [P: (272.3333, 443.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-150-again.png
+first, ui size 200 %: canvas (957.5, 450.0), window (2220, 1043)
+  panel [P: (98.75, 19.0), S: (760.0, 412.0)]
+  words [P: (112.75, 77.0), S: (732.0, 220.0)]
+  no_flashes [P: (112.75, 305.0), S: (732.0, 52.0)]
+  continue [P: (112.75, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-200-first.png
+  words scrolled by Page Down to 0
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-200-first-pagedown.png
+reduced, ui size 200 %: canvas (957.5, 450.0), window (2220, 1043)
+  panel [P: (98.75, 19.0), S: (760.0, 412.0)]
+  words [P: (112.75, 77.0), S: (732.0, 204.0)]
+  no_flashes [P: (112.75, 289.0), S: (732.0, 68.0)]
+  continue [P: (112.75, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: false
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-200-reduced.png
+  words scrolled by Page Down to 5
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-200-reduced-pagedown.png
+again, ui size 200 %: canvas (957.5, 450.0), window (2220, 1043)
+  panel [P: (98.75, 19.0), S: (760.0, 412.0)]
+  words [P: (112.75, 77.0), S: (732.0, 220.0)]
+  no_flashes [P: (112.75, 305.0), S: (732.0, 52.0)]
+  continue [P: (112.75, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-200-again.png
+  words scrolled by Page Down to 0
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-2220x1043-200-again-pagedown.png
+Gdk-Message: 00:26:40.668: Lost connection to Wayland compositor.
+Gdk-Message: 00:26:40.668: Lost connection to Wayland compositor.
+Gdk-Message: 00:26:40.669: Error reading events from display: Broken pipe
+libmutter-Message: 00:26:40.702: Removed virtual monitor Meta-0
+A connection to the bus can't be made
+libmutter-Message: 00:26:41.764: Running Mutter (using mutter 50.1) as a Wayland display server
+
+(mutter:2506178): libmutter-WARNING **: 00:26:41.769: Unknown experimental feature 'scale-monitor-framebuffer'
+
+(mutter:2506178): libmutter-WARNING **: 00:26:41.769: Unknown experimental feature 'xwayland-native-scaling'
+libmutter-Message: 00:26:42.202: Added device '/dev/dri/renderD128' (i915) using no mode setting.
+libmutter-Message: 00:26:42.207: Created gbm renderer for '/dev/dri/renderD128'
+libmutter-Message: 00:26:42.207: Boot VGA GPU /dev/dri/renderD128 selected as primary
+** Message: 00:26:42.213: Obtained a high priority EGL context
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.0' (uid=1000 pid=2506178 comm="mutter --headless --virtual-monitor 1280x720@60 --" label="unconfined")
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+libmutter-Message: 00:26:42.322: Added virtual monitor Meta-0
+libmutter-Message: 00:26:42.332: Using public X11 display :2, (using unix:/tmp/.X11-unix/X3 for managed services)
+libmutter-Message: 00:26:42.332: Using Wayland display name 'xh-2506171'
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+WARNING: Failed to create wd.xic as the input method or its xim server may not have started yet.
+     at: _create_xic (platform/linuxbsd/x11/display_server_x11.cpp:6347)
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.6' (uid=1000 pid=2506228 comm="/home/finn/.local/kksdev/godot/Godot_v4.7.2-stable" label="unconfined")
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Successfully activated service 'org.a11y.Bus'
+Vulkan 1.4.335 - Forward+ - Using Device #0: Intel - Intel(R) Iris(R) Xe Graphics (ADL GT2)
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2506290 comm="/usr/libexec/mutter-x11-frames" label="unconfined")
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.9' (uid=1000 pid=2506317 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=2506317 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gnome' requested by ':1.9' (uid=1000 pid=2506317 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Activating service name='org.gnome.Settings.GlobalShortcutsProvider' requested by ':1.12' (uid=1000 pid=2506340 comm="/usr/libexec/xdg-desktop-portal-gnome" label="unconfined")
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Successfully activated service 'org.gnome.Settings.GlobalShortcutsProvider'
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:97)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio/audio_server.cpp:258)
+
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gnome'
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=2506317 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[2506413]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2506404 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined")
+dbus-daemon[2506413]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:2506317): xdg-desktop-portal-WARNING **: 00:26:45.301: Failed to connect to PipeWire: Couldn't connect to PipeWire
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Activating service name='org.freedesktop.secrets' requested by ':1.9' (uid=1000 pid=2506317 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+** Message: 00:26:45.328: couldn't access control socket: /home/finn/.cache/agent-tmp/flash/kks-offscreen.NYZ9vi/keyring/control: No such file or directory
+discover_other_daemon: 0dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Successfully activated service 'org.freedesktop.secrets'
+dbus-daemon[2506177]: [session uid=1000 pid=2506177 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+first, ui size 100 %: canvas (1600.0, 900.0), window (1280, 720)
+  panel [P: (420.0, 210.0), S: (760.0, 480.0)]
+  words [P: (434.0, 268.0), S: (732.0, 288.0)]
+  no_flashes [P: (434.0, 564.0), S: (732.0, 52.0)]
+  continue [P: (434.0, 624.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x720-100-first-pseudo.png
+  focus after Tab: no_flashes
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x720-100-first-pseudo-tab.png
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x720-100-first-pseudo-ticked.png
+reduced, ui size 100 %: canvas (1686.0, 900.0), window (1280, 683)
+  panel [P: (463.0, 202.0), S: (760.0, 496.0)]
+  words [P: (477.0, 260.0), S: (732.0, 288.0)]
+  no_flashes [P: (477.0, 556.0), S: (732.0, 68.0)]
+  continue [P: (477.0, 632.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-100-reduced-pseudo.png
+again, ui size 100 %: canvas (1686.0, 900.0), window (1280, 683)
+  panel [P: (463.0, 210.0), S: (760.0, 480.0)]
+  words [P: (477.0, 268.0), S: (732.0, 288.0)]
+  no_flashes [P: (477.0, 564.0), S: (732.0, 52.0)]
+  continue [P: (477.0, 624.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-100-again-pseudo.png
+first, ui size 150 %: canvas (1124.0, 600.0), window (1280, 683)
+  panel [P: (182.0, 60.0), S: (760.0, 480.0)]
+  words [P: (196.0, 118.0), S: (732.0, 288.0)]
+  no_flashes [P: (196.0, 414.0), S: (732.0, 52.0)]
+  continue [P: (196.0, 474.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-150-first-pseudo.png
+reduced, ui size 150 %: canvas (1124.0, 600.0), window (1280, 683)
+  panel [P: (182.0, 52.0), S: (760.0, 496.0)]
+  words [P: (196.0, 110.0), S: (732.0, 288.0)]
+  no_flashes [P: (196.0, 406.0), S: (732.0, 68.0)]
+  continue [P: (196.0, 482.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-150-reduced-pseudo.png
+again, ui size 150 %: canvas (1124.0, 600.0), window (1280, 683)
+  panel [P: (182.0, 60.0), S: (760.0, 480.0)]
+  words [P: (196.0, 118.0), S: (732.0, 288.0)]
+  no_flashes [P: (196.0, 414.0), S: (732.0, 52.0)]
+  continue [P: (196.0, 474.0), S: (200.0, 52.0)]
+  words fit without scrolling: true
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-150-again-pseudo.png
+first, ui size 200 %: canvas (843.0, 450.0), window (1280, 683)
+  panel [P: (41.5, 19.0), S: (760.0, 412.0)]
+  words [P: (55.5, 77.0), S: (732.0, 220.0)]
+  no_flashes [P: (55.5, 305.0), S: (732.0, 52.0)]
+  continue [P: (55.5, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: false
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-first-pseudo.png
+  words scrolled by Page Down to 51
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-first-pseudo-pagedown.png
+reduced, ui size 200 %: canvas (843.0, 450.0), window (1280, 683)
+  panel [P: (41.5, 19.0), S: (760.0, 412.0)]
+  words [P: (55.5, 77.0), S: (732.0, 204.0)]
+  no_flashes [P: (55.5, 289.0), S: (732.0, 68.0)]
+  continue [P: (55.5, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: false
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-reduced-pseudo.png
+  words scrolled by Page Down to 67
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-reduced-pseudo-pagedown.png
+again, ui size 200 %: canvas (843.0, 450.0), window (1280, 683)
+  panel [P: (41.5, 19.0), S: (760.0, 412.0)]
+  words [P: (55.5, 77.0), S: (732.0, 220.0)]
+  no_flashes [P: (55.5, 305.0), S: (732.0, 52.0)]
+  continue [P: (55.5, 365.0), S: (200.0, 52.0)]
+  words fit without scrolling: false
+  screen reader, with the focused button: Flashing light. Walkdown Plant has weather. In a thunderstorm, each lightning flash briefly lights up the whole scene. Flashes come at most once every 2 seconds, also in fast-forward. If flashing light can affect you, turn on "No lightning flashes" below: the lightning then only glows softly. Reduced motion turns it on too. Both are in Settings, where you can also read this note again.
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-again-pseudo.png
+  words scrolled by Page Down to 51
+saved /home/finn/.cache/agent-tmp/flash/ev/flash-notice-1280x683-200-again-pseudo-pagedown.png
+Gdk-Message: 00:26:47.906: Lost connection to Wayland compositor.
+Gdk-Message: 00:26:47.906: Lost connection to Wayland compositor.
+Gdk-Message: 00:26:47.906: Error reading events from display: Broken pipe
+libmutter-Message: 00:26:47.957: Removed virtual monitor Meta-0
+A connection to the bus can't be made
