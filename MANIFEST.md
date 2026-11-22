@@ -1,6 +1,6 @@
-# UX evidence: Report a problem (#446), round 4
+# UX evidence: Report a problem (#446), round 5: Windows 11 VM
 
-Synthetic (the invented plant), commit 5cd93633434f15a9eaa49235d0a4bd37d7b13166. `apps/plant3d/tests/report_shots.gd` at the head, switched on, OFFSCREEN_GODOT_DATA a folder of its own: desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout), small640_desk_ui2 (640x360, --ui-size=2). States: report_about, report_shown, report_written, report_inputs (ticked), report_save_failed, report_copied.
+Synthetic (the invented plant), commit 43e92a716341936d54bc9a1a0f0cbdb6c2ee6842. Round 4's shots, plus the owner-asked Windows run (the user, 2026-11-22: "Run it on the Windows VM"): kks-win11 (Windows 10.0.26300, no GPU: Microsoft Basic Render Driver), a scratch x86-64 export of commit 43e92a71 with the switch on through override.cfg and a one-off driver script (never committed), started in the desktop session; win11_vm_results.txt is its log; win11_vm_save_dialog_behind_edge.png (the save dialog open, behind Edge's first-run screen, which the issue link opened) and win11_vm_after.png.
 
 ```
 4d37e692254af3709a541ba93048244fe85268e10e94128564e26450decdc1c8  desk_ui2_report_about.png
@@ -27,4 +27,7 @@ d6906e488aae35007c0565223563709b2577b2cf95c5d124c0a8c448401537d6  small640_desk_
 a1e975e595ac26a0d97bfc2f630751b14abbf7da7a27a96a27265317485d7489  small640_desk_ui2_report_save_failed.png
 467404cf38d6f899383c635f73d646e34be5e66ff7eed3745ec1dfdb3634b451  small640_desk_ui2_report_shown.png
 2448a7c83ddf840b5f35ae37634499d3ee2096469873b31458b46bb82adb9328  small640_desk_ui2_report_written.png
+870102034b44c703de56d0292e09c1c90a90bb1aec0e0c8aff96f01ef9bc3efa  win11_vm_after.png
+49220c0da2b8c7588e6dd7d74d351df90a41ad124801e42a6bac548b2aba440c  win11_vm_results.txt
+eb2ce9ac8236964e196f82cf3b9e686d49128f63c1d8c050d36a8507dd738c09  win11_vm_save_dialog_behind_edge.png
 ```
