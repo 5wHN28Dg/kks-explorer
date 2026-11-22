@@ -1,7 +1,7 @@
 ## Screenshots of the instructor's "Restart in it" asking first (#437), to look at (not a test: it needs a display;
 ## tests/test_ui_restart_confirm.gd checks the same question):
 ##   OFFSCREEN_GODOT_DATA=DIR tools/plant3d/bench/offscreen.sh godot --resolution 1600x900 --path apps/plant3d \
-##     --script res://tests/restart_ask_shots.gd -- --out=DIR [--phone] [--ui-size=2]
+##     --script res://tests/restart_ask_shots.gd -- --out=DIR [--phone] [--ui-size=2] [--hold=SECONDS]
 ## A run of a minute of plant time in the first scenario; the Instructor panel; Restart in it pressed for the second
 ## scenario (the question in its row, Keep the run focused); half a second later (Restart pressable); Keep the run
 ## pressed (as before, the focus back on Restart in it); the focus on Restart; the running scenario's own question.
@@ -13,6 +13,7 @@ const RunSave = preload("res://ui/run_save.gd")
 var out := ""
 var phone := false
 var ui_size := ""
+var hold := 0.0                 # --hold=SECONDS: the question held that long once asked (tools/ui_audit/plant_a5_script.py)
 var main: Node
 func _init() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -20,6 +21,8 @@ func _init() -> void:
 			out = a.substr(6)
 		elif a.begins_with("--ui-size="):
 			ui_size = a.substr(10)
+		elif a.begins_with("--hold="):
+			hold = a.substr(7).to_float()
 		elif a == "--phone":
 			phone = true
 	_run.call_deferred()
@@ -66,6 +69,8 @@ func _run() -> void:
 	ui.trainer.ask_restart(other)
 	await create_timer(0.3).timeout       # (the question, then the focused Keep, scrolled into view)
 	await shot("restart_asks", 1)
+	if hold > 0.0:
+		await create_timer(hold).timeout
 	var t0 := Time.get_ticks_msec()
 	while Time.get_ticks_msec() - t0 < 700:
 		await process_frame
