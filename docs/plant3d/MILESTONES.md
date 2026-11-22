@@ -3,6 +3,40 @@
 **Status: DRAFT 2026-10-22.** Specs: docs/PLANT3D.md (format 2, §14–§19), STAFF.md, WATER-TREATMENT.md, SITE.md.
 Decisions 0062–0066.
 
+## v1.0 scope (approved 2026-11-23)
+
+The user approved this scope on 2026-11-23. Walkdown's own 1.0 is in docs/ROADMAP-1.0.md. Walkdown 1.0 comes first,
+so Plant's dates follow it.
+
+**Plant 0.4.0, a demo build, mid-December 2026** (GitHub milestone "Plant 0.4.0"). It is built from main as it is then:
+the Workshop and the realism built so far. Severity 1 must be fixed before any release, so it carries #447 (saved runs
+survive updates) with its owner check #474, #443 (lightning flashes and the photosensitivity warning), and #519 (a
+release build calls itself "local changes").
+
+**Plant 1.0: a pilot for I&C technicians and new hires, late January to early February 2027** (GitHub milestone
+"Plant 1.0"):
+
+- **Realism, the I&C set:** WM3 (handover and logbooks), IC1 (forces and bypasses), IC2 (SIS proof tests), IC3 (PID
+  loop tuning), IC5 (calibration traceability and bump tests), and HS2 (the confined space, hot work and height
+  permits). These rows are marked **In 1.0** in the realism table below.
+- **The Workshop's condenser**, the last kind of K6.
+- **A pilot pack:** 5 or 6 scenarios chosen for I&C work, an instructor guide (on the wiki), and the debrief kept as the
+  trainee's record.
+- **Multiplayer:** the LAN sessions as built (MP1, MP2) plus MP3, host migration (MULTIPLAYER.md §13).
+- **Release-ready means:** the release gates (every CI run green, the Note 9's frame rules, severity 1 fixed), plus
+  every severity 1 and 2 UX issue fixed, plus the owner checks done and their switches turned on (#455, #474, #505,
+  #507). The severity 2 issues: #380, #381, #412, #418, #422, #423, #425, #438, #455, #502, #507. The pilot's PCs are
+  measured against the frame rules (#457). The install guide is #439, in "Walkdown 1.0".
+- **Known dependency advisories** (libjxl, zlib: #57, #58, #72) don't hold the release. The release notes name them.
+- **Owner checks** use the policy's normal monthly budgets (60 and 30 minutes). There is no extra December budget, so
+  the dates depend on when the owner can do the checks.
+
+**Later (post-1.0).** Every realism row not built and not marked **In 1.0** is marked *Later (post-1.0)*: HW4–HW6,
+WX4, WM4–WM7, HS3–HS6, EC1–EC7, MC1–MC9, EN1–EN4, OP1–OP8, IC4, IC6–IC9, EV1–EV2, CH1–CH3, AG4 and PA1–PA4. The same
+goes for multiplayer's MP4 (online), MP5 (voice) and MP6 (a full session), the session layer's worst frame (2.13 ms
+against 2 ms), the policy's phase 3, and the severity 3 and 4 UX issues. Any open Plant issue in no GitHub milestone
+is post-1.0.
+
 Every milestone ends **shippable**: a plant release could be made from it (0054's release gates: every CI run green,
 tried on the Note 9 first). Every milestone that changes what is drawn or run is measured on the Note 9 against the
 frame rules (≥ 95 % of frames shown at ≥ 30 fps in the 10-minute walk, none over 100 ms after the first 5 s that the
@@ -450,81 +484,81 @@ programme's own budgets are REALISM.md §11.
 | HW1 | **Hands-on engine** (REALISM.md §2.3–§2.7): `tools.json` and carried tools, `hands`, `meters` and `read via`, HART ops, hidden causes and `cures`, NPC slips, in the reference and the GDScript engine bit for bit, with vectors; the step's cost | M | RE1, K3 | jobs can be written and checked; nothing new drawn |
 | HW2 | **The transmitter in the field:** the work view (§3.3), the builder's unmerged equipment with jobs, the tool tray, the multimeter, clamp meter and HART communicator screens; the condenser pressure transmitters' jobs (open up, connect, read, reconfigure, replace, close up, loop check) generated from the Workshop's tree; the Note 9 walk with `job=` (**built 2026-11-04**, REALISM.md §2.17: open up, connect, read, trim or tighten, close up; the cure follows the fix made; replacing and the loop check moved to HW3) | M | HW1 | an I&C technician's transmitter job, step by step with tools |
 | HW3 | **Hidden causes:** the transmitter's five causes and the tests that tell them apart, the debrief's diagnosis tab, the failed part opened in the Workshop (§3.5) (**built 2026-11-10**, REALISM.md §2.22: the symptom "reads apart", each cause's true effect, the loop check; the replacement moved after WM2, the stores) | M | HW2, DC2 | troubleshooting where the cause must be found |
-| HW4 | **Commissioning and decommissioning** (§3.4): works of kind `commission`, loop checks, stroke tests, a motor's first run, `in_service` states, decommissioning with the drawing's revision | M | HW3, HW5, EC2, DC1 | a new instrument and a motor brought into service; equipment taken out |
-| HW5 | **More kinds in the field:** the control valve and positioner, a horizontal pump, a motor, from the Workshop's trees (K6) | L | HW2, K6 | hands-on jobs on valves, pumps and motors |
-| HW6 | **Ordering the work:** supervisors and engineers give jobs to NPC technicians, NPCs' hand actions drawn, hold points checked by the trainee | M | HW5 | do it yourself or order it |
+| HW4 | *Later (post-1.0).* **Commissioning and decommissioning** (§3.4): works of kind `commission`, loop checks, stroke tests, a motor's first run, `in_service` states, decommissioning with the drawing's revision | M | HW3, HW5, EC2, DC1 | a new instrument and a motor brought into service; equipment taken out |
+| HW5 | *Later (post-1.0).* **More kinds in the field:** the control valve and positioner, a horizontal pump, a motor, from the Workshop's trees (K6) | L | HW2, K6 | hands-on jobs on valves, pumps and motors |
+| HW6 | *Later (post-1.0).* **Ordering the work:** supervisors and engineers give jobs to NPC technicians, NPCs' hand actions drawn, hold points checked by the trainee | M | HW5 | do it yourself or order it |
 | AG1 | **Wear engine** (§2.2, §4.2): `draw` and `wear` nodes, `renews`, wear across jumps, `age_rate`, the `count` node (J0), their vectors (**built 2026-11-02**, REALISM.md §2.11) | S | RE1 | ageing can be written |
 | AG2 | **The first train ages:** wear items on pumps, fans, valves, transmitters, filters, the condenser, the GT compressor; early signs bound (sound, heat, trends, shake); seeded failures; the scenarios' ages; the Note 9 walk (**built 2026-11-07** but for the Note 9 walk, REALISM.md §2.18: pumps, fans, valve actuators, a transmitter and a protection hazard; the fouling and the filters with WX2; the generic permit and fault reactions, PLANT3D §16.7) | L | AG1 | equipment that wears and fails on its own, with signs to find |
 | AG3 | **Condition monitoring** (§9.3): the vibration data collector and spectrum, the thermal camera (the Workshop's heat view), oil samples and lab results (**built 2026-11-08**, REALISM.md §2.19: the collector at the 7 pumps' and 10 fans' probes with ISO 20816-3's zones and the spectrum drawn from model values, the camera's spot readings at the 7 pump motors, oil samples at 13 points with the lab's results after 48 clock hours; the camera's false-colour picture came with K6's pump and motor kinds, the user's call: built 2026-11-14 on the camera's screen from the pumps' Workshop trees, the bearings' hot spots from model values) | M | AG2, HW2, K4b | vibration, thermography and oil analysis rounds |
 | WX1 | **Weather engine** (§5.1): `weather.json`, step 1w, the driven `ext` values, seasons by `year_day`, scripted and fixed weather, the instructor's input, vectors (**built 2026-11-02**, REALISM.md §2.12) | S | RE1 | weather that the model and every player share |
 | WX2 | **Weather in the model** (§5.2): the GT's ambient tables, inlet filters and compressor fouling, the cooling tower, water ingress causes, frozen impulse lines, lightning; filter change and compressor wash procedures (**built 2026-11-08**, REALISM.md §5.7) | M | WX1, AG2 | weather that changes output, alarms and faults |
 | WX3 | **Weather seen and heard** (§5.4): sky, fog, particles, wet and dusty surfaces, sounds; pipelines counted; the Note 9 walk with `weather=sandstorm` and `weather=rain` (**built 2026-11-02**, REALISM.md §5.5) | M | WX1 | weather to see and hear |
-| WX4 | **Weather and people** (§5.3): stopped outdoor work, slippery stairs and `pace`, `ppe_when`, visibility and driving; the heat rule comes with HS3 | M | WX1, HS1 | the staff work in the weather |
+| WX4 | *Later (post-1.0).* **Weather and people** (§5.3): stopped outdoor work, slippery stairs and `pace`, `ppe_when`, visibility and driving; the heat rule comes with HS3 | M | WX1, HS1 | the staff work in the weather |
 | DC1 | **Generic P&IDs** (§6.1): the generator, `walkdown-plant-drawing`, the viewer with hot spots, revisions (**built 2026-11-02**, REALISM.md §6.1.2) | M | — | the first train's P&IDs in the app |
 | DC2 | **Equipment manuals** (§6.2): the format, the transmitter's, the control valve's and a pump's manuals with figures from the Workshop (**built 2026-11-08**, REALISM.md §6.2.2: six manuals, the transmitter's, the control valve's, manual and check valves', pumps' and the two turbines' overviews; figures of the transmitter and the steam turbine drawn at build time; read from the card, the work view and the Workshop) | M | K3, DC1 | manuals read from the card and the job |
 | DC3 | **Discussions** (§6.3): the format, the `discuss` step in both engines with vectors, the first five discussions (**built 2026-11-09**, REALISM.md §6.3.1–§6.3.2: discussions.json, the step and the input in both engines, the five first-train discussions with their outcome works; the crew panel's discussion, the radio's lines and the debrief's list, text only) | M | DC2, S4b, AG2 | two engineers who differ talk it through, the trainee takes part |
 | WM1 | **Work orders and job history** (§7.1): `wo` states and inputs, failure codes, generated history, the work order panel | M | HW1, S4b | work orders from notification to closure |
 | WM2 | **Stores and spares** (§7.2): the catalogue, stock, issue and order inputs, deliveries, look-alike parts checked at fitting; the storekeeper's tasks; jumps to a date | M | WM1, DC2 | the wrong part and waiting for a delivery |
-| WM3 | **Handover and logbooks** (§7.3): `log` inputs, NPC entries, the handover sheet and its check | M | WM1 | shift handover that can miss something |
-| WM4 | **Outage planning** (§7.4): the plan tool, critical path and conflicts, `plan` slots, the outage run over days | L | WM2, HW5, MC2, MC3, HS2, AG2, AG4 | a major outage planned and run |
+| WM3 | **In 1.0.** **Handover and logbooks** (§7.3): `log` inputs, NPC entries, the handover sheet and its check | M | WM1 | shift handover that can miss something |
+| WM4 | *Later (post-1.0).* **Outage planning** (§7.4): the plan tool, critical path and conflicts, `plan` slots, the outage run over days | L | WM2, HW5, MC2, MC3, HS2, AG2, AG4 | a major outage planned and run |
 | HS1 | **JSA and toolbox talks** (§8.1): the hazard library, the `jsa` input and the issue refusal, toolbox talks with content (**built 2026-11-08**, REALISM.md §8.6: hse.json, works' job kinds, the `jsa` and `talk` inputs, attendance, the permit form's JSA and talk, the debrief's review; the first train's supervisors make every JSA and give the talks) | M | HW1, S4b | every job starts with its JSA and toolbox talk |
-| HS2 | **Confined space, hot work, height** (§8.2): continuous gas monitoring, entry log, standby person, fire watch, scaffold tags | M | HS1 | the three high-risk permits in depth |
-| HS3 | **Reports, drills and heat** (§8.3, §8.4): report input, incident investigation, emergencies and muster headcounts, the heat rule in the staff step | M | HS1, WX1 | near-miss reports, drills, heat stress |
-| EC1 | **Switching and racking** (§9.1): the MV switchgear's positions and interlocks, `switch_effects`, switching programmes, prove dead, arc-flash zones | M | HW2 | the electrical authorised person's switching |
-| EC2 | **Electrical tests** (§9.1): megger and PI, relay secondary injection, battery and UPS checks | M | EC1, AG2 | an electrician's test day |
-| MC1 | **Alignment and balancing** (§9.2) | M | HW5, AG3 | laser alignment and balancing of a pump set |
-| MC2 | **Bearings, seals, lubrication, packing** (§9.2) | M | HW5, AG2 | the mechanical technician's jobs |
-| EN1 | **Root-cause analysis** (§10.1): the RCA tool over the run's evidence, checked against the hidden cause | M | HW3, DC3 | an RCA after a trip |
-| EN2 | **Management of change** (§10.2): change objects, `approve_change`, setpoints behind a change, drawing revisions | M | DC1, HW4 | a change from request to the revised drawing |
-| EN3 | **Alarm management** (§10.3): alarm KPIs, bad actors, `priority_of`, rationalisation through changes | S | EN2 | alarm rationalisation with its effect on the next run |
-| EN4 | **Emissions and cycle chemistry** (§10.4, §10.5): NOx/CO/O₂ and the CEMS, averages and reports; the sample panel, lab analyses, action levels, dosing, a condenser tube leak | M | HW2, WM3 | emissions reports and the chemist's cycle chemistry |
+| HS2 | **In 1.0.** **Confined space, hot work, height** (§8.2): continuous gas monitoring, entry log, standby person, fire watch, scaffold tags | M | HS1 | the three high-risk permits in depth |
+| HS3 | *Later (post-1.0).* **Reports, drills and heat** (§8.3, §8.4): report input, incident investigation, emergencies and muster headcounts, the heat rule in the staff step | M | HS1, WX1 | near-miss reports, drills, heat stress |
+| EC1 | *Later (post-1.0).* **Switching and racking** (§9.1): the MV switchgear's positions and interlocks, `switch_effects`, switching programmes, prove dead, arc-flash zones | M | HW2 | the electrical authorised person's switching |
+| EC2 | *Later (post-1.0).* **Electrical tests** (§9.1): megger and PI, relay secondary injection, battery and UPS checks | M | EC1, AG2 | an electrician's test day |
+| MC1 | *Later (post-1.0).* **Alignment and balancing** (§9.2) | M | HW5, AG3 | laser alignment and balancing of a pump set |
+| MC2 | *Later (post-1.0).* **Bearings, seals, lubrication, packing** (§9.2) | M | HW5, AG2 | the mechanical technician's jobs |
+| EN1 | *Later (post-1.0).* **Root-cause analysis** (§10.1): the RCA tool over the run's evidence, checked against the hidden cause | M | HW3, DC3 | an RCA after a trip |
+| EN2 | *Later (post-1.0).* **Management of change** (§10.2): change objects, `approve_change`, setpoints behind a change, drawing revisions | M | DC1, HW4 | a change from request to the revised drawing |
+| EN3 | *Later (post-1.0).* **Alarm management** (§10.3): alarm KPIs, bad actors, `priority_of`, rationalisation through changes | S | EN2 | alarm rationalisation with its effect on the next run |
+| EN4 | *Later (post-1.0).* **Emissions and cycle chemistry** (§10.4, §10.5): NOx/CO/O₂ and the CEMS, averages and reports; the sample panel, lab analyses, action levels, dosing, a condenser tube leak | M | HW2, WM3 | emissions reports and the chemist's cycle chemistry |
 | | **The rest of the job** (REALISM.md J1–J8; J0 for the engine additions and the step's cost) | | | |
-| OP1 | **Grid events** (J0): `grid.json`, `world.grid`, the instructor's `grid` input, `grid_hz` and `grid_demand` driven in step 1w, vectors in both engines | S | RE1, WX1 | the grid that every player shares |
-| OP2 | **Dispatch and frequency response** (J1): the grid operator's instructions on the radio and their repeat back, load ramps, droop and deadband | M | OP1, S4b | the block dispatched by the grid |
-| OP3 | **Islanding and black start** (J1): house load or trip on grid loss, the black-start diesel, the dead-block restart, energising to the grid | M | OP2, OP5, EC3, EC6 | a restart from dead |
-| OP4 | **Fuel gas and dual fuel** (J1): the fuel gas station, the distillate system, the online changeover; the filters as wear items | M | AG2 | fuel supply rounds and a changeover under load |
-| OP5 | **Emergency diesel** (J1): the diesel and its transfer, the monthly test run, the auto start on loss of the essential board | M | EC1, AG1 | the diesel's test day |
-| OP6 | **Fire protection tests and CO₂ lockout** (J1): fire pumps, deluge and detection tests, the GT enclosure's CO₂ locked out before entry | M | HS2 | fire system tests; a safe enclosure entry |
-| OP7 | **Duty/standby changeovers** (J1): the rota, the standby's auto-start test | S | S4b | routine changeovers |
-| OP8 | **Performance and heat rate** (J1): heat rate and corrected output, losses found, the weekly report | M | WX2, AG2 | performance monitoring with its causes |
-| EC3 | **Excitation and synchronising** (J2): AVR auto and manual, capability limits, synchronising within limits | M | EC1, OP2 | a generator synchronised by hand |
-| EC4 | **Transformer oil DGA** (J2): the oil sample, lab gases by hidden cause, the decision | M | AG3, HW1 | DGA interpreted and acted on |
-| EC5 | **Earthing, cathodic protection, cable faults** (J2): fall-of-potential test, pipe-to-soil potentials, TDR location | M | EC2 | three electrical test jobs |
-| EC6 | **Switchyard operations** (J2): switching under the grid operator's instructions, interlocks | M | EC1, OP2 | switchyard switching with the grid operator |
-| EC7 | **Emergency lighting tests** (J2): monthly and yearly tests, a failed fitting | S | AG1, EC2 | the lighting test round |
-| IC1 | **Forces and bypasses** (J0, J3): the `forces` key, `approve_force`, the register, handover facts, vectors in both engines | M | RE1, WM3 | the forcing and bypass register |
-| IC2 | **SIS proof tests** (J3): a trip loop proof-tested end to end under a bypass | M | IC1, HW2 | a proof test recorded |
-| IC3 | **PID loop tuning** (J3): step tests, gains, stiction told from tuning | M | AG2 | a loop tuned |
-| IC4 | **Instrument air** (J3): compressors, dryers, header, fail positions, moisture causes | M | AG2, OP7 | the air system and its failures |
-| IC5 | **Calibration traceability and bump tests** (J3): tools' calibration days, certificates, portable and fixed gas detector bump tests | M | HW1 | traceable tools; bump-tested detectors |
-| IC6 | **DCS backups, removable media, patching** (J3): backups, the scan kiosk, patches through a change | M | EN2, HW1 | control system housekeeping |
-| IC7 | **Vibration monitoring system setup** (J3): probes' gap and scale factor, alarm and trip settings | M | AG3, IC2 | a machinery protection check |
-| IC8 | **GT combustion tuning** (J3): dynamics and emissions per mode, tuning, seasonal retune | M | EN4, WX2, OP4 | combustion tuned |
-| IC9 | **Compression fittings and Ex inspections** (J3): tube fitting make-up and leak test, Ex inspections | M | HW5 | tubing work; a hazardous-area inspection |
-| MC3 | **GT inspections** (J4): borescope with graded findings, combustion and hot-gas-path packages | M | AG2, AG4, HW5 | what an inspection finds |
-| MC4 | **HRSG tube leaks and NDT** (J4): leak signs, location, NDT methods, the cause tied to chemistry | M | AG2, HS6, EN4 | a tube leak found and its cause |
-| MC5 | **Safety valves and pressure vessels** (J4): in-place set-pressure tests, the written scheme and due dates | M | AG1, HW5 | statutory inspections |
-| MC6 | **Lifting gear and lift plans** (J4): examination dates and tags, a lift plan with wind limits | M | HW5, WX4 | certified gear and a planned lift |
-| MC7 | **Steam traps and CUI** (J4): a trap survey, CUI locations inspected | M | AG3 | trap and CUI rounds |
-| MC8 | **Chemical cleaning** (J4): an HRSG or condenser clean as an outage job | M | MC4, EV1 | a chemical clean |
-| MC9 | **Welding qualifications** (J4): welder and procedure checks before hot work | S | PA1, HS2 | qualified welding |
-| HS4 | **Induction, first aid, ERT** (J5): inductions, the first response and CPR steps, the emergency response team | M | HS3, PA1 | site inductions and first response |
-| HS5 | **Audits and simultaneous operations** (J0, J5): permit and lockout audits, permit conflicts (`conflicts`, vectors) | M | HS2 | audited permits; conflicting work refused |
-| HS6 | **Hydrogen, chlorine, radiation** (J0, J5): zone barriers (`barrier_when`, vectors), hydrogen purging, chlorine drills, gauges' shutters, radiography barriers | M | HS2 | the special hazards |
+| OP1 | *Later (post-1.0).* **Grid events** (J0): `grid.json`, `world.grid`, the instructor's `grid` input, `grid_hz` and `grid_demand` driven in step 1w, vectors in both engines | S | RE1, WX1 | the grid that every player shares |
+| OP2 | *Later (post-1.0).* **Dispatch and frequency response** (J1): the grid operator's instructions on the radio and their repeat back, load ramps, droop and deadband | M | OP1, S4b | the block dispatched by the grid |
+| OP3 | *Later (post-1.0).* **Islanding and black start** (J1): house load or trip on grid loss, the black-start diesel, the dead-block restart, energising to the grid | M | OP2, OP5, EC3, EC6 | a restart from dead |
+| OP4 | *Later (post-1.0).* **Fuel gas and dual fuel** (J1): the fuel gas station, the distillate system, the online changeover; the filters as wear items | M | AG2 | fuel supply rounds and a changeover under load |
+| OP5 | *Later (post-1.0).* **Emergency diesel** (J1): the diesel and its transfer, the monthly test run, the auto start on loss of the essential board | M | EC1, AG1 | the diesel's test day |
+| OP6 | *Later (post-1.0).* **Fire protection tests and CO₂ lockout** (J1): fire pumps, deluge and detection tests, the GT enclosure's CO₂ locked out before entry | M | HS2 | fire system tests; a safe enclosure entry |
+| OP7 | *Later (post-1.0).* **Duty/standby changeovers** (J1): the rota, the standby's auto-start test | S | S4b | routine changeovers |
+| OP8 | *Later (post-1.0).* **Performance and heat rate** (J1): heat rate and corrected output, losses found, the weekly report | M | WX2, AG2 | performance monitoring with its causes |
+| EC3 | *Later (post-1.0).* **Excitation and synchronising** (J2): AVR auto and manual, capability limits, synchronising within limits | M | EC1, OP2 | a generator synchronised by hand |
+| EC4 | *Later (post-1.0).* **Transformer oil DGA** (J2): the oil sample, lab gases by hidden cause, the decision | M | AG3, HW1 | DGA interpreted and acted on |
+| EC5 | *Later (post-1.0).* **Earthing, cathodic protection, cable faults** (J2): fall-of-potential test, pipe-to-soil potentials, TDR location | M | EC2 | three electrical test jobs |
+| EC6 | *Later (post-1.0).* **Switchyard operations** (J2): switching under the grid operator's instructions, interlocks | M | EC1, OP2 | switchyard switching with the grid operator |
+| EC7 | *Later (post-1.0).* **Emergency lighting tests** (J2): monthly and yearly tests, a failed fitting | S | AG1, EC2 | the lighting test round |
+| IC1 | **In 1.0.** **Forces and bypasses** (J0, J3): the `forces` key, `approve_force`, the register, handover facts, vectors in both engines | M | RE1, WM3 | the forcing and bypass register |
+| IC2 | **In 1.0.** **SIS proof tests** (J3): a trip loop proof-tested end to end under a bypass | M | IC1, HW2 | a proof test recorded |
+| IC3 | **In 1.0.** **PID loop tuning** (J3): step tests, gains, stiction told from tuning | M | AG2 | a loop tuned |
+| IC4 | *Later (post-1.0).* **Instrument air** (J3): compressors, dryers, header, fail positions, moisture causes | M | AG2, OP7 | the air system and its failures |
+| IC5 | **In 1.0.** **Calibration traceability and bump tests** (J3): tools' calibration days, certificates, portable and fixed gas detector bump tests | M | HW1 | traceable tools; bump-tested detectors |
+| IC6 | *Later (post-1.0).* **DCS backups, removable media, patching** (J3): backups, the scan kiosk, patches through a change | M | EN2, HW1 | control system housekeeping |
+| IC7 | *Later (post-1.0).* **Vibration monitoring system setup** (J3): probes' gap and scale factor, alarm and trip settings | M | AG3, IC2 | a machinery protection check |
+| IC8 | *Later (post-1.0).* **GT combustion tuning** (J3): dynamics and emissions per mode, tuning, seasonal retune | M | EN4, WX2, OP4 | combustion tuned |
+| IC9 | *Later (post-1.0).* **Compression fittings and Ex inspections** (J3): tube fitting make-up and leak test, Ex inspections | M | HW5 | tubing work; a hazardous-area inspection |
+| MC3 | *Later (post-1.0).* **GT inspections** (J4): borescope with graded findings, combustion and hot-gas-path packages | M | AG2, AG4, HW5 | what an inspection finds |
+| MC4 | *Later (post-1.0).* **HRSG tube leaks and NDT** (J4): leak signs, location, NDT methods, the cause tied to chemistry | M | AG2, HS6, EN4 | a tube leak found and its cause |
+| MC5 | *Later (post-1.0).* **Safety valves and pressure vessels** (J4): in-place set-pressure tests, the written scheme and due dates | M | AG1, HW5 | statutory inspections |
+| MC6 | *Later (post-1.0).* **Lifting gear and lift plans** (J4): examination dates and tags, a lift plan with wind limits | M | HW5, WX4 | certified gear and a planned lift |
+| MC7 | *Later (post-1.0).* **Steam traps and CUI** (J4): a trap survey, CUI locations inspected | M | AG3 | trap and CUI rounds |
+| MC8 | *Later (post-1.0).* **Chemical cleaning** (J4): an HRSG or condenser clean as an outage job | M | MC4, EV1 | a chemical clean |
+| MC9 | *Later (post-1.0).* **Welding qualifications** (J4): welder and procedure checks before hot work | S | PA1, HS2 | qualified welding |
+| HS4 | *Later (post-1.0).* **Induction, first aid, ERT** (J5): inductions, the first response and CPR steps, the emergency response team | M | HS3, PA1 | site inductions and first response |
+| HS5 | *Later (post-1.0).* **Audits and simultaneous operations** (J0, J5): permit and lockout audits, permit conflicts (`conflicts`, vectors) | M | HS2 | audited permits; conflicting work refused |
+| HS6 | *Later (post-1.0).* **Hydrogen, chlorine, radiation** (J0, J5): zone barriers (`barrier_when`, vectors), hydrogen purging, chlorine drills, gauges' shutters, radiography barriers | M | HS2 | the special hazards |
 | HS7 | **Personal audio and the phone** (REALISM.md §8.5; the user, 2026-11-03): staff.json's `audio` (banned zones, Ex zones, noticing delays, the missed-call mask; vectors), the `audio` and `phone` inputs and acts, the device held to the end of the duty; the phone's music player with our own procedural tracks, the plant's sounds masked by the volume, missed calls in the radio log, the consequence ladder in the debrief; follow-ups (the user, 2026-11-03): music banned in the control room (`audio.rooms`), a device taken off duty held to the end of the next duty, music refused at the wheel, radio calls missed, the phone at a locker only (the engine), earbuds drawn on avatars; second follow-ups (the user, 2026-11-07): the phone taken only at the locker holding it, a device taken off duty held to the end of the next duty actually worked, music banned in the WTP control room too | M | S2, RE1 | music on the character's phone, and what it costs |
-| EV1 | **Waste and spills** (J5): segregation, records, a spill contained and reported | S | HS3 | spill response |
-| EV2 | **Wastewater and noise** (J5): discharge monitoring against the IFC limits, a noise survey, hearing protection zones | M | EN4, WX4 | environmental monitoring |
-| CH1 | **Cooling tower treatment** (J6): cycles, blowdown, inhibitor and biocide, Legionella risk and samples | M | AG2, EN4 | the cooling tower's chemistry |
-| CH2 | **Fuel gas analysis** (J6): the chromatograph, Wobbe index, the fuel specification | S | OP4, EN4 | fuel gas quality |
-| CH3 | **Lab calibration and the chemical inventory** (J6): buffers and standards, the log, GHS labels and SDS | S | EN4, IC5 | a traceable lab and safe chemicals |
-| WM5 | **Requisitions and OEM engineers** (J0, J7): order approvals (vectors), the OEM's engineer under the service agreement (arriving as a scheduled task) | M | RE1, WM2, S4b | parts bought and the OEM on site |
-| WM6 | **KPIs and budgets** (J7): availability, forced outage rate, MTBF, PM compliance, backlog; hours and parts against budget (no currency) | M | WM1, OP8 | the maintenance manager's numbers |
-| WM7 | **Critical spares, shelf life, stock audits** (J7): criticality, preservation, expiry, cycle counts | M | WM2 | a store that is kept honest |
-| AG4 | **GT intervals in equivalent hours and starts** (J7): factored hours and starts (`count`), tied to AG2's wear, inspections due | M | AG2, OP4 | the next outage's date from the machine's history |
-| PA1 | **Training records and authorisations** (J0, J8): the `auth` key, expiry, the training matrix, vectors | S | RE1, S4b | authorisations that expire |
-| PA2 | **Fatigue and overtime** (J0, J8): duty hours, limits, the `fatigue` act, vectors | M | RE1, S4b | callouts within the limits |
-| PA3 | **Reports and audits** (J8): daily and monthly reports; ISO and insurance audits | M | WM6, HS5 | reports and audits |
-| PA4 | **Visitors, passes, languages** (J0, J8): passes at the gate, languages at talks and handovers, vectors | M | S4b, HS4 | the gate and multinational crews |
+| EV1 | *Later (post-1.0).* **Waste and spills** (J5): segregation, records, a spill contained and reported | S | HS3 | spill response |
+| EV2 | *Later (post-1.0).* **Wastewater and noise** (J5): discharge monitoring against the IFC limits, a noise survey, hearing protection zones | M | EN4, WX4 | environmental monitoring |
+| CH1 | *Later (post-1.0).* **Cooling tower treatment** (J6): cycles, blowdown, inhibitor and biocide, Legionella risk and samples | M | AG2, EN4 | the cooling tower's chemistry |
+| CH2 | *Later (post-1.0).* **Fuel gas analysis** (J6): the chromatograph, Wobbe index, the fuel specification | S | OP4, EN4 | fuel gas quality |
+| CH3 | *Later (post-1.0).* **Lab calibration and the chemical inventory** (J6): buffers and standards, the log, GHS labels and SDS | S | EN4, IC5 | a traceable lab and safe chemicals |
+| WM5 | *Later (post-1.0).* **Requisitions and OEM engineers** (J0, J7): order approvals (vectors), the OEM's engineer under the service agreement (arriving as a scheduled task) | M | RE1, WM2, S4b | parts bought and the OEM on site |
+| WM6 | *Later (post-1.0).* **KPIs and budgets** (J7): availability, forced outage rate, MTBF, PM compliance, backlog; hours and parts against budget (no currency) | M | WM1, OP8 | the maintenance manager's numbers |
+| WM7 | *Later (post-1.0).* **Critical spares, shelf life, stock audits** (J7): criticality, preservation, expiry, cycle counts | M | WM2 | a store that is kept honest |
+| AG4 | *Later (post-1.0).* **GT intervals in equivalent hours and starts** (J7): factored hours and starts (`count`), tied to AG2's wear, inspections due | M | AG2, OP4 | the next outage's date from the machine's history |
+| PA1 | *Later (post-1.0).* **Training records and authorisations** (J0, J8): the `auth` key, expiry, the training matrix, vectors | S | RE1, S4b | authorisations that expire |
+| PA2 | *Later (post-1.0).* **Fatigue and overtime** (J0, J8): duty hours, limits, the `fatigue` act, vectors | M | RE1, S4b | callouts within the limits |
+| PA3 | *Later (post-1.0).* **Reports and audits** (J8): daily and monthly reports; ISO and insurance audits | M | WM6, HS5 | reports and audits |
+| PA4 | *Later (post-1.0).* **Visitors, passes, languages** (J0, J8): passes at the gate, languages at talks and handovers, vectors | M | S4b, HS4 | the gate and multinational crews |
 
 The K rows (the Workshop) come with WORKSHOP.md's own plan (K0), written in parallel; the K numbers here follow the
 user's Workshop spec.
