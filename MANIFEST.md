@@ -1,6 +1,6 @@
-# UX evidence: Restart in it asks first (#437), round 4
+# UX evidence: Restart in it asks first (#437), round 5
 
-Synthetic (the invented plant), commit 3858a7d7874227f301ddb53c598de1cca5869586. Shots as round 3 (code unchanged for them but the focus rule on touch). a11y_restart_asks.json read again with libatspi's cache cleared before each walk (tools/ui_audit/plant_a5_script.py at this commit): still only the HUD's top bar, and its clock label stays at the value it had when the panel opened, as in the 2026-11 audit's A5 row. a11y_main_card.json: the base branch's plant_a5.py, unchanged from round 3.
+Synthetic (the invented plant), commit 4ffd6f2e449625e7c612836a5210bca842bf5856. Rounds 3-4's shots and trees, plus small640_* (the profile's smallest window, 640x360, --ui-size=2) at 4ffd6f2e: every state of restart_ask_shots.gd.
 
 ```
 456fec5d94e99b97edb9d2db596df657bb4678767736c61c8123005516f72a69  a11y_main_card.json
@@ -23,4 +23,10 @@ dc1072b91cbe7e0868e6294b054c2217ed4734f06a2697c1b31aafd41f2a7318  phone_uidefaul
 c28c4d0818a3be527c5ee38bca6d046e14fe406dca8f90bad226fea1f27a74b3  phone_uidefault_restart_focus_restart.png
 d70b2bb3dbbda64856c9e170e786c54b6baa19d1f74905a509a6c87396e45bcc  phone_uidefault_restart_kept.png
 0f35c3ab52f4a920a282ffe382ea84b03d27616c4dc19da35b19eeb448f6f571  phone_uidefault_restart_rows.png
+c2b612a2c578e065fdcc4443c29ce27a501209e28858c7d53712c4f997a9976b  small640_desk_ui2_restart_armed.png
+c43e9d078e441407c413593adb230b6719ea45ec6461902ea52078481c061341  small640_desk_ui2_restart_asks.png
+a91ccbd8eb0fe9b5158ad223d8e97555c05ee5a4c741017798698d6980b120be  small640_desk_ui2_restart_asks_same.png
+592f3f3cb8008adbb3e5cc35c66a6c7c90a4594ccc436a585ff7f9e459e855ad  small640_desk_ui2_restart_focus_restart.png
+d478fa1ebaaee15fc7911e250766651f45a869eab2cb5d8a87045249f7d57330  small640_desk_ui2_restart_kept.png
+e5327f5eab66f0efa45e5478e9c8e5e40e3f53d8b5e5e3d7ddff146ce56b7c2f  small640_desk_ui2_restart_rows.png
 ```
