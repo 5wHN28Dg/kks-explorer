@@ -193,8 +193,15 @@ class Plant(unittest.TestCase):
 
     def join(self, a, user='boss', password='a long password'):
         atspi.click(atspi.find(a, 'button', name='Join through a server'))
-        atspi.find(a, 'label', contains="Forgot your password? Ask your plant's manager for a password link")   # the way back in (#449)
+        atspi.find(a, 'label', name="Forgot your password? Ask your plant's manager for a password link.")   # the way back in (#449)
         self.evidence(a, 'join-server-form')
+        if not getattr(type(self), 'how_seen', False):   # its details behind "How?" (#462's "Shorten"), once a run
+            type(self).how_seen = True
+            how = [n for n in atspi.find_all(a, name='How?') if n.get_action_iface() is not None]
+            self.assertTrue(how, 'no "How?" to press on the join form')
+            atspi.click(how[0])
+            atspi.find(a, 'label', contains='kks-server reset-password --user NAME')
+            self.evidence(a, 'join-server-how')
         atspi.set_text(atspi.find(a, 'text', name='Server address'), f'127.0.0.1:{self.sport}')
         atspi.set_text(atspi.find(a, 'text', name='Username'), user)
         atspi.set_text(atspi.find(a, 'password text', name='Password'), password)

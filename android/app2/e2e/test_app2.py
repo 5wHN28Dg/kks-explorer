@@ -106,6 +106,8 @@ def evidence(name):
 
 
 class Phone(unittest.TestCase):
+    how_seen = False          # the join form's "How?" opened once in this run (join)
+
     def run(self, result=None):
         if not DIAG:
             return super().run(result)
@@ -192,7 +194,13 @@ class Phone(unittest.TestCase):
     # ---- helpers for the 2026-10-08 requests' tests
     def join(self, user='boss', pw='a long password'):
         ui.tap('Join through a server', exact=True)
-        ui.find("Forgot your password? Ask your plant's manager for a password link")   # the way back in (#449)
+        ui.find("Forgot your password? Ask your plant's manager for a password link.")   # the way back in (#449)
+        if not Phone.how_seen:        # its details behind "How?" (#462's "Shorten"), once in each run: shown, hidden
+            Phone.how_seen = True
+            ui.tap('How?', exact=True)
+            ui.find('kks-server reset-password --user NAME')
+            ui.tap('Hide how', exact=True)
+            ui.find('How?', exact=True)
         ui.type_into('Server address', f'{PHONE_HOST}:{self.sport}')
         ui.type_into('Username', user)
         ui.type_into('Password', pw)

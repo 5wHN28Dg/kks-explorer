@@ -108,7 +108,14 @@ proc buildSetup*(w: Win, p: Page, done: proc ()) =
         if err.len > 0: status.setLabel(err) else: done()
       asyncCheck run()))
     p.space(8)
-    p.dim(ForgotPassword)   # the way back in (#449)
+    p.dim(ForgotPassword)   # the way back in (#449): one sentence, the details behind "How?"
+    var how: HWND
+    var hb: seq[HWND]
+    hb = p.buttons((ForgotPasswordHowLabel, proc () =
+      let shown = how.text.len > 0
+      hb[0].setText(if shown: ForgotPasswordHowLabel else: ForgotPasswordHideLabel)
+      how.setLabel(if shown: "" else: ForgotPasswordHow)))   # (laid out again with the button's new words)
+    how = p.dim("")         # (empty until "How?" is pressed)
   of "Join with a code":
     p.dim("An admin shows a QR code under Manage → Devices. Copy its text here.")
     let code = p.multiField("Invite text", "", 110)

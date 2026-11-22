@@ -202,7 +202,7 @@ K.emit = async () => {
 K.css = `#kov{position:fixed;inset:0;z-index:200;background:var(--chrome,#1c2730);color:var(--ink,#e9eef2);display:flex;overflow-y:auto;font:14px/1.45 system-ui,sans-serif;padding:16px}
 #kov form,#kov .box{margin:auto;background:var(--chrome2,#243440);border:1px solid var(--line,#3a5061);border-radius:10px;padding:20px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px}
 #kov h1{font-size:18px;margin:0}#kov p{margin:0;color:var(--muted,#94a6b4)}#kov input{padding:9px 10px;border-radius:6px;border:1px solid var(--line,#3a5061);background:var(--chrome,#1c2730);color:inherit;font:inherit}
-#kov button{background:var(--accent,#ff7a1a);color:#1c2730;border:0;border-radius:6px;padding:9px;font-weight:650;cursor:pointer;font:inherit}#kov button.back{background:none;border:1px solid var(--line,#3a5061);color:inherit;font-weight:400}#kov .err{color:var(--bad,#ff5a5a);min-height:1em}`;
+#kov button{background:var(--accent,#ff7a1a);color:#1c2730;border:0;border-radius:6px;padding:9px;font-weight:650;cursor:pointer;font:inherit}#kov button.back{background:none;border:1px solid var(--line,#3a5061);color:inherit;font-weight:400}#forgotHow{margin-top:-10px}#forgotHow summary{cursor:pointer;padding:14px 12px 14px 0;line-height:20px;text-decoration:underline;width:max-content;min-width:48px}#kov .err{color:var(--bad,#ff5a5a);min-height:1em}`;
 // The overlay screen, holding these nodes (K.h).
 K.overlay = (...nodes) => {
   if (!document.getElementById('kovcss')) { const s = document.createElement('style'); s.id = 'kovcss'; s.textContent = K.css; document.head.appendChild(s) }
@@ -299,15 +299,18 @@ K.watchLease = () => {
 };
 
 // The way back in after a forgotten password (#449; the same words on every client's sign-in form, tests/test_forgot_password.py):
-// the manager (or an admin, for a member) makes a one-time password link (admin.html → Users → Password link, /api/users/N/reset); the
-// manager's own comes from the server's command line (kks-server reset-password, reset-manager).
-K.forgotPassword = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and use it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME.";
+// one plain sentence, with the details behind "How?" (the owner, 2026-11-22, on #462: "Shorten"). The manager (or an admin, for a
+// member) makes a one-time password link (admin.html → Users → Password link, /api/users/N/reset); the manager's own comes from
+// the server's command line (kks-server reset-password, reset-manager).
+K.forgotPassword = "Forgot your password? Ask your plant's manager for a password link.";
+K.forgotPasswordHow = "An admin can also make a password link for a member. Use the link within 3 days to set a new password. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME.";
 // The sign-in screen. Where the manager has set a sign-up code (/api/config: signup), it also leads to "Request an
 // account": the request waits for an admin (Manage → Users); until then signing in says so.
 K.signIn = cfg => K.form(cfg?.plant_name || 'Walkdown', cfg?.setup_needed ? 'No manager account exists yet: use the setup link printed on the server console.' : 'Sign in to see plant data.',
   [{name: 'username', label: 'Username', ac: 'username', plain: true}, {name: 'password', type: 'password', label: 'Password', ac: 'current-password'}], 'Sign in',
   async v => { await K.api('/api/login', v); location.reload() }, null,
   [cfg?.setup_needed ? null : K.h('p', {id: 'forgotPw'}, K.forgotPassword),   // (no manager yet: nobody to ask)
+   cfg?.setup_needed ? null : K.h('details', {id: 'forgotHow'}, K.h('summary', null, 'How?'), K.h('p', null, K.forgotPasswordHow)),
    cfg?.signup ? K.h('button', {type: 'button', class: 'back', id: 'signup', onclick: () => K.signUp(cfg)}, 'No account yet? Request one') : null,
    K.h('button', {type: 'button', class: 'back', id: 'signinAbout', onclick: () => K.about()}, 'About Walkdown')]);
 K.signUp = cfg => K.form('Request an account', 'You need the sign-up code your manager gives the team. An admin then approves the request before the account works.',

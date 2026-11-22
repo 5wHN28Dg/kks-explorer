@@ -94,10 +94,16 @@ else:
 proc keyJson(k: PrivateKey): JNode = newObj(@[("scalar", newStr(hex(k.scalar))), ("pub", newStr(b64u(k.pub)))])
 proc keyOf(j: JNode): PrivateKey = PrivateKey(scalar: unhex(j["scalar"].s), pub: unb64u(j["pub"].s))
 
-const ForgotPassword* = "Forgot your password? Ask your plant's manager for a password link (an admin can also make one for a member), and use it within 3 days to set a new one. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME."
+const ForgotPassword* = "Forgot your password? Ask your plant's manager for a password link."
   ## the way back in after a forgotten password, under "Join through a server" (#449; the web's sign-in and Android
-  ## say the same words: tests/test_forgot_password.py): the manager (or an admin, for a member) makes a one-time password link
-  ## (admin.html → Users → Password link); the manager's own comes from the server's command line
+  ## say the same words: tests/test_forgot_password.py): one plain sentence, the details behind "How?"
+  ## (ForgotPasswordHow; the owner, 2026-11-22, on #462: "Shorten")
+const ForgotPasswordHow* = "An admin can also make a password link for a member. Use the link within 3 days to set a new password. If you are the manager, whoever runs the plant's server makes the link with kks-server reset-password --user NAME."
+  ## what "How?" shows: the manager (or an admin, for a member) makes a one-time password link (admin.html → Users →
+  ## Password link); the manager's own comes from the server's command line
+const ForgotPasswordHowLabel* = "How?"
+const ForgotPasswordHideLabel* = "Hide how"
+  ## (Windows: its "How?" is a button that shows the details, then hides them again)
 const AppVersion* = staticRead("../../VERSION").strip   ## the program's version (VERSION at build time)
 
 proc platformName*(): string =

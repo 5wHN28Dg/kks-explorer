@@ -500,9 +500,15 @@ proc setupScreen(w: Win): W =
     asyncCheck run())
   for r in [url, user, pw]: adw_preferences_group_add(g1, r)
   adw_preferences_group_add(g1, go)
-  let forgot = label(ForgotPassword, "dim-label", selectable = true)   # the way back in (#449)
+  let forgot = label(ForgotPassword, "dim-label")   # the way back in (#449): one sentence, the details behind "How?"
   gtk_widget_set_margin_top(forgot, 12)
   adw_preferences_group_add(g1, forgot)
+  let how = gtk_expander_new(nil)
+  let howLabel = label(ForgotPasswordHowLabel)
+  gtk_widget_set_size_request(howLabel, -1, 32)   # (a 32 px high target to click or tap, not the text's 18 px)
+  gtk_expander_set_label_widget(how, howLabel)
+  gtk_expander_set_child(how, label(ForgotPasswordHow, "dim-label", selectable = true))   # (the command can be copied)
+  adw_preferences_group_add(g1, how)
   # a new plant
   let g2 = group("", "You become its manager. This device holds the plant's root key: back it up afterwards (Manage → Account).")
   let plant = entryRow("Plant name", "")
