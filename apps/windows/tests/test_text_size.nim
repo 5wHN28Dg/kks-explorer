@@ -18,6 +18,13 @@ type TEXTMETRICW {.importc, header: H.} = object
 proc GetTextMetricsW(dc: HDC, tm: ptr TEXTMETRICW): BOOL {.importc, stdcall, header: H.}
 
 proc GetWindowLongPtrW(h: HWND, i: int32): int {.importc, stdcall, header: H.}
+type
+  CHARRANGE {.importc, header: "<richedit.h>".} = object
+    cpMin, cpMax: int32
+  CHARFORMAT2W {.importc, header: "<richedit.h>".} = object
+    cbSize: UINT
+    dwMask: DWORD
+    dwEffects: DWORD
 
 var main: HWND
 
@@ -81,22 +88,29 @@ block:
   ShowWindow(main, SW_SHOW)
   ShowWindow(main, SW_SHOW)
 
-proc page(): (Page, seq[HWND]) =
-  ## a page like the app's: every kind of control with text, at the sidebar's width (380 DIPs)
+proc longer(t: string, long: bool): string =
+  ## the text 40 % longer (L3: another language, a longer name), still in words
+  if not long: return t
+  result = t
+  while result.len < t.len * 14 div 10: result.add " and more"
+
+proc page(long = false): (Page, seq[HWND]) =
+  ## a page like the app's: every kind of control with text, at the sidebar's width (380 DIPs); `long`: every text
+  ## 40 % longer
   let p = newPage(main)
   MoveWindow(p.hwnd, 0, 0, px(380), 3000, 1)
   var hs: seq[HWND]
-  hs.add p.title("Sheets and procedures")
-  hs.add p.label("A label long enough to wrap onto a second line in the sidebar of the app at any size")
-  hs.add p.dim("Secondary text: Enter or double-click a result to show it on its drawing.")
-  hs.add p.field("Search equipment by KKS code or description", "11LAB70AA500")
+  hs.add p.title(longer("Sheets and procedures", long))
+  hs.add p.label(longer("A label long enough to wrap onto a second line in the sidebar of the app at any size", long))
+  hs.add p.dim(longer("Secondary text: Enter or double-click a result to show it on its drawing.", long))
+  hs.add p.field(longer("Search equipment by KKS code or description", long), "11LAB70AA500")
   hs.add p.multiField("Note", "A note\r\non two lines", 60)
-  hs.add p.buttons(("Equipment by system…", proc () = discard), ("Coverage…", proc () = discard))
-  hs.add p.check("Colour tags by photos", false, proc (on: bool) = discard)
+  hs.add p.buttons((longer("Equipment by system…", long), proc () = discard), (longer("Coverage…", long), proc () = discard))
+  hs.add p.check(longer("Colour tags by photos", long), false, proc (on: bool) = discard)
   hs.add p.radios(@["Follow theme", "Always dark"], 0, proc (i: int) = discard)
   hs.add p.list(@["Sample sheet  (1 tags)", "Another sheet  (12 tags)"], 26 * 2 + 6)
   let answer: proc () = proc () = discard
-  hs.add p.tallButtons(@[("A long answer that wraps onto more lines than one in the sidebar", answer)])
+  hs.add p.tallButtons(@[(longer("A long answer that wraps onto more lines than one in the sidebar", long), answer)])
   p.layout()
   pump()
   (p, hs)
@@ -124,9 +138,13 @@ proc checkFits(p: Page, made: seq[HWND], what: string) =
       check lineH(h) <= int(r.bottom)                              # a whole line of text in the field
     of "button":
       if (style and 0xF) in [3'u32, 9'u32]:                        # check box, radio button: the box and the text
-        let (nw, nh) = needed(h, 0, wrap = false)
-        check nh <= int(r.bottom)
-        check nw + px(20) <= int(r.right)
+        if (style and 0x2000) != 0:                                # (its lines wrapped beside the box)
+          let (_, nh) = needed(h, int(r.right) - int(px(24)), wrap = true)
+          check nh <= int(r.bottom)
+        else:
+          let (nw, nh) = needed(h, 0, wrap = false)
+          check nh <= int(r.bottom)
+          check nw + px(20) <= int(r.right)
       elif (style and 0x2000) != 0:                                # BS_MULTILINE
         let (_, nh) = needed(h, int(r.right) - int(px(28)), wrap = true)
         check nh <= int(r.bottom)
@@ -188,6 +206,40 @@ suite "Windows' text size":
         check lineH(hs[1]) >= int(float(normal100) * parseFloat(s) * float(d) / 96 * 0.9)   # the text is larger
         checkFits(p, hs, s & " text at " & $d & " dpi")
         p.destroy()
+
+  test "40 % longer text at 200 % text and 200 % scaling: still nothing cut off (L3)":
+    putEnv("KKS_TEST_TEXT_SCALE", "2")
+    textScale = 1.0
+    makeFonts(192)
+    check refreshTextScale()
+    let (p, hs) = page(long = true)
+    checkFits(p, hs, "longer text at 200 %")
+    p.destroy()
+    makeFonts(96)
+
+  test "rich text keeps its own fonts through a scale change (bold, sizes, Consolas: only zoomed)":
+    putEnv("KKS_TEST_TEXT_SCALE", "1")
+    textScale = 1.0
+    makeFonts(96)
+    let p = newPage(main)
+    MoveWindow(p.hwnd, 0, 0, px(380), 600, 1)
+    let r = p.rich("{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Segoe UI;}{\\f1 Consolas;}}\\f0\\fs22 plain {\\b bold} {\\f1 mono}}")
+    p.layout()
+    pump()
+    proc boldAt(pos: int): bool =
+      var sel = CHARRANGE(cpMin: int32(pos), cpMax: int32(pos + 1))
+      SendMessageW(r, 0x0437'u32, 0, cast[LPARAM](addr sel))          # EM_EXSETSEL
+      var cf = CHARFORMAT2W(cbSize: UINT(sizeof(CHARFORMAT2W)))
+      SendMessageW(r, 0x043A'u32, 1, cast[LPARAM](addr cf))            # EM_GETCHARFORMAT, SCF_SELECTION
+      (cf.dwEffects and 1) != 0                                        # CFE_BOLD
+    check boldAt(7)            # "bold"
+    check not boldAt(1)
+    makeFonts(144)             # (a scale change while the app runs)
+    pump()
+    check boldAt(7)
+    check not boldAt(1)
+    p.destroy()
+    makeFonts(96)
 
   test "a text size change while the app runs: the page's controls follow":
     putEnv("KKS_TEST_TEXT_SCALE", "1")

@@ -646,15 +646,31 @@ proc show(cw: CW, id: string, keepScroll = false) =
   cw.focusKey = ""
   cw.fillRail()
 
+proc GetWindowLongPtrW(h: HWND, i: int32): int {.importc, stdcall, header: "<windows.h>".}
+proc SetWindowLongPtrW(h: HWND, i: int32, v: int): int {.importc, stdcall, header: "<windows.h>", discardable.}
+
 proc courseProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
   let cw = courseWins.getOrDefault(h)
   try:
     case m
     of WM_SIZE:
       if cw != nil:
-        let rw = tx(260)
-        MoveWindow(cw.rail, 0, 0, rw, int32(hiword(lp)) - txp(32, 8), 1)
-        MoveWindow(cw.railGo, px(4), int32(hiword(lp)) - txp(32, 4), rw - px(8), tx(32), 1)
+        # the rail grows with the text, to at most 35 % of the window, so the page keeps the rest even in a narrow
+        # window (at 100 % as released: 260)
+        let rw = if textScale == 1.0: px(260)
+                 else: int32(min(int(tx(260)), max(loword(lp) * 35 div 100, int(px(100)))))
+        # the button under the rail: one line at 100 % (as released); with a larger text, its label wraps onto as
+        # many lines as the rail's width needs
+        var gh = int(tx(32))
+        if textScale > 1.0:
+          SetWindowLongPtrW(cw.railGo, -16, GetWindowLongPtrW(cw.railGo, -16) or 0x2000)    # BS_MULTILINE
+          gh = max(gh, textHeight(cw.railGo, cw.railGo.text, int(rw) - int(px(8)) - int(px(16))) + int(px(12)))
+        if textScale == 1.0:
+          MoveWindow(cw.rail, 0, 0, rw, int32(hiword(lp)) - px(40), 1)
+          MoveWindow(cw.railGo, px(4), int32(hiword(lp)) - px(36), rw - px(8), px(32), 1)
+        else:
+          MoveWindow(cw.rail, 0, 0, rw, int32(hiword(lp)) - int32(gh) - px(8), 1)
+          MoveWindow(cw.railGo, px(4), int32(hiword(lp)) - int32(gh) - px(4), rw - px(8), int32(gh), 1)
         MoveWindow(cw.page.hwnd, rw, 0, int32(loword(lp)) - rw, int32(hiword(lp)), 1)
       return 0
     of WM_COMMAND:
@@ -672,6 +688,7 @@ proc courseProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
 
 var courseClass = false
 var themeHooked = false
+var fontsHooked = false
 
 proc openCourseWindow*(w: Win, id: string, page = "") =
   if id in openById:
@@ -699,6 +716,13 @@ proc openCourseWindow*(w: Win, id: string, page = "") =
   MoveWindow(cw.hwnd, wa.left + 20, wa.top + 10, min(px(1180), wa.right - wa.left - 40), min(px(860), wa.bottom - wa.top - 20), 0)
   courseWins[cw.hwnd] = cw
   openById[id] = cw
+  if not fontsHooked:      # new fonts (text size, scaling): the rail and its button laid out again in them
+    fontsHooked = true
+    afterFonts.add proc () =
+      for h, x in courseWins:
+        var r: RECT
+        GetClientRect(h, addr r)
+        SendMessageW(h, WM_SIZE, 0, LPARAM((int(r.bottom) shl 16) or int(r.right)))
   if not themeHooked:       # the theme changed (theme.nim): open courses made again in its colours, where they were
     themeHooked = true
     onThemeChange.add proc () =

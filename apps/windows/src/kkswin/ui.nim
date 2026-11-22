@@ -3,7 +3,7 @@
 ## label created just before it (MSAA/UIA name from the preceding static text). Tab moves through a page
 ## (WS_EX_CONTROLPARENT + IsDialogMessage in the message loop).
 
-import std/[tables, strutils, os, math]
+import std/[tables, strutils, os, math, times]
 from syncwords import uxOn
 import w32, labels, theme
 
@@ -135,6 +135,8 @@ var textScale* = 1.0        ## the app's text, and the heights made for it, time
 
 proc RegGetValueTs(key: pointer, sub, value: WideCString, flags: uint32, typ: ptr uint32, data: pointer,
                    size: ptr uint32): int32 {.importc: "RegGetValueW", stdcall, header: HG.}
+var hkeyCurrentUser {.importc: "HKEY_CURRENT_USER", header: HG, nodecl.}: pointer
+  ## (windows.h's own value, sign-extended on 64-bit as the registry expects)
 proc SystemParametersInfoForDpi(a, b: UINT, p: pointer, f, d: UINT): BOOL {.importc, stdcall, header: HG.}
 
 proc systemTextScale*(): float =
@@ -145,8 +147,7 @@ proc systemTextScale*(): float =
     try: return clamp(parseFloat(t), 1.0, 2.25) except ValueError: discard
   var v: uint32 = 100
   var n = uint32(sizeof(v))
-  let hkcu = cast[pointer](0x80000001'u)       # HKEY_CURRENT_USER
-  if RegGetValueTs(hkcu, newWideCString("Software\\Microsoft\\Accessibility"), newWideCString("TextScaleFactor"),
+  if RegGetValueTs(hkeyCurrentUser, newWideCString("Software\\Microsoft\\Accessibility"), newWideCString("TextScaleFactor"),
                    0x10'u32, nil, addr v, addr n) != 0: v = 100       # RRF_RT_REG_DWORD; absent: 100 %
   result = float(v) / 100
   var m: NONCLIENTMETRICSW
@@ -169,7 +170,14 @@ proc EnumThreadWindows(t: DWORD, f: WNDENUMPROC, l: LPARAM): BOOL {.importc, std
 proc EnumChildWindows(h: HWND, f: WNDENUMPROC, l: LPARAM): BOOL {.importc, stdcall, header: HG, discardable.}
 proc GetCurrentThreadId(): DWORD {.importc, stdcall, header: HG.}
 var refont: seq[(HFONT, HFONT)]
+proc isRichEdit(h: HWND): bool =
+  var buf = newWideCString("", 32)
+  GetClassNameW(h, buf, 32) > 0 and $buf == "RICHEDIT50W"
+
 proc refontOne(h: HWND, l: LPARAM): BOOL {.stdcall.} =
+  # (never rich text: its font is in its RTF, run by run, and WM_SETFONT would set every run to one font; it follows
+  # the text size by its zoom, relayoutAll)
+  if isRichEdit(h): return 1
   let f = cast[HFONT](SendMessageW(h, WM_SETFONT + 1, 0, 0))       # WM_GETFONT
   for (a, b) in refont:
     if f == a and a != nil:
@@ -213,8 +221,15 @@ proc refreshTextScale*(): bool =
   ## Windows' text size changed (WM_SETTINGCHANGE, or read once a second): the fonts and pages follow. -> it changed
   let s = systemTextScale()
   if abs(s - textScale) < 0.001: return false
+  let t0 = epochTime()
   textScale = s
   makeFonts(dpi)
+  if getEnv("KKS_TIMING").len > 0 and errorLog.len > 0:     # (docs/m6/MEASUREMENTS.md style: how long the app froze)
+    try:
+      let f = open(errorLog.parentDir / "timing.log", fmAppend)
+      f.writeLine("text size " & $s & ": fonts and pages in " & $int((epochTime() - t0) * 1000) & " ms")
+      f.close()
+    except IOError: discard
   true
 
 proc newId(): int =
@@ -476,6 +491,8 @@ proc fieldLabel(p: Page, lab: HWND, w: int): int =
   if textScale == 1.0: return int(px(20))
   max(int(tx(20)), p.measure(lab.text, fontNormal, w) + int(px(2)))
 
+proc GetWindowLongPtrW(h: HWND, i: int32): int {.importc, stdcall, header: HG.}
+proc SetWindowLongPtrW(h: HWND, i: int32, v: int): int {.importc, stdcall, header: HG, discardable.}
 proc layout*(p: Page) =
   var r: RECT
   GetClientRect(p.hwnd, addr r)
@@ -505,17 +522,31 @@ proc layout*(p: Page) =
         var total = 0
         for b in it.hwnds: total += max(int(px(90)), p.textWidth(b.text.replace("&&", "&"), fontNormal) + int(px(28))) + int(px(8))
         if total - int(px(8)) <= w: bx = int(x) + w - (total - int(px(8)))
+      var rowH = int(tx(30))
       for b in it.hwnds:
         let bw = max(int(px(90)), p.textWidth(b.text.replace("&&", "&"), fontNormal) + int(px(28)))
         if bx > int(x) and bx + bw > int(x) + w:        # wrap to the next line
           bx = int(x)
-          y += txp(30, 8)
-        MoveWindow(b, int32(bx), int32(y), int32(min(bw, w)), tx(30), 1)
+          y += rowH - int(tx(30)) + txp(30, 8)
+          rowH = int(tx(30))
+        var bh = int(tx(30))
+        if bw > w and textScale > 1.0:
+          # a label wider than the whole column (larger text, a longer word in another language): its lines wrap,
+          # the button as tall as they need (at 100 % as released: cut at the column)
+          SetWindowLongPtrW(b, -16, GetWindowLongPtrW(b, -16) or int(BS_MULTILINE))
+          bh = max(bh, p.measure(b.text.replace("&&", "&"), fontNormal, w - int(px(28))) + int(px(12)))
+        MoveWindow(b, int32(bx), int32(y), int32(min(bw, w)), int32(bh), 1)
+        rowH = max(rowH, bh)
         bx += bw + int(px(8))
-      y += txp(30, 10)
+      y += rowH - int(tx(30)) + txp(30, 10)
     of ikCheck:
-      MoveWindow(it.hwnds[0], x, int32(y), int32(w), tx(26), 1)
-      y += txp(26, 6)
+      var ch = int(tx(26))
+      if textScale > 1.0 and p.textWidth(it.hwnds[0].text.replace("&&", "&"), fontNormal) + int(px(24)) > w:
+        # (a label wider than the column: its lines wrap beside the box, as tall as they need)
+        SetWindowLongPtrW(it.hwnds[0], -16, GetWindowLongPtrW(it.hwnds[0], -16) or int(BS_MULTILINE))
+        ch = max(ch, p.measure(it.hwnds[0].text.replace("&&", "&"), fontNormal, w - int(px(24))) + int(px(8)))
+      MoveWindow(it.hwnds[0], x, int32(y), int32(w), int32(ch), 1)
+      y += ch - int(tx(26)) + txp(26, 6)
     of ikList:      # (its height is made for a number of rows: it grows with them)
       MoveWindow(it.hwnds[0], x, int32(y), int32(w), tx(it.height), 1)
       y += tx(it.height) + px(10)
@@ -569,6 +600,10 @@ proc relayoutAll() =
     if p.hwnd != nil and IsWindow(p.hwnd) != 0: p.layout()
 
 afterFonts.add relayoutAll
+
+proc relayoutPages*() =
+  ## every page laid out again in the fonts it has (see kks_explorer.textSizeChanged)
+  relayoutAll()
 
 proc isEmpty*(p: Page): bool = p == nil or p.items.len == 0
 
@@ -1170,8 +1205,6 @@ var popupMayClose* = initTable[HWND, proc (): bool]()   ## a popup's close box (
 
 proc LoadIconW(inst: HINSTANCE, name: int): pointer {.importc: "LoadIconW", stdcall, header: HG.}
 proc SetWindowPos(h, after: HWND, x, y, cx, cy: int32, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
-proc GetWindowLongPtrW(h: HWND, i: int32): int {.importc, stdcall, header: HG.}
-proc SetWindowLongPtrW(h: HWND, i: int32, v: int): int {.importc, stdcall, header: HG, discardable.}
 proc DrawIconEx(dc: HDC, x, y: int32, icon: pointer, w, h: int32, step: UINT, br: pointer, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
 
 type MONITORINFO {.importc, header: HG.} = object
@@ -1426,6 +1459,18 @@ proc popup*(owner: HWND, title: string, w, h: int, onClose: proc () = nil, escap
   let ph = min(int(tx(h)), max(int(px(h)), int(wa.bottom - wa.top)))
   let hw = CreateWindowExW(WS_EX_CONTROLPARENT, newWideCString("KKSPopup"), newWideCString(title), WS_OVERLAPPEDWINDOW,
                            CW_USEDEFAULT, CW_USEDEFAULT, int32(pw), int32(ph), owner, nil, hinst, nil)
+  if textScale > 1.0:
+    # larger with the text, it is kept inside the work area of its owner's monitor (Windows' default place is a cascade
+    # offset that can put a window as tall as the screen past its bottom)
+    var mi = MONITORINFO(cbSize: DWORD(sizeof(MONITORINFO)))
+    var wr: RECT
+    if GetMonitorInfoW(MonitorFromWindow(if owner != nil: owner else: hw, 2), addr mi) != 0 and
+       GetWindowRect(hw, addr wr) != 0:
+      let ww = min(int(wr.right - wr.left), int(mi.rcWork.right - mi.rcWork.left))
+      let wh = min(int(wr.bottom - wr.top), int(mi.rcWork.bottom - mi.rcWork.top))
+      let x = max(int(mi.rcWork.left), min(int(wr.left), int(mi.rcWork.right) - ww))
+      let y = max(int(mi.rcWork.top), min(int(wr.top), int(mi.rcWork.bottom) - wh))
+      MoveWindow(hw, int32(x), int32(y), int32(ww), int32(wh), 0)
   let p = newPage(hw)
   popups[hw] = (p, onClose)
   if escape: escCloses.add hw

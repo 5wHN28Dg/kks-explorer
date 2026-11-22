@@ -55,6 +55,8 @@ var
 proc RegGetValueW(key: pointer, sub, value: WideCString, flags: uint32, typ: ptr uint32, data: pointer,
                   size: ptr uint32): int32 {.importc, stdcall, header: "<windows.h>".}
 
+var hkeyCurrentUser {.importc: "HKEY_CURRENT_USER", header: "<windows.h>", nodecl.}: pointer
+
 proc appsDark*(): bool =
   ## Windows' own setting for apps (Settings → Personalisation → Colours → "Choose your default app mode"): dark when
   ## AppsUseLightTheme is 0. KKS_TEST_SYSTEM_DARK (1 or 0) stands in for it in the tests.
@@ -62,8 +64,7 @@ proc appsDark*(): bool =
   if t.len > 0: return t == "1"
   var v: uint32 = 1
   var n = uint32(sizeof(v))
-  let hkcu = cast[pointer](0x80000001'u)       # HKEY_CURRENT_USER
-  RegGetValueW(hkcu, newWideCString("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+  RegGetValueW(hkeyCurrentUser, newWideCString("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
                newWideCString("AppsUseLightTheme"), 0x10'u32, nil, addr v, addr n) == 0 and v == 0   # RRF_RT_REG_DWORD
 
 type HIGHCONTRASTW {.importc, header: "<windows.h>".} = object

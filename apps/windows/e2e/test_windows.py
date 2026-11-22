@@ -104,6 +104,9 @@ def contrast(on, scheme='High Contrast White'):
 def text_size(percent):
     """Windows' text size set in Settings as a person does it (e2e/textsize.ps1 drives its slider and Apply through
     UI Automation, in the desktop session); -> the driver's log"""
+    now = vm('(Get-ItemProperty HKCU:\\Software\\Microsoft\\Accessibility -ErrorAction SilentlyContinue).TextScaleFactor').strip()
+    if now == str(percent) or (percent == 100 and now in ('', '100')):
+        return 'PASSED (already %d %%)' % percent      # (Settings' Apply is disabled when nothing changes)
     build = int(vm('[Environment]::OSVersion.Version.Build').strip() or 0)
     slider = 'Text size' if build >= 22000 else '~Drag the slider'      # (Windows 10: the slider is named by its hint)
     vm('Remove-Item C:\\kks\\textsize.log -ErrorAction SilentlyContinue')
@@ -579,8 +582,9 @@ class Windows(unittest.TestCase):
         is larger and nothing is cut off or overlaps (`fits`: every label, field, button, check box and list measured in
         its own font) on the Drawings tab, Manage, Account, a tag's panel and Equipment by system; the size changes
         while the app runs (back to 100 % and up again). Switched off, the text stays at its size (as before)."""
-        env = {'KKS_UX': 'win-text-size'}
+        env = {'KKS_UX': 'win-text-size', 'KKS_TIMING': '1'}
         put(os.path.join(HERE, 'textsize.ps1'))
+        self.course_files()
         self.join('tsjoin.uia', env=env)
         whole = ['wait\t~Sample sheet\t60', 'fits\tDrawings', 'click\tManage', 'wait\tAccount\t20', 'fits\tAccount',
                  'click\tAccount', 'wait\t‹ Manage\t20', 'fits\t‹ Manage', 'click\tDrawings', 'wait\t~Sample sheet\t20',
@@ -607,8 +611,32 @@ class Windows(unittest.TestCase):
             self.check('ts3.uia', ['sleep\t2000', 'fits\tDrawings', 'fits\tCopy', 'height\tEquipment by system…\t28\t32'])
             self.assertIn('PASSED', text_size(150))
             self.check('ts4.uia', ['sleep\t2000', 'fits\tDrawings', 'fits\tCopy', 'height\tEquipment by system…\t44'])
+            # the largest sizes: 200 % and Windows' maximum, 225 %, while the app runs: the main screen with a tag,
+            # Manage, an error in the status line (a sync to an address that can't be reached), Equipment by system,
+            # and a course in a window at the profile's smallest width (360 px)
+            for pct in (200, 225):
+                self.assertIn('PASSED', text_size(pct))
+                self.check('ts5.uia', ['sleep\t2500', 'fits\tDrawings', 'fits\tCopy',
+                                       'click\tManage', 'click\tAccount', 'wait\t‹ Manage\t20',
+                                       'set\tSync with an address (host:port@device)\t192.0.2.1:9@nobody', 'click\tSync now',
+                                       'sleep\t4000', 'fits\t‹ Manage',
+                                       'click\tDrawings', 'wait\tEquipment by system…\t20', 'click\tEquipment by system…',
+                                       'wait\tEquipment by system\t20', 'fits\tSearch codes, systems, descriptions',
+                                       'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system',
+                                       'click\tLearning', 'select\t~Instrumentation and control', 'click\tOpen the course',
+                                       'wait\t~Instrumentation and control — \t30', 'resize\tOpen the selected page\t360\t640',
+                                       'sleep\t1000', 'fits\tOpen the selected page'])
+                self.screenshot('win-text-%d-course-360' % pct)
+                self.check('ts6.uia', ['close\tOpen the selected page', 'gone\tOpen the selected page', 'click\tDrawings',
+                                       'wait\tEquipment by system…\t20', 'click\tManage', 'click\tAccount',
+                                       'wait\t‹ Manage\t20', 'sleep\t500'])
+                self.screenshot('win-text-%d-account' % pct)
+                self.check('ts7.uia', ['click\tDrawings', 'wait\tEquipment by system…\t20', 'sleep\t500'])
+                self.screenshot('win-text-%d-drawings' % pct)
         finally:
             text_size(100)
+        # how long each live change took (fonts and every page laid out again: the app holds still meanwhile, P1)
+        print('\n' + vm('Get-Content $env:LOCALAPPDATA\\Walkdown\\timing.log -ErrorAction SilentlyContinue'), file=sys.stderr)
         self.leave()
 
     def test_multi(self):

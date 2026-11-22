@@ -237,7 +237,7 @@ static BOOL CALLBACK collect(HWND h, LPARAM l) {
     if (IsWindowVisible(h)) ((FitCtx *)l)->all.push_back(h);
     return TRUE;
 }
-static SIZE need(HWND h, const std::wstring &t, int width, bool wrap) {
+static SIZE need(HWND h, const std::wstring &t, int width, bool wrap, bool editc = false) {
     // (the control's font is the app's: a GDI handle of another process can't be selected here, so a copy is made
     // from its description)
     LOGFONTW lf = {};
@@ -246,7 +246,8 @@ static SIZE need(HWND h, const std::wstring &t, int width, bool wrap) {
     HDC dc = GetDC(h);
     HGDIOBJ old = SelectObject(dc, mine ? (HGDIOBJ)mine : GetStockObject(DEFAULT_GUI_FONT));
     RECT r = {0, 0, width, 0};
-    DrawTextW(dc, t.c_str(), -1, &r, DT_CALCRECT | DT_NOPREFIX | (wrap ? DT_WORDBREAK : DT_SINGLELINE));
+    // (DT_EDITCONTROL for a label with SS_EDITCONTROL: it breaks long words as an edit control does)
+    DrawTextW(dc, t.c_str(), -1, &r, DT_CALCRECT | DT_NOPREFIX | (wrap ? DT_WORDBREAK : DT_SINGLELINE) | (editc ? DT_EDITCONTROL : 0));
     TEXTMETRICW tm = {};
     GetTextMetricsW(dc, &tm);
     SelectObject(dc, old);
@@ -275,7 +276,7 @@ static int fits(IUIAutomationElement *e) {
         if (!_wcsicmp(cls, L"Static")) {
             int kind = style & SS_TYPEMASK;
             if (n && kind != SS_OWNERDRAW && kind != SS_ICON && kind != SS_BITMAP) {
-                SIZE s = need(h, t, r.right, true);
+                SIZE s = need(h, t, r.right, true, (style & SS_EDITCONTROL) != 0);
                 if (s.cy > r.bottom) why = "text " + std::to_string(s.cy) + " px tall in " + std::to_string(r.bottom);
             }
         } else if (!_wcsicmp(cls, L"Edit")) {
@@ -285,7 +286,12 @@ static int fits(IUIAutomationElement *e) {
             int kind = style & BS_TYPEMASK;
             std::wstring shown;      // (the label as drawn: "&&" is one "&", a lone "&" marks the access key)
             for (size_t i = 0; i < t.size(); i++) { if (t[i] == L'&' && i + 1 < t.size()) i++; shown += t[i]; }
-            if (kind == BS_AUTOCHECKBOX || kind == BS_CHECKBOX || kind == BS_AUTORADIOBUTTON || kind == BS_RADIOBUTTON) {
+            if ((kind == BS_AUTOCHECKBOX || kind == BS_CHECKBOX || kind == BS_AUTORADIOBUTTON || kind == BS_RADIOBUTTON) &&
+                (style & BS_MULTILINE)) {
+                int box = MulDiv(24, (int)GetDpiForWindow(h), 96);
+                SIZE s = need(h, shown, std::max<LONG>(1, r.right - box), true);
+                if (s.cy > r.bottom) why = "label " + std::to_string(s.cy) + " px tall in " + std::to_string(r.bottom);
+            } else if (kind == BS_AUTOCHECKBOX || kind == BS_CHECKBOX || kind == BS_AUTORADIOBUTTON || kind == BS_RADIOBUTTON) {
                 SIZE s = need(h, shown, 0, false);
                 int box = MulDiv(16, (int)GetDpiForWindow(h), 96);
                 if (s.cy > r.bottom || s.cx + box > r.right) why = "label " + std::to_string(s.cx) + "x" + std::to_string(s.cy) + " with its box";
@@ -294,7 +300,9 @@ static int fits(IUIAutomationElement *e) {
                 if (s.cy > r.bottom) why = "text " + std::to_string(s.cy) + " px tall in " + std::to_string(r.bottom);
             } else {
                 SIZE s = need(h, shown, 0, false);
-                if (s.cy > r.bottom || s.cx > r.right) why = "label " + std::to_string(s.cx) + "x" + std::to_string(s.cy);
+                // (with the room the button's edge and padding take: 3 px a side at 100 %)
+                if (s.cy > r.bottom || s.cx + MulDiv(6, (int)GetDpiForWindow(h), 96) > r.right)
+                    why = "label " + std::to_string(s.cx) + "x" + std::to_string(s.cy);
             }
         } else if (!_wcsicmp(cls, L"ListBox")) {
             SIZE s = need(h, L"Ag", 1000, false);
@@ -305,19 +313,32 @@ static int fits(IUIAutomationElement *e) {
             LOGFONTW lf = {};
             HFONT hf = (HFONT)SendMessageW(h, WM_GETFONT, 0, 0);
             if (hf) GetObjectW(hf, sizeof lf, &lf);
-            say("  cut off: " + utf8(cls) + " \"" + utf8(t).substr(0, 60) + "\" " + std::to_string(r.right) + "x" +
+            say("  cut off: " + utf8(cls) + " \"" + utf8(t.substr(0, 60)) + "\" " + std::to_string(r.right) + "x" +
                 std::to_string(r.bottom) + ": " + why + " (font " + std::to_string(lf.lfHeight) + ")");
             c.bad++;
         }
     }
-    // no two controls of one parent overlap (the pages, the drawing and the figures are containers, not controls)
+    // every control inside its parent's width (a page scrolls up and down, so only sideways): never cut by its container
+    for (HWND h : c.all) {
+        RECT r, pc;
+        HWND par = GetParent(h);
+        if (!par || !GetWindowRect(h, &r) || !GetClientRect(par, &pc)) continue;
+        POINT a = {pc.left, pc.top}, b = {pc.right, pc.bottom};
+        ClientToScreen(par, &a); ClientToScreen(par, &b);
+        if (r.left < a.x || r.right > b.x) {
+            wchar_t t[80] = L"", cls[64] = L"";
+            GetWindowTextW(h, t, 80); GetClassNameW(h, cls, 64);
+            say("  outside its parent's width: " + utf8(cls) + " \"" + utf8(t) + "\" " + std::to_string(r.left) + "-" +
+                std::to_string(r.right) + " in " + std::to_string(a.x) + "-" + std::to_string(b.x));
+            c.bad++;
+        }
+    }
+    // no two controls of one parent overlap: the window's own parts (tabs, the sidebar, the drawing, the panel, the
+    // status line) too, and a page's controls and pictures
     for (size_t i = 0; i < c.all.size(); i++)
         for (size_t j = 0; j < i; j++) {
             HWND a = c.all[i], b = c.all[j];
             if (GetParent(a) != GetParent(b)) continue;
-            wchar_t ca[64] = L"", cb[64] = L"";
-            GetClassNameW(a, ca, 64); GetClassNameW(b, cb, 64);
-            if (!wcsncmp(ca, L"KKS", 3) || !wcsncmp(cb, L"KKS", 3)) continue;
             RECT ra, rb, x;
             GetWindowRect(a, &ra); GetWindowRect(b, &rb);
             if (IntersectRect(&x, &ra, &rb)) {
@@ -783,7 +804,8 @@ int wmain(int argc, wchar_t **argv) {
             if (rp) { rp->get_CurrentValue(&v); rp->Release(); }
             e->Release();
             say("  value " + std::to_string(v));
-            if (FAILED(hr)) { say("ERROR: can't set " + arg); return 1; }
+            double wanted = std::stod(f.size() > 2 ? f[2] : "0");
+            if (FAILED(hr) || std::abs(v - wanted) > 0.5) { say("ERROR: can't set " + arg + " to " + (f.size() > 2 ? f[2] : "")); return 1; }
             continue;
         }
         if (cmd == "pixels") {
