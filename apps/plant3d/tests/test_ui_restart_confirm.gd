@@ -118,12 +118,19 @@ func run(tree: SceneTree) -> Array:
 	# 4. asked again, after half a second: Down to Restart, Enter restarts in it, at its start
 	_key(tree, KEY_ENTER)
 	await tree.process_frame
+	var keep0: Button = tp.body.find_child("keep_run", true, false)
+	ui.clock.run_steps(600)              # the plant goes on while asked: the time lost said grows with it
 	await _wait_ms(tree, 650)
 	tp.refresh()
 	await tree.process_frame
 	go = tp.body.find_child("confirm_restart", true, false)
 	if go == null or go.disabled:
 		p.append("Restart is still not pressable after half a second")
+	if tp.body.find_child("keep_run", true, false) != keep0:
+		p.append("arming Restart rebuilt the panel (a press under way on Keep the run would be lost)")
+	q = tp.body.find_child("restart_question", true, false)
+	if q == null or not q.text.contains(W.model_time(ui.clock.engine.step_no)):
+		p.append("the question's plant time did not follow the plant (%s): %s" % [W.model_time(ui.clock.engine.step_no), q.text if q else ""])
 	_key(tree, KEY_DOWN)
 	await tree.process_frame
 	if _focus(ui) != "confirm_restart":

@@ -4,7 +4,7 @@
 ##     --script res://tests/restart_ask_shots.gd -- --out=DIR [--phone] [--ui-size=2]
 ## A run of a minute of plant time in the first scenario; the Instructor panel; Restart in it pressed for the second
 ## scenario (the question in its row, Keep the run focused); half a second later (Restart pressable); Keep the run
-## pressed (as before, the focus back on Restart in it).
+## pressed (as before, the focus back on Restart in it); the focus on Restart; the running scenario's own question.
 extends SceneTree
 
 const Autosave = preload("res://ui/autosave.gd")
@@ -64,14 +64,19 @@ func _run() -> void:
 		if id != ui.clock.scenario and other == "":
 			other = id
 	ui.trainer.ask_restart(other)
-	await shot("restart_asks", 4)
+	await create_timer(0.3).timeout       # (the question, then the focused Keep, scrolled into view)
+	await shot("restart_asks", 1)
 	var t0 := Time.get_ticks_msec()
 	while Time.get_ticks_msec() - t0 < 700:
 		await process_frame
 	await shot("restart_armed")
+	ui.trainer.body.find_child("confirm_restart", true, false).grab_focus()
+	await shot("restart_focus_restart")
 	var keep = ui.trainer.body.find_child("keep_run", true, false)
 	keep.pressed.emit()
 	await shot("restart_kept")
+	ui.trainer.ask_restart(ui.clock.scenario)       # the running scenario itself: "from its start"
+	await shot("restart_asks_same", 50)
 	main.free()
 	RunSave.remove(path)
 	quit()

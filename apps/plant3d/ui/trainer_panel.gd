@@ -83,9 +83,23 @@ func refresh() -> void:
 		elif item[0] == "repair":
 			fixing[item[1]] = true
 	var armed := asking != "" and Time.get_ticks_msec() - _asked_ms >= ARM_MS
-	var sig := "%s|%s|%s|%s|%s|%d|%s|%s" % [ui.clock.scenario, str(e.faults_done.keys()), str(e.faults_fixed.keys()),
-			str(pending.keys()), str(fixing.keys()), int(e.wx_kind) if e.ix.has("world_wx") else -1, asking, armed]
+	var sig := "%s|%s|%s|%s|%s|%d|%s" % [ui.clock.scenario, str(e.faults_done.keys()), str(e.faults_fixed.keys()),
+			str(pending.keys()), str(fixing.keys()), int(e.wx_kind) if e.ix.has("world_wx") else -1, asking]
 	if sig == _sig:
+		# the question's words (the plant time goes on) and its Restart's arming, in place: a rebuild would drop a
+		# press under way on Keep the run and the focus for a frame
+		var q: Label = body.find_child("restart_question", true, false) if asking != "" else null
+		if q != null:
+			var words := _question_text(asking)
+			if q.text != words:
+				q.text = words
+				for n in ["keep_run", "confirm_restart"]:
+					var b = body.find_child(n, true, false)
+					if b != null and "accessibility_description" in b:
+						b.set("accessibility_description", words)
+			var go: Button = body.find_child("confirm_restart", true, false)
+			if go != null and go.disabled == armed:
+				go.disabled = not armed
 		return
 	_sig = sig
 	var fo: Control = get_viewport().gui_get_focus_owner() if is_inside_tree() else null
@@ -163,9 +177,14 @@ func ask_restart(id: String) -> void:
 		keep.grab_focus()
 	# the question and its Restart in view (a phone at a large UI size), once the panel has laid them out
 	get_tree().create_timer(0.1).timeout.connect(func():
-		for n in ["confirm_restart", "restart_question"]:
+		for n in ["restart_question", "confirm_restart"]:
 			if is_inside_tree() and asking != "":
 				ui._keep_in_view(body.find_child(n, true, false)))
+	# then the focused Keep the run, a frame later (the scroll's own layout follows a frame after a change): always in
+	# view, the question below it as far as there is room
+	get_tree().create_timer(0.2).timeout.connect(func():
+		if is_inside_tree() and asking != "":
+			ui._keep_in_view(body.find_child("keep_run", true, false)))
 	# the destructive button comes alive after ARM_MS (refresh() runs twice a second while the panel shows)
 	get_tree().create_timer(ARM_MS / 1000.0 + 0.02).timeout.connect(func():
 		if is_inside_tree() and visible and asking != "":
@@ -174,22 +193,24 @@ func ask_restart(id: String) -> void:
 
 ## The question in the scenario's row: "Keep the run" where "Restart in it" was (focused), the words and the
 ## destructive "Restart" under the row, below Keep the run.
+func _question_text(id: String) -> String:
+	var scs: Dictionary = ui.info.m.scenarios
+	var now := String(scs.get(ui.clock.scenario, {}).get("title", ui.clock.scenario))
+	var ask := ("Restart %s from its start?" % now) if id == ui.clock.scenario \
+			else ("Restart in %s?" % String(scs.get(id, {}).get("title", id)))
+	return "%s The run in progress (%s, %s of plant time) is lost: it can't be continued or undone." \
+			% [ask, now, W.model_time(ui.clock.engine.step_no)]
+
+
 func _question(row: HBoxContainer, id: String, sc: Dictionary, armed: bool, focus_name: String) -> void:
 	var keep := W.button("Keep the run", func():
 		asking = ""
 		_sig = ""
 		refresh()
-		var back: Button = body.find_child("restart_" + id, true, false)
-		if back != null:
-			back.grab_focus())
+		_focus_row(id))
 	keep.name = "keep_run"
 	row.add_child(keep)
-	var running: Dictionary = ui.info.m.scenarios.get(ui.clock.scenario, {})
-	var now := String(running.get("title", ui.clock.scenario))
-	var ask := ("Restart %s from its start?" % now) if id == ui.clock.scenario \
-			else ("Restart in %s?" % String(sc.get("title", id)))
-	var q := W.label("%s The run in progress (%s, %s of plant time) is lost: it can't be continued or undone." \
-			% [ask, now, W.model_time(ui.clock.engine.step_no)], 18)
+	var q := W.label(_question_text(id), 18)
 	q.name = "restart_question"
 	body.add_child(q)
 	var bar := HBoxContainer.new()
@@ -203,9 +224,7 @@ func _question(row: HBoxContainer, id: String, sc: Dictionary, armed: bool, focu
 		ui.restart(id)
 		if visible:                 # the focus to the row's own button again, not lost with the question's
 			refresh()
-			var back: Button = body.find_child("restart_" + id, true, false)
-			if back != null:
-				back.grab_focus())
+			_focus_row(id))
 	go.name = "confirm_restart"
 	go.disabled = not armed
 	bar.alignment = BoxContainer.ALIGNMENT_END     # under Keep the run: Down from it goes there (its neighbours too)
@@ -219,3 +238,11 @@ func _question(row: HBoxContainer, id: String, sc: Dictionary, armed: bool, focu
 			b.set("accessibility_description", q.text)
 	if focus_name in ["keep_run", "confirm_restart"]:
 		(keep if focus_name == "keep_run" or not armed else go).grab_focus.call_deferred()
+
+
+## The focus to the scenario's Restart in it, scrolled into view (the panel's scroll doesn't follow the focus).
+func _focus_row(id: String) -> void:
+	var back: Button = body.find_child("restart_" + id, true, false)
+	if back != null:
+		back.grab_focus()
+		get_tree().create_timer(0.05).timeout.connect(func(): ui._keep_in_view(back))
