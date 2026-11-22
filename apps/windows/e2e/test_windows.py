@@ -585,6 +585,14 @@ class Windows(unittest.TestCase):
         env = {'KKS_UX': 'win-text-size', 'KKS_TIMING': '1'}
         put(os.path.join(HERE, 'textsize.ps1'))
         self.course_files()
+        # the setup screen (the ways to join) at Windows' largest text, 225 %, then joining as usual
+        try:
+            self.assertIn('PASSED', text_size(225))
+            self.check('tssetup.uia', ['wait\tJoin through a server\t60', 'sleep\t1000', 'fits\tJoin through a server'],
+                       keep=False, env=env)
+            self.screenshot('win-text-225-setup')
+        finally:
+            text_size(100)
         self.join('tsjoin.uia', env=env)
         whole = ['wait\t~Sample sheet\t60', 'fits\tDrawings', 'click\tManage', 'wait\tAccount\t20', 'fits\tAccount',
                  'click\tAccount', 'wait\t‹ Manage\t20', 'fits\t‹ Manage', 'click\tDrawings', 'wait\t~Sample sheet\t20',
@@ -623,6 +631,9 @@ class Windows(unittest.TestCase):
                                        'click\tDrawings', 'wait\tEquipment by system…\t20', 'click\tEquipment by system…',
                                        'wait\tEquipment by system\t20', 'fits\tSearch codes, systems, descriptions',
                                        'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system',
+                                       # tabs with nothing or little in them (no procedures, an empty review queue)
+                                       'click\tProcedures', 'sleep\t800', 'fits\tProcedures', 'click\tReview', 'sleep\t800',
+                                       'fits\tReview',
                                        'click\tLearning', 'select\t~Instrumentation and control', 'click\tOpen the course',
                                        'wait\t~Instrumentation and control — \t30', 'resize\tOpen the selected page\t360\t640',
                                        'sleep\t1000', 'fits\tOpen the selected page'])
