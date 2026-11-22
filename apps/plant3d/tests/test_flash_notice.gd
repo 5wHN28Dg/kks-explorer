@@ -260,7 +260,7 @@ func _with_reduced_motion(tree: SceneTree, p: Array) -> void:
 ## reaches them.
 func _large_ui(tree: SceneTree, p: Array) -> void:
 	var size0: Vector2i = tree.root.size
-	tree.root.size = Vector2i(960, 420)
+	tree.root.size = Vector2i(1600, 900)
 	W.apply_ui_size(tree.root, 2.0)
 	var n = FlashNotice.new(ConfigFile.new())
 	tree.root.add_child(n)
@@ -270,10 +270,16 @@ func _large_ui(tree: SceneTree, p: Array) -> void:
 	for c: Control in [n.continue_button, n.no_flashes]:
 		if not vr.encloses(c.get_global_rect()):
 			p.append("at 200 %% %s is off the window (%s in %s)" % [c.name, str(c.get_global_rect()), str(vr)])
+	# words longer than the canvas holds at 200 % (the canvas is 450 px high there whatever the window: the notice's own
+	# words fit, just): they must scroll, so the keyboard's way to them is checked, never skipped
+	for i in 3:
+		n.words.add_child(W.label(FlashNotice.paragraphs()[1], 20))
+	n._place()
+	for i in 3:
+		await tree.process_frame
 	var bar: VScrollBar = n.scroll.get_v_scroll_bar()
-	# (a short window at 200 %: the words must scroll, so the keyboard's way to them is checked, never skipped)
 	if bar.max_value <= n.scroll.size.y + 1.0:
-		p.append("at 200 %% on a %s window the words fit: the scrolling is not checked" % str(tree.root.size))
+		p.append("at 200 % longer words still fit: the scrolling is not checked")
 	elif n.scroll.focus_mode != Control.FOCUS_ALL:
 		p.append("at 200 % the words that don't fit can't take the focus")
 	else:
