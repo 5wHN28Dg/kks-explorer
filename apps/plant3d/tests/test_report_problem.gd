@@ -77,16 +77,21 @@ func run(tree: SceneTree) -> Array:
 	# the inputs: not ticked at the start; ticked, in the report
 	if rv.inputs_cb.button_pressed or shown.contains("walkdown-plant-inputs"):
 		p.append("the run's inputs are in the report without the box ticked")
-	rv.text_box.text = rv.text_box.text.replace("What happened (write it here): ", "What happened (write it here): it froze, " + NAME)
+	rv.what_box.text = "it froze, " + NAME + "\nthen the walker fell\nthird line"
 	rv.inputs_cb.button_pressed = true
 	shown = rv.text_box.text
-	if not shown.contains("\"format\":\"walkdown-plant-inputs\"") or not shown.contains("it froze"):
-		p.append("ticked, the report lacks the run's inputs or lost what was written: %s" % shown.left(200))
+	if not shown.contains("\"format\":\"walkdown-plant-inputs\""):
+		p.append("ticked, the report lacks the run's inputs: %s" % shown.left(200))
+	if rv.what_box.text != "it froze, " + NAME + "\nthen the walker fell\nthird line":
+		p.append("ticking the box changed what the trainee wrote: %s" % rv.what_box.text)
+	if rv.text_box.editable:
+		p.append("the report itself can be edited (what is given would differ from what is shown)")
 	# saved: as shown, redacted again (the trainee typed the name)
 	var out := OS.get_user_data_dir().path_join("tests-report.txt")
 	rv.write_to(out)
 	var saved := FileAccess.get_file_as_string(out)
-	if not saved.contains("it froze, [player name]") or saved.contains(NAME) or saved.contains("<address> UTC"):
+	if not saved.contains("it froze, [player name]\nthen the walker fell\nthird line") or saved.contains(NAME) \
+			or saved.contains("<address> UTC") or not saved.contains("walkdown-plant-inputs"):
 		p.append("the saved file is not the report as shown, redacted: %s" % saved.left(200))
 	if not rv.note.visible or not rv.note.text.contains("tests-report.txt"):
 		p.append("saving did not say where: %s" % rv.note.text)
@@ -101,16 +106,64 @@ func run(tree: SceneTree) -> Array:
 	var long_url := Report.issue_url("x".repeat(20000))
 	if long_url.length() > Report.URL_MAX or not long_url.contains("copied"):
 		p.append("a long report's link is %d long or doesn't say it was copied" % long_url.length())
-	# Back: About again
+	# the issue's button says when it copies (the report with 100 log lines and the inputs is too long for a link)
+	var keep_what: String = rv.what_box.text
+	rv.what_box.text = keep_what + " " + "long ".repeat(2000)
+	rv.refresh()
+	if rv._fits() or rv.issue_btn.text != "Copy and open a public issue":
+		p.append("a report too long for a link: the button says %s" % rv.issue_btn.text)
+	rv.what_box.text = keep_what
+	rv.refresh()
+	if rv._fits() != (rv.issue_btn.text == "Open a public issue"):
+		p.append("the issue's button (%s) doesn't follow whether the report fits" % rv.issue_btn.text)
+	rv.inputs_cb.button_pressed = false
+	# Back: About again; opened again, what was written is still there, the box unticked
 	rv.back.pressed.emit()
 	await tree.process_frame
 	if rv.visible or not main.hud.about.visible:
 		p.append("Back did not return to About")
+	main.hud.show_report()
+	await tree.process_frame
+	if not rv.what_box.text.begins_with("it froze") or rv.inputs_cb.button_pressed:
+		p.append("opened again: what was written lost (%s) or the box ticked" % rv.what_box.text.left(40))
+	# Escape: About again
+	var esc := InputEventKey.new()
+	esc.pressed = true
+	esc.keycode = KEY_ESCAPE
+	esc.physical_keycode = KEY_ESCAPE
+	tree.root.push_input(esc)
+	await tree.process_frame
+	if rv.visible or not main.hud.about.visible:
+		p.append("Escape did not return to About")
+	# the settings closed while the report shows: opened again, they are the settings (title, About, Close)
+	main.hud.show_report()
+	await tree.process_frame
+	main.hud.show_settings(false)
+	await tree.process_frame
+	main.hud.show_settings(true)
+	await tree.process_frame
+	if not main.hud.settings_box.visible or not main.hud.about_btn.is_visible_in_tree() or rv.visible:
+		p.append("after closing the settings from the report, they open empty")
+	main.hud.show_settings(false)
 	# a script error: said once where to report it
+	var k := Report.Keep.new()
+	k.on_script_error = Report._notice
 	ui._toast.visible = false
-	Report._notice()
+	k._log_error("f", "res://x.gd", 1, "", "test: a fault", false, Logger.ERROR_TYPE_SCRIPT, [])
+	await tree.process_frame
 	if not ui._toast.visible or not ui._toast.text.contains("Report a problem"):
 		p.append("a script error does not say where to report it: %s" % ui._toast.text)
+	ui._toast.visible = false
+	k._log_error("f", "res://x.gd", 2, "", "test: another fault", false, Logger.ERROR_TYPE_SCRIPT, [])
+	await tree.process_frame
+	if ui._toast.visible:
+		p.append("a second script error said it again")
+	if not str(k.last(5)).contains("SCRIPT ERROR: test: another fault"):
+		p.append("the log keeps no script error: %s" % str(k.last(5)))
+	# redaction: any case, never inside words put in, generic names left alone
+	var r := Report.redact("C:\\Users\\SARA <b>ZED</b> سارة\\x Player one", [[NAME, "[player name]"], ["Player", "[player name]"]])
+	if r.contains("SARA") or not r.contains("Player one"):
+		p.append("redaction (case, generic words): %s" % r)
 	# a session's code and players: left out too
 	var in_session := Report.build(fake_main, false)
 	for bad in [NAME, CODE, "Omar Q", "192.168.7.23"]:

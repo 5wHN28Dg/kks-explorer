@@ -3,7 +3,8 @@
 ##   OFFSCREEN_GODOT_DATA=DIR tools/plant3d/bench/offscreen.sh godot --resolution 1600x900 --path apps/plant3d \
 ##     --script res://tests/report_shots.gd -- --out=DIR [--phone] [--ui-size=2]
 ## Switched on; a synthetic player name saved and a log line holding it and an address: About with its button; the
-## report; the run's inputs ticked; after Copy (what it says).
+## report; a description written (Latin and Arabic); the run's inputs ticked, the report scrolled to; a save that
+## failed; after Copy (what it says).
 extends SceneTree
 
 const Report = preload("res://app/report.gd")
@@ -57,9 +58,15 @@ func _run() -> void:
 	await shot("report_about")
 	main.hud.show_report()
 	await shot("report_shown")
-	main.hud.report.inputs_cb.button_pressed = true
+	var rv = main.hud.report
+	rv.what_box.text = "The pump's card froze after I pressed Start. سارة saw it too."
+	await shot("report_written")
+	rv.inputs_cb.button_pressed = true
+	rv.scroll.ensure_control_visible(rv.text_box)
 	await shot("report_inputs")
-	main.hud.report.copy()
+	rv.write_to("user://no-such-folder/x/report.txt")
+	await shot("report_save_failed")
+	rv.copy()
 	await shot("report_copied")
 	main.free()
 	RunSave.remove(path)

@@ -38,7 +38,7 @@ class Keep extends Logger:
 	var on_script_error := Callable()   # called (deferred) at the first script error of a session
 
 	func _add(s: String) -> void:
-		var t := Time.get_datetime_string_from_system(false, true).substr(11)
+		var t := Time.get_datetime_string_from_system(true, true).substr(11)   # UTC, as the report's own time
 		mutex.lock()
 		lines.append("%s %s" % [t, s.strip_edges().left(LINE_MAX)])
 		while lines.size() > KEEP_LINES:
@@ -91,6 +91,9 @@ static func _notice() -> void:
 
 ## What must never leave in a report: the player names this device knows (its own saved one, a session's players),
 ## the session code. Each with the words put in its place.
+static var _seen := {}          # every secret seen this process (a player who left, a session that ended)
+const GENERIC := ["player", "plant", "trainee"]   # a default or common word is never a name to hide
+
 static func secrets_of(main) -> Array:
 	var out: Array = []
 	var cf = main.get("cf") if main != null else null
@@ -104,7 +107,14 @@ static func secrets_of(main) -> Array:
 		for r in s.get("roster") if s.get("roster") is Array else []:
 			if r is Dictionary:
 				out.append([str(r.get("name", "")), "[player name]"])
-	return out
+	for x in out:
+		var k := String(x[0]).strip_edges()
+		if k.length() >= 2 and not GENERIC.has(k.to_lower()):
+			_seen[k] = x[1]
+	var all: Array = []
+	for k in _seen:
+		all.append([k, _seen[k]])
+	return all
 
 
 ## The text with the secrets, the user's folders and name, and network addresses replaced.
@@ -116,11 +126,15 @@ static func redact(text: String, secrets: Array) -> String:
 	pairs.append([OS.get_environment("USERPROFILE"), "~"])
 	for v in ["USER", "USERNAME", "LOGNAME"]:
 		pairs.append([OS.get_environment(v), "[user]"])
-	# the longest first: a name inside another one is never left half replaced
-	pairs = pairs.filter(func(p): return String(p[0]).strip_edges().length() >= 2)
+	# the longest first: a name inside another one is never left half replaced; any case (a Windows path's user
+	# folder); first to marks, then the marks to words, so that a later one never matches inside a word put in
+	pairs = pairs.filter(func(p): return String(p[0]).strip_edges().length() >= 2 \
+			and not GENERIC.has(String(p[0]).strip_edges().to_lower()))
 	pairs.sort_custom(func(a, b): return String(a[0]).length() > String(b[0]).length())
-	for p in pairs:
-		text = text.replace(String(p[0]).strip_edges(), p[1])
+	for i in pairs.size():
+		text = _replace_nocase(text, String(pairs[i][0]).strip_edges(), "\u0001%d\u0002" % i)
+	for i in pairs.size():
+		text = text.replace("\u0001%d\u0002" % i, pairs[i][1])
 	var re := RegEx.new()
 	re.compile("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b")                                  # IPv4
 	text = re.sub(text, "<address>", true)
@@ -132,6 +146,19 @@ static func redact(text: String, secrets: Array) -> String:
 	return text
 
 
+static func _replace_nocase(text: String, what: String, with: String) -> String:
+	var low := text.to_lower()
+	var w := what.to_lower()
+	var out := ""
+	var at := 0
+	var i := low.find(w)
+	while i >= 0:
+		out += text.substr(at, i - at) + with
+		at = i + w.length()
+		i = low.find(w, at)
+	return out + text.substr(at)
+
+
 ## The report, as shown and given. `with_inputs`: the run's inputs too.
 static func build(main, with_inputs: bool) -> String:
 	var v: String = str(ProjectSettings.get_setting("application/config/version", "?"))
@@ -139,8 +166,6 @@ static func build(main, with_inputs: bool) -> String:
 	var L := PackedStringArray()
 	L.append("Walkdown Plant problem report")
 	L.append("Made: %s" % Time.get_datetime_string_from_system(true, true) + " UTC")
-	L.append("")
-	L.append("What happened (write it here): ")
 	L.append("")
 	L.append("App: Walkdown Plant %s, commit %s%s" % [v, b.commit if b.commit != "" else "unknown",
 			" with local changes" if b.changes else ""])
@@ -195,14 +220,14 @@ static func issue_url(text: String) -> String:
 ## Android's share sheet with the text (through the AndroidRuntime plugin's Java bridge): "" or why not.
 static func share_android(text: String) -> String:
 	if OS.get_name() != "Android" or not Engine.has_singleton("AndroidRuntime"):
-		return "sharing is on Android only"
+		return "only Android has a share sheet"
 	var act = Engine.get_singleton("AndroidRuntime").getActivity()
 	if act == null:
-		return "no activity"
+		return "the app's window was not ready"
 	var Intent = JavaClassWrapper.wrap("android.content.Intent")
 	var i = Intent.Intent()
 	if i == null:
-		return "no Intent"
+		return "Android refused to make the message"
 	i.setAction("android.intent.action.SEND")
 	i.putExtra("android.intent.extra.SUBJECT", "Walkdown Plant problem report")
 	i.putExtra("android.intent.extra.TEXT", text)
@@ -215,7 +240,8 @@ static func share_android(text: String) -> String:
 # ------------------------------------------------------------------ the view (in the settings panel, as About)
 
 var main
-var text_box: TextEdit
+var what_box: TextEdit          # what happened, in the trainee's words (kept while the app runs)
+var text_box: TextEdit          # the report, read-only: shown in full, selectable
 var inputs_cb: CheckBox
 var note: Label
 var back: Button
@@ -223,6 +249,7 @@ var save_btn: Button
 var share_btn: Button
 var copy_btn: Button
 var issue_btn: Button
+var scroll: ScrollContainer
 var _dialog: FileDialog
 var report := ""
 
@@ -236,12 +263,35 @@ func _init() -> void:
 	t.text = "Report a problem"
 	t.add_theme_font_size_override("font_size", int(28 * W.scale))
 	add_child(t)
+	# everything but the title and the buttons scrolls (a short canvas, a large UI size): the report itself always
+	# keeps a height of its own
+	scroll = ScrollContainer.new()
+	scroll.name = "scroll"
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	add_child(scroll)
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", int(10 * W.scale))
+	scroll.add_child(body)
 	var intro := W.label("Nothing is sent by itself. Below is the whole report: the app's version, this device and its "
 			+ "graphics, and the app's last log lines. Player names, session codes, network addresses and your "
-			+ "folders are left out. Write what happened at its top, then save, share or copy it, or open a public "
-			+ "issue with it (the project's tracker on GitHub, which anyone can read).", 18)
+			+ "folders are left out. Say what happened, then save, share or copy it, or open a public issue with it "
+			+ "(the project's tracker on GitHub, which anyone can read).", 18)
 	intro.name = "intro"
-	add_child(intro)
+	body.add_child(intro)
+	body.add_child(W.label("What happened", 18))
+	what_box = TextEdit.new()
+	what_box.name = "what_happened"
+	what_box.placeholder_text = "What you did, what you saw, what you expected"
+	what_box.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	what_box.custom_minimum_size.y = 110 * W.scale
+	what_box.add_theme_font_size_override("font_size", int(18 * W.scale))
+	what_box.accessibility_name = "What happened"
+	what_box.text_changed.connect(_issue_label_soon)
+	what_box.tab_input_mode = false          # Tab moves on to the next control (the keyboard never stays in it)
+	body.add_child(what_box)
 	inputs_cb = CheckBox.new()
 	inputs_cb.name = "with_inputs"
 	inputs_cb.text = "Include this run's inputs (what was done in it, so the problem can be replayed)"
@@ -249,14 +299,18 @@ func _init() -> void:
 	inputs_cb.add_theme_font_size_override("font_size", int(18 * W.scale))
 	inputs_cb.custom_minimum_size.y = 52 * W.scale
 	inputs_cb.toggled.connect(func(_on): refresh())
-	add_child(inputs_cb)
+	body.add_child(inputs_cb)
+	body.add_child(W.label("The report", 18))
 	text_box = TextEdit.new()
 	text_box.name = "report_text"
-	text_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	text_box.editable = false               # shown as it will go; it can be selected and copied
+	text_box.focus_mode = Control.FOCUS_CLICK   # (the D-pad and Tab pass it by: it would hold them, moving its caret)
+	text_box.add_theme_color_override("font_readonly_color", Color.WHITE)   # (read-only text is dimmed by default: A1)
+	text_box.custom_minimum_size.y = 260 * W.scale
 	text_box.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-	text_box.add_theme_font_size_override("font_size", int(16 * W.scale))
+	text_box.add_theme_font_size_override("font_size", int(18 * W.scale))
 	text_box.accessibility_name = "The report"
-	add_child(text_box)
+	body.add_child(text_box)
 	note = W.label("", 18)
 	note.name = "said"
 	note.visible = false
@@ -287,10 +341,11 @@ func _init() -> void:
 
 
 func open() -> void:
-	inputs_cb.set_pressed_no_signal(false)       # never ticked for the trainee (T1)
+	inputs_cb.set_pressed_no_signal(false)       # never ticked for the trainee (T1); what they wrote stays
 	note.visible = false
 	refresh()
 	visible = true
+	scroll.scroll_vertical = 0
 	back.grab_focus()
 
 
@@ -300,27 +355,39 @@ func close() -> void:
 		closed.emit()
 
 
-## The report made again (the box ticked or not); what the trainee wrote at its top is kept.
+## The report made again (the box ticked or not); what the trainee wrote is its own box, untouched.
 func refresh() -> void:
-	var wrote := _written()
 	report = build(main, inputs_cb.button_pressed)
-	text_box.text = report.replace("What happened (write it here): ", "What happened (write it here): " + wrote)
-	text_box.scroll_vertical = 0
+	text_box.text = report
+	# the issue's button says when its link can't hold the report and it is copied to be pasted (S6)
+	_issue_label()
 
 
-func _written() -> String:
-	if text_box == null or text_box.text == "":
-		return ""
-	for l in text_box.text.split("\n"):
-		if l.begins_with("What happened (write it here): "):
-			return l.substr("What happened (write it here): ".length())
-	return ""
+var _label_due := false
+## The issue's button's words follow what is typed (a long description no longer fits a link), a moment after typing.
+func _issue_label_soon() -> void:
+	if _label_due or not is_inside_tree():
+		return
+	_label_due = true
+	get_tree().create_timer(0.3).timeout.connect(func():
+		_label_due = false
+		_issue_label())
 
 
-## What is given: the box's text as the trainee sees it (with what they wrote), redacted again in case they pasted
-## something.
+func _issue_label() -> void:
+	issue_btn.text = "Open a public issue" if _fits() else "Copy and open a public issue"
+
+
+## The report fits in an issue's link (else it is copied, to be pasted there).
+func _fits() -> bool:
+	var g := given()
+	return issue_url(g).contains("&body=" + g.uri_encode())
+
+
+## What is given: what the trainee wrote, then the report, redacted again (they may have typed a name).
 func given() -> String:
-	return redact(text_box.text, secrets_of(main))
+	var w := what_box.text.strip_edges()
+	return redact("What happened: %s\n\n%s" % [w if w != "" else "(not said)", report], secrets_of(main))
 
 
 func _say(t: String) -> void:
@@ -329,8 +396,9 @@ func _say(t: String) -> void:
 
 
 func copy() -> void:
-	DisplayServer.clipboard_set(given())
-	_say("The report was copied (%d characters)." % given().length())
+	var g := given()
+	DisplayServer.clipboard_set(g)
+	_say("The report was copied (%d characters)." % g.length())
 
 
 func save_file() -> void:
@@ -343,7 +411,7 @@ func save_file() -> void:
 		_dialog.title = "Save the problem report"
 		_dialog.file_selected.connect(write_to)
 		add_child(_dialog)
-	_dialog.current_file = "walkdown-plant-report-%s.txt" % Time.get_datetime_string_from_system(false, false) \
+	_dialog.current_file = "walkdown-plant-report-%s.txt" % Time.get_datetime_string_from_system(true, false) \
 			.replace(":", "").replace("T", "-").left(15)
 	_dialog.popup_centered_ratio(0.8)
 
@@ -352,8 +420,8 @@ func save_file() -> void:
 func write_to(path: String) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
-		_say("The report could not be saved there (%s). Choose another folder, or copy it instead." \
-				% error_string(FileAccess.get_open_error()))
+		_say("The report could not be saved there: the folder may not be writable, or the storage full. Choose "
+				+ "another folder, or copy the report instead.")
 		return
 	f.store_string(given())
 	f.close()
@@ -362,24 +430,26 @@ func write_to(path: String) -> void:
 
 func share() -> void:
 	var why := share_android(given())
-	_say("The system's share sheet is open." if why == "" else "Sharing did not open (%s): save or copy it instead." % why)
+	_say("Android's share sheet is open." if why == "" else "Sharing did not open (%s). Save or copy the report instead." % why)
 
 
 func open_issue() -> void:
 	var t := given()
 	var url := issue_url(t)
-	if not url.contains(t.uri_encode()):
-		DisplayServer.clipboard_set(t)
+	var copied := not _fits()
+	if copied:
+		DisplayServer.clipboard_set(t)          # (the button said so: "Copy and open a public issue")
 	var err := OS.shell_open(url)
 	if err != OK:
 		DisplayServer.clipboard_set(t)
-		_say("No browser opened (%s). The report was copied: paste it into a new issue at %s." % [error_string(err), ISSUES])
+		_say("No browser opened. The report was copied: paste it into a new issue at %s." % ISSUES)
 	else:
 		_say("A new issue opens in your browser%s. Nothing is posted until you press its button there." \
-				% ("" if url.contains(t.uri_encode()) else ", with the report copied to paste in"))
+				% (", with the report copied: paste it into the issue" if copied else ""))
 
 
-## Back: Esc, gamepad B or Start (before the settings see it), as About.
+## Back: Esc, gamepad B or Start (before the settings see it), as About. (Gamepad A presses the focused button through
+## app/hud.gd, as in the settings.)
 func _input(e: InputEvent) -> void:
 	if not is_visible_in_tree() or not e.is_pressed():
 		return

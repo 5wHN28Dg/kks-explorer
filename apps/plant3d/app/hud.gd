@@ -614,7 +614,8 @@ func _about_closed() -> void:
 
 func show_settings(on: bool) -> void:
 	if not on and report != null and report.visible:
-		report.visible = false       # (closed with the settings: not back to About)
+		report.visible = false       # (closed with the settings: not back to About; they open as the settings again)
+		settings_box.visible = true
 	if not on and about.visible:
 		about.close()
 	var was_on := panel.visible
