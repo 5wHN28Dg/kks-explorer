@@ -1,0 +1,18 @@
+# UX evidence: Report a problem (#446), round 1
+
+Synthetic (the invented plant), commit ef1f25a5c7a3efe6519b46f80925945e26961eec. `apps/plant3d/tests/report_shots.gd` under tools/plant3d/bench/offscreen.sh (OFFSCREEN_GODOT_DATA a folder of its own), switched on: desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout); states report_about, report_shown, report_inputs, report_copied.
+
+```
+ee70194b6fe37b3613ef6f89f57fce23e382b0fe42601f3c0040407997b20c0a  desk_ui2_report_about.png
+cee4f3494e7fa9ae45a61de88e92e1cd131cab98e9ceb835d56ae8a1ecd03321  desk_ui2_report_copied.png
+3782961943445d9395e36728e6c9c46e41f13f0a7b6febdc5e283a12c7cefbbe  desk_ui2_report_inputs.png
+a174fecc8280fb07d6884be3931ed182acfcb642a8a09b789931abec217e1573  desk_ui2_report_shown.png
+dccd297f6c094a40aa3e8651dff55555bfbad6a8730a38a6a75524734aad764f  desk_uidefault_report_about.png
+8a832c6386f077172317522e8e919bb6eeb37d2c26ded6e8564110a12cf37ffe  desk_uidefault_report_copied.png
+9ad90a7d64f37dfc0b1fda6de40b57f3e0368cda36a9e8225f87b1cf4969517b  desk_uidefault_report_inputs.png
+ae44316870e76c390266a5d738304c08111c082850bcb472077f1fd474bd0234  desk_uidefault_report_shown.png
+69bdf7c8a6e6ebe18a146830ca5c8dd845aa04b3a57f12364f9584d1f2322378  phone_uidefault_report_about.png
+e628f935738212bcbf7d59ba5b09c53e9b773cc821193e547c8fcedd5c963530  phone_uidefault_report_copied.png
+811475da4b2fb0d46e4a3055d61e06d07945657a6db540617730a4daa1ed1347  phone_uidefault_report_inputs.png
+c0d8a666ac8c86a5d695fc2c4c7fa9a9dadd5a48aaf837dbf2da94e557c3ac4c  phone_uidefault_report_shown.png
+```
