@@ -1,11 +1,11 @@
-# Evidence for PR #512 (second set, after review pass 1; replaces the first)
-scripts' commit: 5690b7d7 (app and uiadrive built from it) for windows-11/ and windows-10/
-command: KKS_SHOTS=<folder> KKS_TESTS=test_text_size python3 apps/windows/e2e/test_windows.py <vm-address> Walkdown.exe uiadrive.exe kks_server kks_import (with KKS_VM_DOMAIN=kks-win10 for Windows 10)
-machines: kks-win11 (26H2, 26300) and kks-win10 (22H2, 19045), both at 100 % scaling; Windows' Text size set in Settings itself through UI Automation (e2e/textsize.ps1): the setup screen at 225 %; then 150 %, 100 % and 150 % while the app runs; then 200 % and 225 %: the main screen with a tag, Manage → Account with an error in the status line, Procedures and Review (empty), Equipment by system, a course window at 360 x 640; every step passed uiadrive's fits (every label, field, button, check box and list measured in its own font; the window's own parts and a page's controls never overlapping; every control inside its parent's width)
-switched-off/: main's app (#506's head 814208ad, the same code as main 7f583929) and this PR's app at f88d0e32 switched off, the same steps on Windows 11 at 100 % (a tag's panel open; a course window): 0 pixels differ in each pair (PIL ImageChops.difference); fits passed on the PR's
+# Evidence for PR #512 (third set, after review pass 2; replaces the earlier ones)
+scripts' commit: f720a2a4 (app and uiadrive built from it) for windows-11/, windows-10/ and switched-off/
+command: KKS_SHOTS=<folder> KKS_TESTS=test_text_size python3 apps/windows/e2e/test_windows.py <vm-address> Walkdown.exe uiadrive.exe kks_server kks_import (KKS_VM_DOMAIN=kks-win10 for Windows 10)
+machines: kks-win11 (26H2, 26300) and kks-win10 (22H2, 19045), both at 100 % scaling; Windows' Text size set in Settings itself through UI Automation (e2e/textsize.ps1): the setup screen at 225 %; 150 %, 100 %, 150 % while the app runs; 200 % and 225 %: the main screen with a tag, Manage → Account with an error in the status line, Procedures and Review (empty), Equipment by system, a course window at 360 x 640. Every step passed uiadrive's fits: every label, field, button, check box and plain list row measured in its own font; values to read whole (one line) or every line in view; no word broken in a wrapped button; the window's own parts and a page's controls never overlapping; every control inside its parent's width
+switched-off/: main's app (#506's head 814208ad = main 7f583929's code) and this PR's app (f720a2a4) switched off, the same steps on Windows 11 at 100 % (a tag's panel open; a course window): 0 pixels differ in each pair
 both-switches/: win-text-size and win-dark-ui together, dark app mode, 150 %, Windows 11 (built from 138a39b9)
 data: synthetic (test_windows.py's test plant: importer/tests/vectors/kkp-sample.pdf sha256 9f56a4f8d94a19d1549af869c3ee77e1690d28842b3b57ebb9116529ea53fb0e, the tag 11LAB70AA500, data/courses/inc.json sha256 b26ab75ad0624fb4b88750a0f052173cc56746e21588523c66cdca83257efd9f)
-timing of each live change (fonts and every page laid out again; timing.log): Windows 11 53, 66, 92, 39, 82, 23 ms; Windows 10 108, 59, 84, 101, 83, 87 ms (f88d0e32)
+time of each live change (fonts and every page; timing.log): Windows 10 at f720a2a4: 83, 73, 130, 108, 179, 40 ms
 
 sha256 per file:
 578c0cf8927e2a68a4a53c86a4fcf9fb87b165ca9e6d7b42b175fd1d7dc180c5  both-switches/win-text-150-dark.png
@@ -14,21 +14,21 @@ cf55f9609797988a4c7a4fd1971422fa7c6c44a1ce7b7c098e89169c790ec1d6  switched-off/o
 cf55f9609797988a4c7a4fd1971422fa7c6c44a1ce7b7c098e89169c790ec1d6  switched-off/off-course-pr.png
 ccfda71c4f934037b7af924c1ec8e4cf2b6cdf1fe5baf46eb8b11cba8d9f563d  switched-off/off-drawings-main.png
 ccfda71c4f934037b7af924c1ec8e4cf2b6cdf1fe5baf46eb8b11cba8d9f563d  switched-off/off-drawings-pr.png
-6632eb0dde5e560f143b6d7f5cfb94fd506521928e6088df019975dd64be5ee0  windows-10/win-text-150-account.png
-10ed654ae35f0793c785d671e248efedc03e4827f553a4fe0fa6bfe7f47149a8  windows-10/win-text-150-drawings.png
-6ee8262c86a846dbb13dd075b600901f22a53daff9c7f9dd1c83af2ab42b6e40  windows-10/win-text-200-account.png
-9ee3bb223184c9ea85abac0d97af34cacd815b5bcf1ff08da18d36a7ca139cbd  windows-10/win-text-200-course-360.png
-f977b63da9d83bbcf205a915e8ced262224b774be32aef0c0f75f7cb51a70ffc  windows-10/win-text-200-drawings.png
-eafb9a590a68bca831f32b5209b5281fb24b106f560e7252d8f8f31f30b08c9b  windows-10/win-text-225-account.png
-4ebd366a5baf433050fbe972ae98cb8fd1ac571a88c0cfc3c7af50fa7589c946  windows-10/win-text-225-course-360.png
-d8c188faac8d51eba500788ae85551738ef8336f438549ceaf108206e10f43f5  windows-10/win-text-225-drawings.png
-1408578a03e0119665a2c130ab94bc86433ff9f43b78443989aeb16034d3a397  windows-10/win-text-225-setup.png
-fec1b808ec433aad5096569e9d093c66fb1c8e5addffb3daee2a0bff50d599c0  windows-11/win-text-150-account.png
-5209f0efd293bab69eb80c5e0256d5d997a78d65ee91aa01e32af23e93c2ea7c  windows-11/win-text-150-drawings.png
-875d0ee941987bfc948dd325921d053c6121ef5d9a193f883effc317d388a0e5  windows-11/win-text-200-account.png
-1d81f68ecbe6e853c0375d041850f18c949bd3d9718794b8d85dba9b0b788724  windows-11/win-text-200-course-360.png
-f2d8e74e393cfb607410ae7b10c40dac441275bebc3a55c872524b615102948f  windows-11/win-text-200-drawings.png
-5d5c48f56961ad13eb8ec5440379abb24bf341d088b3984716ac9c78586d7bb0  windows-11/win-text-225-account.png
-dc748783de3c342c9ffad7b44af40a79e199561edabd26f7a0e42dbd090a85c2  windows-11/win-text-225-course-360.png
-9bd701fcbf0332e2206c7903bcd870a08ea8ba5227c46878085cf0a80f378bbe  windows-11/win-text-225-drawings.png
-938cb137543f17efae0850e31a9b8af3bc5ac551c2e1ca5bd1a3a088055c27c6  windows-11/win-text-225-setup.png
+9bba29885692fdf875bd0b7969cc63ef1d3b6c241a4153250b669e8aa0ceced1  windows-10/win-text-150-account.png
+c1cf9e8143245c1b98b7367d3f49c11f7ce5da6c828814461946f96640e8455b  windows-10/win-text-150-drawings.png
+d80efb62f30b24119ebfc910157a78136d1e83c097db173836f8b7bfa98dd4fc  windows-10/win-text-200-account.png
+aacd129391e4b37a1bc7046eceee30c3c06837ef66a77b22dab69d971a306582  windows-10/win-text-200-course-360.png
+c586392f0db71f640dbff5225c70fd3cd14813be937d3f1bd1ca3dee787bc365  windows-10/win-text-200-drawings.png
+1dfa556bea01c369f9f9a3d0d7183cd943643fc5008c75ee89d63d9d5f41b63f  windows-10/win-text-225-account.png
+62da39c4c524b3ff1e48f5b430c5254ee0a0d957d8d3d6c6fcb22d704abd04c2  windows-10/win-text-225-course-360.png
+0747956bce8bdd03c2ca7881467194c5239dcc52928408892559dab8c21b119a  windows-10/win-text-225-drawings.png
+9094cef874a8a90d3749ef8d2cfdae3c1690ec70158f20d2672aae28395a9f89  windows-10/win-text-225-setup.png
+2857885e584d2672eb253351a533662bef895859c93d311163cb7bc0a169725c  windows-11/win-text-150-account.png
+31a6d905f582404198a2d9960a6b30eca9725548de73b95894a91145e18cc85f  windows-11/win-text-150-drawings.png
+bfa9946efc768a9aee066f2bed0862ff46af2d52066dc0e048f0fa22cfacffce  windows-11/win-text-200-account.png
+08bfe588a597254b95a1f029b12a5f70162d326bc5f975dd31228547d8280b99  windows-11/win-text-200-course-360.png
+c88f2d8c4c57494f8a1a8e3885ab1cb39f8f363961a34a5f20207c739ff44a28  windows-11/win-text-200-drawings.png
+0b8c37d4d722bc5a6225c96dca804ee4315b93677eff1dde24a5d64e9b4ae2ae  windows-11/win-text-225-account.png
+c8b1bfa8dbdef86548e3ad78b03efd61142259785b75529da81222b116d916c1  windows-11/win-text-225-course-360.png
+a4c86bd8fa5ead36569ca7b1365f331b5eebbabe27d91a875bee1ffe359f7782  windows-11/win-text-225-drawings.png
+0209ce90af6908adf6d98f28b9b4759de389b7b805e3a80464b60187871579fb  windows-11/win-text-225-setup.png
