@@ -161,8 +161,15 @@ static void drawButton(NMCUSTOMDRAW *cd) {
         DeleteObject(pen); DeleteObject(brush);
         RECT t = {b.right + sc(h, 6), r.top, r.right, r.bottom};
         RECT m = t;
-        DrawTextW(dc, text, -1, &m, DT_CALCRECT | DT_SINGLELINE | prefix);
-        DrawTextW(dc, text, -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | prefix);
+        if (style & BS_MULTILINE) {      // (a label wider than the column at a larger text size: its lines wrap)
+            DrawTextW(dc, text, -1, &m, DT_CALCRECT | DT_WORDBREAK | prefix);
+            int th = m.bottom - m.top;
+            if (th < t.bottom - t.top) t.top += (t.bottom - t.top - th) / 2;
+            DrawTextW(dc, text, -1, &t, DT_LEFT | DT_WORDBREAK | prefix);
+        } else {
+            DrawTextW(dc, text, -1, &m, DT_CALCRECT | DT_SINGLELINE | prefix);
+            DrawTextW(dc, text, -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | prefix);
+        }
         if (focus) {      // a ring round the label, in the text colour (3:1 and more against the window)
             int th = m.bottom - m.top;
             RECT f = {t.left - ring - sc(h, 1), r.top + (r.bottom - r.top - th) / 2 - ring,

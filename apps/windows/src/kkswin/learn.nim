@@ -30,6 +30,8 @@ type
     w: Win
     c: Course
     hwnd, rail, railGo: HWND
+    railRows: seq[string]     ## the rail's rows as put in (a wrapped rail measures them)
+    goTo: proc (i: int)       ## open the rail's i-th page
     page: Page
     pageId: string
     q: Table[string, QState]  ## by question id with its suffix
@@ -592,7 +594,10 @@ proc fillRail(cw: CW) =
       if cw.c.done(p): t.add "  ✓"
       if id in cw.c.skip: t.add "  (can skip)"
     rows.add t
+  cw.railRows = rows
+  let top = SendMessageW(cw.rail, 0x018E'u32, 0, 0)        # LB_GETTOPINDEX: the place in the list stays
   setRows(cw.rail, rows)
+  if top > 0: SendMessageW(cw.rail, 0x0197'u32, WPARAM(top), 0)   # LB_SETTOPINDEX
   let i = cw.c.pages.mapIt(it["id"].s).find(cw.pageId)
   if i >= 0: SendMessageW(cw.rail, LB_SETCURSEL, WPARAM(i), 0)
   let (done, total) = cw.c.progress
@@ -646,16 +651,138 @@ proc show(cw: CW, id: string, keepScroll = false) =
   cw.focusKey = ""
   cw.fillRail()
 
+proc GetWindowLongPtrW(h: HWND, i: int32): int {.importc, stdcall, header: "<windows.h>".}
+proc SetWindowLongPtrW(h: HWND, i: int32, v: int): int {.importc, stdcall, header: "<windows.h>", discardable.}
+
+type
+  DRAWITEMSTRUCT {.importc, header: "<windows.h>".} = object
+    itemID, itemState: UINT
+    hwndItem: HWND
+    hDC: HDC
+    rcItem: RECT
+  MEASUREITEMSTRUCT {.importc, header: "<windows.h>".} = object
+    itemID, itemHeight: UINT
+proc CreateSolidBrush(c: DWORD): pointer {.importc, stdcall, header: "<windows.h>".}
+proc FillRect(dc: HDC, r: ptr RECT, b: pointer): int32 {.importc, stdcall, header: "<windows.h>", discardable.}
+proc DeleteObject(o: pointer): int32 {.importc, stdcall, header: "<windows.h>", discardable.}
+proc SelectObject(dc: HDC, o: pointer): pointer {.importc, stdcall, header: "<windows.h>", discardable.}
+proc SetTextColor(dc: HDC, c: DWORD): DWORD {.importc, stdcall, header: "<windows.h>", discardable.}
+proc SetBkMode(dc: HDC, m: int32): int32 {.importc, stdcall, header: "<windows.h>", discardable.}
+proc DrawTextW(dc: HDC, s: WideCString, n: int32, r: ptr RECT, f: UINT): int32 {.importc, stdcall, header: "<windows.h>", discardable.}
+proc DrawFocusRect(dc: HDC, r: ptr RECT): int32 {.importc, stdcall, header: "<windows.h>", discardable.}
+proc GetSysColor(i: cint): DWORD {.importc, stdcall, header: "<windows.h>".}
+
+proc railWraps(cw: CW): bool = (uint32(GetWindowLongPtrW(cw.rail, -16)) and 0x0020'u32) != 0   # LBS_OWNERDRAWVARIABLE
+
+proc SetWindowPos(h, after: HWND, x, y, cx, cy: int32, flags: UINT): BOOL {.importc, stdcall, header: "<windows.h>", discardable.}
+
+proc makeRail(cw: CW) =
+  ## the course's pages in a list beside the page. At a larger text size its rows wrap onto as many lines as their
+  ## titles need (owner-drawn, LBS_OWNERDRAWVARIABLE): a narrow rail never cuts a title (#512); at 100 % as released
+  var hadFocus = false
+  if cw.rail != nil:
+    hadFocus = GetFocus() == cw.rail
+    forgetControl(cw.rail)
+    DestroyWindow(cw.rail)
+  # LBS_OWNERDRAWVARIABLE, LBS_HASSTRINGS, LBS_DISABLENOSCROLL: the scroll bar always there, so each row is measured
+  # at the width it is drawn at (with the bar appearing only once the list overflowed, the rows measured before were
+  # measured wider and lost their last line, #512's second recheck)
+  let wrap = if textScale > 1.0: 0x0020'u32 or 0x0040'u32 or 0x1000'u32 else: 0'u32
+  let (rl, _) = control(cw.hwnd, "LISTBOX", "Course contents", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or
+                        LBS_NOINTEGRALHEIGHT or wrap, WS_EX_CLIENTEDGE)
+  cw.rail = rl
+  onSelectList(rl, cw.goTo)
+  onActivateList(rl, cw.goTo)
+  # (made again: where the old one was in the Tab order, after the page and before its button, with the keyboard)
+  if cw.page != nil: SetWindowPos(rl, cw.page.hwnd, 0, 0, 0, 0, 0x0013'u32)    # SWP_NOSIZE, NOMOVE, NOACTIVATE
+  if hadFocus: SetFocus(rl)
+
+const RailText = 0x10'u32 or 0x800'u32 or 0x2000'u32
+  ## DT_WORDBREAK, DT_NOPREFIX, DT_EDITCONTROL: a title wraps at its spaces, and a word wider than the rail is broken
+  ## onto the next line rather than cut
+
+proc GetDC(h: HWND): HDC {.importc, stdcall, header: "<windows.h>".}
+proc ReleaseDC(h: HWND, dc: HDC): int32 {.importc, stdcall, header: "<windows.h>", discardable.}
+
+proc textWidthOf(h: HWND, t: string): int =
+  ## how wide `t` is on one line in the normal font
+  let dc = GetDC(h)
+  let old = SelectObject(dc, fontNormal)
+  var m = RECT()
+  DrawTextW(dc, newWideCString(t), -1, addr m, 0x400'u32 or 0x20'u32 or 0x800'u32)     # DT_CALCRECT, SINGLELINE, NOPREFIX
+  SelectObject(dc, old)
+  ReleaseDC(h, dc)
+  int(m.right - m.left)
+
+proc railRowHeight(cw: CW, i: int): int =
+  var r: RECT
+  GetClientRect(cw.rail, addr r)
+  let t = if i in 0 ..< cw.railRows.len: cw.railRows[i] else: " "
+  let dc = GetDC(cw.rail)
+  let old = SelectObject(dc, fontNormal)
+  var m = RECT(left: 0, top: 0, right: int32(max(10, int(r.right) - int(px(8)))), bottom: 0)
+  DrawTextW(dc, newWideCString(t), -1, addr m, RailText or 0x400'u32)      # DT_CALCRECT
+  SelectObject(dc, old)
+  ReleaseDC(cw.rail, dc)
+  int(m.bottom - m.top) + int(px(6))
+
 proc courseProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
   let cw = courseWins.getOrDefault(h)
   try:
     case m
+    of 0x002C'u32:      # WM_MEASUREITEM: a wrapped rail's row, as tall as its title needs
+      if cw != nil:
+        let mi = cast[ptr MEASUREITEMSTRUCT](lp)
+        mi.itemHeight = UINT(cw.railRowHeight(int(mi.itemID)))
+        return 1
+    of 0x002B'u32:      # WM_DRAWITEM: a wrapped rail's row
+      if cw != nil:
+        let di = cast[ptr DRAWITEMSTRUCT](lp)
+        let i = int(cast[int32](di.itemID))
+        let selected = (di.itemState and 1) != 0                              # ODS_SELECTED
+        var r = di.rcItem
+        let b = CreateSolidBrush(if selected: GetSysColor(13) else: themeColor(rSurface))   # COLOR_HIGHLIGHT
+        FillRect(di.hDC, addr r, b)
+        DeleteObject(b)
+        if i in 0 ..< cw.railRows.len:
+          let old = SelectObject(di.hDC, fontNormal)
+          SetBkMode(di.hDC, 1)
+          SetTextColor(di.hDC, if selected: GetSysColor(14) else: themeColor(rText))       # COLOR_HIGHLIGHTTEXT
+          var t = RECT(left: r.left + px(4), top: r.top + px(3), right: r.right - px(4), bottom: r.bottom)
+          DrawTextW(di.hDC, newWideCString(cw.railRows[i]), -1, addr t, RailText)
+          SelectObject(di.hDC, old)
+        if (di.itemState and 0x10) != 0: DrawFocusRect(di.hDC, addr r)        # ODS_FOCUS
+        return 1
     of WM_SIZE:
       if cw != nil:
-        let rw = px(260)
-        MoveWindow(cw.rail, 0, 0, rw, int32(hiword(lp)) - px(40), 1)
-        MoveWindow(cw.railGo, px(4), int32(hiword(lp)) - px(36), rw - px(8), px(32), 1)
-        MoveWindow(cw.page.hwnd, rw, 0, int32(loword(lp)) - rw, int32(hiword(lp)), 1)
+        # the rail grows with the text (at 100 % as released: 260): to 35 % of the window, never narrower than released
+        # while the window has room for the page beside it (at most half of it), and the page kept at least 220 wide
+        # where the window allows
+        let W = loword(lp)
+        let least = min(int(tx(260)), W * 35 div 100)
+        let rw = if textScale == 1.0: px(260)
+                 else: int32(min(max(least, min(int(px(260)), W div 2)), max(W - int(px(220)), least)))
+        # the button under the rail: one line at 100 % (as released); with a larger text, its label wraps onto as
+        # many lines as the rail's width needs
+        let H = int(hiword(lp))
+        if textScale == 1.0:
+          SetWindowLongPtrW(cw.railGo, -16, GetWindowLongPtrW(cw.railGo, -16) and not 0x2000)
+          MoveWindow(cw.rail, 0, 0, rw, int32(H) - px(40), 1)
+          MoveWindow(cw.railGo, px(4), int32(H) - px(36), rw - px(8), px(32), 1)
+          MoveWindow(cw.page.hwnd, rw, 0, int32(W) - rw, int32(H), 1)
+        else:
+          # the button under the rail, its label wrapped onto as many lines as it needs; when even its longest word is
+          # wider than the rail (a narrow window, a large text), it spans the window's foot, under the rail and page
+          SetWindowLongPtrW(cw.railGo, -16, GetWindowLongPtrW(cw.railGo, -16) or 0x2000)    # BS_MULTILINE
+          var widest = 0
+          for word in cw.railGo.text.split(' '): widest = max(widest, textWidthOf(cw.railGo, word))
+          let wide = widest + int(px(28)) > int(rw) - int(px(8))
+          let bw = if wide: W - int(px(8)) else: int(rw) - int(px(8))
+          let gh = max(int(tx(32)), textHeight(cw.railGo, cw.railGo.text, bw - int(px(16))) + int(px(12)))
+          MoveWindow(cw.rail, 0, 0, rw, int32(H - gh - int(px(8))), 1)
+          MoveWindow(cw.railGo, px(4), int32(H - gh - int(px(4))), int32(bw), int32(gh), 1)
+          MoveWindow(cw.page.hwnd, rw, 0, int32(W) - rw, int32(if wide: H - gh - int(px(8)) else: H), 1)
+          if cw.railWraps: cw.fillRail()          # (its rows measured again at the rail's width)
       return 0
     of WM_COMMAND:
       if dispatchCommand(wp, lp): return 0
@@ -672,6 +799,7 @@ proc courseProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
 
 var courseClass = false
 var themeHooked = false
+var fontsHooked = false
 
 proc openCourseWindow*(w: Win, id: string, page = "") =
   if id in openById:
@@ -699,18 +827,27 @@ proc openCourseWindow*(w: Win, id: string, page = "") =
   MoveWindow(cw.hwnd, wa.left + 20, wa.top + 10, min(px(1180), wa.right - wa.left - 40), min(px(860), wa.bottom - wa.top - 20), 0)
   courseWins[cw.hwnd] = cw
   openById[id] = cw
+  if not fontsHooked:      # new fonts (text size, scaling): the rail and its button laid out again in them
+    fontsHooked = true
+    afterFonts.add proc () =
+      for h, x in courseWins:
+        if x.railWraps != (textScale > 1.0):     # (the rail made again for the new size: wrapped rows or as released)
+          x.makeRail()
+          x.fillRail()
+        var r: RECT
+        GetClientRect(h, addr r)
+        SendMessageW(h, WM_SIZE, 0, LPARAM((int(r.bottom) shl 16) or int(r.right)))
+        if x.railWraps: x.fillRail()             # (its rows measured again at the rail's new width and font)
   if not themeHooked:       # the theme changed (theme.nim): open courses made again in its colours, where they were
     themeHooked = true
     onThemeChange.add proc () =
       for _, x in courseWins: x.rebuild()
   cw.page = newPage(cw.hwnd)
   let pages = c.pages
-  let (rl, _) = control(cw.hwnd, "LISTBOX", "Course contents", WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT, WS_EX_CLIENTEDGE)
-  cw.rail = rl
   proc go(i: int) =
     if i >= 0 and i < pages.len and pages[i]["id"].s != cw.pageId: cw.show(pages[i]["id"].s)
-  onSelectList(rl, go)
-  onActivateList(rl, go)
+  cw.goTo = go
+  cw.makeRail()
   # a list item has no Invoke for UI Automation: a button opens the selected page (as in the main window)
   let (gb, _) = control(cw.hwnd, "BUTTON", "Open the selected page", WS_TABSTOP or BS_PUSHBUTTON)
   cw.railGo = gb

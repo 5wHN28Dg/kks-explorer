@@ -101,6 +101,25 @@ def contrast(on, scheme='High Contrast White'):
     return 'no answer from contrast.ps1'
 
 
+def text_size(percent):
+    """Windows' text size set in Settings as a person does it (e2e/textsize.ps1 drives its slider and Apply through
+    UI Automation, in the desktop session); -> the driver's log"""
+    now = vm('(Get-ItemProperty HKCU:\\Software\\Microsoft\\Accessibility -ErrorAction SilentlyContinue).TextScaleFactor').strip()
+    if now == str(percent) or (percent == 100 and now in ('', '100')):
+        return 'PASSED (already %d %%)' % percent      # (Settings' Apply is disabled when nothing changes)
+    build = int(vm('[Environment]::OSVersion.Version.Build').strip() or 0)
+    slider = 'Text size' if build >= 22000 else '~Drag the slider'      # (Windows 10: the slider is named by its hint)
+    vm('Remove-Item C:\\kks\\textsize.log -ErrorAction SilentlyContinue')
+    args = '-NoProfile -ExecutionPolicy Bypass -File C:\\kks\\textsize.ps1 -Percent %d -Slider "%s"' % (percent, slider)
+    vm('powershell -NoProfile -ExecutionPolicy Bypass -File C:\\kks\\runapp.ps1 -Exe powershell.exe -ArgB64 %s -Name kkstextsize'
+       % base64.b64encode(args.encode()).decode())
+    for _ in range(90):
+        time.sleep(1)
+        out = vm('[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Content C:\\kks\\textsize.log -Encoding UTF8 -ErrorAction SilentlyContinue')
+        if 'PASSED' in out or 'ERROR' in out: return out
+    return 'no answer from textsize.ps1'
+
+
 def msix(args):
     """msix.ps1 in the desktop session (installs need one); -> its result line"""
     vm('Remove-Item C:\\kks\\msix.log -ErrorAction SilentlyContinue')
@@ -556,6 +575,94 @@ class Windows(unittest.TestCase):
         finally:
             self.assertIn('contrast 0 True', contrast(0))
         self.check('du5.uia', self.surfaces('dark'))
+        self.leave()
+
+    def test_text_size(self):
+        """#377, switch win-text-size: at Windows' text size of 150 % (set in Settings, as a person does) the app's text
+        is larger and nothing is cut off or overlaps (`fits`: every label, field, button, check box and list measured in
+        its own font) on the Drawings tab, Manage, Account, a tag's panel and Equipment by system; the size changes
+        while the app runs (back to 100 % and up again). Switched off, the text stays at its size (as before)."""
+        env = {'KKS_UX': 'win-text-size', 'KKS_TIMING': '1'}
+        put(os.path.join(HERE, 'textsize.ps1'))
+        self.course_files()
+        # the setup screen (the ways to join) at Windows' largest text, 225 %, then joining as usual
+        try:
+            self.assertIn('PASSED', text_size(225))
+            self.check('tssetup.uia', ['wait\tJoin through a server\t60', 'sleep\t1000', 'fits\tJoin through a server'],
+                       keep=False, env=env)
+            self.screenshot('win-text-225-setup')
+        finally:
+            text_size(100)
+        self.join('tsjoin.uia', env=env)
+        whole = ['wait\t~Sample sheet\t60', 'fits\tDrawings', 'click\tManage', 'wait\tAccount\t20', 'fits\tAccount',
+                 'click\tAccount', 'wait\t‹ Manage\t20', 'fits\t‹ Manage', 'click\tDrawings', 'wait\t~Sample sheet\t20',
+                 'set\tSearch equipment by KKS code or description\tLAB70', 'select\t~11LAB70AA500',
+                 'click\tShow on the drawing', 'wait\tCopy\t20', 'fits\tCopy',
+                 'click\tEquipment by system…', 'wait\tEquipment by system\t20', 'fits\tSearch codes, systems, descriptions',
+                 'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system']
+        try:
+            self.assertIn('PASSED', text_size(150))
+            self.check('ts0.uia', whole + ['height\tEquipment by system…\t44'], restart=True, env=env)
+            self.screenshot('win-text-150-drawings')
+            self.check('ts0b.uia', ['click\tManage', 'click\tAccount', 'wait\t‹ Manage\t20', 'sleep\t500'])
+            self.screenshot('win-text-150-account')
+            # switched off: the text at its size whatever Windows says
+            self.check('ts1.uia', ['wait\t~Sample sheet\t60', 'click\tDrawings', 'wait\tEquipment by system…\t20',
+                                   'sleep\t500'], restart=True, env={})
+            self.check('ts1b.uia', ['height\tEquipment by system…\t28\t32'])
+            # while the app runs: back to 100 %, then 150 % again
+            self.check('ts2.uia', ['wait\t~Sample sheet\t60', 'click\tDrawings', 'wait\tEquipment by system…\t20',
+                                   'set\tSearch equipment by KKS code or description\tLAB70', 'select\t~11LAB70AA500',
+                                   'click\tShow on the drawing', 'wait\tCopy\t20', 'height\tEquipment by system…\t44'],
+                       restart=True, env=env)
+            self.assertIn('PASSED', text_size(100))
+            self.check('ts3.uia', ['sleep\t2000', 'fits\tDrawings', 'fits\tCopy', 'height\tEquipment by system…\t28\t32'])
+            self.assertIn('PASSED', text_size(150))
+            self.check('ts4.uia', ['sleep\t2000', 'fits\tDrawings', 'fits\tCopy', 'height\tEquipment by system…\t44'])
+            # the largest sizes: 200 % and Windows' maximum, 225 %, while the app runs: the main screen with a tag,
+            # Manage, an error in the status line (a sync to an address that can't be reached), Equipment by system,
+            # and a course in a window at the profile's smallest width (360 px)
+            for pct in (200, 225):
+                self.assertIn('PASSED', text_size(pct))
+                # (the window within the VM's 800 px screen, so the status line's last row is in the screenshots)
+                self.check('ts5.uia', ['resize\tDrawings\t1240\t700', 'sleep\t2500', 'fits\tDrawings', 'fits\tCopy',
+                                       'click\tManage', 'click\tAccount', 'wait\t‹ Manage\t20',
+                                       'set\tSync with an address (host:port@device)\t192.0.2.1:9@nobody', 'click\tSync now',
+                                       'sleep\t4000', 'fits\t‹ Manage'])
+                self.screenshot('win-text-%d-sync-error' % pct)
+                self.check('ts5b.uia', [
+                                       'click\tDrawings', 'wait\tEquipment by system…\t20', 'click\tEquipment by system…',
+                                       'wait\tEquipment by system\t20', 'fits\tSearch codes, systems, descriptions',
+                                       'keys\tSearch codes, systems, descriptions\t0x1B', 'gone\tEquipment by system',
+                                       # tabs with nothing or little in them (no procedures, an empty review queue)
+                                       'click\tProcedures', 'sleep\t800', 'fits\tProcedures'])
+                self.screenshot('win-text-%d-procedures' % pct)
+                self.check('ts5c.uia', ['click\tReview', 'sleep\t800', 'fits\tReview'])
+                self.screenshot('win-text-%d-review' % pct)
+                self.check('ts5d.uia', [
+                                       'click\tLearning', 'select\t~Instrumentation and control', 'click\tOpen the course',
+                                       'wait\t~Instrumentation and control — \t30', 'resize\tOpen the selected page\t360\t640',
+                                       'sleep\t1000', 'fits\tOpen the selected page'])
+                self.screenshot('win-text-%d-course-360' % pct)
+                self.check('ts6.uia', ['close\tOpen the selected page', 'gone\tOpen the selected page', 'click\tDrawings',
+                                       'wait\tEquipment by system…\t20', 'click\tManage', 'click\tAccount',
+                                       'wait\t‹ Manage\t20', 'sleep\t500'])
+                self.screenshot('win-text-%d-account' % pct)
+                self.check('ts7.uia', ['click\tDrawings', 'wait\tEquipment by system…\t20', 'sleep\t500', 'fits\tCopy'])
+                self.screenshot('win-text-%d-drawings' % pct)
+            # with the dark colours too (win-dark-ui, dark app mode): the course window's own rows, at 200 %
+            self.assertIn('PASSED', text_size(200))
+            both = dict(env, KKS_UX='win-text-size,win-dark-ui', KKS_TEST_SYSTEM_DARK='1')
+            self.check('ts8.uia', ['wait\t~Sample sheet\t60', 'click\tLearning', 'select\t~Instrumentation and control',
+                                   'click\tOpen the course', 'wait\t~Instrumentation and control — \t30', 'sleep\t1500',
+                                   'surface\tOpen the selected page\tdark', 'fits\tOpen the selected page'],
+                       restart=True, env=both)
+            self.screenshot('win-text-200-dark-course')
+            self.check('ts9.uia', ['close\tOpen the selected page', 'gone\tOpen the selected page'])
+        finally:
+            text_size(100)
+        # how long each live change took (fonts and every page laid out again: the app holds still meanwhile, P1)
+        print('\n' + vm('Get-Content $env:LOCALAPPDATA\\Walkdown\\timing.log -ErrorAction SilentlyContinue'), file=sys.stderr)
         self.leave()
 
     def test_multi(self):

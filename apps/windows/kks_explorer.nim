@@ -15,6 +15,9 @@ const
   VkF1 = 0x70
   SideW = 380
   PanelW = 420
+  SideMaxPct = 35           ## with a larger text size the sidebar grows, to at most this share of the window (#377)
+  PanelMaxPct = 30          ## and the tag panel to at most this share: the drawing keeps the rest
+  QueueW = 520              ## the photo queue's line, at most (DIPs, grows with the text)
   StatusH = 28
 
 var
@@ -41,13 +44,65 @@ proc bottomRow(W: int): tuple[st, statusW, n, qw: int, q: bool] =
   ## tall as the status line's text needs (a plain-words error is a sentence or two, #371), up to four lines
   var right = W - int(px(8))
   result.n = if w.failedButton != nil: failedCount() else: 0
-  if result.n > 0: right -= int(px(170)) + int(px(8))
+  if result.n > 0: right -= int(tx(170)) + int(px(8))
   result.q = w.queueLabel != nil and queuedCount() > 0
-  result.qw = if result.q: min(int(px(520)), (right - int(px(8))) div 2) else: 0
+  result.qw = if result.q: min(int(tx(QueueW)), (right - int(px(8))) div 2) else: 0
   if result.q: right -= result.qw + int(px(8))
   result.statusW = max(10, right - int(px(8)))
   let lineH = textHeight(w.status, "Ag", result.statusW)
-  result.st = max(int(px(StatusH)), min(textHeight(w.status, statusText(), result.statusW), 4 * lineH) + int(px(10)))
+  result.st = max(int(tx(StatusH)), min(textHeight(w.status, statusText(), result.statusW), 4 * lineH) + int(px(10)))
+  if result.q and textScale > 1.0:   # (with a larger text the queue's line may wrap too: the row as tall as it needs)
+    result.st = max(result.st, min(textHeight(w.queueLabel, w.queueLabel.text, result.qw), 4 * lineH) + int(px(10)))
+
+proc sideWidth(W: int): int =
+  ## the sidebar wider with the text size (#377), never more than 35 % of the window (the drawing keeps the rest),
+  ## never narrower than at 100 %
+  max(int(px(SideW)), min(int(tx(SideW)), W * SideMaxPct div 100))
+
+proc panelWidth(W: int): int = max(int(px(PanelW)), min(int(tx(PanelW)), W * PanelMaxPct div 100))
+
+proc layoutHeld(): bool =
+  ## the sidebar still as wide as the last layout made it. After a text size change in Windows 11's Settings the
+  ## window's pages were seen at their sizes from before the change a moment after the app had laid them out anew
+  ## (26H2, 2026-11-22; not from the app's code): the refresh timer lays the window out again when that happens
+  var r, c, pr: RECT
+  if GetWindowRect(w.side.hwnd, addr r) == 0 or GetClientRect(w.hwnd, addr c) == 0: return true
+  if int(r.right - r.left) != sideWidth(int(c.right)): return false
+  # (the panel too, when it is shown)
+  if IsWindowVisible(w.panel.hwnd) != 0 and GetWindowRect(w.panel.hwnd, addr pr) != 0:
+    return int(pr.right - pr.left) == panelWidth(int(c.right))
+  true
+
+proc layoutMain()
+
+proc RedrawWindow(h: HWND, r: pointer, rgn: pointer, flags: UINT): BOOL {.importc, stdcall, header: "<windows.h>", discardable.}
+
+proc repaintAll() =
+  ## every part of the window painted again (a page's controls moved under a heading that kept its old pixels: seen
+  ## at 225 % on Windows 11, the tag's heading half painted over)
+  RedrawWindow(w.hwnd, nil, nil, 0x0001'u32 or 0x0004'u32 or 0x0080'u32 or 0x0100'u32)   # INVALIDATE, ERASE, ALLCHILDREN, UPDATENOW
+
+proc textSizeChanged() =
+  ## Windows' text size changed: the window laid out in the new fonts at once, and again a few times over the next
+  ## seconds. On Windows 11 26H2 the window's pages were seen back at their sizes from before the change some
+  ## seconds after the app had laid them out anew (traced 2026-11-22: every layout the app made used the new size;
+  ## the cause is outside the app), while Settings went on announcing its changes
+  if w == nil or (w.v == nil and setupP == nil): return
+  if w.v != nil and setupP == nil:
+    # the pages made again where they can be (never under the keyboard or typed text: panelChanged, sideChanged): a
+    # value to read wraps at a larger text size, which its field must be made with
+    w.panelChanged()
+    w.sideChanged()
+  # (last: the pages laid out first, then the window, whose column of the tag's heading and panel measures the
+  # heading as laid out: the panel under it never covers it)
+  layoutMain()
+  repaintAll()
+  for d in [1000, 3000, 6000, 10000]:
+    discard afterMs(d, proc () =
+      if w != nil and (w.v != nil or setupP != nil):
+        relayoutPages()
+        layoutMain()
+        repaintAll())
 
 proc layoutMain() =
   var r: RECT
@@ -57,8 +112,10 @@ proc layoutMain() =
   if setupP != nil:
     MoveWindow(setupP.hwnd, 0, 0, int32(W), int32(H), 1)
     return
-  let side = int(px(SideW))
-  let panelW = if w.selected.len > 0 or w.picking: int(px(PanelW)) else: 0
+  # the sidebar and the panel wider with the text size (#377), never more than 35 and 30 % of the window, never
+  # narrower than at 100 %
+  let side = sideWidth(W)
+  let panelW = if w.selected.len > 0 or w.picking: panelWidth(W) else: 0
   let (st, statusW, n, qw, q) = bottomRow(W)
   statusRow = st
   # the tabs within the sidebar's width, wrapped when they don't fit (they ran 472 px into a 380 px sidebar, Manage
@@ -74,8 +131,8 @@ proc layoutMain() =
   if w.failedButton != nil:
     ShowWindow(w.failedButton, if n > 0: SW_SHOW else: SW_HIDE)
     if n > 0:
-      at -= int(px(170))
-      MoveWindow(w.failedButton, int32(at), int32(H - st + int(px(1))), px(170), px(StatusH - 2), 1)
+      at -= int(tx(170))
+      MoveWindow(w.failedButton, int32(at), int32(H - st + int(px(1))), tx(170), tx(StatusH - 2), 1)
       at -= int(px(8))
   if w.queueLabel != nil:
     ShowWindow(w.queueLabel, if q: SW_SHOW else: SW_HIDE)
@@ -295,6 +352,8 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
     if w != nil and w.v != nil:
       guard: w.applyDark()
     guard: discard refreshTheme()
+    guard:
+      if refreshTextScale(): textSizeChanged()   # Windows' text size (#377)
   of WM_SIZE:
     if w != nil and w.v != nil or setupP != nil: layoutMain()
     return 0
@@ -328,6 +387,9 @@ proc mainProc(h: HWND, m: UINT, wp: WPARAM, lp: LPARAM): LRESULT {.stdcall.} =
       elif w.v != nil and setupP == nil:
         setStatus()
       guard: discard refreshTheme()     # (also when no window was told: the app mode read once a second)
+      guard:
+        if refreshTextScale(): textSizeChanged()    # and the text size
+        elif w.v != nil and setupP == nil and not layoutHeld(): layoutMain()
       if w.v != nil and setupP == nil:
         guard: w.catchUpFollowers()     # a window marked stale under the focus, once the focus has left it
         guard: w.panelCatchUp()         # the panel too, left alone under the keyboard or typed text
@@ -447,6 +509,7 @@ proc main() =
   InitCommonControlsEx(addr icc)
   hinst = GetModuleHandleW(nil)
   initTheme()               # the dark colours for the controls, behind the switch win-dark-ui (theme.nim)
+  textScale = systemTextScale()     # Windows' text size, behind the switch win-text-size (ui.nim)
   makeFonts(96)
   createDir(dataDir())
   errorLog = dataDir() / "crash.log"

@@ -52,6 +52,13 @@ which the `config.nims` of core/, platform/linux/, platform/windows/ and apps/wi
     title bar (DWM), scroll bars and menus (decision 0078), course pages and figures, and its own dialog for
     questions (the task dialog stays light); followed while the app runs (`WM_SETTINGCHANGE` and once a second); a
     contrast theme wins. Switched off, nothing is subclassed or changed (`tests/test_theme.nim`);
+  - text size (#377, switch `win-text-size`, `KKS_UX=win-text-size`; `ui.nim`): Windows' "Text size" (Settings writes
+    `TextScaleFactor`, 100–225 %, and scales the system's message font; the larger is followed) makes the app's fonts
+    and every height made for text larger (`tx`, `txp`: fields, buttons, check boxes, list rows, tabs, the status line,
+    a field's label wrapping onto more lines), the sidebar and panel wider (at most 35 and 30 % of the window), dialogs
+    larger and course text zoomed; followed while the app runs. Fonts follow a scale change too (`WM_DPICHANGED`:
+    every control takes the new ones; the status line had kept the old scale's). Switched off: the sizes as before
+    (`tests/test_text_size.nim`);
   - `kks_uia.cpp`: the drawing's tags as UI Automation buttons;
   - `win.nim`, `panel.nim`, `side.nim` (search, sheets, floors, procedures with link mode, the review queue),
     `systems.nim` (Equipment by system: core `systemsView` in a window with a search field and a native TreeView;
@@ -116,7 +123,11 @@ It covers:
 - dark drawings (the drawing's pixels as drawn, overview and tiles; the choice after a restart);
 - the app's dark colours (switch `win-dark-ui`): the controls, title bars, a question and a course page dark in dark
   app mode (`surface`, `titlebar`: the median grey as drawn), light in light mode and switched off, following the app
-  mode while the app runs, and a contrast theme (`e2e/contrast.ps1`) winning; `KKS_E2E_APP_ENV` gives every fresh app
+  mode while the app runs, and a contrast theme (`e2e/contrast.ps1`) winning;
+- Windows' text size at 150 % set in Settings through UI Automation (`e2e/textsize.ps1`), as a person does (switch
+  `win-text-size`): no control's text cut off and none overlapping (`fits`: each label, field, button, check box and
+  list measured in its own font) on the main screen, Manage, Account, a tag's panel and Equipment by system; the size
+  followed while the app runs; switched off, the text stays at its size; `KKS_E2E_APP_ENV` gives every fresh app
   more environment (the whole suite in the dark colours: `KKS_UX=win-dark-ui;KKS_TEST_SYSTEM_DARK=1`);
 - several tags at once (a dragged box, search results, a tag button; the List; place, note and photo for all; a
   member's photo for all on codes without a floor: the floor asked first and proposed with the photo; codes of
@@ -198,7 +209,8 @@ recommended scale for its panel).
   main before #427 failed at each). Left from #377: the status line keeps the old scale's font after a live change.
 - **Text size 150 %:** `TextScaleFactor` written and a restart did not change Windows' own fonts; the system fonts
   scaled to 150 % live (`SPI_SETNONCLIENTMETRICS`, as "Make text bigger" does for desktop apps) grew the title bar but
-  not the app's text, whose fonts are fixed in px from the DPI (#377). Every setting was put back afterwards.
+  not the app's text, whose fonts are fixed in px from the DPI (#377; since followed behind the switch
+  `win-text-size`). Every setting was put back afterwards.
 - **Dark app mode:** the drawings follow it; the rest of the window stays light (#377).
 - **High Contrast Black:** the window's controls follow the theme's colours; the drawing stays light, as drawn.
 - **Walkdown Plant** (its Windows export, a test build, defaults unchanged): neither Direct3D 12 nor Vulkan on this

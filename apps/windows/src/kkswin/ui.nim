@@ -3,7 +3,8 @@
 ## label created just before it (MSAA/UIA name from the preceding static text). Tab moves through a page
 ## (WS_EX_CONTROLPARENT + IsDialogMessage in the message loop).
 
-import std/[tables, strutils, os]
+import std/[tables, strutils, os, math, times]
+from syncwords import uxOn
 import w32, labels, theme
 
 const HG = "<windows.h>"
@@ -125,22 +126,113 @@ template guard*(body: untyped) =
   try: body
   except CatchableError as e: report(e)
 
+# ---- text size (#377): Windows' "Text size" (Settings → Accessibility), behind the switch win-text-size (KKS_UX).
+# Settings writes TextScaleFactor (100–225, what UISettings.TextScaleFactor reads) and scales the system's fonts (the
+# message font: 9 pt, 12 px at 96 dpi, at 100 %); the larger of the two is followed. Off: 1, the app as released.
+const TextSizeSwitch* = "win-text-size"
+
+var textScale* = 1.0        ## the app's text, and the heights made for it, times this (tx)
+var zoomPending = false     ## rich text to be zoomed to a new text size (relayoutAll)
+
+proc RegGetValueTs(key: pointer, sub, value: WideCString, flags: uint32, typ: ptr uint32, data: pointer,
+                   size: ptr uint32): int32 {.importc: "RegGetValueW", stdcall, header: HG.}
+var hkeyCurrentUser {.importc: "HKEY_CURRENT_USER", header: HG, nodecl.}: pointer
+  ## (windows.h's own value, sign-extended on 64-bit as the registry expects)
+proc SystemParametersInfoForDpi(a, b: UINT, p: pointer, f, d: UINT): BOOL {.importc, stdcall, header: HG.}
+
+proc systemTextScale*(): float =
+  ## Windows' text size now, 1 to 2.25 (KKS_TEST_TEXT_SCALE stands in for it in the tests); 1 with the switch off
+  if not uxOn(TextSizeSwitch): return 1.0
+  let t = getEnv("KKS_TEST_TEXT_SCALE")
+  if t.len > 0:
+    try: return clamp(parseFloat(t), 1.0, 2.25) except ValueError: discard
+  var v: uint32 = 100
+  var n = uint32(sizeof(v))
+  if RegGetValueTs(hkeyCurrentUser, newWideCString("Software\\Microsoft\\Accessibility"), newWideCString("TextScaleFactor"),
+                   0x10'u32, nil, addr v, addr n) != 0: v = 100       # RRF_RT_REG_DWORD; absent: 100 %
+  result = float(v) / 100
+  var m: NONCLIENTMETRICSW
+  m.cbSize = UINT(sizeof(m))
+  if SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, UINT(sizeof(m)), addr m, 0, 96) != 0 and m.lfMessageFont.lfHeight < 0:
+    result = max(result, float(-m.lfMessageFont.lfHeight) / 12)
+  result = clamp(result, 1.0, 2.25)
+
+proc tx*(v: int): int32 =
+  ## a size made for text (a field's or button's height, a list's rows): `v` DIPs at this DPI and text size (px at 100 %)
+  px(int(round(float(v) * textScale)))
+
+proc txp*(text, fixed: int): int32 =
+  ## `text` DIPs that grow with the text size plus `fixed` DIPs that don't, at this DPI (px(text + fixed) at 100 %)
+  px(int(round(float(text) * textScale)) + fixed)
+
+type
+  WNDENUMPROC = proc (h: HWND, l: LPARAM): BOOL {.stdcall.}
+proc EnumThreadWindows(t: DWORD, f: WNDENUMPROC, l: LPARAM): BOOL {.importc, stdcall, header: HG, discardable.}
+proc EnumChildWindows(h: HWND, f: WNDENUMPROC, l: LPARAM): BOOL {.importc, stdcall, header: HG, discardable.}
+proc GetCurrentThreadId(): DWORD {.importc, stdcall, header: HG.}
+var refont: seq[(HFONT, HFONT)]
+proc isRichEdit(h: HWND): bool =
+  var buf = newWideCString("", 32)
+  GetClassNameW(h, buf, 32) > 0 and $buf == "RICHEDIT50W"
+
+proc refontOne(h: HWND, l: LPARAM): BOOL {.stdcall.} =
+  # (never rich text: its font is in its RTF, run by run, and WM_SETFONT would set every run to one font; it follows
+  # the text size by its zoom, relayoutAll)
+  if isRichEdit(h): return 1
+  let f = cast[HFONT](SendMessageW(h, WM_SETFONT + 1, 0, 0))       # WM_GETFONT
+  for (a, b) in refont:
+    if f == a and a != nil:
+      SendMessageW(h, WM_SETFONT, cast[WPARAM](b), 1)
+      break
+  1
+proc refontTop(h: HWND, l: LPARAM): BOOL {.stdcall.} =
+  discard refontOne(h, l)
+  EnumChildWindows(h, refontOne, l)
+  1
+
+var afterFonts*: seq[proc ()]    ## after new fonts (scale or text size changed): pages laid out again, lists' rows
+
 proc makeFonts*(d: int) =
+  ## the app's fonts for this DPI and text size; the controls that show the old ones take the new ones (a status line
+  ## kept the old scale's font after a scale change while the app ran, #377), and every page is laid out again
   dpi = d
   var m: NONCLIENTMETRICSW
   m.cbSize = UINT(sizeof(m))
   SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, UINT(sizeof(m)), addr m, 0)
   var lf = m.lfMessageFont
-  lf.lfHeight = -px(15)
-  for f in [fontNormal, fontTitle, fontSmall]:
-    if f != nil: DeleteObject(f)
+  let old = [fontNormal, fontTitle, fontSmall]
+  lf.lfHeight = -tx(15)
   fontNormal = CreateFontIndirectW(addr lf)
-  lf.lfHeight = -px(20)
+  lf.lfHeight = -tx(20)
   lf.lfWeight = 600
   fontTitle = CreateFontIndirectW(addr lf)
-  lf.lfHeight = -px(13)
+  lf.lfHeight = -tx(13)
   lf.lfWeight = 400
   fontSmall = CreateFontIndirectW(addr lf)
+  if old[0] != nil:
+    refont = @[(old[0], fontNormal), (old[1], fontTitle), (old[2], fontSmall)]
+    EnumThreadWindows(GetCurrentThreadId(), refontTop, 0)
+    refont.setLen(0)
+    for f in afterFonts:
+      try: f() except CatchableError as e: report(e)
+  for f in old:
+    if f != nil: DeleteObject(f)
+
+proc refreshTextScale*(): bool =
+  ## Windows' text size changed (WM_SETTINGCHANGE, or read once a second): the fonts and pages follow. -> it changed
+  let s = systemTextScale()
+  if abs(s - textScale) < 0.001: return false
+  let t0 = epochTime()
+  textScale = s
+  zoomPending = true
+  makeFonts(dpi)
+  if getEnv("KKS_TIMING").len > 0 and errorLog.len > 0:     # (docs/m6/MEASUREMENTS.md style: how long the app froze)
+    try:
+      let f = open(errorLog.parentDir / "timing.log", fmAppend)
+      f.writeLine("text size " & $s & ": fonts and pages in " & $int((epochTime() - t0) * 1000) & " ms")
+      f.close()
+    except IOError: discard
+  true
 
 proc newId(): int =
   ## a control id: what GetDlgCtrlID and UI Automation's AutomationId say, 16 bits like the id in WM_COMMAND. Nothing
@@ -395,6 +487,14 @@ proc textWidth(p: Page, text: string, font: HFONT): int =
   ReleaseDC(p.hwnd, dc)
   int(r.right - r.left)
 
+proc fieldLabel(p: Page, lab: HWND, w: int): int =
+  ## a field's label: one line's height, or as tall as its text wrapped at the page's width when the text is larger
+  ## than at 100 % (a long label takes two lines at 150 %, #377); at 100 % as before
+  if textScale == 1.0: return int(px(20))
+  max(int(tx(20)), p.measure(lab.text, fontNormal, w) + int(px(2)))
+
+proc GetWindowLongPtrW(h: HWND, i: int32): int {.importc, stdcall, header: HG.}
+proc SetWindowLongPtrW(h: HWND, i: int32, v: int): int {.importc, stdcall, header: HG, discardable.}
 proc layout*(p: Page) =
   var r: RECT
   GetClientRect(p.hwnd, addr r)
@@ -409,33 +509,57 @@ proc layout*(p: Page) =
       MoveWindow(it.hwnds[0], x, int32(y), int32(w), int32(h), 1)
       y += h + px(if it.kind == ikTitle: 8 else: 6)
     of ikField:
-      MoveWindow(it.hwnds[0], x, int32(y), int32(w), px(20), 1)
-      MoveWindow(it.hwnds[1], x, int32(y + px(20)), int32(w), px(28), 1)
-      y += px(56)
+      let lh = p.fieldLabel(it.hwnds[0], w)
+      var eh = int(tx(28))
+      if (uint32(GetWindowLongPtrW(it.hwnds[1], -16)) and ES_MULTILINE) != 0:      # a value that wraps (field)
+        eh = max(eh, p.measure(it.hwnds[1].text, fontNormal, w - int(px(12))) + int(px(10)))
+      MoveWindow(it.hwnds[0], x, int32(y), int32(w), int32(lh), 1)
+      MoveWindow(it.hwnds[1], x, int32(y + lh), int32(w), int32(eh), 1)
+      y += lh - int(tx(20)) + eh - int(tx(28)) + txp(48, 8)
     of ikMulti:
-      MoveWindow(it.hwnds[0], x, int32(y), int32(w), px(20), 1)
-      MoveWindow(it.hwnds[1], x, int32(y + px(20)), int32(w), px(it.height), 1)
-      y += px(it.height) + px(28)
+      let lh = p.fieldLabel(it.hwnds[0], w)
+      MoveWindow(it.hwnds[0], x, int32(y), int32(w), int32(lh), 1)
+      MoveWindow(it.hwnds[1], x, int32(y + lh), int32(w), tx(it.height), 1)
+      y += lh - int(tx(20)) + tx(it.height) + txp(20, 8)
     of ikButtons:
       var bx = int(x)
       if it.right:       # (one row at the right when they fit; else from the left, as any)
         var total = 0
         for b in it.hwnds: total += max(int(px(90)), p.textWidth(b.text.replace("&&", "&"), fontNormal) + int(px(28))) + int(px(8))
         if total - int(px(8)) <= w: bx = int(x) + w - (total - int(px(8)))
+      var rowH = int(tx(30))
       for b in it.hwnds:
         let bw = max(int(px(90)), p.textWidth(b.text.replace("&&", "&"), fontNormal) + int(px(28)))
         if bx > int(x) and bx + bw > int(x) + w:        # wrap to the next line
           bx = int(x)
-          y += px(38)
-        MoveWindow(b, int32(bx), int32(y), int32(min(bw, w)), px(30), 1)
+          y += rowH - int(tx(30)) + txp(30, 8)
+          rowH = int(tx(30))
+        var bh = int(tx(30))
+        if bw > w and textScale > 1.0:
+          # a label wider than the whole column (larger text, a longer word in another language): its lines wrap,
+          # the button as tall as they need (at 100 % as released: cut at the column)
+          SetWindowLongPtrW(b, -16, GetWindowLongPtrW(b, -16) or int(BS_MULTILINE))
+          bh = max(bh, p.measure(b.text.replace("&&", "&"), fontNormal, w - int(px(28))) + int(px(12)))
+        elif (uint32(GetWindowLongPtrW(b, -16)) and BS_MULTILINE) != 0:
+          SetWindowLongPtrW(b, -16, GetWindowLongPtrW(b, -16) and not int(BS_MULTILINE))   # (fits on one line again)
+        MoveWindow(b, int32(bx), int32(y), int32(min(bw, w)), int32(bh), 1)
+        rowH = max(rowH, bh)
         bx += bw + int(px(8))
-      y += px(40)
+      y += rowH - int(tx(30)) + txp(30, 10)
     of ikCheck:
-      MoveWindow(it.hwnds[0], x, int32(y), int32(w), px(26), 1)
-      y += px(32)
-    of ikList:
-      MoveWindow(it.hwnds[0], x, int32(y), int32(w), px(it.height), 1)
-      y += px(it.height) + px(10)
+      var ch = int(tx(26))
+      if textScale > 1.0 and p.textWidth(it.hwnds[0].text.replace("&&", "&"), fontNormal) + int(px(24)) > w:
+        # (a label wider than the column: its lines wrap beside the box, as tall as they need)
+        SetWindowLongPtrW(it.hwnds[0], -16, GetWindowLongPtrW(it.hwnds[0], -16) or int(BS_MULTILINE))
+        ch = max(ch, p.measure(it.hwnds[0].text.replace("&&", "&"), fontNormal, w - int(px(24))) + int(px(8)))
+      elif (uint32(GetWindowLongPtrW(it.hwnds[0], -16)) and BS_MULTILINE) != 0:
+        # (fits on one line again, after a smaller text size: the released single line)
+        SetWindowLongPtrW(it.hwnds[0], -16, GetWindowLongPtrW(it.hwnds[0], -16) and not int(BS_MULTILINE))
+      MoveWindow(it.hwnds[0], x, int32(y), int32(w), int32(ch), 1)
+      y += ch - int(tx(26)) + txp(26, 6)
+    of ikList:      # (its height is made for a number of rows: it grows with them)
+      MoveWindow(it.hwnds[0], x, int32(y), int32(w), tx(it.height), 1)
+      y += tx(it.height) + px(10)
     of ikSpace:
       y += px(it.height)
     of ikFill:
@@ -458,14 +582,44 @@ proc layout*(p: Page) =
       var bx = int(x)
       for b in it.hwnds:
         let th = p.measure(b.text.replace("&&", "&"), fontNormal, w - int(px(28))) + int(px(16))
-        MoveWindow(b, int32(bx), int32(y), int32(w), int32(max(int(px(32)), th)), 1)
-        y += max(int(px(32)), th) + px(6)
+        MoveWindow(b, int32(bx), int32(y), int32(w), int32(max(int(tx(32)), th)), 1)
+        y += max(int(tx(32)), th) + px(6)
   p.contentH = y + p.scroll + px(12)
   var si = SCROLLINFO(cbSize: UINT(sizeof(SCROLLINFO)), fMask: SIF_ALL, nMin: 0, nMax: int32(p.contentH),
                       nPage: UINT(r.bottom), nPos: int32(p.scroll))
   SetScrollInfo(p.hwnd, SB_VERT, addr si, 1)
 
+proc zoomRich(h: HWND) =
+  ## rich text (courses) at the text size: RichEdit's own zoom (its fonts are in points, from the RTF)
+  SendMessageW(h, 0x04E1'u32, WPARAM(int(round(textScale * 100))), 100)     # EM_SETZOOM
+
+proc relayoutAll() =
+  ## after new fonts: every page laid out again with them, owner-drawn lists' rows and rich text at the new size
+  var ps: seq[Page]
+  for h, p in pages:
+    if IsWindow(h) != 0: ps.add p
+  for p in ps:
+    for it in p.items:
+      if it.kind == ikList and it.hwnds[0] in ownerDraws:
+        SendMessageW(it.hwnds[0], 0x01A0'u32, 0, LPARAM(tx(26)))           # LB_SETITEMHEIGHT
+  if zoomPending:      # (only for a text size change: a scale change keeps the zoom the reader chose, Ctrl+wheel)
+    zoomPending = false
+    var rs: seq[HWND]
+    for h in richH.keys: rs.add h
+    for h in rs:
+      if IsWindow(h) != 0: zoomRich(h)
+  for p in ps:
+    if p.hwnd != nil and IsWindow(p.hwnd) != 0: p.layout()
+
+afterFonts.add relayoutAll
+
+proc relayoutPages*() =
+  ## every page laid out again in the fonts it has (see kks_explorer.textSizeChanged)
+  relayoutAll()
+
 proc isEmpty*(p: Page): bool = p == nil or p.items.len == 0
+
+proc RedrawWindow(h: HWND, r: pointer, rgn: pointer, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
 
 proc placeColumn*(head, body: Page, x, w, h: int, headOn: bool): int =
   ## a column of two pages at `x`: `head` on top, as tall as what it holds (at most half the column), and `body`
@@ -481,6 +635,9 @@ proc placeColumn*(head, body: Page, x, w, h: int, headOn: bool): int =
     head.layout()            # (at its own height: no scroll bar when all of it fits)
   ShowWindow(head.hwnd, if result > 0: SW_SHOW else: SW_HIDE)
   MoveWindow(body.hwnd, int32(x), int32(result), int32(max(w, 0)), int32(h - result), 1)
+  # (the heading painted again, all of it: moved and laid out with the first move unpainted, it kept old pixels of its
+  # buttons, seen at 200 % text after the window was resized)
+  if result > 0: RedrawWindow(head.hwnd, nil, nil, 0x0001'u32 or 0x0004'u32 or 0x0080'u32)   # INVALIDATE, ERASE, ALLCHILDREN
 
 proc tabRows*(widths: seq[int], avail, gap: int): seq[seq[int]] =
   ## the tabs (their least widths) in rows of at most `avail` px with `gap` between them, in order; a tab wider than
@@ -500,7 +657,7 @@ proc placeTabs*(tabs: seq[HWND], x, y, w: int): int =
   ## row stretched to the strip's width. Never past the strip: the drawing beside it, a sibling window that paints
   ## its whole area, hid what stood over it (the user, 2026-11-18: Manage under the drawing). -> the strip's height
   let m = int(px(4))
-  let rowH = int(px(32))
+  let rowH = int(tx(32))
   var widths: seq[int]
   for b in tabs:
     SendMessageW(b, WM_SETFONT, cast[WPARAM](fontNormal), 0)   # (WM_DPICHANGED made new fonts: measure with the one shown)
@@ -618,7 +775,7 @@ proc pageProc(h: HWND, m: UINT, w: WPARAM, l: LPARAM): LRESULT {.stdcall.} =
     return cast[LRESULT](GetSysColorBrush(COLOR_WINDOW))
   of WM_MEASUREITEM:
     let mi = cast[ptr MEASUREITEMSTRUCT](l)
-    mi.itemHeight = UINT(px(26))
+    mi.itemHeight = UINT(tx(26))
     return 1
   of WM_DRAWITEM:
     let di = cast[ptr DRAWITEMSTRUCT](l)
@@ -739,7 +896,11 @@ proc field*(p: Page, name, value: string, password = false, readonly = false, on
   ## key: what the field holds, where its label doesn't say (a custom field's value: its name), so that what was typed
   ## goes back into the field for the same thing when the page is made again (restoreText)
   let lab = control(p.hwnd, "STATIC", name, SS_LEFT or SS_NOPREFIX)[0]
-  let (e, _) = control(p.hwnd, "EDIT", value, WS_TABSTOP or ES_AUTOHSCROLL or (if password: ES_PASSWORD else: 0) or
+  # a value to read (a decoded code, a description) at a larger text size: on as many lines as it needs, never cut
+  # mid-word with no mark (an edit's style can't change later: a text size change makes the page again, textSizeChanged)
+  let wrapRead = readonly and textScale > 1.0
+  let (e, _) = control(p.hwnd, "EDIT", (if wrapRead: value.replace("\n", "\r\n") else: value), WS_TABSTOP or
+                       (if wrapRead: ES_MULTILINE else: ES_AUTOHSCROLL) or (if password: ES_PASSWORD else: 0) or
                        (if readonly: ES_READONLY else: 0), WS_EX_CLIENTEDGE)
   if onChange != nil: ctl(e).change = onChange
   if not readonly: p.typed.add Typed(h: e, name: name, key: (if key.len > 0: key else: name), was: e.text, secret: password)
@@ -975,6 +1136,7 @@ proc rich*(p: Page, rtf: string, links: seq[(string, string)] = @[]): HWND {.dis
   SendMessageW(result, EM_EXSETSEL, 0, cast[LPARAM](addr none))
   richLinks[result] = found
   SendMessageW(result, EM_SETEVENTMASK, 0, LPARAM(ENM_REQUESTRESIZE or ENM_LINK))
+  if textScale != 1.0: zoomRich(result)
   p.items.add Item(kind: ikRich, hwnds: @[result])
 
 proc tallButtons*(p: Page, specs: seq[(string, proc ())]): seq[HWND] {.discardable.} =
@@ -1064,8 +1226,6 @@ var popupMayClose* = initTable[HWND, proc (): bool]()   ## a popup's close box (
 
 proc LoadIconW(inst: HINSTANCE, name: int): pointer {.importc: "LoadIconW", stdcall, header: HG.}
 proc SetWindowPos(h, after: HWND, x, y, cx, cy: int32, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
-proc GetWindowLongPtrW(h: HWND, i: int32): int {.importc, stdcall, header: HG.}
-proc SetWindowLongPtrW(h: HWND, i: int32, v: int): int {.importc, stdcall, header: HG, discardable.}
 proc DrawIconEx(dc: HDC, x, y: int32, icon: pointer, w, h: int32, step: UINT, br: pointer, flags: UINT): BOOL {.importc, stdcall, header: HG, discardable.}
 
 type MONITORINFO {.importc, header: HG.} = object
@@ -1313,8 +1473,25 @@ proc popup*(owner: HWND, title: string, w, h: int, onClose: proc () = nil, escap
                          lpszClassName: clsName)
     discard RegisterClassExW(addr wc)
     popupClassDone = true
+  # (larger with the text size, within the screen's work area)
+  var wa: RECT
+  SystemParametersInfoW(0x0030, 0, addr wa, 0)         # SPI_GETWORKAREA
+  let pw = min(int(tx(w)), max(int(px(w)), int(wa.right - wa.left)))
+  let ph = min(int(tx(h)), max(int(px(h)), int(wa.bottom - wa.top)))
   let hw = CreateWindowExW(WS_EX_CONTROLPARENT, newWideCString("KKSPopup"), newWideCString(title), WS_OVERLAPPEDWINDOW,
-                           CW_USEDEFAULT, CW_USEDEFAULT, px(w), px(h), owner, nil, hinst, nil)
+                           CW_USEDEFAULT, CW_USEDEFAULT, int32(pw), int32(ph), owner, nil, hinst, nil)
+  if textScale > 1.0:
+    # larger with the text, it is kept inside the work area of its owner's monitor (Windows' default place is a cascade
+    # offset that can put a window as tall as the screen past its bottom)
+    var mi = MONITORINFO(cbSize: DWORD(sizeof(MONITORINFO)))
+    var wr: RECT
+    if GetMonitorInfoW(MonitorFromWindow(if owner != nil: owner else: hw, 2), addr mi) != 0 and
+       GetWindowRect(hw, addr wr) != 0:
+      let ww = min(int(wr.right - wr.left), int(mi.rcWork.right - mi.rcWork.left))
+      let wh = min(int(wr.bottom - wr.top), int(mi.rcWork.bottom - mi.rcWork.top))
+      let x = max(int(mi.rcWork.left), min(int(wr.left), int(mi.rcWork.right) - ww))
+      let y = max(int(mi.rcWork.top), min(int(wr.top), int(mi.rcWork.bottom) - wh))
+      MoveWindow(hw, int32(x), int32(y), int32(ww), int32(wh), 0)
   let p = newPage(hw)
   popups[hw] = (p, onClose)
   if escape: escCloses.add hw
