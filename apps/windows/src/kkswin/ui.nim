@@ -1113,15 +1113,15 @@ proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], foc
     closureScope:
       let k = i
       specs.add (answers[k], proc () =
-        if not armed: return
+        if not armed and k != cancelWith: return     # (the safe answer is never held back)
         chosen = k
         release()
         DestroyWindow(hw))
   let bs = p.buttons(specs, right = true)
   if danger in 0 ..< bs.len: themeDanger(bs[danger])
   themeDialog(hw, text)          # a dialog to a screen reader, what it means as its description (as a task dialog)
-  # the buttons take no press for a double-click's time: a second press of the button that opened the question
-  # never answers it (S2), whatever sent it (the mouse, a key, UI Automation's Invoke)
+  # the other answers take no press for a double-click's time: a second press of the button that opened the question
+  # never answers it (S2), whatever sent it (the mouse, a key, UI Automation's Invoke); the safe answer always does
   armed = false
   p.layout()
   # as tall as what it holds (within the screen's work area: the buttons stay on screen), over its owner, a third of

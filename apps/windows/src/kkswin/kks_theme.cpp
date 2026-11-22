@@ -292,11 +292,12 @@ static LRESULT CALLBACK containerProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_P
         NMHDR *hd = (NMHDR *)l;
         if (hd->code == NM_CUSTOMDRAW && isClass(hd->hwndFrom, L"SysTreeView32")) {
             // the selected item in the accent colour whether the tree has the keyboard or not (the theme's grey was
-            // 1.1:1 on the tree; #510): the item is drawn as unselected, in our colours
+            // 1.1:1 on the tree; #510): the item is drawn as unselected, in our colours. The keyboard in the tree shows
+            // as its edge turning white (edgeProc), as a field's
             NMTVCUSTOMDRAW *cd = (NMTVCUSTOMDRAW *)l;
             if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
             if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT && (cd->nmcd.uItemState & CDIS_SELECTED)) {
-                cd->nmcd.uItemState &= ~CDIS_SELECTED;
+                cd->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
                 cd->clrText = pal[AccentText];
                 cd->clrTextBk = pal[Accent];
                 return CDRF_NEWFONT;
