@@ -42,6 +42,8 @@ proc kksThemeDim(h: HWND) {.importc: "kks_theme_dim", cdecl.}
 proc kksThemeDanger(h: HWND) {.importc: "kks_theme_danger", cdecl.}
 proc kksThemeApplyAll() {.importc: "kks_theme_apply_all", cdecl.}
 proc menusKnown*(build: cuint): cint {.importc: "kks_theme_menus_known", cdecl.}
+proc ringPx*(dpi: cint): cint {.importc: "kks_theme_ring_px", cdecl.}
+  ## the focus ring's width in device pixels at a DPI: at least 2 logical px (rounded up), for fields and buttons
 proc kksDialogA11y(h: HWND, description: WideCString): cint {.importc: "kks_theme_dialog_a11y", cdecl.}
 
 

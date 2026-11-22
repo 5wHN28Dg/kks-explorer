@@ -228,6 +228,14 @@ suite "the dark colours (the switch on)":
     check "\\red228\\green174\\blue69;" in rtfHead(true)      # alarm #E4AE45
     check rtfHead(false) == RtfHead
 
+  test "the focus ring is at least 2 px at every scale (125 %: 3 device px, not 2)":
+    check ringPx(96) == 2
+    check ringPx(120) == 3        # 125 %: 2.4 logical px
+    check ringPx(144) == 3        # 150 %
+    check ringPx(168) == 4        # 175 %
+    check ringPx(192) == 4        # 200 %
+    for d in 96 .. 288: check float(ringPx(cint(d))) * 96 / float(d) >= 2.0
+
   test "menus in dark only on the Windows builds where uxtheme's unnamed exports are known":
     check menusKnown(17762) == 0
     check menusKnown(17763) == 1

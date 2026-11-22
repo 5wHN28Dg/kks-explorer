@@ -81,6 +81,9 @@ static void appMenus() {
 // ---- painting a button, check box or radio button in our colours (NM_CUSTOMDRAW at its parent)
 static int dpiOf(HWND h) { UINT d = GetDpiForWindow(h); return d ? (int)d : 96; }
 static int sc(HWND h, int v) { return MulDiv(v, dpiOf(h), 96); }
+// the focus ring's width in device pixels: 2 px at 100 %, rounded up above it (3 at 125 and 150 %, 4 at 200 %)
+extern "C" int kks_theme_ring_px(int dpi) { return max(2, (2 * dpi + 95) / 96); }
+static int ringPx(HWND h) { return kks_theme_ring_px(dpiOf(h)); }
 
 static void frame(HDC dc, RECT r, COLORREF c, int w) {
     HBRUSH b = CreateSolidBrush(c);
@@ -111,7 +114,7 @@ static void drawButton(NMCUSTOMDRAW *cd) {
     LRESULT ui = SendMessageW(h, WM_QUERYUISTATE, 0, 0);
     bool cues = !(ui & UISF_HIDEACCEL);
     if (ui & UISF_HIDEFOCUS) focus = false;     // (as Windows' own buttons: no ring after a click, until a key is used)
-    int ring = max(2, sc(h, 2));                // the focus ring: 2 px at 100 %, more at higher scaling
+    int ring = ringPx(h);                       // the focus ring: 2 px at 100 %, more at higher scaling
     int n = GetWindowTextLengthW(h);
     wchar_t *text = (wchar_t *)calloc(n + 1, sizeof(wchar_t));
     GetWindowTextW(h, text, n + 1);
@@ -194,6 +197,13 @@ static void drawButton(NMCUSTOMDRAW *cd) {
 // ---- a field's or list's edge (WS_EX_CLIENTEDGE): the theme draws it light, with a white inner line
 static LRESULT CALLBACK edgeProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id, DWORD_PTR) {
     if (m == WM_NCDESTROY) RemoveWindowSubclass(h, edgeProc, id);
+    if (m == WM_NCCALCSIZE && w && dark && (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_CLIENTEDGE)) {
+        // above 100 % the edge is as wide as the focus ring (Windows' client edge stays 2 device px at any scale)
+        LRESULT res = DefSubclassProc(h, m, w, l);
+        int extra = ringPx(h) - 2;
+        if (extra > 0) InflateRect(&((NCCALCSIZE_PARAMS *)l)->rgrc[0], -extra, -extra);
+        return res;
+    }
     if (m == WM_NCPAINT && dark && (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_CLIENTEDGE)) {
         LRESULT res = DefSubclassProc(h, m, w, l);         // the scroll bars
         HDC dc = GetWindowDC(h);
@@ -203,9 +213,10 @@ static LRESULT CALLBACK edgeProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR id
         // the edge: a line in the edge colour; under the keyboard two lines in the focus colour (the second changes
         // from the field's colour to white: far above 3:1)
         bool focused = GetFocus() == h;
+        int ring = ringPx(h);
         frame(dc, r, focused ? pal[Focus] : pal[Border], 1);
         InflateRect(&r, -1, -1);
-        frame(dc, r, focused ? pal[Focus] : pal[Surface], 1);
+        frame(dc, r, focused ? pal[Focus] : pal[Surface], ring - 1);
         ReleaseDC(h, dc);
         return res;
     }
@@ -279,6 +290,19 @@ static LRESULT CALLBACK containerProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_P
     }
     case WM_NOTIFY: {
         NMHDR *hd = (NMHDR *)l;
+        if (hd->code == NM_CUSTOMDRAW && isClass(hd->hwndFrom, L"SysTreeView32")) {
+            // the selected item in the accent colour whether the tree has the keyboard or not (the theme's grey was
+            // 1.1:1 on the tree; #510): the item is drawn as unselected, in our colours
+            NMTVCUSTOMDRAW *cd = (NMTVCUSTOMDRAW *)l;
+            if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+            if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT && (cd->nmcd.uItemState & CDIS_SELECTED)) {
+                cd->nmcd.uItemState &= ~CDIS_SELECTED;
+                cd->clrText = pal[AccentText];
+                cd->clrTextBk = pal[Accent];
+                return CDRF_NEWFONT;
+            }
+            return CDRF_DODEFAULT;
+        }
         if (hd->code == NM_CUSTOMDRAW && isClass(hd->hwndFrom, L"Button")) {
             NMCUSTOMDRAW *cd = (NMCUSTOMDRAW *)l;
             if (cd->dwDrawStage == CDDS_PREPAINT) {
@@ -309,7 +333,10 @@ static void control(HWND h) {
     bool bars = ((style & (WS_VSCROLL | WS_HSCROLL)) || isClass(h, L"SysTreeView32") || isClass(h, L"msctls_trackbar32")) &&
                 !isClass(h, L"ListBox");
     if (bars) SetWindowTheme(h, dark ? L"DarkMode_Explorer" : nullptr, nullptr);
-    if (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_CLIENTEDGE) SetWindowSubclass(h, edgeProc, SubId, 0);
+    if (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_CLIENTEDGE) {
+        SetWindowSubclass(h, edgeProc, SubId, 0);
+        SetWindowPos(h, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
 }
 
 static void container(HWND h) {

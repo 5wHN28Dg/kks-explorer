@@ -1144,7 +1144,8 @@ proc themedQuestion*(owner: HWND, title, text: string, answers: seq[string], foc
   SetWindowPos(hw, nil, int32(x), int32(y), int32(wW), int32(wH), 0x0024'u32)   # SWP_NOZORDER, SWP_FRAMECHANGED
   if ownerTop != nil: EnableWindow(ownerTop, 0)
   ShowWindow(hw, SW_SHOW)
-  let ready = afterMs(int(GetDoubleClickTime()), proc () = armed = true)
+  # (at most 700 ms: a double-click time raised for a tremor would otherwise hold the buttons for seconds)
+  let ready = afterMs(min(int(GetDoubleClickTime()), 700), proc () = armed = true)
   if focusOn in 0 ..< bs.len: SetFocus(bs[focusOn])
   var msg: MSG
   while IsWindow(hw) != 0:
