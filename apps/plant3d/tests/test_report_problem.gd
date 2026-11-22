@@ -157,6 +157,29 @@ func run(tree: SceneTree) -> Array:
 	rv.refresh()
 	if rv.text_box.text.contains("Layla"):
 		p.append("a player who left is named in the report")
+	# a name's part never replaced inside a word (a player "Ali …" and the word "quality")
+	Report.remember("Ali Hassan", "[player name]")
+	rv.refresh()
+	if not rv.text_box.text.contains("quality") or rv.text_box.text.contains("qu[player"):
+		p.append("a name's part replaced inside a word: %s" % rv.text_box.text.substr(rv.text_box.text.find("Window"), 120))
+	# a join link, even one with its code cut short, never logs the code
+	ui.handle_link("walkdown-plant://join/QX7K2M9F2MHT4C7")
+	await tree.process_frame
+	if str(Report.keeper.last(20)).contains("QX7K2M9F2MHT4C7"):
+		p.append("a join link's (bad) code was logged")
+	# the session notes its code and players as it sees them (net/session.gd)
+	var S = load("res://net/session.gd").new()
+	S.code = Code.make()
+	S.display_name = "Zainab Qx"
+	S.roster = [{"name": "Yusuf Rk"}]
+	S._note_secrets()
+	var sc: String = S.code
+	S.free()
+	print("test: %s with Zainab Qx and Yusuf Rk" % sc)
+	rv.refresh()
+	for bad in [sc, "Zainab", "Yusuf"]:
+		if rv.text_box.text.contains(bad):
+			p.append("a session's %s, noted by the session, reaches the report" % bad)
 	# Back: About again; opened again, what was written is still there, the box unticked
 	rv.back.pressed.emit()
 	await tree.process_frame

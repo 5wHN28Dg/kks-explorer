@@ -174,10 +174,21 @@ static func _replace_nocase(text: String, what: String, with: String) -> String:
 	var at := 0
 	var i := low.find(w)
 	while i >= 0:
-		out += text.substr(at, i - at) + with
-		at = i + w.length()
-		i = low.find(w, at)
+		# whole words only (a name's "Ali" never inside "quality"; a path's ends are not letters anyway)
+		var e := i + w.length()
+		var before_ok := i == 0 or not _wordish(low[i - 1]) or not _wordish(w[0])
+		var after_ok := e >= low.length() or not _wordish(low[e]) or not _wordish(w[w.length() - 1])
+		if before_ok and after_ok:
+			out += text.substr(at, i - at) + with
+			at = e
+			i = low.find(w, at)
+		else:
+			i = low.find(w, i + 1)
 	return out + text.substr(at)
+
+
+static func _wordish(c: String) -> bool:
+	return c == "_" or c.is_valid_int() or c.to_upper() != c.to_lower() or c.unicode_at(0) > 127
 
 
 ## The report, as shown and given. `with_inputs`: the run's inputs too.
@@ -206,13 +217,17 @@ static func build(main, with_inputs: bool) -> String:
 		L.append("Scenario: %s, plant time %s, %d inputs so far%s" % [ui.clock.scenario, W.model_time(ui.clock.engine.step_no),
 				ui.clock.engine.inputs.size(), "; in a session" if ui.get("session") != null and ui.session.active() else ""])
 	L.append("")
+	var secrets := secrets_of(main)
+	var head := redact("\n".join(L), secrets)
+	L = PackedStringArray()
 	var lines: Array = keeper.last(SHOWN_LINES) if keeper != null else []
 	L.append("The app's last %d log lines:" % lines.size())
-	var secrets := secrets_of(main)
 	for l in lines:
-		L.append("  " + redact(String(l), secrets).left(LINE_MAX))
+		L.append("  " + redact(String(l), secrets).left(LINE_MAX))   # (redacted whole, then cut: once)
 	if lines.is_empty():
 		L.append("  (none)")
+	var logs := "\n".join(L)
+	L = PackedStringArray()
 	if with_inputs and ui != null and ui.get("clock") != null and ui.clock.engine != null:
 		var e = ui.clock.engine
 		var d := {"format": "walkdown-plant-inputs", "app": RunSave.app_version(),
@@ -225,7 +240,7 @@ static func build(main, with_inputs: bool) -> String:
 		else:
 			L.append("The run's inputs (what was done in this run, to replay it):")
 			L.append(js)
-	return redact("\n".join(L), secrets_of(main))
+	return head + "\n" + logs + ("\n" + redact("\n".join(L), secrets) if not L.is_empty() else "")
 
 
 ## A link to a new issue on the project's tracker with the report filled in; when it is too long for a link, the
@@ -325,6 +340,9 @@ func _init() -> void:
 	inputs_cb.add_theme_font_size_override("font_size", int(18 * W.scale))
 	inputs_cb.custom_minimum_size.y = 52 * W.scale
 	inputs_cb.toggled.connect(func(_on): refresh())
+	# its box drawn with an edge seen on the dark row (A2: at least 3:1), ticked filled
+	inputs_cb.add_theme_icon_override("unchecked", _box_icon(false))
+	inputs_cb.add_theme_icon_override("checked", _box_icon(true))
 	body.add_child(inputs_cb)
 	body.add_child(W.label("The report" + ("" if OS.has_feature("mobile")
 			else "  (Page Up and Page Down, the gamepad's shoulder buttons or its right stick scroll it)"), 18))
@@ -381,6 +399,22 @@ func close() -> void:
 	if visible:
 		visible = false
 		closed.emit()
+
+
+## A check box's square, `scale`d: a light edge, filled when ticked.
+static func _box_icon(ticked: bool) -> ImageTexture:
+	var n := maxi(16, int(24 * W.scale))
+	var b := maxi(2, int(2 * W.scale))
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var edge := Color(0.85, 0.88, 0.93)
+	for y in n:
+		for x in n:
+			if x < b or y < b or x >= n - b or y >= n - b:
+				img.set_pixel(x, y, edge)
+			elif ticked and x >= 2 * b and y >= 2 * b and x < n - 2 * b and y < n - 2 * b:
+				img.set_pixel(x, y, Color(1.0, 0.8, 0.25))
+	return ImageTexture.create_from_image(img)
 
 
 ## A text box's edge seen against the panel (A2: at least 3:1), in every state.
@@ -502,9 +536,7 @@ func write_to(path: String) -> void:
 
 
 func share() -> void:
-	var why := share_android(given())
-	if why == "":
-		_given_away()
+	var why := share_android(given())       # (what happened stays: the share may be cancelled)
 	_say("Android's share sheet is open." if why == "" else "Sharing did not open (%s). Save or copy the report instead." % why)
 
 
@@ -522,9 +554,7 @@ func open_issue() -> void:
 	if err != OK:
 		_say("No browser opened. Copy the report (or save it), then make a new issue at %s." % ISSUES)
 		return
-	_issue_label()
-	if fits or copied:
-		_given_away()
+	_issue_label()                              # (what happened stays: the issue may be left unposted)
 	if too_long:
 		_say("A new issue opens in your browser. The report is too long to paste there: save it to a file, then attach "
 				+ "the file to the issue. Nothing is posted until you press its button there.")
@@ -548,6 +578,8 @@ func _input(e: InputEvent) -> void:
 		return
 	# the report scrolls by keys and the gamepad's shoulder buttons wherever the focus is (as About): it never takes
 	# the focus itself, which would hold the D-pad and the arrows in it
+	if what_box.has_focus() and e is InputEventKey:
+		return                                  # (Page keys move in what is being typed)
 	var page := int(text_box.size.y * 0.9)
 	var to := -1.0
 	if e is InputEventKey and e.keycode == KEY_PAGEDOWN or e is InputEventJoypadButton and e.button_index == JOY_BUTTON_RIGHT_SHOULDER:
@@ -567,3 +599,12 @@ func _process(delta: float) -> void:
 	var dy := Input.get_axis("look_up", "look_down")
 	if absf(dy) > 0.2:
 		text_box.scroll_vertical = maxf(0.0, text_box.scroll_vertical + dy * 30.0 * delta)
+
+
+## The draft written at once when the app may be stopped (the picker, the browser or the share sheet in front, Back).
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_CLOSE_REQUEST, \
+				NOTIFICATION_WM_GO_BACK_REQUEST:
+			if what_box != null and visible:
+				_keep_draft()

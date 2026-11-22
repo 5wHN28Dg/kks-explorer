@@ -2444,7 +2444,9 @@ func handle_link(url: String) -> void:
 		return
 	var r: Dictionary = Links.read_link(url, model)
 	# (a join link's code is the session's key: never in the log, which a problem report shows; app/report.gd)
-	print("plant: link opens %s" % (r["open"] if r["open"] == "join" else "%s %s" % [url.left(80), JSON.stringify(r)]))
+	# (any join link's path, valid or not, is never logged: a code cut short can be made whole again)
+	var joins: bool = r["open"] == "join" or url.to_lower().contains("://join")
+	print("plant: link opens %s" % ("a session's join" if joins else "%s %s" % [url.left(80), JSON.stringify(r)]))
 	match r["open"]:
 		"kks":
 			var asked := url.get_slice("/", 3).left(24)
