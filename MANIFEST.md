@@ -1,6 +1,6 @@
-# UX evidence: A failed autosave said (#473), round 2
+# UX evidence: A failed autosave said (#473), round 3
 
-Synthetic (the invented plant), commit 24dda7403501ad4973be0ac166fda2d4304386de. `apps/plant3d/tests/save_failure_shots.gd` under tools/plant3d/bench/offscreen.sh (OFFSCREEN_GODOT_DATA a folder of its own): desk_uidefault (1600x900, 100 %), desk_ui2 (1366x768, 200 %), phone_uidefault (2220x1080 phone layout); states savefail_said (the notice above the status line), savefail_line, savefail_saved_again.
+Synthetic (the invented plant), commit 59e88167a919cdab90026cb3d711a829621aa1dd. Round 2's shots, plus small640_* at the head 59e88167 (640x360, --ui-size=2: the status line wraps onto two lines, the notice above it, inside the panels' top).
 
 ```
 63c24366a7682fdea820279eea5dc8caf9433504de3cd2b5bd06869e4f375ad9  desk_ui2_savefail_line.png
@@ -12,4 +12,7 @@ ab764099dff78d5a70539ca0838bf18934b9d0560e38ebed8540ef2259b0e1f7  desk_uidefault
 8aef3434afd58f89a0dde6a7f58b42a5a34f49f96987d9e7fd0aca11ad9307e4  phone_uidefault_savefail_line.png
 4bfd895a4b6da3d27890d845db8fc5adfeac6e3e90ed799aed122326d43740cc  phone_uidefault_savefail_said.png
 7c592278d5210b90bc7a95c31aff522eec7bcc1f99d9ca7d6ae5d81ce80dd2ae  phone_uidefault_savefail_saved_again.png
+5fce63ed2c7617ce38a9bdb1a39598c93a45cf86aa20bd2fba999b29bce88374  small640_desk_ui2_savefail_line.png
+4b990fb41685679cb64205a12f6ca499c405accb8ca361a8bbee467b52327b5b  small640_desk_ui2_savefail_said.png
+0bb1e269c12db66c2fc09a469ea2814b1dfcbfeeaf2a771dd004460d7c9456f1  small640_desk_ui2_savefail_saved_again.png
 ```
