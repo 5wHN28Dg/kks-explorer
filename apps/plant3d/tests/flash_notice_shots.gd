@@ -2,6 +2,8 @@
 ## display):
 ##   tools/plant3d/bench/offscreen.sh godot --path apps/plant3d --resolution WxH --script res://tests/flash_notice_shots.gd -- --out=DIR
 ##     [--pseudo]   the texts pseudo-localised (accented and 40 % longer: labels that must grow)
+##     [--phone]    at the phone's UI scale (1.35, the Note 9's), at 150 % (its default size) and 200 %; run it at the
+##                  phone's window, --resolution 2220x1080
 ## At the window's size, at UI sizes 100 %, 150 % and 200 %: the first start's notice (the focus on Continue, then Tab
 ## to the box, the box ticked), with Reduced motion on (the box fixed on), and as opened again from the settings (Close;
 ## over a stand-in for the dimmed plant). Its controls' rectangles are printed (the UI-UX policy's evidence pack).
@@ -19,7 +21,10 @@ func _init() -> void:
 func _run() -> void:
 	var out := "user://flash_notice_shots"
 	var pseudo := false
+	var phone := false
 	for a in OS.get_cmdline_user_args():
+		if a == "--phone":
+			phone = true
 		if a.begins_with("--out="):
 			out = a.substr(6)
 		elif a == "--pseudo":
@@ -28,10 +33,12 @@ func _run() -> void:
 	FlashNotice.switch_override = 1
 	FlashNotice.display_override = 1
 	W.pick_scale()
+	if phone:
+		W.scale = 1.35
 	var under := ColorRect.new()      # a stand-in for the plant under the notice opened from the settings
 	under.color = Color(0.35, 0.45, 0.55)
 	under.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for f in [1.0, 1.5, 2.0]:
+	for f in ([1.5, 2.0] if phone else [1.0, 1.5, 2.0]):
 		W.apply_ui_size(root, f)
 		for kind in ["first", "reduced", "again"]:
 			var cf := ConfigFile.new()
@@ -52,7 +59,8 @@ func _run() -> void:
 				print("  %s %s" % [c.name, str(c.get_global_rect())])
 			print("  words fit without scrolling: %s" % str(n.scroll.get_v_scroll_bar().max_value <= n.scroll.size.y + 1.0))
 			print("  screen reader, with the focused button: %s" % n.continue_button.accessibility_description)
-			var tag := "%dx%d-%d-%s%s" % [root.size.x, root.size.y, roundi(f * 100), kind, "-pseudo" if pseudo else ""]
+			var tag := "%s%dx%d-%d-%s%s" % ["phone-" if phone else "", root.size.x, root.size.y, roundi(f * 100), kind,
+					"-pseudo" if pseudo else ""]
 			await _save(out + "/flash-notice-%s.png" % tag)
 			if kind == "first" and is_equal_approx(f, 1.0):
 				var ev := InputEventKey.new()
