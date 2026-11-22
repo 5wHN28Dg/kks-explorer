@@ -1,6 +1,6 @@
 """A5 for a state an evidence script sets up: Walkdown Plant run by a SceneTree script (an apps/plant3d/tests/*_shots.gd
 that holds its state with --hold=SECONDS), Godot's accessibility forced on, its AT-SPI tree read in the headless GNOME
-session: each node's role, name, description and whether it has the focus.
+session: each node's role, name, description and whether it has the focus. libatspi's cache is cleared before each walk (a held state is read as it is).
 Run inside apps/gnome/e2e/headless.sh:
   python3 plant_a5_script.py GODOT_BINARY OUT.json res://tests/NAME.gd [SCRIPT ARGS…]
 (repository root: $KKS_REPO or this file's place)"""
@@ -38,6 +38,10 @@ try:
                 if a and a.get_process_id() not in before]
         nodes = []
         for a in apps:
+            try:
+                a.clear_cache()     # each walk reads the tree as it is now, not libatspi's cached copy
+            except Exception:
+                pass
             for n in atspi.walk(a, maxdepth=40):
                 try:
                     st = n.get_state_set()

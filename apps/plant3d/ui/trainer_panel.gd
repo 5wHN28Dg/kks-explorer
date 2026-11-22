@@ -92,11 +92,7 @@ func refresh() -> void:
 		if q != null:
 			var words := _question_text(asking)
 			if q.text != words:
-				q.text = words
-				for n in ["keep_run", "confirm_restart"]:
-					var b = body.find_child(n, true, false)
-					if b != null and "accessibility_description" in b:
-						b.set("accessibility_description", words)
+				q.text = words      # (the buttons' descriptions stay as asked: a screen reader may repeat a change)
 			var go: Button = body.find_child("confirm_restart", true, false)
 			if go != null and go.disabled == armed:
 				go.disabled = not armed
@@ -173,7 +169,7 @@ func ask_restart(id: String) -> void:
 	_sig = ""
 	refresh()
 	var keep: Button = body.find_child("keep_run", true, false)
-	if keep != null:
+	if keep != null and ui.wants_focus():   # (keyboard and gamepad: on touch no panel takes the focus)
 		keep.grab_focus()
 	# the question and its Restart in view (a phone at a large UI size), once the panel has laid them out
 	get_tree().create_timer(0.1).timeout.connect(func():
@@ -243,6 +239,6 @@ func _question(row: HBoxContainer, id: String, sc: Dictionary, armed: bool, focu
 ## The focus to the scenario's Restart in it, scrolled into view (the panel's scroll doesn't follow the focus).
 func _focus_row(id: String) -> void:
 	var back: Button = body.find_child("restart_" + id, true, false)
-	if back != null:
+	if back != null and ui.wants_focus():
 		back.grab_focus()
 		get_tree().create_timer(0.05).timeout.connect(func(): ui._keep_in_view(back))
