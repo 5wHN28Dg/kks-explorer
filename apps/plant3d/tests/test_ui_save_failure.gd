@@ -96,6 +96,16 @@ func run(tree: SceneTree) -> Array:
 	a.restore(kept_p)
 	if not a.failure_text().contains("since plant time " + kept_at):
 		p.append("after Continue the failure would not name the continued run's time %s: %s" % [kept_at, a.failure_text()])
+	# a periodic save of the run before a restart, finished after it: no step of the new run (it has none saved)
+	a.path = good
+	a._sig = ""
+	a._t = 1000.0
+	a._each_frame(0.0)
+	a.new_run()                      # (as a restart or Continue alone does)
+	if a._thread != null:
+		a._finish_thread()
+	if not a.failure_text().contains("the whole run"):
+		p.append("a save of the run before finished after a restart counts for the new run: %s" % a.failure_text())
 	# 5. a session (nothing saved meanwhile): no note
 	a.path = bad
 	a.save_now()

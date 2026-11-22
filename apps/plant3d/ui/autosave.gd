@@ -67,6 +67,8 @@ var _told_ms := -1              # when a failure was last said on screen (-1: ne
 var _told := false              # the failure now going on was said (its end is said too)
 var _ok_step := -1              # the model step of the last save that succeeded (-1: none in this run yet)
 var _thread_step := 0           # the model step the periodic save being written was taken at
+var _run_no := 0                # counts new runs: a save written for an earlier one sets no step of this one
+var _thread_run := 0
 
 
 func setup(u, content_dir: String, save_path := "") -> void:
@@ -890,6 +892,7 @@ func restore(p: Dictionary) -> void:
 	var e = ui.clock.engine
 	RunSave.apply(e, p["engine"])
 	_ok_step = e.step_no            # the file it came from holds the run this far (a failed save after it loses less)
+	_run_no += 1
 	ui.sounds.reset_edges()
 	ui.alarms.on_events(e.events, 0)
 	ui._ev_seen = e.events.size()
@@ -1266,6 +1269,7 @@ func _each_frame(delta: float) -> void:
 	var p := payload()
 	capture_us = Time.get_ticks_usec() - t0
 	_thread_step = ui.clock.engine.step_no
+	_thread_run = _run_no
 	_thread = Thread.new()
 	_thread.start(_write.bind(p))
 
@@ -1277,7 +1281,7 @@ func _write(p: Dictionary) -> int:
 func _finish_thread() -> void:
 	var err: int = _thread.wait_to_finish()
 	_thread = null
-	_saved(err, _thread_step)
+	_saved(err, _thread_step if _thread_run == _run_no else -2)
 
 
 ## Saves now, on this thread (going to the background, closing; tests). False when it could not be written.
@@ -1298,7 +1302,8 @@ func save_now() -> bool:
 func _saved(err: int, step: int) -> void:
 	if err == OK:
 		saves += 1
-		_ok_step = step
+		if step != -2:                  # (-2: a save of the run before a restart or a load)
+			_ok_step = step
 		_retry = INTERVAL
 		if failing:
 			failing = false
@@ -1334,6 +1339,7 @@ func since_text() -> String:
 ## A new run (ui/plant_ui.gd restart): nothing of it saved yet.
 func new_run() -> void:
 	_ok_step = -1
+	_run_no += 1
 
 
 ## The HUD's status line's note while saves fail ("" while they succeed, and while nothing is saved: a session).

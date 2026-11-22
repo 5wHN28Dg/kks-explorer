@@ -136,6 +136,7 @@ var _ev_seen := 0
 var _horn := 0
 var _hint: Label
 var _toast: Label
+var _toast_low_at := -1.0      # where the low status line began when the toast was placed (-1: not low or hidden)
 var _toast_t := 0.0
 var _toast_beside_card := false
 var _toast_side := false        # a side panel was open when the notice was laid out
@@ -751,7 +752,8 @@ func _layout_toast() -> void:
 	# above the HUD's status line when it is at the bottom (a phone, a large UI size): never over its words
 	var hb = main.hud if main != null else null
 	if hb != null and hb.get("top_box") != null and hb._status_low and hb.top_box.visible:
-		_toast.position.y = minf(_toast.position.y, hb.top_box.position.y - h - 8.0)
+		# (never above the panels' top: a tall notice on a short canvas then lies over the line's lowest words)
+		_toast.position.y = maxf(minf(_toast.position.y, hb.top_box.position.y - h - 8.0), panels_top())
 
 
 ## Something open that reaches the bottom of the canvas (a side panel, the screens, the drawings, the tools, the
@@ -2248,6 +2250,7 @@ func continue_alone() -> void:
 	mine = 0
 	clock.scenario = d["scenario"]
 	adopt_engine(e)
+	autosave.new_run()               # (a run of its own now: nothing of it saved yet)
 	inputs.slot = mine
 	clock.driven = false
 	autosave.armed = true
@@ -2593,8 +2596,12 @@ func _fit() -> void:
 
 func _toast_tick(delta: float) -> void:
 	if _toast_t > 0.0:
-		if (card != null and card.visible != _toast_beside_card) or _side_open() != _toast_side:
-			_layout_toast()                  # a card or panel opened under the word: the word moves clear of it
+		var hb = main.hud if main != null else null
+		var low_at: float = hb.top_box.position.y if hb != null and hb.get("top_box") != null and hb._status_low \
+				and hb.top_box.visible else -1.0
+		if (card != null and card.visible != _toast_beside_card) or _side_open() != _toast_side or low_at != _toast_low_at:
+			_toast_low_at = low_at
+			_layout_toast()                  # a card or panel opened under the word, the status line moved: clear of it
 		_toast_t -= delta
 		if _toast_t <= 0.0:
 			_toast.text = ""
