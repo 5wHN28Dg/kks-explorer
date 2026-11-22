@@ -158,6 +158,10 @@ class WebAbout(unittest.TestCase):
             f.locator('input[name=password]').fill(PW)
             errors.leave()
             f.get_by_role('button', name='Sign in').click()
+            # the main page after the sign-in's reload, built (#495): until then #aboutBtn is the signed-out page's,
+            # visible under the sign-in form, and a click aimed at it while the page was replaced reached neither
+            # page's button (the header settles as the new page fills it)
+            expect(page.locator('#who')).to_have_text('The Manager')
             expect(page.locator('#aboutBtn')).to_be_visible()
             page.locator('#aboutBtn').click()
             dlg = page.locator('dialog#kabout')
