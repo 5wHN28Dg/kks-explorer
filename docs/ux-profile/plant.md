@@ -112,7 +112,7 @@ Targets set 2026-11-19 *(assumptions until a round with users)*.
 | 9 | "What did I do wrong?" (debrief) | trainee | after each scenario | the steps beside the right ones (TRAIN2) | ≤ 2 actions from the end of a scenario |
 | 10 | "Carry on tomorrow" / "start again" (the saved run) | trainee | every session | the run continues, or a new one starts and the old one is kept | progress lost on a crash ≤ one scenario step or 5 minutes (GM5.2) |
 | 11 | "Make it fit me" (UI size, controls, pace, quality, motion) | anyone | once | the setting applied and kept | each setting ≤ 3 actions from the walk (Settings, the setting) |
-| 12 | "Report a problem" | anyone | rare | a prefilled public issue after seeing the redacted diagnostics, or a private report (FIELD1) | ≤ 4 actions. **Missing today** (#446) |
+| 12 | "Report a problem" | anyone | rare | a prefilled public issue after seeing the redacted diagnostics, or a private report (FIELD1) | ≤ 4 actions. Built in #504 (Settings → About → Report a problem: save, share, copy, or a public issue; the owner's verdict of 2026-11-22 on #505), switched off until the owner's check |
 | 13 | "Update to the new release" (a new APK, MSIX or Flatpak over the old; there is no updater in the app) | anyone | per release | the new version runs with the saved run and settings kept | the same steps as installing, with the warnings explained (#439). **Fails today:** an update discards the saved run (#447) |
 
 ## Screen table
@@ -179,7 +179,8 @@ GM (7.5) including GM10; AND (7.3) where it applies to a Godot app (back, insets
 
 - Godot's `Control` nodes with the layer's theme from `ui/widgets.gd` (`W.make_theme()`, `W.button`, `W.label`,
   `W.panel`, `W.PRIO_COLOURS`, `W.BAD_COLOUR`, the UI size scale): the tokens live there; a literal colour or size in
-  a panel is a V3 fail unless listed there with a reason. A destructive button style is still missing (#437).
+  a panel is a V3 fail unless listed there with a reason. The destructive button style is `W.destructive` (PR #478; used
+  by the Instructor's Restart, #437/#500, and Delete for good in Kept saves).
 - The user's choices: the UI size behaviour above; one compact top row on phones with More; a translucent backing
   panel for HUD text over the 3D view (#412).
 - **Voice:** plain operator's English; the plant's own words for its equipment; no jokes about failure.

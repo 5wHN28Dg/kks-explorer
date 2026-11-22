@@ -363,6 +363,10 @@ func _init() -> void:
 	if "accessibility_live" in note:
 		note.set("accessibility_live", 1)
 	add_child(note)
+	# beside the buttons, what the issue's button means (the owner's verdict on #505: a line next to it)
+	var pub := W.label("An issue on GitHub is public: anyone can read what you post there.", 16, W.DIM)
+	pub.name = "public_note"
+	add_child(pub)
 	var row := HFlowContainer.new()
 	row.name = "actions"
 	row.add_theme_constant_override("h_separation", int(10 * W.scale))

@@ -64,6 +64,9 @@ func run(tree: SceneTree) -> Array:
 		Report.switch_override = -1
 		return p + ["Report a problem did not show the report in About's place"]
 	var shown: String = rv.text_box.text
+	var pub: Label = rv.find_child("public_note", true, false)
+	if pub == null or not pub.is_visible_in_tree() or not pub.text.contains("public"):
+		p.append("no line beside the buttons says an issue is public")
 	var v: String = ProjectSettings.get_setting("application/config/version", "")
 	for t in ["Walkdown Plant " + v, "Platform: " + OS.get_name(), "Renderer: ", "Scenario: " + ui.clock.scenario,
 			"last ", "a warning to keep", "test: joined"]:

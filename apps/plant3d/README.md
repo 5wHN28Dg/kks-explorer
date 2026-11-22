@@ -601,6 +601,19 @@ Godot Engine's licence, copyright notices and third-party licences (`Engine.get_
 `get_copyright_info()`, `get_license_info()`). It scrolls by touch, the wheel, arrows or W/S, Page Up/Down, Home and
 End, the D-pad and either stick; Esc, B, Start or Back returns to the settings.
 
+## Report a problem (#446)
+
+Settings → About → **Report a problem** (`app/report.gd`), switched off until the owner's check: the project setting
+`walkdown/report_problem` (off by default; `Report.switch_override` in tests). It shows the whole report first: the
+app's version and commit, platform, device, processor and memory, the renderer and adapter, window and UI size, the
+scenario and plant time, and the last 100 log lines (kept in memory by a `Logger` from the start, in UTC); the run's
+inputs only when ticked. Player names and session codes (registered by `net/session.gd` as it sees them), addresses,
+the user's folders and login name are left out; a join link's path is never logged. What happened is typed in a box of
+its own, kept as a draft in `user://report-draft.txt` until a save succeeds. Save to a file (the system's dialog),
+Share (Android's share sheet), Copy, or open a public issue (a link of at most 2,000 characters; longer reports are
+copied to paste, over 60,000 characters saved to attach). The release page says what a report holds and that an issue
+is public (the owner's verdict on #505). Tests: `tests/test_report_problem.gd`; shots: `tests/report_shots.gd`.
+
 ## Releasing
 
 A plant release is a GitHub release of this repository tagged `plant-vX.Y.Z`, published **not as latest**:
