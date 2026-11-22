@@ -84,6 +84,25 @@ func run(tree: SceneTree) -> Array:
 		p.append("the status line still says the run isn't saved: %s" % main.hud.status.text)
 	if a.get("failing") or a.get("_retry") != Autosave.INTERVAL:
 		p.append("after a save that succeeded: failing %s, retry %s s" % [a.get("failing"), a.get("_retry")])
+	# 4. what is said lost follows the run: a new run has nothing saved yet; a continued one was saved as far as it went
+	if "accessibility_live" in ui._toast and int(ui._toast.get("accessibility_live")) == 0:
+		p.append("the notices are not said by a screen reader (the toast is no live region)")
+	ui.clock.run_steps(50)
+	var kept_p: Dictionary = a.payload()
+	var kept_at := W.model_time(ui.clock.engine.step_no)
+	ui.restart(ui.clock.scenario, true)
+	if not a.failure_text().contains("the whole run"):
+		p.append("after a restart the failure would name the last run's time: %s" % a.failure_text())
+	a.restore(kept_p)
+	if not a.failure_text().contains("since plant time " + kept_at):
+		p.append("after Continue the failure would not name the continued run's time %s: %s" % [kept_at, a.failure_text()])
+	# 5. a session (nothing saved meanwhile): no note
+	a.path = bad
+	a.save_now()
+	a.armed = false
+	await tree.process_frame
+	if main.hud.status.text.contains("not saved"):
+		p.append("with saving off (a session) the status line says the run isn't saved: %s" % main.hud.status.text)
 	main.free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(blocker))
 	return p

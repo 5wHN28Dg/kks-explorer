@@ -889,6 +889,7 @@ func restore(p: Dictionary) -> void:
 	ui.restart(p["scenario"], true)
 	var e = ui.clock.engine
 	RunSave.apply(e, p["engine"])
+	_ok_step = e.step_no            # the file it came from holds the run this far (a failed save after it loses less)
 	ui.sounds.reset_edges()
 	ui.alarms.on_events(e.events, 0)
 	ui._ev_seen = e.events.size()
@@ -1330,9 +1331,14 @@ func since_text() -> String:
 	return "the whole run" if _ok_step < 0 else "what was done since plant time %s" % W.model_time(_ok_step)
 
 
-## The HUD's status line's note while saves fail ("" while they succeed).
+## A new run (ui/plant_ui.gd restart): nothing of it saved yet.
+func new_run() -> void:
+	_ok_step = -1
+
+
+## The HUD's status line's note while saves fail ("" while they succeed, and while nothing is saved: a session).
 func save_note() -> String:
-	return "" if not failing else "Run not saved since %s" % ("its start" if _ok_step < 0 else W.model_time(_ok_step))
+	return "" if not failing or not armed else "Run not saved since %s" % ("its start" if _ok_step < 0 else W.model_time(_ok_step))
 
 
 func _notification(what: int) -> void:

@@ -480,6 +480,8 @@ func _build_toast() -> void:
 	_toast.add_theme_stylebox_override("normal", bg)
 	_toast.visible = false
 	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if "accessibility_live" in _toast:
+		_toast.set("accessibility_live", 1)     # polite: a screen reader says each notice (#374, #473)
 	# on a layer of its own above the settings (app/hud.gd, layer 8), which would hide it; shown with the layer's root
 	# (the Workshop hides that)
 	var tl := CanvasLayer.new()
@@ -746,6 +748,10 @@ func _layout_toast() -> void:
 	var h := _toast.get_combined_minimum_size().y
 	# (its bottom never below the screen's: a narrow notice between panels grows taller, and moves up)
 	_toast.position.y = (vs.y - h - 16.0) if screens_open() else minf(vs.y - 200.0 * W.scale, vs.y - h - 16.0)
+	# above the HUD's status line when it is at the bottom (a phone, a large UI size): never over its words
+	var hb = main.hud if main != null else null
+	if hb != null and hb.get("top_box") != null and hb._status_low and hb.top_box.visible:
+		_toast.position.y = minf(_toast.position.y, hb.top_box.position.y - h - 8.0)
 
 
 ## Something open that reaches the bottom of the canvas (a side panel, the screens, the drawings, the tools, the
@@ -1610,6 +1616,8 @@ func restart(scenario: String, quiet := false) -> void:
 		toast("Not while a session is open: every player's plant would differ. The host starts a new session for another scenario.")
 		return
 	task_given = {}                  # (a new run: none of its tasks begun yet)
+	if autosave != null:
+		autosave.new_run()           # (a failed save of it says the whole run, not the last one's plant time)
 	_aboard_was = false              # (a new run: the walker is aboard nothing)
 	if bus_drive != null:
 		bus_drive.log = []           # (a new run: no bus driven yet; a load puts its own back, ui/autosave.gd)
