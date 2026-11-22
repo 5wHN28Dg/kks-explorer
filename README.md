@@ -103,6 +103,13 @@ Samsung Galaxy Note 9 is the oldest phone it is tuned for. Decision `docs/decisi
 
 Its guides and pictures are on the wiki: [Walkdown Plant](https://github.com/5wHN28Dg/kks-explorer/wiki/Walkdown-Plant).
 
+**Reporting a problem.** Where it is switched on, Settings → About → Report a problem shows the whole report before
+anything leaves your device: the app's version, your device's model, processor, memory, operating system and graphics,
+the window and UI size, the scenario and its plant time, and the app's last log lines; the run's inputs only if you
+tick the box for them. Player names, session codes, network addresses and your folders are left out. Nothing is sent
+by itself: you save it to a file, share it or copy it, or open an issue with it on this project's GitHub tracker. An
+issue there is public: anyone can read what you post.
+
 **No plant data is in this repository.** Drawings, tag lists, procedures and photos belong to a plant: its manager
 publishes them to the plant's own devices. The program ships only the KKS decode tables (`data/kks.json`), the
 Learning courses and Walkdown Plant's invented plant (`data/plant3d/`).

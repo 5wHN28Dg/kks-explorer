@@ -277,6 +277,7 @@ func host(scenario_id: String, from_save := {}, with_code := "") -> String:
 		return "a session is open already"
 	code = with_code if with_code != "" else Code.make()
 	keys = Code.keys(code)
+	_note_secrets()
 	_udp = Udp.new()
 	if _udp.open(session_port, bind_address) != OK:
 		return _fail_open("the session's port %d is taken" % session_port)
@@ -334,6 +335,7 @@ func join(code_text: String, address := "") -> String:
 	if code == "":
 		return "that is not a session code (a character is wrong or missing)"
 	keys = Code.keys(code)
+	_note_secrets()
 	_udp = Udp.new()
 	if _udp.open(session_port, bind_address) != OK:
 		return _fail_open("no port for the session")
@@ -1614,6 +1616,7 @@ func _roster_changed() -> void:
 			"paused_by": paused_by, "fast": fast, "rate": rate, "settings": settings, "scenario": scenario}
 	if state == State.RUN or state == State.LOBBY:
 		_broadcast(Wire.Kind.ROSTER, JSON.stringify(msg).to_utf8_buffer())
+	_note_secrets()
 	changed.emit()
 
 
@@ -1970,6 +1973,7 @@ func _on_roster(m: Dictionary) -> void:
 		if typeof(x) == TYPE_DICTIONARY and typeof(x.get("slot")) == TYPE_INT and typeof(x.get("name")) == TYPE_STRING:
 			rs.append(x)
 	roster = rs
+	_note_secrets()
 	var was_run := state == State.RUN
 	if m.get("state") == "run" and state == State.LOBBY:
 		state = State.RUN
@@ -2590,3 +2594,17 @@ func my_entry() -> Dictionary:
 
 func buffer_turns() -> int:
 	return _buffer
+
+
+## The code and the players' names as this device sees them, left out of every problem report from now on (app/report.gd
+## remember: a name or code that was in the log stays out of a report after the session ends).
+func _note_secrets() -> void:
+	var R = load("res://app/report.gd")
+	if R == null:
+		return
+	R.remember(code, "[session code]")
+	R.remember(Code.pretty(code) if code.length() == 16 else "", "[session code]")
+	R.remember(display_name, "[player name]")
+	for r in roster:
+		if typeof(r) == TYPE_DICTIONARY and typeof(r.get("name")) == TYPE_STRING:
+			R.remember(r["name"], "[player name]")

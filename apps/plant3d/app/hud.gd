@@ -11,6 +11,7 @@ const Cost = preload("res://app/script_cost.gd")   # where the scripts' time goe
 const Quality = preload("res://app/quality.gd")
 const Player = preload("res://app/player.gd")
 const About = preload("res://app/about.gd")
+const Report = preload("res://app/report.gd")
 const W = preload("res://ui/widgets.gd")
 const InputMode = preload("res://app/input_mode.gd")
 const TOUCH := ["auto", "on", "off"]   # the settings' values of "Touch controls": Automatic, Always, Never
@@ -36,6 +37,8 @@ var extra: VBoxContainer       # rows the interaction layer adds (ui/plant_ui.gd
 var settings_box: VBoxContainer
 var about: About               # shown in the settings panel in place of the settings, the panel made larger
 var about_btn: Button
+var report: Report              # "Report a problem" (#446), from About, in its place; null while switched off
+var report_btn: Button          # About's "Report a problem"
 var close_btn: Button
 var settings_head: HBoxContainer   # the settings' title row: the title, About and Close (always on screen)
 var settings_scroll: ScrollContainer   # the settings' body, under the title row
@@ -363,6 +366,15 @@ func _settings(_hud_root: Control) -> void:
 	about = About.new()
 	about.closed.connect(_about_closed)
 	panel.add_child(about)
+	if Report.switched_on():
+		report = Report.new()
+		report.main = main
+		report.closed.connect(_report_closed)
+		panel.add_child(report)
+		report_btn = W.button("Report a problem", show_report)
+		report_btn.name = "report_problem"
+		about.add_child(report_btn)
+		about.move_child(report_btn, about.back.get_index())   # above Back, which stays last
 	settings_head = HBoxContainer.new()
 	settings_head.name = "head"
 	settings_head.add_theme_constant_override("separation", 10)
@@ -504,7 +516,7 @@ func _queue_fit() -> void:
 ## screen and the body scrolls under it. (About has the whole canvas less a margin: show_about.)
 func _fit_settings() -> void:
 	_fit_queued = false
-	if panel == null or about.visible:
+	if panel == null or about.visible or (report != null and report.visible):
 		return
 	var vs: Vector2 = (panel.get_parent() as Control).size
 	if vs.x <= 0.0 or vs.y <= 0.0:
@@ -553,7 +565,7 @@ func _input(e: InputEvent) -> void:
 	if panel == null or not panel.visible or not e is InputEventJoypadButton:
 		return
 	# gamepad B closes the settings, the top layer (About, inside them, takes it first to go back: app/about.gd)
-	if e.button_index == JOY_BUTTON_B and e.pressed and not about.visible:
+	if e.button_index == JOY_BUTTON_B and e.pressed and not about.visible and not (report != null and report.visible):
 		get_viewport().set_input_as_handled()
 		show_settings(false)
 		return
@@ -578,6 +590,22 @@ func show_about() -> void:
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 40)
 	about.open()
 
+## "Report a problem", from About, in its place (the panel as large as About's).
+func show_report() -> void:
+	if report == null or report.visible:
+		return
+	if not panel.visible:
+		show_settings(true)
+	settings_box.visible = false
+	about.visible = false
+	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 40)
+	report.open()
+
+func _report_closed() -> void:
+	about.open()                     # back where it came from
+	if report_btn != null:
+		report_btn.grab_focus()
+
 func _about_closed() -> void:
 	settings_box.visible = true
 	_fit_settings()
@@ -585,6 +613,9 @@ func _about_closed() -> void:
 		about_btn.grab_focus()
 
 func show_settings(on: bool) -> void:
+	if not on and report != null and report.visible:
+		report.visible = false       # (closed with the settings: not back to About; they open as the settings again)
+		settings_box.visible = true
 	if not on and about.visible:
 		about.close()
 	var was_on := panel.visible
@@ -709,7 +740,9 @@ func focus_panel() -> bool:
 	var fo := get_viewport().gui_get_focus_owner()
 	if panel.visible:
 		if fo == null or not panel.is_ancestor_of(fo):
-			if about.visible:
+			if report != null and report.visible:
+				report.back.grab_focus()
+			elif about.visible:
 				about.back.grab_focus()
 			else:
 				about_btn.grab_focus()
