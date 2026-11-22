@@ -41,6 +41,9 @@ min_gpu_message=false
 ; saves of another build made again, saves that can't be continued kept aside (ui/autosave.gd, issue #447): off until
 ; the owner's check (UI-UX policy 8.5); `carry_saves_over=true` in an override.cfg's `[walkdown]` turns it on for it
 carry_saves_over=false
+; the photosensitivity notice at the first start, in Settings and About (app/flash_notice.gd, issue #443): off until
+; the owner's check (UI-UX policy 8.5); `flash_notice=true` in an override.cfg's `[walkdown]` turns it on for it
+flash_notice=false
 
 [physics]
 

@@ -549,6 +549,16 @@ instead of flashing (`weather_view.gd` `wants_soft`), the same as with Reduced m
 motion. It is on whenever Reduced motion is (shown ticked, not changeable, saying so) and its own setting otherwise,
 kept in `settings.cfg` (`no_flashes`). With both off, the flashes keep the 2 s cap that IRIS passed (`test_flash_rate`).
 `tests/no_flashes_shots.gd` shows the row, ticks it by the keyboard and shows it with Reduced motion on.
+**The photosensitivity notice** (the owner, 2026-11-22, #443: "Yes, once at first start"; the rulebook's GM8.3)
+comes once, at the first start, before the plant loads (`app/flash_notice.gd`): the plant has weather with lightning,
+each flash lights the whole scene, at most one every 2 s, also in fast-forward; "No lightning flashes" is a box on the
+notice itself, and Reduced motion turns it on too. However it is closed (Continue, Escape, gamepad B, a tap) it is
+kept as seen (`[ui] flash_notice_seen` in `settings.cfg`); Settings' "About flashing light" shows it again (Close; its
+box changes the setting at once), and About carries its words. Not for a scripted or measured start. **Switched off
+until the owner's check** (the UI and UX policy's tier 2, 8.5): the project setting `walkdown/flash_notice`; an
+`override.cfg` beside the exe with `[walkdown]` and `flash_notice=true` turns it on for the check. `test_flash_notice`
+checks it; `tests/flash_notice_shots.gd` (under `offscreen.sh`, `--resolution WxH`, `--pseudo`) shows it at UI sizes
+100, 150 and 200 %, with Reduced motion on, and as opened again from Settings.
 `tests/workshop_shots.gd` (same arguments, `--phone` for the Note 9's screen and scale, `--ui-size=X`, `--kinds=a,b`)
 saves each Workshop kind with its panels, and with its guided steps started.
 - `test_workshop_layout`: the Workshop's panels on a desktop and on the Note 9, each at the UI size's 100 % and 150 %

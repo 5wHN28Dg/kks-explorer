@@ -81,6 +81,9 @@ static func sections() -> Array:
 	var acc := accessibility_text(a.get("accessibility", {}))
 	if acc != "":
 		out.append(["Accessibility", acc])
+	var fn = load("res://app/flash_notice.gd")
+	if fn.switched_on():            # the photosensitivity notice (#443; switched off until the owner's check)
+		out.append([fn.TITLE, "\n\n".join(fn.paragraphs(true))])
 	if a.is_empty():
 		out.append(["Assets", "The list of third-party assets is missing from this build (built/about.json)."])
 	else:

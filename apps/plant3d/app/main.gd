@@ -123,6 +123,7 @@ const WalkFrames = preload("res://app/walk_frames.gd")
 const WeatherView = preload("res://app/weather_view.gd")
 const W = preload("res://ui/widgets.gd")
 const MinGpu = preload("res://app/min_gpu.gd")
+const FlashNotice = preload("res://app/flash_notice.gd")
 # The start's slow scripts and the plant's model are made on worker threads while the sky frame is drawn and the plant
 # loads (`_prep_begin`): preloaded here, the UI's, the Workshop's and the session's scripts were compiled on the main
 # thread before the scene was ready (most of the Note 9's 5.2 s to `ready`), and the model read there in the `ui` stage
@@ -223,6 +224,14 @@ func _ready() -> void:
 		if not go:
 			get_tree().quit()
 			return
+	# the photosensitivity notice (issue #443, GM8.3): once, at the first start, before the plant loads, with "No
+	# lightning flashes" on it (app/flash_notice.gd; switched off until the owner's check)
+	if FlashNotice.wanted(cf, opts):
+		var fn = FlashNotice.new(cf)
+		add_child(fn)
+		_say("flash notice: shown")
+		await fn.closed
+		_say("flash notice: closed (no lightning flashes %s)" % ("on" if bool(cf.get_value("ui", "no_flashes", false)) else "off"))
 	OS.delta_smoothing = false
 	_environment()
 	_launch("environment")
