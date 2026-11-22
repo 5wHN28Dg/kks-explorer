@@ -16,12 +16,16 @@ signal closed
 const W = preload("res://ui/widgets.gd")
 const About = preload("res://app/about.gd")
 const RunSave = preload("res://ui/run_save.gd")
+const Code = preload("res://net/code.gd")
 
 const ISSUES := "https://github.com/5wHN28Dg/kks-explorer/issues/new"
 const KEEP_LINES := 200         # log lines kept
 const SHOWN_LINES := 100        # of them in a report
-const LINE_MAX := 300           # characters of a line kept
-const URL_MAX := 6000           # a prefilled issue's link at most this long (browsers and GitHub refuse longer)
+const LINE_MAX := 300           # characters of a line shown (cut after redaction: a name is never half left)
+const LINE_KEEP := 2000         # characters of a line kept
+const URL_MAX := 2000           # a prefilled issue's link at most this long (Windows' ShellExecute: about 2,083)
+const ISSUE_MAX := 60000        # characters an issue's body takes (GitHub's limit is 65,536): beyond, a file to attach
+const DRAFT := "user://report-draft.txt"   # what happened, as typed (kept if the app stops; gone once given)
 const REPORT_MAX := 1024 * 1024 # characters: a run's inputs beyond this are left out (said so)
 
 ## tests: -1 the project setting, 0 off, 1 on
@@ -40,7 +44,7 @@ class Keep extends Logger:
 	func _add(s: String) -> void:
 		var t := Time.get_datetime_string_from_system(true, true).substr(11)   # UTC, as the report's own time
 		mutex.lock()
-		lines.append("%s %s" % [t, s.strip_edges().left(LINE_MAX)])
+		lines.append("%s %s" % [t, s.strip_edges().left(LINE_KEEP)])
 		while lines.size() > KEEP_LINES:
 			lines.pop_front()
 		mutex.unlock()
@@ -92,6 +96,18 @@ static func _notice() -> void:
 ## What must never leave in a report: the player names this device knows (its own saved one, a session's players),
 ## the session code. Each with the words put in its place.
 static var _seen := {}          # every secret seen this process (a player who left, a session that ended)
+
+## A name or code to leave out of every report from now on (net/session.gd and the session panel call it as they
+## see one; secrets_of() adds what it finds too). Each word of a name of 3 letters or more is left out as well.
+static func remember(secret: String, words: String) -> void:
+	var k := secret.strip_edges()
+	if k.length() < 2 or GENERIC.has(k.to_lower()):
+		return
+	_seen[k] = words
+	if words == "[player name]":
+		for w in k.split(" ", false):
+			if w.length() >= 3 and not GENERIC.has(w.to_lower()):
+				_seen[w] = words
 const GENERIC := ["player", "plant", "trainee"]   # a default or common word is never a name to hide
 
 static func secrets_of(main) -> Array:
@@ -108,9 +124,7 @@ static func secrets_of(main) -> Array:
 			if r is Dictionary:
 				out.append([str(r.get("name", "")), "[player name]"])
 	for x in out:
-		var k := String(x[0]).strip_edges()
-		if k.length() >= 2 and not GENERIC.has(k.to_lower()):
-			_seen[k] = x[1]
+		remember(String(x[0]), x[1])
 	var all: Array = []
 	for k in _seen:
 		all.append([k, _seen[k]])
@@ -136,6 +150,13 @@ static func redact(text: String, secrets: Array) -> String:
 	for i in pairs.size():
 		text = text.replace("\u0001%d\u0002" % i, pairs[i][1])
 	var re := RegEx.new()
+	# any session invite code, dashed or not, in any case, that passes its check character (net/code.gd)
+	re.compile("(?i)\\b[0-9a-z]{4}-?[0-9a-z]{4}-?[0-9a-z]{4}-?[0-9a-z]{4}\\b")
+	var found := re.search_all(text)
+	for i in range(found.size() - 1, -1, -1):
+		var m: RegExMatch = found[i]
+		if Code.normalize(m.get_string()) != "":
+			text = text.substr(0, m.get_start()) + "[session code]" + text.substr(m.get_end())
 	re.compile("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b")                                  # IPv4
 	text = re.sub(text, "<address>", true)
 	# IPv6: eight groups, or fewer with "::" (never a time of day such as 07:40:12)
@@ -187,8 +208,9 @@ static func build(main, with_inputs: bool) -> String:
 	L.append("")
 	var lines: Array = keeper.last(SHOWN_LINES) if keeper != null else []
 	L.append("The app's last %d log lines:" % lines.size())
+	var secrets := secrets_of(main)
 	for l in lines:
-		L.append("  " + String(l))
+		L.append("  " + redact(String(l), secrets).left(LINE_MAX))
 	if lines.is_empty():
 		L.append("  (none)")
 	if with_inputs and ui != null and ui.get("clock") != null and ui.clock.engine != null:
@@ -210,10 +232,12 @@ static func build(main, with_inputs: bool) -> String:
 ## issue says the report was copied and is to be pasted.
 static func issue_url(text: String) -> String:
 	var title := "Walkdown Plant: a problem report"
-	var url := "%s?title=%s&body=%s" % [ISSUES, title.uri_encode(), text.uri_encode()]
-	if url.length() <= URL_MAX:
-		return url
-	var short := "The report was too long for the link and was copied: paste it here (Ctrl+V), below what happened."
+	if text.length() <= URL_MAX:
+		var url := "%s?title=%s&body=%s" % [ISSUES, title.uri_encode(), text.uri_encode()]
+		if url.length() <= URL_MAX:
+			return url
+	var short := ("The report was too long for the link and was copied: paste it here." if text.length() <= ISSUE_MAX
+			else "The report is too long to paste here: attach the file Walkdown Plant saved it to.")
 	return "%s?title=%s&body=%s" % [ISSUES, title.uri_encode(), short.uri_encode()]
 
 
@@ -289,7 +313,9 @@ func _init() -> void:
 	what_box.custom_minimum_size.y = 110 * W.scale
 	what_box.add_theme_font_size_override("font_size", int(18 * W.scale))
 	what_box.accessibility_name = "What happened"
-	what_box.text_changed.connect(_issue_label_soon)
+	what_box.text_changed.connect(_typed)
+	what_box.text = FileAccess.get_file_as_string(DRAFT)   # (a draft the app kept when it stopped)
+	_field_style(what_box)
 	what_box.tab_input_mode = false          # Tab moves on to the next control (the keyboard never stays in it)
 	body.add_child(what_box)
 	inputs_cb = CheckBox.new()
@@ -300,12 +326,14 @@ func _init() -> void:
 	inputs_cb.custom_minimum_size.y = 52 * W.scale
 	inputs_cb.toggled.connect(func(_on): refresh())
 	body.add_child(inputs_cb)
-	body.add_child(W.label("The report", 18))
+	body.add_child(W.label("The report" + ("" if OS.has_feature("mobile")
+			else "  (Page Up and Page Down, the gamepad's shoulder buttons or its right stick scroll it)"), 18))
 	text_box = TextEdit.new()
 	text_box.name = "report_text"
 	text_box.editable = false               # shown as it will go; it can be selected and copied
 	text_box.focus_mode = Control.FOCUS_CLICK   # (the D-pad and Tab pass it by: it would hold them, moving its caret)
 	text_box.add_theme_color_override("font_readonly_color", Color.WHITE)   # (read-only text is dimmed by default: A1)
+	_field_style(text_box)
 	text_box.custom_minimum_size.y = 260 * W.scale
 	text_box.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	text_box.add_theme_font_size_override("font_size", int(18 * W.scale))
@@ -355,6 +383,47 @@ func close() -> void:
 		closed.emit()
 
 
+## A text box's edge seen against the panel (A2: at least 3:1), in every state.
+static func _field_style(t: TextEdit) -> void:
+	for k in ["normal", "read_only", "focus"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.05, 0.055, 0.07)
+		sb.border_color = Color(0.62, 0.66, 0.74) if k != "focus" else Color(1.0, 0.8, 0.25)
+		sb.set_border_width_all(maxi(2, int(2 * W.scale)))
+		sb.set_corner_radius_all(6)
+		sb.set_content_margin_all(8 * W.scale)
+		t.add_theme_stylebox_override(k, sb)
+
+
+## Typing: the draft kept (the app may be stopped while the browser or a file dialog is in front), the issue's
+## button's words a moment later.
+var _draft_due := false
+func _typed() -> void:
+	_issue_label_soon()
+	if _draft_due or not is_inside_tree():
+		return
+	_draft_due = true
+	get_tree().create_timer(0.5).timeout.connect(func():
+		_draft_due = false
+		_keep_draft())
+
+
+func _keep_draft() -> void:
+	var t := what_box.text
+	if t.strip_edges() == "":
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(DRAFT))
+		return
+	var f := FileAccess.open(DRAFT, FileAccess.WRITE)
+	if f != null:
+		f.store_string(t)
+
+
+## Given away (saved, shared, put in an issue): the next report starts empty, and the draft goes.
+func _given_away() -> void:
+	what_box.text = ""
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(DRAFT))
+
+
 ## The report made again (the box ticked or not); what the trainee wrote is its own box, untouched.
 func refresh() -> void:
 	report = build(main, inputs_cb.button_pressed)
@@ -375,19 +444,22 @@ func _issue_label_soon() -> void:
 
 
 func _issue_label() -> void:
-	issue_btn.text = "Open a public issue" if _fits() else "Copy and open a public issue"
-
-
-## The report fits in an issue's link (else it is copied, to be pasted there).
-func _fits() -> bool:
 	var g := given()
-	return issue_url(g).contains("&body=" + g.uri_encode())
+	issue_btn.text = "Open a public issue" if _fits(g) else ("Copy and open a public issue" if g.length() <= ISSUE_MAX
+			else "Open a public issue to attach the file to")
 
 
-## What is given: what the trainee wrote, then the report, redacted again (they may have typed a name).
+## The report fits in an issue's link (else it is copied, to be pasted there, or too long even for that).
+func _fits(g := "") -> bool:
+	if g == "":
+		g = given()
+	return g.length() <= URL_MAX and issue_url(g).contains("&body=" + g.uri_encode())
+
+
+## What is given: what the trainee wrote (redacted: they may have typed a name), then the report (redacted already).
 func given() -> String:
-	var w := what_box.text.strip_edges()
-	return redact("What happened: %s\n\n%s" % [w if w != "" else "(not said)", report], secrets_of(main))
+	var w := redact(what_box.text.strip_edges(), secrets_of(main))
+	return "What happened: %s\n\n%s" % [w if w != "" else "(not said)", report]
 
 
 func _say(t: String) -> void:
@@ -425,24 +497,40 @@ func write_to(path: String) -> void:
 		return
 	f.store_string(given())
 	f.close()
+	_given_away()
 	_say("The report was saved as %s." % path.get_file())
 
 
 func share() -> void:
 	var why := share_android(given())
+	if why == "":
+		_given_away()
 	_say("Android's share sheet is open." if why == "" else "Sharing did not open (%s). Save or copy the report instead." % why)
 
 
 func open_issue() -> void:
+	var said := issue_btn.text                  # what the button said when it was pressed
 	var t := given()
 	var url := issue_url(t)
-	var copied := not _fits()
+	var fits := _fits(t)
+	var too_long := t.length() > ISSUE_MAX
+	# copied only when the button said so (its words lag typing by a moment: then it is said, not done)
+	var copied := not fits and not too_long and said.begins_with("Copy")
 	if copied:
-		DisplayServer.clipboard_set(t)          # (the button said so: "Copy and open a public issue")
+		DisplayServer.clipboard_set(t)
 	var err := OS.shell_open(url)
 	if err != OK:
-		DisplayServer.clipboard_set(t)
-		_say("No browser opened. The report was copied: paste it into a new issue at %s." % ISSUES)
+		_say("No browser opened. Copy the report (or save it), then make a new issue at %s." % ISSUES)
+		return
+	_issue_label()
+	if fits or copied:
+		_given_away()
+	if too_long:
+		_say("A new issue opens in your browser. The report is too long to paste there: save it to a file, then attach "
+				+ "the file to the issue. Nothing is posted until you press its button there.")
+	elif not fits and not copied:
+		_say("A new issue opens in your browser. The report is too long for the link: press Copy, then paste it into "
+				+ "the issue. Nothing is posted until you press its button there.")
 	else:
 		_say("A new issue opens in your browser%s. Nothing is posted until you press its button there." \
 				% (", with the report copied: paste it into the issue" if copied else ""))
@@ -457,3 +545,25 @@ func _input(e: InputEvent) -> void:
 			or (e is InputEventJoypadButton and e.button_index == JOY_BUTTON_B):
 		close()
 		get_viewport().set_input_as_handled()
+		return
+	# the report scrolls by keys and the gamepad's shoulder buttons wherever the focus is (as About): it never takes
+	# the focus itself, which would hold the D-pad and the arrows in it
+	var page := int(text_box.size.y * 0.9)
+	var to := -1.0
+	if e is InputEventKey and e.keycode == KEY_PAGEDOWN or e is InputEventJoypadButton and e.button_index == JOY_BUTTON_RIGHT_SHOULDER:
+		to = text_box.scroll_vertical + page / maxf(1.0, text_box.get_line_height())
+	elif e is InputEventKey and e.keycode == KEY_PAGEUP or e is InputEventJoypadButton and e.button_index == JOY_BUTTON_LEFT_SHOULDER:
+		to = maxf(0.0, text_box.scroll_vertical - page / maxf(1.0, text_box.get_line_height()))
+	if to >= 0.0:
+		scroll.ensure_control_visible(text_box)
+		text_box.scroll_vertical = to
+		get_viewport().set_input_as_handled()
+
+
+## The right stick scrolls the report (its look axes; held, smoothly).
+func _process(delta: float) -> void:
+	if not is_visible_in_tree():
+		return
+	var dy := Input.get_axis("look_up", "look_down")
+	if absf(dy) > 0.2:
+		text_box.scroll_vertical = maxf(0.0, text_box.scroll_vertical + dy * 30.0 * delta)

@@ -2443,7 +2443,8 @@ func handle_link(url: String) -> void:
 		held_link = url   # opened when the trainee is back in the plant (workshop/workshop.gd close): not unseen behind it
 		return
 	var r: Dictionary = Links.read_link(url, model)
-	print("plant: link %s opens %s" % [url.left(80), JSON.stringify(r)])
+	# (a join link's code is the session's key: never in the log, which a problem report shows; app/report.gd)
+	print("plant: link opens %s" % (r["open"] if r["open"] == "join" else "%s %s" % [url.left(80), JSON.stringify(r)]))
 	match r["open"]:
 		"kks":
 			var asked := url.get_slice("/", 3).left(24)

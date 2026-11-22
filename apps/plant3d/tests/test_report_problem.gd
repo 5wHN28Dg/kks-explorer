@@ -95,6 +95,15 @@ func run(tree: SceneTree) -> Array:
 		p.append("the saved file is not the report as shown, redacted: %s" % saved.left(200))
 	if not rv.note.visible or not rv.note.text.contains("tests-report.txt"):
 		p.append("saving did not say where: %s" % rv.note.text)
+	if rv.what_box.text != "" or FileAccess.file_exists(Report.DRAFT):
+		p.append("once saved, what happened stays for the next report: %s" % rv.what_box.text.left(40))
+	rv.what_box.text = "it froze, " + NAME + "\nthen the walker fell\nthird line"
+	# the draft: kept as typed, read back by a new view (the app stopped and started again)
+	rv._keep_draft()
+	var again := Report.new()
+	if again.what_box.text != rv.what_box.text:
+		p.append("the draft of what happened is not read back after a restart: %s" % again.what_box.text.left(40))
+	again.free()
 	DirAccess.remove_absolute(out)
 	rv.write_to(OS.get_user_data_dir().path_join("no-such-folder/x/report.txt"))
 	if not rv.note.text.contains("could not be saved"):
@@ -117,6 +126,37 @@ func run(tree: SceneTree) -> Array:
 	if rv._fits() != (rv.issue_btn.text == "Open a public issue"):
 		p.append("the issue's button (%s) doesn't follow whether the report fits" % rv.issue_btn.text)
 	rv.inputs_cb.button_pressed = false
+	# keyboard and gamepad scroll the report (it never takes the focus)
+	rv.text_box.scroll_vertical = 0
+	var pd := InputEventKey.new()
+	pd.pressed = true
+	pd.keycode = KEY_PAGEDOWN
+	pd.physical_keycode = KEY_PAGEDOWN
+	tree.root.push_input(pd)
+	await tree.process_frame
+	if rv.text_box.scroll_vertical <= 0.0:
+		p.append("Page Down did not scroll the report")
+	var rs := InputEventJoypadButton.new()
+	rs.pressed = true
+	rs.button_index = JOY_BUTTON_LEFT_SHOULDER
+	var at: float = rv.text_box.scroll_vertical
+	tree.root.push_input(rs)
+	await tree.process_frame
+	if rv.text_box.scroll_vertical >= at:
+		p.append("the gamepad's left shoulder did not scroll the report back")
+	# a session code in the log, dashed or not, with no session open (it ended, or never started): left out
+	var Code = load("res://net/code.gd")
+	var c: String = Code.make()
+	print("test: a link walkdown-plant://join/%s and %s and %s" % [c, Code.pretty(c), c.to_lower()])
+	rv.refresh()
+	if rv.text_box.text.contains(c) or rv.text_box.text.contains(Code.pretty(c)) or rv.text_box.text.contains(c.to_lower()):
+		p.append("a session code in the log reaches the report")
+	# a name the session saw once (a player who left) stays out after the session ends
+	Report.remember("Layla Q", "[player name]")
+	print("test: Layla Q left")
+	rv.refresh()
+	if rv.text_box.text.contains("Layla"):
+		p.append("a player who left is named in the report")
 	# Back: About again; opened again, what was written is still there, the box unticked
 	rv.back.pressed.emit()
 	await tree.process_frame
@@ -173,6 +213,7 @@ func run(tree: SceneTree) -> Array:
 		f.free()
 	main.free()
 	Report.switch_override = -1
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Report.DRAFT))
 	return p
 
 
