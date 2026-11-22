@@ -801,6 +801,11 @@ func add_settings(box: VBoxContainer) -> void:
 		rows[row[0]] = cb
 		box.add_child(cb)
 	_flashes_row(rows["no_flashes"], cf)
+	if _flash_notice_on():   # the photosensitivity notice again (#443; switched off until the owner's check)
+		var again := W.button("About flashing light", func(): show_flash_notice(rows["no_flashes"]))
+		again.name = "flash_notice_again"
+		box.add_child(again)
+		flash_notice_btn = again
 	_workshop_settings(box)
 	if Autosave.carries():          # (with the saves kept aside: the switch of issue #447, off until the owner's check)
 		_kept_saves(box)
@@ -818,6 +823,32 @@ static func _flag(cf: ConfigFile, key: String, fallback: bool) -> bool:
 
 
 const NO_FLASHES := "No lightning flashes: the lightning glows softly instead"
+var flash_notice_btn: Button    # the settings' "About flashing light" (switched on only)
+var flash_notice                # app/flash_notice.gd while it is open from the settings
+
+## The notice switched on (the project setting, or a test's override); its script is loaded only then.
+static func _flash_notice_on() -> bool:
+	if bool(ProjectSettings.get_setting("walkdown/flash_notice", false)):
+		return true
+	return ResourceLoader.has_cached("res://app/flash_notice.gd") and load("res://app/flash_notice.gd").switched_on()
+
+## The photosensitivity notice from the settings (#443): over them; its box changes "No lightning flashes" at once,
+## as the settings' own row does; closed, the focus goes back to the button that opened it.
+func show_flash_notice(row: CheckBox = null) -> void:
+	if is_instance_valid(flash_notice):
+		return
+	var cf: ConfigFile = main.cf
+	flash_notice = load("res://app/flash_notice.gd").new(cf, true)
+	flash_notice.on_no_flashes = func(v: bool):
+		if bindings.reduced_motion:
+			return                  # (shown on while Reduced motion is)
+		_setting("no_flashes", v)
+		if row != null and is_instance_valid(row):
+			_flashes_row(row, cf)
+	flash_notice.closed.connect(func():
+		if is_instance_valid(flash_notice_btn) and flash_notice_btn.is_visible_in_tree():
+			flash_notice_btn.grab_focus())
+	get_tree().root.add_child(flash_notice)   # (last in the tree: its keys come before the settings' own)
 
 ## "No lightning flashes" is on whenever Reduced motion is (shown ticked, not changeable, and saying why); with Reduced
 ## motion off it shows and is its own setting again (the owner, 2026-11-21, #443).

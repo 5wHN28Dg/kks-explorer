@@ -223,6 +223,16 @@ func _ready() -> void:
 		if not go:
 			get_tree().quit()
 			return
+	# the photosensitivity notice (issue #443, GM8.3): once, at the first start, before the plant loads, with "No
+	# lightning flashes" on it (app/flash_notice.gd; switched off until the owner's check)
+	var FlashNotice = load("res://app/flash_notice.gd") if bool(ProjectSettings.get_setting("walkdown/flash_notice", false)) \
+			or _flash_notice_test() else null     # (loaded only when switched on: the start as before when off)
+	if FlashNotice != null and FlashNotice.wanted(cf, opts):
+		var fn = FlashNotice.new(cf)
+		add_child(fn)
+		_say("flash notice: shown")
+		await fn.closed
+		_say("flash notice: closed (no lightning flashes %s)" % ("on" if FlashNotice.flag(cf, "no_flashes") else "off"))
 	OS.delta_smoothing = false
 	_environment()
 	_launch("environment")
@@ -729,6 +739,12 @@ func _unhandled_input(e: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 # ------------------------------------------------------------------ scripted walks and their frame log
+
+## A test switched the photosensitivity notice on (app/flash_notice.gd switch_override; the script is loaded then).
+func _flash_notice_test() -> bool:
+	var fn = load("res://app/flash_notice.gd") if ResourceLoader.has_cached("res://app/flash_notice.gd") else null
+	return fn != null and fn.switch_override == 1
+
 
 func _say(s: String) -> void:
 	print("plant: ", s)
